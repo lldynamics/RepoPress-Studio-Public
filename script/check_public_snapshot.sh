@@ -52,9 +52,6 @@ required_paths=(
   docs/module-dependencies.md
   SECURITY.md
   TRADEMARKS.md
-  package-lock.json
-  package.json
-  BrowserExtension
   Packaging/ThirdPartyNotices
   Sources
   Tests
@@ -75,8 +72,6 @@ rg -Fq 'RepoPress is open-source software under the Mozilla Public License 2.0 (
   || fail "README.md must identify MPL-2.0 as the project license"
 rg -Fq '`TRADEMARKS.md`' "$ROOT_DIR/README.md" \
   || fail "README.md must link the trademark policy"
-rg -Fq '"license": "MPL-2.0"' "$ROOT_DIR/package.json" \
-  || fail "package.json must declare MPL-2.0"
 
 forbidden_paths=(
   RELEASE_CHECKLIST.md
@@ -182,7 +177,7 @@ unexpected_images=()
 while IFS= read -r -d '' file; do
   relative="$(relative_path "$file")"
   case "$relative" in
-    BrowserExtension/shared/icons/*.png|Sources/PersonalSitePublisherMac/Resources/AppIcon.icns)
+    Sources/PersonalSitePublisherMac/Resources/AppIcon.icns)
       ;;
     *)
       unexpected_images+=("$relative")
@@ -244,7 +239,7 @@ while IFS= read -r hit; do
 done < <(
   LC_ALL=C rg -n \
     -e 'https?://[^/@[:space:]]+:[^/@[:space:]]+@' \
-    "$ROOT_DIR/Sources" "$ROOT_DIR/BrowserExtension" "$ROOT_DIR/Packaging" || true
+    "$ROOT_DIR/Sources" "$ROOT_DIR/Packaging" || true
 )
 if [[ "${#credential_url_hits[@]}" -gt 0 ]]; then
   printf 'public snapshot gate: credential-bearing URL found in product source:\n' >&2

@@ -828,159 +828,83 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     XCTAssertEqual(health.locallyRepairableDocumentCount, 1)
   }
 
-  func testBrowserCaptureImportsArchiveIntoFolderAndCanReclassifyDuplicate() async throws {
-    let rootURL = temporaryDirectory(named: "knowledge-browser-capture")
+  func testHistoricalWebCandidatePreservesArchiveAndReadableFallback() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-historical-web-archive")
     defer { try? FileManager.default.removeItem(at: rootURL) }
-
-    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
-    let readingFolder = try service.createFolder(name: "待读文章")
-    let referenceFolder = try service.createFolder(name: "长期参考")
-    let archive = Data("From: browser-extension\nContent-Type: multipart/related".utf8)
-    let capture = KnowledgeBrowserCapture(
-      sourceURL: try XCTUnwrap(URL(string: "https://example.com/notes?from=reader#chapter")),
-      title: "用资料库辅助长期写作",
-      authors: ["测试作者"],
-      language: "zh-CN",
-      summary: "浏览器采集测试",
-      tags: ["写作", "资料库"],
-      capturedAt: Date(timeIntervalSince1970: 1_700_000_000),
-      contentText: """
-        不同措辞也应该能够找到这一段关于长期知识积累的正文。
-
-        [继续阅读](https://example.com/notes/chapter)
-        """,
-      archiveFormat: "mhtml",
-      archiveData: archive
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let originalHTML = Data(
+      """
+      <html><body><nav>旧归档导航</nav><article><h1>历史网页</h1>
+      <p>需要保留并检索的网页正文。</p><p>浏览量 12.6万</p></article></body></html>
+      """.utf8)
+    let normalizedText = "# 历史网页\n\n需要保留并检索的网页正文。"
+    let candidate = makeWebpageImportCandidate(
+      title: "历史网页",
+      sourceURL: try XCTUnwrap(URL(string: "https://example.com/historical-archive")),
+      originalData: originalHTML,
+      normalizedText: normalizedText
     )
+    let service = KnowledgeLibraryService(rootURL: storeURL)
 
-    let preview = try await service.makeBrowserImportPreview(capture: capture)
-    let candidate = try XCTUnwrap(preview.candidates.first)
-    XCTAssertEqual(candidate.disposition, .new)
-    XCTAssertEqual(candidate.kind, .webpage)
-    XCTAssertEqual(candidate.originalFilenameExtension, "mhtml")
-    XCTAssertEqual(candidate.originalData, archive)
-    XCTAssertEqual(candidate.capturedText, capture.contentText)
-    XCTAssertEqual(candidate.sourceURL?.fragment, nil)
+    let result = try await service.commit(
+      KnowledgeImportPreview(sourceName: "historical-archive.html", candidates: [candidate]))
+    let documentID = try XCTUnwrap(result.documentIDs.first)
+    let revision = try XCTUnwrap(service.revisions(documentID: documentID).first)
+    let originalReference = try XCTUnwrap(revision.originalStorageReference)
+    let originalFileURL = storeURL.appendingPathComponent(originalReference)
+    XCTAssertEqual(try Data(contentsOf: originalFileURL), originalHTML)
 
-    let inserted = try await service.commit(preview, destination: .folder(readingFolder.id))
-    XCTAssertEqual(inserted.insertedCount, 1)
-    var document = try XCTUnwrap(service.documents().first)
-    XCTAssertEqual(inserted.documentIDs, [document.id])
-    XCTAssertEqual(document.folderID, readingFolder.id)
-    XCTAssertEqual(document.title, "用资料库辅助长期写作")
-    XCTAssertFalse(try service.search(query: "长期知识积累", limit: 5).isEmpty)
-    XCTAssertTrue(
-      try service.normalizedText(documentID: document.id)
-        .contains("[继续阅读](https://example.com/notes/chapter)")
+    let readableOriginal = try XCTUnwrap(service.capturedText(documentID: documentID))
+    XCTAssertTrue(readableOriginal.contains("旧归档导航"))
+    XCTAssertTrue(readableOriginal.contains("浏览量 12.6万"))
+    XCTAssertTrue(readableOriginal.contains("需要保留并检索的网页正文"))
+    XCTAssertEqual(try service.normalizedText(documentID: documentID), normalizedText)
+
+    let repairPreviews = try await service.makeLocalContentRepairPreviews(
+      documentIDs: [documentID],
+      includingCurrentParserVersion: true
     )
-    XCTAssertEqual(try service.capturedText(documentID: document.id), capture.contentText)
-    let firstRevision = try XCTUnwrap(service.revisions(documentID: document.id).first)
-    XCTAssertNotNil(firstRevision.capturedTextStorageReference)
-
-    let duplicatePreview = try await service.makeBrowserImportPreview(capture: capture)
-    XCTAssertEqual(duplicatePreview.duplicateCount, 1)
-    let duplicate = try await service.commit(
-      duplicatePreview,
-      destination: .folder(referenceFolder.id)
+    let repairPreview = try XCTUnwrap(repairPreviews.first)
+    let reSanitizedText = try XCTUnwrap(
+      repairPreview.importPreview.candidates.first?.normalizedText
     )
-    XCTAssertEqual(duplicate.skippedCount, 1)
-    document = try XCTUnwrap(service.documents().first)
-    XCTAssertEqual(duplicate.documentIDs, [document.id])
-    XCTAssertEqual(document.folderID, referenceFolder.id)
-    XCTAssertEqual(try service.capturedText(documentID: document.id), capture.contentText)
-
-    var changedCapture = capture
-    changedCapture.contentText += " 新版本补充了浏览器一键归档流程。"
-    changedCapture.archiveData = Data("updated archive".utf8)
-    let updatePreview = try await service.makeBrowserImportPreview(capture: changedCapture)
-    XCTAssertEqual(updatePreview.updateCount, 1)
-    let updated = try await service.commit(updatePreview, destination: .preserveExisting)
-    XCTAssertEqual(updated.updatedCount, 1)
-    document = try XCTUnwrap(service.documents().first)
-    XCTAssertEqual(updated.documentIDs, [document.id])
-    XCTAssertEqual(document.folderID, referenceFolder.id)
-    XCTAssertFalse(try service.search(query: "一键归档", limit: 5).isEmpty)
-    XCTAssertEqual(try service.capturedText(documentID: document.id), changedCapture.contentText)
-  }
-
-  func testBrowserCaptureRejectsUnsupportedSchemaAndCredentialedURL() async throws {
-    let rootURL = temporaryDirectory(named: "knowledge-browser-invalid")
-    defer { try? FileManager.default.removeItem(at: rootURL) }
-    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
-
-    var capture = KnowledgeBrowserCapture(
-      schemaVersion: 99,
-      sourceURL: try XCTUnwrap(URL(string: "https://example.com/article")),
-      title: "无效页面",
-      contentText: "仍然包含正文"
-    )
-    do {
-      _ = try await service.makeBrowserImportPreview(capture: capture)
-      XCTFail("Expected unsupported browser capture schema to fail")
-    } catch {
-      XCTAssertTrue(error.localizedDescription.contains("不支持的数据版本"))
-    }
-
-    capture.schemaVersion = KnowledgeBrowserCapture.currentSchemaVersion
-    capture.sourceURL = try XCTUnwrap(URL(string: "https://user:secret@example.com/article"))
-    do {
-      _ = try await service.makeBrowserImportPreview(capture: capture)
-      XCTFail("Expected credentialed browser URL to fail")
-    } catch {
-      XCTAssertTrue(error.localizedDescription.contains("页面地址无效"))
-    }
+    XCTAssertTrue(reSanitizedText.contains("需要保留并检索的网页正文"))
+    XCTAssertFalse(reSanitizedText.contains("旧归档导航"))
+    XCTAssertFalse(reSanitizedText.contains("12.6万"))
   }
 
   @MainActor
-  func testBrowserPreparedCapturePersistsEditedMetadataModeAndAIPermission() async throws {
-    let rootURL = temporaryDirectory(named: "knowledge-browser-prepared-preview")
+  func testRevealDocumentClearsFiltersAndSelectsCommittedHTMLDocument() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-reveal-committed-html")
     defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceURL = rootURL.appendingPathComponent("reference.html")
+    try """
+    <html><body><article><h1>可从导入结果打开的资料</h1>
+    <p>这段正文用于验证资料导航会选中准确的已提交文档。</p>
+    </article></body></html>
+    """.write(to: sourceURL, atomically: true, encoding: .utf8)
     let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
+    let destinationFolder = try service.createFolder(name: "长期参考")
+    let hiddenFolder = try service.createFolder(name: "其他分类")
+    let result = try await service.commit(
+      try await service.makeImportPreview(sourceURL: sourceURL),
+      destination: .folder(destinationFolder.id)
+    )
+    let documentID = try XCTUnwrap(result.documentIDs.first)
     let store = KnowledgeStore(service: service)
-    let capture = KnowledgeBrowserCapture(
-      sourceURL: try XCTUnwrap(URL(string: "https://example.com/reference-link")),
-      title: "保存前编辑后的标题",
-      authors: ["作者甲", "作者乙"],
-      tags: ["研究", "写作"],
-      contentText: "[保存前预览资料](https://example.com/reference-link)",
-      captureMode: .linkOnly,
-      allowsLocalSemanticIndex: false,
-      allowsRemoteAIUse: false
-    )
+    await store.reload()
+    store.setFolderScope(.folder(hiddenFolder.id))
+    store.updateSearchText("不可能命中的搜索词")
 
-    let preview = try await service.makeBrowserImportPreview(capture: capture)
-    let candidate = try XCTUnwrap(preview.candidates.first)
-    XCTAssertFalse(candidate.allowsLocalSemanticIndex ?? true)
-    XCTAssertFalse(candidate.allowsRemoteAIUse ?? true)
-    XCTAssertTrue(
-      candidate.warnings.contains {
-        $0.contains("仅保存页面标题和原始链接")
-      })
-
-    let outcome = try await store.importBrowserCapture(
-      capture,
-      folderID: nil,
-      newFolderName: nil
-    )
-    guard case .saved(let result, let action) = outcome else {
-      return XCTFail("Expected prepared capture to be saved")
-    }
-    XCTAssertEqual(action, .inserted)
-    let document = try XCTUnwrap(
-      store.documents.first(where: {
-        $0.id == result.documentIDs.first
-      }))
-    XCTAssertEqual(document.title, "保存前编辑后的标题")
-    XCTAssertEqual(document.authors, ["作者甲", "作者乙"])
-    XCTAssertEqual(document.tags, ["研究", "写作"])
-    XCTAssertFalse(document.allowsLocalSemanticIndex)
-    XCTAssertFalse(document.allowsRemoteAIUse)
-    XCTAssertTrue(try service.normalizedText(documentID: document.id).contains("reference-link"))
+    XCTAssertTrue(store.revealDocument(documentID))
+    XCTAssertEqual(store.folderScope, .all)
+    XCTAssertEqual(store.selectedDocumentID, documentID)
+    XCTAssertEqual(store.selectedDocument?.title, "reference")
+    XCTAssertTrue(store.searchText.isEmpty)
   }
 
-  @MainActor
-  func testBrowserAIPermissionIsCommittedWithoutPostImportUpdate() async throws {
-    let rootURL = temporaryDirectory(named: "knowledge-browser-ai-permission-transaction")
+  func testCandidateAISettingsAreCommittedWithinImportTransaction() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-import-ai-permission-transaction")
     defer { try? FileManager.default.removeItem(at: rootURL) }
     let storeURL = rootURL.appendingPathComponent("store")
     let service = KnowledgeLibraryService(rootURL: storeURL)
@@ -995,204 +919,26 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       """,
       at: storeURL.appendingPathComponent("library.sqlite")
     )
-    let store = KnowledgeStore(service: service)
-    let capture = KnowledgeBrowserCapture(
-      sourceURL: try XCTUnwrap(URL(string: "https://example.com/transactional-ai-permission")),
+    let originalHTML = Data(
+      "<html><body><article>AI 权限事务导入</article></body></html>".utf8
+    )
+    let candidate = makeWebpageImportCandidate(
       title: "AI 权限事务导入",
-      contentText: "这段正文用于验证不允许 AI 的选择与文档在同一事务中提交。",
-      allowsLocalSemanticIndex: true,
-      allowsRemoteAIUse: false
+      sourceURL: try XCTUnwrap(URL(string: "https://example.com/transactional-ai-permission")),
+      originalData: originalHTML,
+      allowsRemoteAIUse: false,
+      normalizedText: "AI 权限设置必须与文档在同一导入事务中提交。"
     )
 
-    let outcome = try await store.importBrowserCapture(
-      capture,
-      folderID: nil,
-      newFolderName: nil
+    let result = try await service.commit(
+      KnowledgeImportPreview(
+        sourceName: "transactional-ai-permission.html",
+        candidates: [candidate]
+      )
     )
-    guard case .saved(let result, let action) = outcome else {
-      return XCTFail("Expected browser capture to be saved")
-    }
-    XCTAssertEqual(action, .inserted)
     let documentID = try XCTUnwrap(result.documentIDs.first)
     XCTAssertFalse(
       try XCTUnwrap(service.documents().first { $0.id == documentID }).allowsRemoteAIUse)
-  }
-
-  @MainActor
-  func testRevealDocumentClearsFiltersAndSelectsExactBrowserReceiptDocument() async throws {
-    let rootURL = temporaryDirectory(named: "knowledge-browser-receipt-open")
-    defer { try? FileManager.default.removeItem(at: rootURL) }
-    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
-    let destinationFolder = try service.createFolder(name: "长期参考")
-    let hiddenFolder = try service.createFolder(name: "其他分类")
-    let capture = KnowledgeBrowserCapture(
-      sourceURL: try XCTUnwrap(URL(string: "https://example.com/receipt-open")),
-      title: "可从保存回执打开的资料",
-      contentText: "这段正文用于验证浏览器保存回执能打开准确资料。"
-    )
-    let preview = try await service.makeBrowserImportPreview(capture: capture)
-    let result = try await service.commit(preview, destination: .folder(destinationFolder.id))
-    let documentID = try XCTUnwrap(result.documentIDs.first)
-    let store = KnowledgeStore(service: service)
-    await store.reload()
-    store.setFolderScope(.folder(hiddenFolder.id))
-    store.updateSearchText("不可能命中的搜索词")
-
-    XCTAssertTrue(store.revealDocument(documentID))
-    XCTAssertEqual(store.folderScope, .all)
-    XCTAssertEqual(store.selectedDocumentID, documentID)
-    XCTAssertEqual(store.selectedDocument?.title, "可从保存回执打开的资料")
-    XCTAssertTrue(store.searchText.isEmpty)
-  }
-
-  @MainActor
-  func testBrowserDuplicateResolutionSupportsVersionMoveCopyAndCancelWithoutSilentMutation()
-    async throws
-  {
-    let rootURL = temporaryDirectory(named: "knowledge-browser-duplicate-resolution")
-    defer { try? FileManager.default.removeItem(at: rootURL) }
-    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
-    let readingFolder = try service.createFolder(name: "阅读")
-    let referenceFolder = try service.createFolder(name: "参考")
-    let store = KnowledgeStore(service: service)
-    await store.reload()
-    let capture = KnowledgeBrowserCapture(
-      sourceURL: try XCTUnwrap(URL(string: "https://example.com/duplicate-panel")),
-      title: "重复网页处理",
-      authors: ["原作者"],
-      tags: ["原标签"],
-      contentText: "这是用于验证重复网页处理选项的长期参考正文。",
-      allowsLocalSemanticIndex: true,
-      allowsRemoteAIUse: true
-    )
-
-    let firstOutcome = try await store.importBrowserCapture(
-      capture,
-      folderID: readingFolder.id,
-      newFolderName: nil
-    )
-    guard case .saved(let firstResult, let firstAction) = firstOutcome else {
-      return XCTFail("首次导入应直接保存")
-    }
-    XCTAssertEqual(firstAction, .inserted)
-    let originalDocumentID = try XCTUnwrap(firstResult.documentIDs.first)
-    XCTAssertEqual(try service.revisions(documentID: originalDocumentID).count, 1)
-
-    let unresolved = try await store.importBrowserCapture(
-      capture,
-      folderID: referenceFolder.id,
-      newFolderName: nil
-    )
-    guard case .requiresDuplicateResolution(let conflict) = unresolved else {
-      return XCTFail("同网址应先等待用户选择")
-    }
-    XCTAssertEqual(conflict.document.id, originalDocumentID)
-    XCTAssertEqual(conflict.folder?.id, readingFolder.id)
-    XCTAssertFalse(conflict.incomingHasChanges)
-    XCTAssertEqual(try service.documents().count, 1)
-    XCTAssertEqual(try service.documents().first?.folderID, readingFolder.id)
-    XCTAssertEqual(try service.revisions(documentID: originalDocumentID).count, 1)
-
-    var moveOnlyCapture = capture
-    moveOnlyCapture.title = "不应写入的标题"
-    moveOnlyCapture.authors = ["不应写入的作者"]
-    moveOnlyCapture.tags = ["不应写入的标签"]
-    moveOnlyCapture.contentText += " 这段新内容不应被仅移动分类写入。"
-    moveOnlyCapture.allowsRemoteAIUse = false
-    let moved = try await store.importBrowserCapture(
-      moveOnlyCapture,
-      folderID: referenceFolder.id,
-      newFolderName: nil,
-      duplicateResolution: .moveOnly
-    )
-    guard case .saved(let movedResult, let movedAction) = moved else {
-      return XCTFail("仅移动分类应返回保存回执")
-    }
-    XCTAssertEqual(movedAction, .moved)
-    XCTAssertEqual(movedResult.documentIDs, [originalDocumentID])
-    let movedDocument = try XCTUnwrap(service.documents().first)
-    XCTAssertEqual(movedDocument.folderID, referenceFolder.id)
-    XCTAssertEqual(movedDocument.title, capture.title)
-    XCTAssertEqual(movedDocument.authors, capture.authors)
-    XCTAssertEqual(movedDocument.tags, capture.tags)
-    XCTAssertTrue(movedDocument.allowsRemoteAIUse)
-    XCTAssertFalse(
-      try service.normalizedText(documentID: originalDocumentID)
-        .contains("这段新内容不应被仅移动分类写入")
-    )
-    XCTAssertEqual(try service.revisions(documentID: originalDocumentID).count, 1)
-
-    let versioned = try await store.importBrowserCapture(
-      capture,
-      folderID: referenceFolder.id,
-      newFolderName: nil,
-      duplicateResolution: .saveNewVersion
-    )
-    guard case .saved(let versionedResult, let versionedAction) = versioned else {
-      return XCTFail("保存新版本应返回保存回执")
-    }
-    XCTAssertEqual(versionedAction, .updated)
-    XCTAssertEqual(versionedResult.documentIDs, [originalDocumentID])
-    XCTAssertEqual(try service.revisions(documentID: originalDocumentID).count, 2)
-
-    var changedCapture = capture
-    changedCapture.contentText += " 本次采集增加了一段新内容。"
-    let changedConflict = try await store.importBrowserCapture(
-      changedCapture,
-      folderID: referenceFolder.id,
-      newFolderName: nil
-    )
-    guard case .requiresDuplicateResolution(let conflict) = changedConflict else {
-      return XCTFail("同网址新内容也应先询问")
-    }
-    XCTAssertTrue(conflict.incomingHasChanges)
-
-    let copied = try await store.importBrowserCapture(
-      changedCapture,
-      folderID: readingFolder.id,
-      newFolderName: nil,
-      duplicateResolution: .keepCopy
-    )
-    guard case .saved(let copiedResult, let copiedAction) = copied else {
-      return XCTFail("保留副本应返回保存回执")
-    }
-    XCTAssertEqual(copiedAction, .copied)
-    let copiedDocumentID = try XCTUnwrap(copiedResult.documentIDs.first)
-    XCTAssertNotEqual(copiedDocumentID, originalDocumentID)
-    let documents = try service.documents()
-    XCTAssertEqual(documents.count, 2)
-    XCTAssertEqual(Set(documents.compactMap(\.sourceURL)), [capture.sourceURL])
-    XCTAssertTrue(documents.contains { $0.id == copiedDocumentID && $0.title.hasSuffix("（副本）") })
-  }
-
-  func testBrowserCapturePreservesSelfContainedHTMLAndResourceWarnings() async throws {
-    let rootURL = temporaryDirectory(named: "knowledge-browser-self-contained-html")
-    defer { try? FileManager.default.removeItem(at: rootURL) }
-
-    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
-    let archive = Data(
-      """
-      <!doctype html><html><head><style>body{color:#222}</style></head>
-      <body><article><h1>离线资料</h1><img src="data:image/png;base64,AA=="></article></body></html>
-      """.utf8)
-    let capture = KnowledgeBrowserCapture(
-      sourceURL: try XCTUnwrap(URL(string: "https://example.com/offline")),
-      title: "Firefox 自包含归档",
-      contentText: "# 离线资料\n\n正文可以检索。",
-      archiveFormat: "html",
-      archiveData: archive,
-      archiveEmbeddedResourceCount: 3,
-      archiveMissingResourceCount: 2,
-      archiveWasTruncated: true
-    )
-
-    let preview = try await service.makeBrowserImportPreview(capture: capture)
-    let candidate = try XCTUnwrap(preview.candidates.first)
-    XCTAssertEqual(candidate.originalFilenameExtension, "html")
-    XCTAssertEqual(candidate.originalData, archive)
-    XCTAssertTrue(candidate.warnings.contains { $0.contains("已内联 3 个") })
-    XCTAssertTrue(candidate.warnings.contains { $0.contains("有 2 个外部资源") })
-    XCTAssertTrue(candidate.warnings.contains { $0.contains("24 MB 上限") })
   }
 
   func testChunkerPreservesLocatorAndBoundsChunkSize() {
@@ -1279,233 +1025,114 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     )
   }
 
-  func testEPUBImportPreservesMetadataSpineOrderAndCitations() async throws {
-    let rootURL = temporaryDirectory(named: "knowledge-epub")
+  func testNewEPUBImportIsRejectedAndFolderImportSkipsEPUBWhileImportingMarkdown() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-epub-retired-import")
     defer { try? FileManager.default.removeItem(at: rootURL) }
-    let sourceURL = try makeEPUB(
-      in: rootURL,
-      packageXML: """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="book-id" version="3.0">
-          <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-            <dc:title>Thinking with Sources</dc:title>
-            <dc:creator>Ada Reader</dc:creator>
-            <dc:language>en</dc:language>
-            <dc:description>A practical book about durable research notes.</dc:description>
-            <dc:subject>research</dc:subject>
-            <dc:subject>writing</dc:subject>
-          </metadata>
-          <manifest>
-            <item id="chapter-one" href="Text/chapter%20one.xhtml" media-type="application/xhtml+xml"/>
-            <item id="chapter-two" href="Text/chapter-two.xhtml" media-type="application/xhtml+xml"/>
-            <item id="appendix" href="Text/appendix.xhtml" media-type="application/xhtml+xml"/>
-          </manifest>
-          <spine>
-            <itemref idref="chapter-two"/>
-            <itemref idref="chapter-one"/>
-            <itemref idref="appendix" linear="no"/>
-          </spine>
-        </package>
-        """,
-      chapters: [
-        "OEBPS/Text/chapter one.xhtml": """
-        <!doctype html><html><head><title>First Notes</title></head><body>
-        <h1>First Notes</h1><p>Atomic notes preserve the origin of every idea.</p>
-        </body></html>
-        """,
-        "OEBPS/Text/chapter-two.xhtml": """
-        <!doctype html><html><head><title>Second Principles</title></head><body>
-        <h1>Second Principles</h1><p>Semantic retrieval reconnects durable notes while drafting.</p>
-        <script>ignoreThisScript()</script>
-        </body></html>
-        """,
-        "OEBPS/Text/appendix.xhtml": """
-        <!doctype html><html><body><h1>Appendix</h1><p>Supplementary index.</p></body></html>
-        """,
-      ]
-    )
-
-    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
-    let preview = try await service.makeImportPreview(sourceURL: sourceURL)
-    let candidate = try XCTUnwrap(preview.candidates.first)
-
-    XCTAssertEqual(candidate.kind, .book)
-    XCTAssertEqual(candidate.title, "Thinking with Sources")
-    XCTAssertEqual(candidate.authors, ["Ada Reader"])
-    XCTAssertEqual(candidate.language, "en")
-    XCTAssertEqual(candidate.summary, "A practical book about durable research notes.")
-    XCTAssertEqual(candidate.tags, ["research", "writing"])
-    XCTAssertEqual(candidate.sections.count, 2)
-    XCTAssertEqual(candidate.sections.first?.headingPath, "Second Principles")
-    XCTAssertEqual(candidate.sections.first?.locator, "第 1 章 · Second Principles")
-    XCTAssertEqual(candidate.sections.last?.locator, "第 2 章 · First Notes")
-    XCTAssertFalse(candidate.normalizedText.contains("ignoreThisScript"))
-    XCTAssertTrue(candidate.warnings.contains { $0.contains("非线性阅读") })
-    XCTAssertTrue(candidate.warnings.contains { $0.contains("2 个章节") })
-
-    let secondRange = try XCTUnwrap(candidate.normalizedText.range(of: "Semantic retrieval"))
-    let firstRange = try XCTUnwrap(candidate.normalizedText.range(of: "Atomic notes"))
-    XCTAssertLessThan(secondRange.lowerBound, firstRange.lowerBound)
-
-    let result = try await service.commit(preview)
-    XCTAssertEqual(result.insertedCount, 1)
-    let matches = try service.search(query: "semantic retrieval", limit: 10)
-    XCTAssertFalse(matches.isEmpty)
-    XCTAssertEqual(matches.first?.chunk.locator, "第 1 章 · Second Principles")
-    try service.setAllowsRemoteAIUse(true, documentIDs: Set(result.documentIDs))
-    let context = try service.context(query: "semantic retrieval")
-    XCTAssertEqual(context?.citations.first?.locator, "第 1 章 · Second Principles")
-
-    let paraphrasedMatches = try service.search(
-      query: "how can I find related notes while drafting",
-      limit: 10
-    )
-    XCTAssertEqual(paraphrasedMatches.first?.chunk.locator, "第 1 章 · Second Principles")
-    XCTAssertTrue(paraphrasedMatches.first?.signals.contains(.semantic) ?? false)
-  }
-
-  func testEPUBRejectsChapterPathOutsideArchiveRoot() async throws {
-    let rootURL = temporaryDirectory(named: "knowledge-epub-path")
-    defer { try? FileManager.default.removeItem(at: rootURL) }
-    let sourceURL = try makeEPUB(
-      in: rootURL,
-      packageXML: """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
-          <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-            <dc:title>Unsafe Book</dc:title>
-          </metadata>
-          <manifest>
-            <item id="escape" href="../../../outside.xhtml" media-type="application/xhtml+xml"/>
-          </manifest>
-          <spine><itemref idref="escape"/></spine>
-        </package>
-        """,
-      chapters: [:]
+    let importFolderURL = rootURL.appendingPathComponent("mixed-import", isDirectory: true)
+    try FileManager.default.createDirectory(at: importFolderURL, withIntermediateDirectories: true)
+    let epubURL = importFolderURL.appendingPathComponent("new-book.epub")
+    let markdownURL = importFolderURL.appendingPathComponent("notes.md")
+    try Data([0x50, 0x4B, 0x03, 0x04]).write(to: epubURL)
+    try "# 可导入的 Markdown\n\n混合文件夹仍应保留这条资料。".write(
+      to: markdownURL,
+      atomically: true,
+      encoding: .utf8
     )
 
     let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
     do {
-      _ = try await service.makeImportPreview(sourceURL: sourceURL)
-      XCTFail("Expected an unsafe EPUB path to be rejected")
-    } catch {
-      XCTAssertTrue(error.localizedDescription.contains("路径越界"))
-    }
-  }
-
-  func testEPUBRejectsDTDAfterLongPreamble() throws {
-    let rootURL = temporaryDirectory(named: "knowledge-epub-xml-security")
-    defer { try? FileManager.default.removeItem(at: rootURL) }
-    let preamble = String(repeating: "preamble", count: 3_000)
-    let sourceURL = try makeEPUB(
-      in: rootURL,
-      packageXML: """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!--\(preamble)-->
-        <!DOCTYPE package [<!ENTITY blocked "must not expand">]>
-        <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
-          <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-            <dc:title>&blocked;</dc:title>
-          </metadata>
-          <manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>
-          <spine><itemref idref="chapter"/></spine>
-        </package>
-        """,
-      chapters: [
-        "OEBPS/chapter.xhtml": "<html><body><h1>Chapter</h1><p>Body</p></body></html>"
-      ]
-    )
-
-    XCTAssertThrowsError(
-      try KnowledgeEPUBParser().parse(
-        data: Data(contentsOf: sourceURL),
-        sourceName: "attack.epub"
-      )
-    ) { error in
-      guard case KnowledgeLibraryError.unreadableSource(let message) = error else {
-        return XCTFail("Expected unreadableSource, got \(error)")
+      _ = try await service.makeImportPreview(sourceURL: epubURL)
+      XCTFail("新 EPUB 文件不应再生成导入预览")
+    } catch let error as KnowledgeLibraryError {
+      guard case .unsupportedSource(let sourceName) = error else {
+        return XCTFail("应拒绝 EPUB 格式，实际错误：\(error)")
       }
-      XCTAssertTrue(message.contains("DTD") || message.contains("实体"))
+      XCTAssertEqual(sourceName, "new-book.epub")
     }
+
+    let preview = try await service.makeImportPreview(sourceURL: importFolderURL)
+    XCTAssertEqual(preview.candidates.count, 1)
+    XCTAssertEqual(preview.candidates.first?.sourceName, "notes.md")
+    XCTAssertEqual(preview.candidates.first?.kind, .markdown)
+    XCTAssertFalse(preview.candidates.contains { $0.sourceName == "new-book.epub" })
+
+    let result = try await service.commit(preview)
+    XCTAssertEqual(result.insertedCount, 1)
+    XCTAssertTrue(
+      try service.normalizedText(documentID: try XCTUnwrap(result.documentIDs.first))
+        .contains("混合文件夹仍应保留这条资料。"))
   }
 
-  func testEPUBXMLEnforcesCharacterAndElementDepthLimits() throws {
-    let rootURL = temporaryDirectory(named: "knowledge-epub-xml-limits")
+  func testHistoricalEPUBBookRemainsReadableSearchableAndRestorable() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-historical-epub")
     defer { try? FileManager.default.removeItem(at: rootURL) }
-    let nestedPrefix = String(repeating: "<nested>", count: 300)
-    let nestedSuffix = String(repeating: "</nested>", count: 300)
-    let deepPackage = """
-      <?xml version="1.0" encoding="UTF-8"?>
-      <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
-        \(nestedPrefix)<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Deep</dc:title></metadata>\(nestedSuffix)
-        <manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>
-        <spine><itemref idref="chapter"/></spine>
-      </package>
-      """
-    let largeTitle = String(repeating: "x", count: 5 * 1_024 * 1_024 + 1)
-    let largePackage = """
-      <?xml version="1.0" encoding="UTF-8"?>
-      <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
-        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>\(largeTitle)</dc:title></metadata>
-        <manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>
-        <spine><itemref idref="chapter"/></spine>
-      </package>
-      """
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let backupURL = rootURL.appendingPathComponent(
+      "historical-book.pslibrarybackup", isDirectory: true)
+    let originalData = Data([0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00])
+    let chapterText = "历史 EPUB 正文仍可用于检索和写作引用。"
+    let normalizedText = "# 第二章：历史兼容\n\n[第 2 章 · 历史兼容]\n\n\(chapterText)"
+    var documentID: UUID?
 
-    for (index, packageXML) in [deepPackage, largePackage].enumerated() {
-      let sourceURL = try makeEPUB(
-        in: rootURL.appendingPathComponent("case-\(index)", isDirectory: true),
-        packageXML: packageXML,
-        chapters: [
-          "OEBPS/chapter.xhtml": "<html><body><h1>Chapter</h1><p>Body</p></body></html>"
+    do {
+      let service = KnowledgeLibraryService(rootURL: storeURL)
+      let candidate = KnowledgeImportCandidate(
+        kind: .book,
+        title: "历史 EPUB 书籍",
+        authors: ["旧资料作者"],
+        sourceName: "historical-book.epub",
+        originalFilenameExtension: "epub",
+        originalData: originalData,
+        originalContentHash: KnowledgeChunkingService.contentHash(for: originalData),
+        normalizedText: normalizedText,
+        normalizedContentHash: KnowledgeChunkingService.contentHash(for: normalizedText),
+        sections: [
+          KnowledgeExtractedSection(
+            headingPath: "第二章：历史兼容",
+            locator: "第 2 章 · 历史兼容",
+            text: chapterText
+          )
         ]
       )
-      XCTAssertThrowsError(
-        try KnowledgeEPUBParser().parse(
-          data: Data(contentsOf: sourceURL),
-          sourceName: "limits-\(index).epub"
-        )
-      ) { error in
-        guard case KnowledgeLibraryError.sourceLimitExceeded = error else {
-          return XCTFail("Expected sourceLimitExceeded, got \(error)")
-        }
-      }
-    }
-  }
-
-  func testEPUBPackageRecordCountIsBounded() throws {
-    let rootURL = temporaryDirectory(named: "knowledge-epub-record-limit")
-    defer { try? FileManager.default.removeItem(at: rootURL) }
-    let items = (0...10_000).map { index in
-      "<item id=\"item-\(index)\" href=\"chapter-\(index).xhtml\" media-type=\"text/html\"/>"
-    }.joined()
-    let packageXML = """
-      <?xml version="1.0" encoding="UTF-8"?>
-      <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
-        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Many items</dc:title></metadata>
-        <manifest>\(items)</manifest>
-        <spine><itemref idref="item-0"/></spine>
-      </package>
-      """
-    let sourceURL = try makeEPUB(
-      in: rootURL,
-      packageXML: packageXML,
-      chapters: [
-        "OEBPS/chapter-0.xhtml": "<html><body><h1>Chapter</h1><p>Body</p></body></html>"
-      ]
-    )
-
-    XCTAssertThrowsError(
-      try KnowledgeEPUBParser().parse(
-        data: Data(contentsOf: sourceURL),
-        sourceName: "record-limit.epub"
+      let result = try await service.commit(
+        KnowledgeImportPreview(sourceName: "historical-book.epub", candidates: [candidate])
       )
-    ) { error in
-      guard case KnowledgeLibraryError.sourceLimitExceeded(let message) = error else {
-        return XCTFail("Expected sourceLimitExceeded, got \(error)")
-      }
-      XCTAssertTrue(message.contains("记录"))
+      let importedDocumentID = try XCTUnwrap(result.documentIDs.first)
+      documentID = importedDocumentID
+      XCTAssertEqual(try service.documents().first?.kind, .book)
+      XCTAssertEqual(try service.normalizedText(documentID: importedDocumentID), normalizedText)
+      XCTAssertEqual(
+        try service.search(query: "检索和写作引用", limit: 5).first?.chunk.locator,
+        "第 2 章 · 历史兼容"
+      )
+      try service.setAllowsRemoteAIUse(true, documentIDs: [importedDocumentID])
+      XCTAssertEqual(
+        try service.context(query: "检索和写作引用")?.citations.first?.locator,
+        "第 2 章 · 历史兼容"
+      )
+
+      _ = try await service.createBackup(at: backupURL, applicationVersion: "test-historical-epub")
+      _ = try await service.stageRestore(from: backupURL)
     }
+
+    guard case .restored = KnowledgeLibraryService.applyPendingRestoreIfNeeded(rootURL: storeURL)
+    else {
+      return XCTFail("历史 EPUB 资料的备份应能恢复")
+    }
+
+    let restoredService = KnowledgeLibraryService(rootURL: storeURL)
+    let restoredDocumentID = try XCTUnwrap(documentID)
+    XCTAssertEqual(
+      try restoredService.normalizedText(documentID: restoredDocumentID), normalizedText)
+    XCTAssertEqual(
+      try restoredService.search(query: "检索和写作引用", limit: 5).first?.chunk.locator,
+      "第 2 章 · 历史兼容"
+    )
+    let revision = try XCTUnwrap(restoredService.revisions(documentID: restoredDocumentID).first)
+    let originalReference = try XCTUnwrap(revision.originalStorageReference)
+    XCTAssertTrue(originalReference.hasSuffix(".epub"))
+    XCTAssertEqual(
+      try Data(contentsOf: storeURL.appendingPathComponent(originalReference)), originalData)
   }
 
   func testFoldersPersistClassificationSizeAndSurviveReimport() async throws {
@@ -1715,39 +1342,6 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
         query: "省钱方法",
         documentIDs: [UUID()]
       ).isEmpty)
-  }
-
-  func testLegacyBrowserPermissionBecomesLocalIndexOnlyAndRemoteAIStaysOff() async throws {
-    let rootURL = temporaryDirectory(named: "knowledge-permission-split")
-    defer { try? FileManager.default.removeItem(at: rootURL) }
-    let sourceURL = try XCTUnwrap(URL(string: "https://example.com/legacy-permission"))
-    let currentCapture = KnowledgeBrowserCapture(
-      sourceURL: sourceURL,
-      title: "旧权限网页",
-      contentText: "旧版浏览器扩展把本地索引和远程 AI 权限混在一起。"
-    )
-    var legacyPayload = try XCTUnwrap(
-      JSONSerialization.jsonObject(
-        with: JSONEncoder().encode(currentCapture),
-        options: []
-      ) as? [String: Any]
-    )
-    legacyPayload.removeValue(forKey: "allowsLocalSemanticIndex")
-    legacyPayload.removeValue(forKey: "allowsRemoteAIUse")
-    legacyPayload["allowsAIUse"] = true
-    let legacyCapture = try JSONDecoder().decode(
-      KnowledgeBrowserCapture.self,
-      from: JSONSerialization.data(withJSONObject: legacyPayload)
-    )
-
-    XCTAssertTrue(legacyCapture.allowsLocalSemanticIndex ?? false)
-    XCTAssertNil(legacyCapture.allowsRemoteAIUse)
-
-    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
-    _ = try await service.commit(try await service.makeBrowserImportPreview(capture: legacyCapture))
-    let document = try XCTUnwrap(service.documents().first)
-    XCTAssertTrue(document.allowsLocalSemanticIndex)
-    XCTAssertFalse(document.allowsRemoteAIUse)
   }
 
   func testVersionTwoDatabaseLazilyBackfillsSemanticVectors() async throws {
@@ -2110,42 +1704,38 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     XCTAssertTrue(try restoredService.normalizedText(documentID: document.id).contains("本地知识"))
   }
 
-  func testKnowledgeBackupRoundTripRestoresBrowserCapturedText() async throws {
-    let rootURL = temporaryDirectory(named: "knowledge-browser-capture-backup")
+  func testKnowledgeBackupRoundTripRestoresHistoricalWebArchiveAndCapturedText() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-historical-web-backup")
     defer { try? FileManager.default.removeItem(at: rootURL) }
     let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
     let backupURL = rootURL.appendingPathComponent(
-      "browser-capture.pslibrarybackup", isDirectory: true)
+      "historical-web.pslibrarybackup", isDirectory: true)
     let capturedText = """
-      # 浏览器采集正文
+      # 历史网页正文
 
       这段文字必须和原始网页归档一起进入资料库备份。
       """
-    let archive = Data("From: browser-extension\nContent-Type: multipart/related".utf8)
+    let archive = Data("From: historical-source\nContent-Type: multipart/related".utf8)
     var restoredDocumentID: UUID?
 
     do {
       let service = KnowledgeLibraryService(rootURL: storeURL)
-      let capture = KnowledgeBrowserCapture(
+      let candidate = makeWebpageImportCandidate(
+        title: "历史网页备份测试",
         sourceURL: try XCTUnwrap(URL(string: "https://example.com/backup-proof")),
-        title: "浏览器采集备份测试",
-        authors: ["测试作者"],
-        language: "zh-CN",
-        summary: "验证采集正文和网页归档能够备份恢复",
-        tags: ["备份", "浏览器采集"],
-        capturedAt: Date(timeIntervalSince1970: 1_700_000_000),
-        contentText: capturedText,
-        archiveFormat: "mhtml",
-        archiveData: archive
+        originalData: archive,
+        originalFilenameExtension: "mhtml",
+        capturedText: capturedText,
+        normalizedText: capturedText
       )
       let result = try await service.commit(
-        try await service.makeBrowserImportPreview(capture: capture)
+        KnowledgeImportPreview(sourceName: "backup-proof.mhtml", candidates: [candidate])
       )
       restoredDocumentID = try XCTUnwrap(result.documentIDs.first)
 
       _ = try await service.createBackup(
         at: backupURL,
-        applicationVersion: "test-browser-capture"
+        applicationVersion: "test-historical-web"
       )
       let manifest = try decodeKnowledgeBackupManifest(at: backupURL)
       XCTAssertTrue(manifest.files.contains { $0.relativePath.hasPrefix("captured/") })
@@ -2164,6 +1754,10 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     XCTAssertEqual(try restoredService.capturedText(documentID: documentID), capturedText)
     XCTAssertTrue(
       try restoredService.normalizedText(documentID: documentID).contains("必须和原始网页归档一起"))
+    let revision = try XCTUnwrap(restoredService.revisions(documentID: documentID).first)
+    let originalReference = try XCTUnwrap(revision.originalStorageReference)
+    let originalFileURL = storeURL.appendingPathComponent(originalReference)
+    XCTAssertEqual(try Data(contentsOf: originalFileURL), archive)
   }
 
   func testKnowledgeBackupRejectsTamperedFile() async throws {
@@ -2559,54 +2153,6 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       ))
   }
 
-  private func makeEPUB(
-    in rootURL: URL,
-    packageXML: String,
-    chapters: [String: String]
-  ) throws -> URL {
-    let fixtureURL = rootURL.appendingPathComponent("fixture", isDirectory: true)
-    let metaURL = fixtureURL.appendingPathComponent("META-INF", isDirectory: true)
-    let packageURL = fixtureURL.appendingPathComponent("OEBPS", isDirectory: true)
-    try FileManager.default.createDirectory(at: metaURL, withIntermediateDirectories: true)
-    try FileManager.default.createDirectory(at: packageURL, withIntermediateDirectories: true)
-    try "application/epub+zip".write(
-      to: fixtureURL.appendingPathComponent("mimetype"),
-      atomically: true,
-      encoding: .utf8
-    )
-    try """
-    <?xml version="1.0" encoding="UTF-8"?>
-    <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
-      <rootfiles>
-        <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
-      </rootfiles>
-    </container>
-    """.write(
-      to: metaURL.appendingPathComponent("container.xml"),
-      atomically: true,
-      encoding: .utf8
-    )
-    try packageXML.write(
-      to: packageURL.appendingPathComponent("content.opf"),
-      atomically: true,
-      encoding: .utf8
-    )
-    for (path, content) in chapters {
-      let fileURL = fixtureURL.appendingPathComponent(path)
-      try FileManager.default.createDirectory(
-        at: fileURL.deletingLastPathComponent(),
-        withIntermediateDirectories: true
-      )
-      try content.write(to: fileURL, atomically: true, encoding: .utf8)
-    }
-
-    let archiveURL = rootURL.appendingPathComponent("book.epub")
-    try runZIP(arguments: ["-q", "-X", "-0", archiveURL.path, "mimetype"], in: fixtureURL)
-    try runZIP(
-      arguments: ["-q", "-X", "-9", "-r", archiveURL.path, "META-INF", "OEBPS"], in: fixtureURL)
-    return archiveURL
-  }
-
   private func decodeKnowledgeBackupManifest(
     at backupURL: URL
   ) throws -> KnowledgeLibraryBackupManifest {
@@ -2616,26 +2162,6 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       KnowledgeLibraryBackupManifest.self,
       from: Data(contentsOf: backupURL.appendingPathComponent("manifest.json"))
     )
-  }
-
-  private func runZIP(arguments: [String], in directoryURL: URL) throws {
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
-    process.arguments = arguments
-    process.currentDirectoryURL = directoryURL
-    let output = Pipe()
-    process.standardOutput = output
-    process.standardError = output
-    try process.run()
-    process.waitUntilExit()
-    guard process.terminationStatus == 0 else {
-      let data = output.fileHandleForReading.readDataToEndOfFile()
-      throw NSError(
-        domain: "KnowledgeLibraryServiceTests.zip",
-        code: Int(process.terminationStatus),
-        userInfo: [NSLocalizedDescriptionKey: String(decoding: data, as: UTF8.self)]
-      )
-    }
   }
 
   private func executeSQLite(_ sql: String, at databaseURL: URL) throws {
@@ -2672,6 +2198,31 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       normalizedText: text,
       normalizedContentHash: contentHash,
       sections: sections ?? [KnowledgeExtractedSection(headingPath: title, text: text)]
+    )
+  }
+
+  private func makeWebpageImportCandidate(
+    title: String,
+    sourceURL: URL,
+    originalData: Data,
+    originalFilenameExtension: String = "html",
+    capturedText: String? = nil,
+    allowsRemoteAIUse: Bool? = nil,
+    normalizedText: String
+  ) -> KnowledgeImportCandidate {
+    KnowledgeImportCandidate(
+      kind: .webpage,
+      title: title,
+      sourceURL: sourceURL,
+      sourceName: "\(title).\(originalFilenameExtension)",
+      allowsRemoteAIUse: allowsRemoteAIUse,
+      originalFilenameExtension: originalFilenameExtension,
+      originalData: originalData,
+      capturedText: capturedText,
+      originalContentHash: KnowledgeChunkingService.contentHash(for: originalData),
+      normalizedText: normalizedText,
+      normalizedContentHash: KnowledgeChunkingService.contentHash(for: normalizedText),
+      sections: [KnowledgeExtractedSection(headingPath: title, text: normalizedText)]
     )
   }
 

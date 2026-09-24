@@ -688,7 +688,7 @@ private extension DraftFullTextSearchField {
 
   var systemImage: String {
     switch self {
-    case .title: "textformat"
+    case .title: "doc.plaintext"
     case .summary: "text.alignleft"
     case .body: "doc.text"
     case .slug: "link"

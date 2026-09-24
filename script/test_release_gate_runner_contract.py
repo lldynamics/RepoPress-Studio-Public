@@ -77,7 +77,6 @@ def main() -> int:
                     "profiles": {
                         "common": ["ui-runtime", "timeout", "failure", "standard", "strict"],
                         "direct": [],
-                        "chrome": [],
                     },
                     "checks": [
                         {

@@ -57,8 +57,8 @@ enum SettingsDestination: Hashable, Identifiable, Sendable {
       return .defaultRules
     case .token:
       return .token
-    case .ai:
-      return .ai
+    case .ai(let destination):
+      return destination == .writingStyle ? .siteAI : .ai
     case .data:
       return .dataManagement
     }
@@ -86,6 +86,8 @@ enum SettingsDestination: Hashable, Identifiable, Sendable {
       self = .data(.backup)
     case "data.migration":
       self = .data(.migration)
+    case "appearance.defaults":
+      self = .tab(.editor)
     case "language":
       self = .tab(.appearance)
     case "storage", "data":

@@ -233,17 +233,7 @@ extension RepositoryWorkspaceView {
 
   @ViewBuilder
   var repositoryWorkflowBanner: some View {
-    if !hasSelectedRepository {
-      SiteStarterInitialSiteChoice(
-        writeAction: { store.selectSection(.writing) },
-        connectAction: {
-          openSiteStarter(mode: .importExisting)
-        },
-        createAction: {
-          openSiteStarter(mode: .create)
-        }
-      )
-    } else if store.repository.scanState.isScanning {
+    if store.repository.scanState.isScanning {
       workflowBanner(
         title: "正在扫描仓库",
         detail: LocalizedStringKey(store.repository.scanState.message),

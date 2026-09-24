@@ -104,7 +104,7 @@ struct WorkspaceTaskCenterView: View {
         duplicateChargeConfirmationTask = nil
       }
     } message: {
-      Text("AI 已返回部分内容，软件没有自动重放请求。继续会移除这段未完成回复并重新生成，可能产生重复内容和费用。")
+      Text("继续将移除当前未完成的回复并重新生成，可能消耗额外配额。")
     }
     .sheet(item: $focusedReleaseRecord) { focus in
       VStack(spacing: 0) {

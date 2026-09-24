@@ -198,7 +198,8 @@ enum DangerousReleaseAction: Identifiable {
     case let .withdrawReview(record):
       return "将通过远端 API 关闭这条 PR/MR：\(record.reviewTitle ?? record.title)。这个操作会影响线上 Review 流程。"
     case let .rollbackRemote(record):
-      return "将通过远端 API 为提交 \(record.shortCommitSHA ?? record.commitSHA ?? record.title) 创建回滚 commit。执行前请确认当前线上状态。"
+      let target = record.shortCommitSHA ?? record.commitSHA ?? record.title
+      return "将通过远端 API 为提交 \(target) 创建回滚提交。执行前请确认当前线上状态。"
     }
   }
 

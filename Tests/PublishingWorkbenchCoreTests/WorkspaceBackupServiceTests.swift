@@ -1,3 +1,4 @@
+import Foundation
 import PublishingDomainContracts
 import XCTest
 
@@ -5,6 +6,107 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class WorkspaceBackupServiceTests: XCTestCase {
+  func testV4CategoryBackupStagesOnlySelectedCategoryAndRejectsFullRestore() throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: "WorkspaceBackupCategory")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let profile = SiteProfile.defaultProfile
+    let snapshot = WorkbenchSnapshot(
+      profiles: [profile], activeProfileID: profile.id, drafts: [], releaseRecords: []
+    )
+    let backupURL = rootURL.appendingPathComponent("partial.psworkspacebackup")
+    let service = WorkspaceBackupService()
+    let created = try service.createBackup(
+      at: backupURL,
+      snapshot: snapshot,
+      knowledgeRootURL: rootURL.appendingPathComponent("KnowledgeLibrary"),
+      applicationVersion: "test",
+      selectedCategories: [.workbench]
+    )
+    let inspected = try service.inspectSelectiveRestore(at: backupURL)
+    XCTAssertEqual(created.formatVersion, 4)
+    XCTAssertEqual(inspected.availableCategories, [.workbench])
+    XCTAssertEqual(inspected.categorySummaries.map(\.category), [.workbench])
+
+    let stagedURL = rootURL.appendingPathComponent("staged.psworkspacebackup")
+    let staged = try service.stageSelectiveRestore(
+      from: backupURL, categories: [.workbench], to: stagedURL
+    )
+    XCTAssertEqual(staged.preview.selectedCategories, [.workbench])
+    XCTAssertEqual(try service.inspectBackup(at: staged.stagedPackageURL).formatVersion, 4)
+    let persistenceURL = rootURL.appendingPathComponent("Live/workbench.json")
+    let rssRootURL = rootURL.appendingPathComponent("Live/RSSReader")
+    let rssMarkerURL = rssRootURL.appendingPathComponent("preserved.txt")
+    try FileManager.default.createDirectory(at: rssRootURL, withIntermediateDirectories: true)
+    try Data("keep rss".utf8).write(to: rssMarkerURL)
+    _ = try service.stageRestore(from: stagedURL, persistenceFileURL: persistenceURL)
+    let outcome = try service.applyPendingRestore(
+      persistenceFileURL: persistenceURL,
+      knowledgeRootURL: rootURL.appendingPathComponent("Live/KnowledgeLibrary"),
+      rssDatabaseURL: rssRootURL.appendingPathComponent(RSSReaderBackupService.databaseFileName),
+      attachmentRootURL: rootURL.appendingPathComponent("Live/ManagedAttachments"),
+      currentApplicationVersion: "test"
+    )
+    XCTAssertNotNil(outcome)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: rssMarkerURL.path),
+      "restoring workbench data must leave unselected RSS data untouched")
+
+    let manifestURL = stagedURL.appendingPathComponent(WorkspaceBackupService.manifestFileName)
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    var manifest = try decoder.decode(WorkspaceBackupManifest.self, from: Data(contentsOf: manifestURL))
+    manifest.selectedCategories = [.knowledgeLibrary]
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    try encoder.encode(manifest).write(to: manifestURL, options: .atomic)
+    XCTAssertThrowsError(try service.inspectBackup(at: stagedURL))
+  }
+
+  func testV4OperationHistoryRestoreLeavesWorkbenchAndRSSUntouched() throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: "WorkspaceBackupHistoryOnly")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let profile = SiteProfile.defaultProfile
+    let originalSnapshot = WorkbenchSnapshot(
+      profiles: [profile], activeProfileID: profile.id, drafts: [], releaseRecords: []
+    )
+    let persistenceURL = rootURL.appendingPathComponent("Live/workbench.json")
+    let persistence = WorkbenchPersistence(fileURL: persistenceURL)
+    _ = try persistence.save(originalSnapshot)
+    let originalWorkbenchData = try Data(contentsOf: persistenceURL)
+    let ledger = WorkbenchOperationLedgerPersistence(fileURL: persistence.operationLedgerURL)
+    let oldEvent = WorkbenchOperationEventRecord(kind: .siteImport, outcome: .failed)
+    try ledger.save(WorkbenchOperationLedgerDocument(retentionPolicy: .forever, records: [oldEvent]))
+    let originalRSSDirectory = rootURL.appendingPathComponent("Live/RSSReader")
+    try FileManager.default.createDirectory(at: originalRSSDirectory, withIntermediateDirectories: true)
+    let rssSentinel = originalRSSDirectory.appendingPathComponent("unchanged.txt")
+    try Data("unchanged".utf8).write(to: rssSentinel)
+
+    let newEvent = WorkbenchOperationEventRecord(kind: .workspaceBackupCreated, outcome: .succeeded)
+    let packageURL = rootURL.appendingPathComponent("history.psworkspacebackup")
+    let service = WorkspaceBackupService()
+    _ = try service.createBackup(
+      at: packageURL,
+      snapshot: originalSnapshot,
+      operationHistoryDocument: WorkbenchOperationLedgerDocument(
+        retentionPolicy: .forever, records: [newEvent]
+      ),
+      knowledgeRootURL: rootURL.appendingPathComponent("KnowledgeLibrary"),
+      applicationVersion: "test",
+      selectedCategories: [.operationHistory]
+    )
+    _ = try service.stageRestore(from: packageURL, persistenceFileURL: persistenceURL)
+    let result = try XCTUnwrap(service.applyPendingRestore(
+      persistenceFileURL: persistenceURL,
+      knowledgeRootURL: rootURL.appendingPathComponent("Live/KnowledgeLibrary"),
+      rssDatabaseURL: originalRSSDirectory.appendingPathComponent("reader.sqlite"),
+      attachmentRootURL: rootURL.appendingPathComponent("Live/ManagedAttachments"),
+      currentApplicationVersion: "test"
+    ))
+    XCTAssertEqual(result.restoredPreview.components.count, WorkspaceBackupComponent.allCases.count)
+    XCTAssertEqual(try Data(contentsOf: persistenceURL), originalWorkbenchData)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: rssSentinel.path))
+    XCTAssertEqual(try ledger.loadWithRecovery().document.records.map(\.id), [newEvent.id])
+  }
+
   func testCancellationAfterBackupCommitStillReturnsCommittedPreview() async throws {
     let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: "WorkspaceBackupCommit")
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -753,13 +855,11 @@ final class WorkspaceBackupServiceTests: XCTestCase {
     let targetLedger = WorkbenchOperationLedgerPersistence(
       fileURL: targetPersistence.operationLedgerURL
     )
+    let preservedLedgerRecord = WorkbenchOperationEventRecord(
+      kind: .siteImport, outcome: .succeeded
+    )
     try targetLedger.save(
-      WorkbenchOperationLedgerDocument(
-        retentionPolicy: .forever,
-        records: [
-          WorkbenchOperationEventRecord(kind: .siteImport, outcome: .succeeded)
-        ]
-      )
+      WorkbenchOperationLedgerDocument(retentionPolicy: .forever, records: [preservedLedgerRecord])
     )
     let targetRSSURL = targetRootURL
       .appendingPathComponent("RSSReader", isDirectory: true)
@@ -802,13 +902,12 @@ final class WorkspaceBackupServiceTests: XCTestCase {
     XCTAssertEqual(try preservedDatabase.feeds().map(\.title), ["必须保留的 RSS"])
     XCTAssertEqual(try preservedDatabase.articles().map(\.id), ["preserved-rss-article"])
     XCTAssertEqual(try preservedDatabase.highlights().map(\.note), ["RSS 备份恢复测试"])
-    XCTAssertFalse(FileManager.default.fileExists(atPath: targetLedger.fileURL.path))
-    XCTAssertFalse(FileManager.default.fileExists(atPath: targetLedger.lastKnownGoodURL.path))
-    XCTAssertTrue(
-      FileManager.default.fileExists(
-        atPath: result.recoveryURL.appendingPathComponent("operation-log.json").path
-      )
-    )
+    XCTAssertEqual(try targetLedger.loadWithRecovery().document.records.map(\.id),
+      [preservedLedgerRecord.id])
+    XCTAssertTrue(FileManager.default.fileExists(atPath: targetLedger.fileURL.path))
+    XCTAssertFalse(FileManager.default.fileExists(
+      atPath: result.recoveryURL.appendingPathComponent("operation-log.json").path
+    ))
   }
 
   func testInterruptedRestoreIsRolledBackIdempotentlyOnNextStartup() throws {
@@ -1589,4 +1688,318 @@ private struct RestoreTransactionFixture {
   var operationLedgerLastKnownGoodURL: URL
   var operationLedgerLastKnownGoodData: Data
   var attachmentData: Data
+}
+
+
+final class WorkspaceExchangeCodecTests: XCTestCase {
+  private func fixture() throws -> Data {
+    let url = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .appendingPathComponent("Fixtures/portable-workspace-v1.json")
+    return try Data(contentsOf: url)
+  }
+
+  func testDecodesGoldenFixtureAndMatchesCanonicalHash() throws {
+    let data = try fixture()
+    let package = try WorkspaceExchangeCodec.decode(data)
+    XCTAssertEqual(package.manifest.payloadSHA256, "58bb2856281f5f4fab30858bd7c451a34d8f8655809f3851741d9ec62e12f3d7")
+    XCTAssertEqual(package.manifest.itemCounts, .init(profiles: 1, drafts: 1, attachments: 1))
+    XCTAssertEqual(package.payload.drafts.first?.attachments.first?.relativePublishPath, "images/cover.png")
+  }
+
+  func testRejectsUnknownKeysNullAndTampering() throws {
+    let original = try fixture()
+    var unknown = try XCTUnwrap(JSONSerialization.jsonObject(with: original) as? [String: Any])
+    unknown["unexpected"] = true
+    XCTAssertThrowsError(try WorkspaceExchangeCodec.decode(JSONSerialization.data(withJSONObject: unknown)))
+
+    var withNull = try XCTUnwrap(JSONSerialization.jsonObject(with: original) as? [String: Any])
+    var payload = try XCTUnwrap(withNull["payload"] as? [String: Any])
+    var drafts = try XCTUnwrap(payload["drafts"] as? [[String: Any]])
+    drafts[0]["coverAttachmentID"] = NSNull()
+    payload["drafts"] = drafts
+    withNull["payload"] = payload
+    XCTAssertThrowsError(try WorkspaceExchangeCodec.decode(JSONSerialization.data(withJSONObject: withNull)))
+
+    let tampered = String(decoding: original, as: UTF8.self).replacingOccurrences(of: "一像素示例图", with: "篡改")
+    XCTAssertThrowsError(try WorkspaceExchangeCodec.decode(Data(tampered.utf8)))
+  }
+
+  func testRoundTripProducesValidPackage() throws {
+    let decoded = try WorkspaceExchangeCodec.decode(fixture())
+    let encoded = try WorkspaceExchangeCodec.encode(decoded.payload, createdAt: decoded.manifest.createdAt)
+    let roundTrip = try WorkspaceExchangeCodec.decode(encoded)
+    XCTAssertEqual(roundTrip.payload, decoded.payload)
+    XCTAssertEqual(roundTrip.manifest.payloadSHA256, decoded.manifest.payloadSHA256)
+  }
+
+  func testImportPreparationAssignsNewIDsAndStagesAttachmentBytes() throws {
+    let package = try WorkspaceExchangeCodec.decode(fixture())
+    let temporaryRoot = FileManager.default.temporaryDirectory
+      .appendingPathComponent("WorkspaceExchangeCodecTests-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+    try FileManager.default.createDirectory(at: temporaryRoot, withIntermediateDirectories: true)
+    let attachmentStore = ManagedAttachmentFileStore(rootDirectoryURL: temporaryRoot.appendingPathComponent("managed"))
+    let destinationProfileID = UUID()
+    let sourceProfileID = try XCTUnwrap(package.payload.profiles.first?.id)
+    let imported = try WorkspaceExchangeTransferService.prepareImport(
+      package: package,
+      profileMappings: [sourceProfileID: .existing(destinationProfileID)],
+      activeProfileID: destinationProfileID,
+      attachmentStore: attachmentStore,
+      temporaryDirectory: temporaryRoot
+    )
+    let sourceDraft = try XCTUnwrap(package.payload.drafts.first)
+    let importedDraft = try XCTUnwrap(imported.drafts.first)
+    let sourceAttachment = try XCTUnwrap(sourceDraft.attachments.first)
+    let importedAttachment = try XCTUnwrap(importedDraft.attachments.first)
+    XCTAssertNotEqual(importedDraft.id, sourceDraft.id)
+    XCTAssertNotEqual(importedAttachment.id, sourceAttachment.id)
+    XCTAssertEqual(importedDraft.scope, .site(destinationProfileID))
+    XCTAssertEqual(importedAttachment.relativePublishPath, sourceAttachment.relativePublishPath)
+    let localPath = try XCTUnwrap(importedAttachment.sourceFilePath)
+    XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: localPath)), sourceAttachment.bytes)
+  }
+
+  func testRejectsCaseInsensitiveDuplicateAttachmentPublishPaths() throws {
+    let decoded = try WorkspaceExchangeCodec.decode(fixture())
+    var payload = decoded.payload
+    var draft = try XCTUnwrap(payload.drafts.first)
+    var duplicate = try XCTUnwrap(draft.attachments.first)
+    duplicate.id = UUID()
+    duplicate.role = "inline"
+    duplicate.relativePublishPath = duplicate.relativePublishPath.uppercased()
+    draft.attachments.append(duplicate)
+    payload.drafts[0] = draft
+    XCTAssertThrowsError(try WorkspaceExchangeCodec.encode(payload))
+  }
+
+  func testRejectsNonCanonicalISO8601Dates() throws {
+    let data = try fixture()
+    var root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    var manifest = try XCTUnwrap(root["manifest"] as? [String: Any])
+    manifest["createdAt"] = "2026-9-23T04:00:00Z"
+    root["manifest"] = manifest
+    XCTAssertThrowsError(try WorkspaceExchangeCodec.decode(JSONSerialization.data(withJSONObject: root)))
+  }
+
+  @MainActor
+  func testWorkbenchStoreImportPersistsNewDraftAndAttachment() async throws {
+    let data = try fixture()
+    let package = try WorkspaceExchangeCodec.decode(data)
+    let sourceProfileID = try XCTUnwrap(package.payload.profiles.first?.id)
+    let sourceDraft = try XCTUnwrap(package.payload.drafts.first)
+    let sourceAttachment = try XCTUnwrap(sourceDraft.attachments.first)
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: "WorkspaceExchangeStoreImport")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let persistenceURL = rootURL.appendingPathComponent("workbench.json")
+    let attachmentRoot = rootURL.appendingPathComponent("ManagedAttachments", isDirectory: true)
+    let attachmentStore = ManagedAttachmentFileStore(rootDirectoryURL: attachmentRoot)
+
+    do {
+      let store = WorkbenchStore(
+        persistence: WorkbenchPersistence(fileURL: persistenceURL),
+        knowledgeLibraryService: KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("KnowledgeLibrary")),
+        managedAttachmentFileStore: attachmentStore
+      )
+      let preview = try await store.previewWorkspaceExchange(data: data)
+      let importedCount = try await store.importWorkspaceExchange(
+        preview,
+        profileMappings: [sourceProfileID: .importAsNewProfile]
+      )
+      XCTAssertEqual(importedCount, 1)
+      let importedDraft = try XCTUnwrap(store.drafts.first { $0.title == sourceDraft.title })
+      XCTAssertNotEqual(importedDraft.id, sourceDraft.id)
+      XCTAssertEqual(importedDraft.bodyMarkdown, sourceDraft.bodyMarkdown)
+      let importedAttachment = try XCTUnwrap(importedDraft.attachments.first)
+      XCTAssertNotEqual(importedAttachment.id, sourceAttachment.id)
+      XCTAssertEqual(importedAttachment.relativePublishPath, sourceAttachment.relativePublishPath)
+      let localPath = try XCTUnwrap(importedAttachment.sourceFilePath)
+      XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: localPath)), sourceAttachment.bytes)
+    }
+
+    let reopenedStore = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      knowledgeLibraryService: KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("KnowledgeLibrary")),
+      managedAttachmentFileStore: attachmentStore
+    )
+    let reopenedDraft = try XCTUnwrap(reopenedStore.drafts.first { $0.title == sourceDraft.title })
+    XCTAssertEqual(reopenedDraft.bodyMarkdown, sourceDraft.bodyMarkdown)
+    let reopenedAttachment = try XCTUnwrap(reopenedDraft.attachments.first)
+    let reopenedPath = try XCTUnwrap(reopenedAttachment.sourceFilePath)
+    XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: reopenedPath)), sourceAttachment.bytes)
+  }
+}
+
+final class WorkspaceExchangePathConflictTests: XCTestCase {
+  private let articleDate = Date(timeIntervalSince1970: 1_700_000_000)
+
+  func testSameSlugOnAnotherSiteDoesNotWarn() throws {
+    let siteA = SiteProfile(name: "A")
+    let siteB = SiteProfile(name: "B")
+    let sourceID = UUID()
+    let incoming = portableDraft(sourceProfileID: sourceID, slug: "shared")
+    let existing = ArticleDraft(
+      siteProfileID: siteA.id, title: "Existing", date: articleDate, slug: "shared")
+
+    let conflicts = try WorkspaceExchangePathConflictService.conflicts(
+      package: package(profiles: [portableProfile(id: sourceID)], drafts: [incoming]),
+      profileMappings: [sourceID: .existing(siteB.id)],
+      existingProfiles: [siteA, siteB],
+      existingDrafts: [existing]
+    )
+
+    XCTAssertTrue(conflicts.isEmpty)
+  }
+
+  func testMappedPublishPathConflictCanBeResolvedWithNewSlug() throws {
+    let target = SiteProfile(name: "Target")
+    let sourceID = UUID()
+    let incoming = portableDraft(sourceProfileID: sourceID, slug: "shared")
+    let existing = ArticleDraft(
+      siteProfileID: target.id, title: "Existing", date: articleDate, slug: "shared")
+    let exchange = package(profiles: [portableProfile(id: sourceID)], drafts: [incoming])
+    let mapping: [UUID: WorkspaceExchangeProfileMapping] = [sourceID: .existing(target.id)]
+
+    let conflicts = try WorkspaceExchangePathConflictService.conflicts(
+      package: exchange,
+      profileMappings: mapping,
+      existingProfiles: [target],
+      existingDrafts: [existing]
+    )
+    XCTAssertEqual(conflicts.map(\.sourceDraftID), [incoming.id])
+    XCTAssertEqual(conflicts.first?.path, target.markdownPath(for: existing))
+
+    let resolved = try WorkspaceExchangePathConflictService.conflicts(
+      package: exchange,
+      profileMappings: mapping,
+      slugOverrides: [incoming.id: "shared-imported"],
+      existingProfiles: [target],
+      existingDrafts: [existing]
+    )
+    XCTAssertTrue(resolved.isEmpty)
+  }
+
+  func testTwoImportedDraftsAtSamePathBothRequireResolution() throws {
+    let sourceID = UUID()
+    let first = portableDraft(sourceProfileID: sourceID, slug: "duplicate")
+    let second = portableDraft(sourceProfileID: sourceID, slug: "duplicate")
+    let exchange = package(profiles: [portableProfile(id: sourceID)], drafts: [first, second])
+
+    let conflicts = try WorkspaceExchangePathConflictService.conflicts(
+      package: exchange,
+      profileMappings: [sourceID: .importAsNewProfile],
+      existingProfiles: [],
+      existingDrafts: []
+    )
+    XCTAssertEqual(Set(conflicts.map(\.sourceDraftID)), Set([first.id, second.id]))
+
+    let resolved = try WorkspaceExchangePathConflictService.conflicts(
+      package: exchange,
+      profileMappings: [sourceID: .importAsNewProfile],
+      slugOverrides: [second.id: "duplicate-imported"],
+      existingProfiles: [],
+      existingDrafts: []
+    )
+    XCTAssertTrue(resolved.isEmpty)
+  }
+
+  func testInvalidOverrideCannotBypassTargetSlugRule() throws {
+    let target = SiteProfile(name: "Target")
+    let sourceID = UUID()
+    let incoming = portableDraft(sourceProfileID: sourceID, slug: "shared")
+
+    XCTAssertThrowsError(
+      try WorkspaceExchangePathConflictService.conflicts(
+        package: package(profiles: [portableProfile(id: sourceID)], drafts: [incoming]),
+        profileMappings: [sourceID: .existing(target.id)],
+        slugOverrides: [incoming.id: "../escape"],
+        existingProfiles: [target],
+        existingDrafts: []
+      )
+    ) { error in
+      guard case WorkspaceExchangeError.invalidSlug = error else {
+        return XCTFail("Expected invalidSlug, got \(error)")
+      }
+    }
+  }
+
+  @MainActor
+  func testImportRechecksCurrentDraftsAfterPreview() async throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "WorkspaceExchangePathRecheck")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: rootURL.appendingPathComponent("workbench.json"))
+    )
+    let target = try XCTUnwrap(store.profiles.first)
+    let sourceID = UUID()
+    let incoming = portableDraft(sourceProfileID: sourceID, slug: "shared")
+    let exchange = package(profiles: [portableProfile(id: sourceID)], drafts: [incoming])
+    let data = try WorkspaceExchangeCodec.encode(exchange.payload, createdAt: articleDate)
+    let preview = try await store.previewWorkspaceExchange(data: data)
+
+    let existing = ArticleDraft(
+      siteProfileID: target.id, title: "Created after preview", date: articleDate, slug: "shared")
+    store.publishingStore.drafts.append(existing)
+    let draftIDsBeforeImport = Set(store.drafts.map(\.id))
+
+    do {
+      _ = try await store.importWorkspaceExchange(
+        preview,
+        profileMappings: [sourceID: .existing(target.id)]
+      )
+      XCTFail("Import must reject a path occupied after preview")
+    } catch WorkspaceExchangeError.duplicatePublishPath(let path) {
+      XCTAssertEqual(path, target.markdownPath(for: existing))
+    }
+    XCTAssertEqual(Set(store.drafts.map(\.id)), draftIDsBeforeImport)
+  }
+
+  private func package(
+    profiles: [WorkspaceExchangeProfile],
+    drafts: [WorkspaceExchangeDraft]
+  ) -> WorkspaceExchangePackage {
+    let payload = WorkspaceExchangePayload(profiles: profiles, drafts: drafts)
+    return WorkspaceExchangePackage(
+      manifest: WorkspaceExchangeManifest(
+        createdAt: articleDate,
+        payloadSHA256: "",
+        itemCounts: WorkspaceExchangeCodec.itemCounts(for: payload)
+      ),
+      payload: payload
+    )
+  }
+
+  private func portableProfile(id: UUID) -> WorkspaceExchangeProfile {
+    WorkspaceExchangeProfile(
+      id: id,
+      name: "Source",
+      siteKind: "zola",
+      repoOwner: "owner",
+      repoName: "repo",
+      branch: "main"
+    )
+  }
+
+  private func portableDraft(sourceProfileID: UUID, slug: String) -> WorkspaceExchangeDraft {
+    WorkspaceExchangeDraft(
+      id: UUID(),
+      scope: "site",
+      sourceProfileID: sourceProfileID,
+      title: "Incoming",
+      date: articleDate,
+      slug: slug,
+      tags: [],
+      categories: [],
+      authors: [],
+      visibility: "public",
+      summary: "",
+      bodyMarkdown: "Body",
+      createdAt: articleDate,
+      updatedAt: articleDate,
+      attachments: []
+    )
+  }
 }

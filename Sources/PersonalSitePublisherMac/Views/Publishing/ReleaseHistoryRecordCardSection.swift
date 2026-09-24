@@ -399,7 +399,7 @@ extension ReleaseHistoryDetailView {
     )
     let reviewFailureHelp = !record.batchItems.isEmpty && !canReviewFailure
       ? String(localized: "批量发布范围已变化，请先在发布面板核对批次。")
-      : String(localized: "重新核对发布范围和目标分支；不会自动重放原操作。")
+      : String(localized: "重新核对发布范围和目标分支；不会自动重试发布。")
 
     return VStack(alignment: .leading, spacing: 10) {
       Label("记录操作", systemImage: "slider.horizontal.3")

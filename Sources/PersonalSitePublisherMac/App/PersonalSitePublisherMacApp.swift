@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
@@ -16,6 +17,9 @@ struct PersonalSitePublisherMacApp: App {
   private var interfaceDensityRawValue = WorkbenchInterfaceDensity.comfortable.rawValue
 
   init() {
+    // Git can close stdin before a background writer finishes. EPIPE must be
+    // reported as a write error instead of terminating the entire app.
+    _ = Darwin.signal(SIGPIPE, SIG_IGN)
     AppLanguagePreference.prepareForLaunch()
     // Earlier builds disabled AppKit restoration globally. Remove those sticky
     // overrides now that the main workspace is owned by a native SwiftUI scene.
@@ -91,9 +95,8 @@ struct PersonalSitePublisherMacApp: App {
   private var workbenchLaunchRoot: some View {
     WorkbenchLaunchRootView(
       coordinator: launchCoordinator,
-      onReady: { store, browserBridge in
+      onReady: { store in
         appDelegate.workbenchStore = store
-        appDelegate.browserBridge = browserBridge
       }
     )
     .environmentObject(launchCoordinator)
@@ -353,7 +356,6 @@ private struct MainWindowOpenActionRegistration: View {
 @MainActor
 final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate {
   var workbenchStore: WorkbenchStore?
-  var browserBridge: KnowledgeBrowserBridge?
   private var isWaitingForTerminationLedgerFlush = false
   private var didConfirmTerminationLedgerFlush = false
   var openMainWindowAction: (() -> Void)? {
@@ -778,7 +780,6 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
   }
 
   func applicationWillTerminate(_ notification: Notification) {
-    browserBridge?.stop()
     workbenchStore?.stopLocalSitePreviewImmediately()
     if didConfirmTerminationLedgerFlush || workbenchStore == nil {
       WorkbenchSessionRecovery.shared.markCleanExit()

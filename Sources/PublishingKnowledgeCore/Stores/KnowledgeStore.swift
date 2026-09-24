@@ -5,6 +5,8 @@ import PublishingCoreSupport
 @MainActor
 public final class KnowledgeStore: ObservableObject {
   let service: KnowledgeLibraryService
+  let noteCloudSyncAdapter: KnowledgeNoteCloudSyncAdapter
+  let noteCloudSyncEngine: RPNoteCloudSyncEngine
   private let operationEventRecorder: (@MainActor @Sendable (KnowledgeImportEvent) -> Void)?
   let smartCollectionService = KnowledgeSmartCollectionService()
   var searchTask: Task<Void, Never>?
@@ -93,6 +95,8 @@ public final class KnowledgeStore: ObservableObject {
   @Published public internal(set) var revisions: [KnowledgeDocumentRevision] = []
   @Published public internal(set) var healthSnapshot: KnowledgeLibraryHealthSnapshot?
   @Published public internal(set) var isLoadingHealth = false
+  @Published public internal(set) var noteCloudSyncStatus: RPNoteCloudSyncStatus = .disabled
+  @Published public internal(set) var noteCloudSyncErrors: [UUID: String] = [:]
 
   public init(
     service: KnowledgeLibraryService = KnowledgeLibraryService(),
@@ -100,11 +104,88 @@ public final class KnowledgeStore: ObservableObject {
       (@MainActor @Sendable (KnowledgeImportEvent) -> Void)? = nil
   ) {
     self.service = service
+    let cloudAdapter = KnowledgeNoteCloudSyncAdapter(service: service)
+    noteCloudSyncAdapter = cloudAdapter
+    noteCloudSyncEngine = RPNoteCloudSyncEngine(adapter: cloudAdapter, isEnabled: false)
     self.operationEventRecorder = operationEventRecorder
     startupReloadTask = Task { [weak self] in
       guard let self else { return }
+      await noteCloudSyncAdapter.setRemoteApplyHandler { [weak self] in
+        await self?.reloadAfterRemoteNoteCloudApply()
+      }
       await performReload()
+      if UserDefaults.standard.bool(forKey: "knowledgeNoteICloudAutoBackupEnabled") {
+        _ = try? await createAutomaticNoteSnapshotIfDue()
+      }
       startupReloadTask = nil
+    }
+    if UserDefaults.standard.bool(forKey: "knowledgeNoteICloudSyncEnabled") {
+      Task { [weak self] in await self?.startNoteCloudSync() }
+    }
+  }
+
+  public func startNoteCloudSync() async {
+    do {
+      try await noteCloudSyncEngine.setEnabled(true)
+      noteCloudSyncStatus = await noteCloudSyncEngine.currentStatus()
+      noteCloudSyncErrors = await noteCloudSyncEngine.noteErrors()
+    } catch {
+      noteCloudSyncStatus = .failed(error.localizedDescription)
+    }
+  }
+
+  public func confirmNoteCloudAccountChangeAndStart() async {
+    do {
+      try await noteCloudSyncEngine.setEnabled(true)
+      try await noteCloudSyncEngine.confirmAccountChangeAndStart()
+      noteCloudSyncStatus = await noteCloudSyncEngine.currentStatus()
+      noteCloudSyncErrors = await noteCloudSyncEngine.noteErrors()
+    } catch {
+      noteCloudSyncStatus = .failed(error.localizedDescription)
+    }
+  }
+
+  public func confirmNoteCloudZoneRecoveryAndStart() async {
+    do {
+      try await noteCloudSyncEngine.setEnabled(true)
+      try await noteCloudSyncEngine.confirmZoneRecoveryAndStart()
+      noteCloudSyncStatus = await noteCloudSyncEngine.currentStatus()
+      noteCloudSyncErrors = await noteCloudSyncEngine.noteErrors()
+    } catch {
+      noteCloudSyncStatus = .failed(error.localizedDescription)
+    }
+  }
+
+  public func stopNoteCloudSync() async {
+    do {
+      try await noteCloudSyncEngine.setEnabled(false)
+      noteCloudSyncStatus = await noteCloudSyncEngine.currentStatus()
+    } catch {
+      noteCloudSyncStatus = .failed(error.localizedDescription)
+    }
+  }
+
+  public func refreshNoteCloudSync() async {
+    do {
+      try await noteCloudSyncEngine.syncNow()
+      noteCloudSyncStatus = await noteCloudSyncEngine.currentStatus()
+      noteCloudSyncErrors = await noteCloudSyncEngine.noteErrors()
+    } catch {
+      noteCloudSyncStatus = .failed(error.localizedDescription)
+    }
+  }
+
+  public func refreshNoteCloudSyncStatus() async {
+    noteCloudSyncStatus = await noteCloudSyncEngine.currentStatus()
+    noteCloudSyncErrors = await noteCloudSyncEngine.noteErrors()
+  }
+
+  private func reloadAfterRemoteNoteCloudApply() async {
+    await performQueuedKnowledgeMutation {}
+    await reloadAfterAcceptedMutation()
+    await refreshNoteCloudSyncStatus()
+    if UserDefaults.standard.bool(forKey: "knowledgeNoteICloudAutoBackupEnabled") {
+      _ = try? await createAutomaticNoteSnapshotIfDue()
     }
   }
 

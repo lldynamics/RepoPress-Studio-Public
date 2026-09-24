@@ -362,6 +362,10 @@ struct ContentView: View {
       return
     }
     guard oldPhase != .active, !store.isSafeMode else { return }
+    Task {
+      await store.knowledge.refreshNoteCloudSync()
+      _ = try? await store.knowledge.createAutomaticNoteSnapshotIfDue()
+    }
     configureRepositoryContentChangeMonitor()
     refreshExternallyCreatedDrafts()
     configureOperationalPolling()
@@ -970,9 +974,6 @@ struct ContentView: View {
     switch completion.path.destination {
     case .repositoryWizard:
       firstRunHandoffProfile = store.activeProfile
-    case .siteStarter:
-      modalPresentation.dismiss(.firstRunSetup)
-      selectWorkspaceSection(.siteStarter)
     case .localDrafts:
       modalPresentation.dismiss(.firstRunSetup)
     }
@@ -1095,26 +1096,15 @@ struct ContentView: View {
               && !externalBrowserPreviewCoordinator.isBusy
           )
 
-          // These must stay direct ToolbarItemGroup children. In particular, do
-          // not restore the former HStack wrapper: it merged browser preview
-          // into the live preview accessibility element on native macOS.
-          WorkspaceLivePreviewToolbarButton(
+          WorkspacePreviewToolbarButton(
             availability: previewAvailability,
-            openLivePreview: openLocalSitePreview
-          )
-
-          WorkspaceBrowserPreviewToolbarButton(
-            availability: previewAvailability,
+            showsTitle: !isCompactLayout,
+            openLivePreview: openLocalSitePreview,
             openBrowserPreview: {
               guard let selectedDraftID = windowSession.selectedDraftID else { return }
               externalBrowserPreviewCoordinator.openCurrentArticle(for: selectedDraftID)
             }
           )
-
-          Divider()
-            .frame(height: 18)
-            .padding(.horizontal, 1)
-            .accessibilityHidden(true)
 
           WorkspaceTaskCenterToolbarButton(
             store: store,
@@ -1127,11 +1117,6 @@ struct ContentView: View {
           if supportsInspector && (!isCompactLayout || canRequestInspectorInCurrentLayout) {
             inspectorToolbarButton
           }
-
-          Divider()
-            .frame(height: 18)
-            .padding(.horizontal, 1)
-            .accessibilityHidden(true)
 
           settingsToolbarButton
           WorkspacePreparePublishToolbarButton(

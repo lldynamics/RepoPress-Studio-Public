@@ -14,6 +14,8 @@ extension KnowledgeDatabase {
     "knowledge_recycle_bin",
     "knowledge_annotations",
     "knowledge_backlinks",
+    "knowledge_note_attachments",
+    "knowledge_note_metadata",
   ]
 
   private static let requiredSchemaIndexNames = [
@@ -26,6 +28,7 @@ extension KnowledgeDatabase {
     "knowledge_recycle_bin_deleted_idx",
     "knowledge_annotations_document_idx",
     "knowledge_backlinks_document_idx",
+    "knowledge_note_attachments_document_idx",
   ]
 
   func migrate(from existingUserVersion: Int) throws {
@@ -180,6 +183,26 @@ extension KnowledgeDatabase {
 
         CREATE INDEX IF NOT EXISTS knowledge_backlinks_document_idx
           ON knowledge_backlinks(cited_document_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS knowledge_note_attachments (
+          id TEXT PRIMARY KEY NOT NULL,
+          document_id TEXT NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+          file_name TEXT NOT NULL,
+          mime_type TEXT,
+          byte_count INTEGER NOT NULL,
+          content_hash TEXT NOT NULL,
+          storage_ref TEXT NOT NULL,
+          created_at REAL NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS knowledge_note_attachments_document_idx
+          ON knowledge_note_attachments(document_id, created_at ASC);
+
+        CREATE TABLE IF NOT EXISTS knowledge_note_metadata (
+          document_id TEXT PRIMARY KEY NOT NULL
+            REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+          is_archived INTEGER NOT NULL DEFAULT 0
+        );
         """)
 
       if try !columnExists("folder_id", in: "knowledge_documents") {

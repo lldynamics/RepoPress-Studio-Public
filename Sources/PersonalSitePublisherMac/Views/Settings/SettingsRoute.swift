@@ -36,6 +36,8 @@ enum SettingsRoute: Hashable, Sendable {
 
   static func requestedID(_ requestedID: String) -> SettingsRoute? {
     switch requestedID {
+    case "appearance.defaults":
+      return .subsection(.appearanceDefaults)
     case "language":
       return .subsection(.appearanceLanguage)
     case "storage":
@@ -61,6 +63,8 @@ enum SettingsRoute: Hashable, Sendable {
   ) -> SettingsRoute? {
     if let subsection,
       destination == nil || destination?.tab == subsection.tab
+        || (destination == .tab(.appearance) && subsection == .appearanceDefaults)
+        || (destination == .tab(.ai) && subsection == .aiWritingStyle)
     {
       return .subsection(subsection)
     }

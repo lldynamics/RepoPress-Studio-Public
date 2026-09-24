@@ -39,7 +39,8 @@ extension KnowledgeDatabase {
       UNION
       SELECT normalized_storage_ref
       FROM knowledge_revisions
-      WHERE normalized_storage_ref <> '';
+      WHERE normalized_storage_ref <> ''
+      ;
       """
     ) { referenceStatement in
       while sqlite3_step(referenceStatement) == SQLITE_ROW {
@@ -48,6 +49,20 @@ extension KnowledgeDatabase {
         }
       }
       try checkStatementCompletion(referenceStatement)
+    }
+    // Backups made before schema v11 do not contain this table. They remain
+    // valid restorable snapshots and simply cannot reference note attachments.
+    if try tableExistsUnlocked("knowledge_note_attachments") {
+      try withCachedStatementUnlocked(
+        "SELECT storage_ref FROM knowledge_note_attachments WHERE storage_ref <> '';"
+      ) { referenceStatement in
+        while sqlite3_step(referenceStatement) == SQLITE_ROW {
+          if let reference = text(referenceStatement, 0) {
+            references.insert(reference)
+          }
+        }
+        try checkStatementCompletion(referenceStatement)
+      }
     }
 
     var titles: [String] = []
@@ -79,6 +94,17 @@ extension KnowledgeDatabase {
     try withCachedStatementUnlocked(sql) { statement in
       guard sqlite3_step(statement) == SQLITE_ROW else { throw databaseError() }
       return Int(sqlite3_column_int64(statement, 0))
+    }
+  }
+
+  private func tableExistsUnlocked(_ name: String) throws -> Bool {
+    try withCachedStatementUnlocked(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1;"
+    ) { statement in
+      bind(name, at: 1, to: statement)
+      let result = sqlite3_step(statement)
+      guard result == SQLITE_ROW || result == SQLITE_DONE else { throw databaseError() }
+      return result == SQLITE_ROW
     }
   }
 }

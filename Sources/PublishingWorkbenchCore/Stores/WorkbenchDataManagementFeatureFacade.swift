@@ -97,8 +97,36 @@ public final class WorkbenchDataManagementFeatureFacade: ObservableObject {
     try await store.applyContentMigrationAsync(plan, selectedDraftIDs: selectedDraftIDs)
   }
 
-  public func createWorkspaceBackup(at destinationURL: URL) async -> WorkspaceBackupPreview? {
-    await store.createWorkspaceBackup(at: destinationURL)
+  public func createWorkspaceBackup(
+    at destinationURL: URL,
+    selectedCategories: Set<WorkspaceBackupCategory>? = nil
+  ) async -> WorkspaceBackupPreview? {
+    await store.createWorkspaceBackup(at: destinationURL, selectedCategories: selectedCategories)
+  }
+
+  public func workspaceBackupSelectiveRestorePreview(
+    from backupURL: URL
+  ) async throws -> WorkspaceBackupSelectiveRestorePreview {
+    try await store.workspaceBackupSelectiveRestorePreview(from: backupURL)
+  }
+
+  public func stageSelectiveWorkspaceBackupRestore(
+    from backupURL: URL,
+    categories: Set<WorkspaceBackupCategory>,
+    to stagingURL: URL
+  ) async throws -> WorkspaceBackupSelectiveRestoreStaging {
+    try await store.stageSelectiveWorkspaceBackupRestore(
+      from: backupURL, categories: categories, to: stagingURL
+    )
+  }
+
+  public func prepareSelectiveWorkspaceBackupRestore(
+    from backupURL: URL,
+    categories: Set<WorkspaceBackupCategory>
+  ) async throws -> WorkspaceBackupSelectiveRestorePreview {
+    try await store.prepareSelectiveWorkspaceBackupRestore(
+      from: backupURL, categories: categories
+    )
   }
 
   public func workspaceBackupPreview(from backupURL: URL) async -> WorkspaceBackupPreview? {

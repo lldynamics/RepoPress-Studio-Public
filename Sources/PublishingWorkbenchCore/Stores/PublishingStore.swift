@@ -133,7 +133,6 @@ public final class PublishingStore: ObservableObject {
   /// Per-document editing state remains process-local and narrowly observed.
   public let documentSession: DocumentSessionStore
   public let publishSession: PublishSessionStore
-  public let siteStarter: SiteStarterStore
   private var childStateCancellables = Set<AnyCancellable>()
   #if DEBUG
     /// Signals that an asynchronous remote-SHA backfill has reached a terminal
@@ -262,10 +261,6 @@ public final class PublishingStore: ObservableObject {
     localSitePreviewRuntimeStatus: LocalSitePreviewRuntimeStatus = .stopped,
     remoteReviewDraft: RemoteReviewDraft? = nil,
     batchRemoteReviewDraft: RemoteReviewDraft? = nil,
-    siteStarterResult: SiteStarterResult? = nil,
-    siteStarterImportResult: SiteStarterImportResult? = nil,
-    siteStarterPushResult: SiteStarterPushResult? = nil,
-    siteStarterProgress: SiteStarterProgress? = nil,
     imageWorkbenchReport: ImageWorkbenchReport? = nil,
     preflightIssues: [PreflightIssue] = [],
     isInspectorPresented: Bool = true,
@@ -294,7 +289,6 @@ public final class PublishingStore: ObservableObject {
     remotePublishRiskService: RemotePublishRiskService = RemotePublishRiskService(),
     localContentImportService: LocalContentImportService = LocalContentImportService(),
     contentMigrationService: ContentMigrationService = ContentMigrationService(),
-    siteStarterService: SiteStarterService = SiteStarterService(),
     generalDraftLibraryService: GeneralDraftLibraryService = GeneralDraftLibraryService(),
     localSitePreviewService: LocalSitePreviewService = LocalSitePreviewService(),
     localSitePreviewProcessService: LocalSitePreviewProcessService =
@@ -342,13 +336,6 @@ public final class PublishingStore: ObservableObject {
         PublishActionFeedback(message: $0, status: .information)
       }
     )
-    self.siteStarter = SiteStarterStore(
-      service: siteStarterService,
-      result: siteStarterResult,
-      importResult: siteStarterImportResult,
-      pushResult: siteStarterPushResult,
-      progress: siteStarterProgress
-    )
     self.profiles = profiles
     self.activeProfileID = activeProfileID
     let profilesByID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
@@ -395,9 +382,6 @@ public final class PublishingStore: ObservableObject {
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &childStateCancellables)
     documents.objectWillChange
-      .sink { [weak self] _ in self?.objectWillChange.send() }
-      .store(in: &childStateCancellables)
-    siteStarter.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &childStateCancellables)
     if let selectedDraftID,

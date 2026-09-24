@@ -13,6 +13,18 @@ extension KnowledgeSourceListColumn {
         .monospacedDigit()
       }
     } actions: {
+      Button {
+        beginQuickNote()
+      } label: {
+        Label("新建笔记", systemImage: "note.text.badge.plus")
+      }
+      .workbenchProminentActionStyle()
+      .controlSize(.regular)
+      .fixedSize()
+      .help("新建仅保存在本机的 Markdown 笔记")
+      .accessibilityLabel("新建笔记")
+      .accessibilityIdentifier("knowledge-create-note")
+      .disabled(knowledge.isBusy)
       Menu {
         Button {
           isSettingsPresented = true
@@ -21,9 +33,14 @@ extension KnowledgeSourceListColumn {
         }
         Divider()
         Button {
-          isBrowserExtensionPresented = true
+          isNoteTransferPresented = true
         } label: {
-          Label("连接浏览器插件", systemImage: "puzzlepiece.extension")
+          Label("导入与导出笔记…", systemImage: "arrow.left.arrow.right.square")
+        }
+        Button {
+          isArchivedNotesPresented = true
+        } label: {
+          Label("归档笔记…", systemImage: "archivebox")
         }
         Divider()
         Button {
@@ -44,11 +61,12 @@ extension KnowledgeSourceListColumn {
           Label("数据管理…", systemImage: "externaldrive")
         }
       } label: {
-        Label("管理与设置", systemImage: "ellipsis.circle")
+        // Secondary header actions stay icon-only so the primary create action
+        // keeps its full title in a narrow sidebar.
+        WorkspaceSidebarHeaderIcon("ellipsis.circle")
       }
-      .menuStyle(.button)
+      .menuStyle(.borderlessButton)
       .menuIndicator(.hidden)
-      .controlSize(.regular)
       .fixedSize()
       .help("资料库设置、回收站、备份与恢复")
       .accessibilityLabel("资料库管理")
@@ -57,10 +75,9 @@ extension KnowledgeSourceListColumn {
         Button {
           isImportPresented = true
         } label: {
-          Label("导入", systemImage: "plus")
+          WorkspaceSidebarHeaderIcon("square.and.arrow.down")
         }
-        .workbenchProminentActionStyle()
-        .controlSize(.regular)
+        .buttonStyle(.plain)
         .help("导入资料")
         .accessibilityLabel("导入资料")
       }

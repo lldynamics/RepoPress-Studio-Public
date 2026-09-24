@@ -41,8 +41,6 @@ struct WorkspaceTaskInspector: View {
         section: section,
         availableTabs: availableTabs
       )
-    case .siteStarter:
-      SiteStarterInspectorView(store: store)
     }
   }
 

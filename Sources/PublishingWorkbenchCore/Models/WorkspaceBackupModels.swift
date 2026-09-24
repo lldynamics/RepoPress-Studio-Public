@@ -30,6 +30,14 @@ public enum WorkspaceBackupComponent: String, Codable, CaseIterable, Hashable, S
   case operationHistory = "操作记录"
 }
 
+/// User-facing backup units. Workbench content always includes every referenced attachment.
+public enum WorkspaceBackupCategory: String, Codable, CaseIterable, Hashable, Sendable {
+  case workbench
+  case knowledgeLibrary
+  case rssReader
+  case operationHistory
+}
+
 public struct WorkspaceBackupComponentSummary: Codable, Hashable, Sendable {
   public var component: WorkspaceBackupComponent
   public var fileCount: Int
@@ -87,7 +95,7 @@ public struct WorkspaceBackupAttachmentReference: Codable, Hashable, Sendable {
 }
 
 public struct WorkspaceBackupManifest: Codable, Hashable, Sendable {
-  public static let currentFormatVersion = 3
+  public static let currentFormatVersion = 4
   public static let minimumSupportedFormatVersion = 1
   public static let attachmentMarkerPrefix = "workspace-backup-attachment://"
 
@@ -108,6 +116,9 @@ public struct WorkspaceBackupManifest: Codable, Hashable, Sendable {
   public var totalByteCount: Int64
   public var attachmentReferences: [WorkspaceBackupAttachmentReference]
   public var files: [WorkspaceBackupFileRecord]
+  /// Added in v4. Nil means a legacy v1-v3 full backup.
+  public var selectedCategories: [WorkspaceBackupCategory]?
+  public var categorySummaries: [WorkspaceBackupCategorySummary]?
 
   public init(
     formatVersion: Int = WorkspaceBackupManifest.currentFormatVersion,
@@ -124,7 +135,9 @@ public struct WorkspaceBackupManifest: Codable, Hashable, Sendable {
     fileCount: Int,
     totalByteCount: Int64,
     attachmentReferences: [WorkspaceBackupAttachmentReference],
-    files: [WorkspaceBackupFileRecord]
+    files: [WorkspaceBackupFileRecord],
+    selectedCategories: [WorkspaceBackupCategory]? = nil,
+    categorySummaries: [WorkspaceBackupCategorySummary]? = nil
   ) {
     self.formatVersion = formatVersion
     self.createdAt = createdAt
@@ -141,7 +154,34 @@ public struct WorkspaceBackupManifest: Codable, Hashable, Sendable {
     self.totalByteCount = totalByteCount
     self.attachmentReferences = attachmentReferences
     self.files = files
+    self.selectedCategories = selectedCategories
+    self.categorySummaries = categorySummaries
   }
+}
+
+public struct WorkspaceBackupCategorySummary: Codable, Hashable, Sendable {
+  public var category: WorkspaceBackupCategory
+  public var fileCount: Int
+  public var byteCount: Int64
+  public init(category: WorkspaceBackupCategory, fileCount: Int, byteCount: Int64) {
+    self.category = category
+    self.fileCount = fileCount
+    self.byteCount = byteCount
+  }
+}
+
+public struct WorkspaceBackupSelectiveRestorePreview: Sendable {
+  public var backupPreview: WorkspaceBackupPreview
+  public var availableCategories: [WorkspaceBackupCategory]
+  public var selectedCategories: Set<WorkspaceBackupCategory>
+  /// Categories whose normal restore operation replaces a store root.
+  public var replacementCategories: Set<WorkspaceBackupCategory>
+  public var categorySummaries: [WorkspaceBackupCategorySummary]
+}
+
+public struct WorkspaceBackupSelectiveRestoreStaging: Sendable {
+  public var preview: WorkspaceBackupSelectiveRestorePreview
+  public var stagedPackageURL: URL
 }
 
 public enum WorkspaceBackupCompatibility: String, Codable, Hashable, Sendable {
@@ -246,6 +286,10 @@ public enum WorkspaceBackupError: LocalizedError, Hashable, Sendable {
   case tooManyFiles(maximumCount: Int)
   case fileTooLarge(path: String, maximumByteCount: Int64)
   case backupTooLarge(maximumByteCount: Int64)
+  case insufficientDiskSpace(requiredByteCount: Int64, availableByteCount: Int64)
+  case selectedBackupVolumeUnavailable(String)
+  case selectedBackupVolumeIdentityUnavailable(String)
+  case selectedBackupVolumeChanged(String)
   case fileSizeMismatch(String)
   case checksumMismatch(String)
   case invalidWorkbenchSnapshot(String)
@@ -285,6 +329,18 @@ public enum WorkspaceBackupError: LocalizedError, Hashable, Sendable {
         "备份总大小超过允许的 %lld GB。",
         maximumByteCount / 1_024 / 1_024 / 1_024
       )
+    case .insufficientDiskSpace(let requiredByteCount, let availableByteCount):
+      return CoreL10n.format(
+        "目标磁盘空间不足：预计至少需要 %@，当前可用 %@。请释放空间或选择其他磁盘；现有备份已保留。",
+        ByteCountFormatter.string(fromByteCount: requiredByteCount, countStyle: .file),
+        ByteCountFormatter.string(fromByteCount: availableByteCount, countStyle: .file)
+      )
+    case .selectedBackupVolumeUnavailable(let path):
+      return CoreL10n.format("所选备份磁盘当前未挂载，未写入系统磁盘：%@", path)
+    case .selectedBackupVolumeIdentityUnavailable(let path):
+      return CoreL10n.format("无法识别所选磁盘，不能将其用作自动备份目标：%@", path)
+    case .selectedBackupVolumeChanged(let path):
+      return CoreL10n.format("备份目标已换成另一块磁盘；为避免写错位置，操作已停止：%@", path)
     case .fileSizeMismatch(let path):
       return CoreL10n.format("备份文件大小与清单不一致：%@", path)
     case .checksumMismatch(let path):

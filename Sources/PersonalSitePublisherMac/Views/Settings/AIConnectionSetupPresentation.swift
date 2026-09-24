@@ -1,6 +1,6 @@
 import Foundation
 import PublishingAICore
-import PublishingWorkbenchCore
+import PublishingCoreSupport
 
 enum AIConnectionSetupNextStep: Equatable {
   case missingBaseURL

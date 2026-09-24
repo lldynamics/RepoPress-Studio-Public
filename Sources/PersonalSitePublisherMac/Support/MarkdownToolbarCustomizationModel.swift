@@ -93,11 +93,11 @@ enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiabl
     case .preparePublish: return "paperplane"
     case .copyRichText: return "doc.on.doc.fill"
 
-    case .headingMenu: return "textformat.size"
+    case .headingMenu: return "number"
     case .listMenu: return "list.bullet"
-    case .heading1: return "textformat.size"
-    case .heading2: return "textformat.size"
-    case .heading3: return "textformat.size"
+    case .heading1: return "number"
+    case .heading2: return "number"
+    case .heading3: return "number"
     case .bold: return "bold"
     case .italic: return "italic"
     case .inlineCode: return "chevron.left.forwardslash.chevron.right"
@@ -110,7 +110,7 @@ enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiabl
     case .image: return "photo"
     case .moreInsertions: return "ellipsis.circle"
     case .diagnostics: return "waveform.badge.exclamationmark"
-    case .formatChineseTypography: return "textformat"
+    case .formatChineseTypography: return "paragraphsign"
     }
   }
 

@@ -45,7 +45,3 @@ jobs:
             --result-json .build/public-quality.json
       - name: Build strictly and run complete test inventory
         run: python3 script/run_swift_test_process.py
-      - name: Verify pinned Node dependencies
-        run: |
-          npm ci --ignore-scripts
-          npm audit --audit-level=high --omit=optional

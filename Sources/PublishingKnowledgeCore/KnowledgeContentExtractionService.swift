@@ -41,7 +41,6 @@ package struct KnowledgeContentExtraction: Sendable {
 
 package struct KnowledgeContentExtractionService {
   private let htmlExtractor: @Sendable (Data, String) throws -> KnowledgeContentExtraction
-  private let epubParser = KnowledgeEPUBParser()
   private let pdfOCRService = KnowledgePDFOCRService()
   private let imageOCRService = KnowledgeImageOCRService()
 
@@ -67,8 +66,6 @@ package struct KnowledgeContentExtractionService {
       return try htmlExtractor(data, sourceName)
     case "pdf":
       return try extractPDF(data: data, sourceName: sourceName, options: options)
-    case "epub":
-      return try extractEPUB(data: data, sourceName: sourceName)
     case "jpg", "jpeg", "png", "heic", "heif", "webp":
       return try extractImage(data: data, sourceName: sourceName, options: options)
     default:
@@ -233,20 +230,6 @@ package struct KnowledgeContentExtractionService {
       tags: [],
       sections: sections,
       warnings: warnings
-    )
-  }
-
-  private func extractEPUB(data: Data, sourceName: String) throws -> KnowledgeContentExtraction {
-    let book = try epubParser.parse(data: data, sourceName: sourceName)
-    return KnowledgeContentExtraction(
-      kind: .book,
-      title: book.title.nilIfEmpty ?? humanizedFilename(sourceName),
-      authors: book.authors,
-      language: book.language,
-      summary: book.summary,
-      tags: book.tags,
-      sections: book.sections,
-      warnings: book.warnings
     )
   }
 

@@ -67,7 +67,7 @@ enum WorkspaceUnifiedSearchPresentation {
     return sections.filter { section in
       let isInScope: Bool
       switch section {
-      case .library, .images, .siteStarter:
+      case .library, .images:
         isInScope = scope.includesResources
       case .rss:
         isInScope = scope.includesRSS

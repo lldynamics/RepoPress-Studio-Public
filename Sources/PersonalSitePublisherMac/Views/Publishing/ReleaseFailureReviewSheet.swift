@@ -90,7 +90,7 @@ struct ReleaseFailureReviewSheet: View {
           Text("原目标分支：\(target)")
             .font(.caption)
         }
-        Text("重新核对发布范围和目标分支；不会自动重放原操作。")
+        Text("重新核对发布范围和目标分支；不会自动重试发布。")
           .font(.callout)
           .foregroundStyle(.secondary)
       }

@@ -17,11 +17,6 @@
       "rationale": "The wrapper owns an immutable CGImage produced by ImageIO; the reference crosses one detached decode boundary and is only read by SwiftUI rendering."
     },
     {
-      "file": "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserImportLedgerStore.swift",
-      "declaration": "KnowledgeBrowserImportLedgerDefaults",
-      "rationale": "Value wrapper delegates access to the thread-safe UserDefaults implementation and stores no mutable reference state."
-    },
-    {
       "file": "Sources/PublishingWorkbenchCore/Services/DeploymentStatusService.swift",
       "declaration": "DeploymentStatusJSONDecoder",
       "rationale": "All JSONDecoder access is serialized by the wrapper lock."
@@ -68,8 +63,18 @@
     },
     {
       "file": "Sources/PublishingGitCore/GitCommandRunner.swift",
+      "declaration": "GitInputWriteOutcome",
+      "rationale": "The background stdin writer and waiting caller exchange only an error description protected by one NSLock; the data and file handle are not stored here."
+    },
+    {
+      "file": "Sources/PublishingGitCore/GitCommandRunner.swift",
+      "declaration": "GitStandardInputWriter",
+      "rationale": "Each command transfers one immutable Data value and one pipe write handle to a single background queue; that queue alone writes and closes the handle before reporting completion."
+    },
+    {
+      "file": "Sources/PublishingGitCore/GitCommandRunner.swift",
       "declaration": "GitCommandAsyncOperation",
-      "rationale": "Process startup, cancellation, timeout, termination, and continuation completion are serialized on one private lifecycle queue; the single finish path consumes the continuation once."
+      "rationale": "Process startup, cancellation, timeout, writer completion, termination, and continuation completion are serialized on one private lifecycle queue; the single finish path consumes the continuation once."
     },
     {
       "file": "Sources/PublishingGitCore/GitCommandRunner.swift",
@@ -207,11 +212,6 @@
       "rationale": "Test transport observations are protected by the probe lock."
     },
     {
-      "file": "Tests/PublishingWorkbenchCoreTests/SiteStarterServiceTests.swift",
-      "declaration": "SiteStarterBlockingGate",
-      "rationale": "Test gate state is protected by its synchronization primitive."
-    },
-    {
       "file": "Tests/PublishingWorkbenchCoreTests/TokenCredentialScopeTests.swift",
       "declaration": "ConcurrentTokenFailureRecorder",
       "rationale": "Test recorder mutations are protected by its lock."
@@ -262,11 +262,6 @@
       "rationale": "Off-main path-probe observations are protected by one NSLock while the injected callback crosses task boundaries."
     },
     {
-      "file": "Tests/PersonalSitePublisherMacTests/KnowledgeBrowserBridgeActivationTests.swift",
-      "declaration": "BrowserBridgeTestResponseReader",
-      "rationale": "The immutable NWConnection crosses its callback queue while response bytes, completion state, and failure details are protected by one NSLock; the guarded finish path fulfills the test expectation at most once."
-    },
-    {
       "file": "Sources/PublishingAICore/AIChatCompletionPreparedRequest.swift",
       "declaration": "AIPreparedRequestConsumption",
       "rationale": "The one-shot consumption flag is protected by its NSLock, so prepared-request use remains atomic when the Sendable value crosses task boundaries."
@@ -285,26 +280,6 @@
       "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchPersistenceTests.swift",
       "declaration": "PersistencePreparationProbe",
       "rationale": "The probe's invocation and main-thread flags are protected by one NSLock while background-save callbacks report to the test assertions."
-    },
-    {
-      "file": "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserBridge.swift",
-      "declaration": "BrowserBridgeConnectionBudget",
-      "rationale": "Connection and buffered-byte counters are protected by the budget NSLock before Network callbacks cross the bridge queue."
-    },
-    {
-      "file": "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserBridge.swift",
-      "declaration": "Lease",
-      "rationale": "Lease release state and reserved bytes are protected by the lease NSLock, and the parent budget performs its own locked accounting."
-    },
-    {
-      "file": "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserBridge.swift",
-      "declaration": "BrowserBridgeConnectionContext",
-      "rationale": "Connection completion state and timeout ownership are protected by one NSLock while callbacks are scheduled on the bridge's private serial queue."
-    },
-    {
-      "file": "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserBridge.swift",
-      "declaration": "BrowserBridgeRequestBodyBuffer",
-      "rationale": "Each request owns one buffer, and its receive callbacks append serially on the NWConnection bridge queue before the value is handed off."
     },
     {
       "file": "Sources/PublishingAICore/Services/AIChatCompletionClient.swift",
@@ -380,11 +355,6 @@
       "file": "Tests/PublishingWorkbenchCoreTests/RepositoryImportBackgroundTests.swift",
       "declaration": "ImportThreadProbe",
       "rationale": "total and main are mutated and observed only while holding the same NSLock; record reads Thread.isMainThread inside that critical section before publishing counters across import callbacks."
-    },
-    {
-      "file": "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserBridge.swift",
-      "declaration": "BrowserBridgeNetworkSession",
-      "rationale": "The session's connection registry and cancellation flag are protected by one NSLock; its immutable dispatch queue is the execution boundary for Network callbacks, while cancellation is safe to issue after the locked snapshot."
     },
     {
       "file": "Sources/PersonalSitePublisherMac/Support/WorkbenchThumbnailView.swift",
@@ -676,12 +646,6 @@
       "rationale": "SEO preview metadata is auxiliary output; invalid optional metadata is omitted rather than blocking the article."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/SiteStarterRepositoryOperations.swift",
-      "category": "probeFallback",
-      "contains": "try? runGitOutput(",
-      "rationale": "Starter setup probes optional Git metadata and continues with an empty value when the repository is not yet initialized."
-    },
-    {
       "file": "Sources/PublishingWorkbenchCore/Services/WorkbenchAutomationService.swift",
       "category": "validationFallback",
       "contains": "try? WorkbenchAutomationPlanValidator.validateStructure(plan)",
@@ -812,12 +776,6 @@
       "category": "externalRollbackCleanup",
       "contains": "try? removeOwnedArtifacts(transition)",
       "rationale": "This only removes transition-owned marker, journal, and temporary index artifacts after a failed pre-HEAD operation; the original error is preserved and later recovery detects any remaining artifacts."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Services/SiteStarterService.swift",
-      "category": "probeFallback",
-      "contains": "try? await runGitOutputAsync([\"rev-parse\", \"--verify\", \"HEAD^{commit}\"]",
-      "rationale": "Recovery first probes whether an existing commit exists; failure returns nil and does not construct or push a recovered starter commit."
     },
     {
       "file": "Sources/PublishingWorkbenchCore/Stores/RepositoryWorktreeReleaseRecording.swift",

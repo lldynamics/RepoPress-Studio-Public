@@ -101,17 +101,29 @@ enum WorkspaceTopBarPresentation {
   }
 
   struct PreviewAvailability: Equatable {
+    enum DefaultAction: Equatable {
+      case browser
+      case inApp
+      case unavailable
+    }
+
     let isLivePreviewEnabled: Bool
     let isLivePreviewRunning: Bool
     let isBrowserPreviewEnabled: Bool
 
-    var livePreviewAccessibilityValue: String {
-      guard isLivePreviewEnabled else { return String(localized: "不可用") }
-      return isLivePreviewRunning ? String(localized: "正在运行") : String(localized: "准备就绪")
+    var defaultAction: DefaultAction {
+      if isBrowserPreviewEnabled { return .browser }
+      if isLivePreviewEnabled { return .inApp }
+      return .unavailable
     }
 
-    var browserPreviewAccessibilityValue: String {
-      isBrowserPreviewEnabled ? String(localized: "可打开") : String(localized: "不可用")
+    var accessibilityValue: String {
+      switch defaultAction {
+      case .browser: return String(localized: "在浏览器中预览当前文章")
+      case .inApp:
+        return isLivePreviewRunning ? String(localized: "正在运行") : String(localized: "准备就绪")
+      case .unavailable: return String(localized: "不可用")
+      }
     }
   }
 
@@ -161,7 +173,7 @@ extension WorkspaceSection {
     switch self {
     case .writing, .sync, .contentHealth:
       return true
-    case .library, .rss, .siteStarter, .images:
+    case .library, .rss, .images:
       return false
     }
   }
@@ -504,57 +516,65 @@ struct WorkspaceToolbarActionButton: View {
   }
 }
 
-/// The live-preview control intentionally has its own native toolbar host.
-/// Do not compose it with the browser button: AppKit otherwise flattens the
-/// pair and can expose the first button's AX label for both controls.
-struct WorkspaceLivePreviewToolbarButton: View {
+struct WorkspacePreviewToolbarButton: View {
   let availability: WorkspaceTopBarPresentation.PreviewAvailability
+  let showsTitle: Bool
   let openLivePreview: () -> Void
-
-  var body: some View {
-    Button(action: openLivePreview) {
-      Label(
-        String(localized: "实时预览"),
-        systemImage: availability.isLivePreviewRunning
-          ? "play.rectangle.fill"
-          : "play.rectangle"
-      )
-    }
-    .buttonStyle(
-      WorkspaceToolbarIconButtonStyle(
-        isActive: availability.isLivePreviewRunning,
-        showsTitle: false
-      )
-    )
-    .disabled(!availability.isLivePreviewEnabled)
-    .help(String(localized: "在 RepoPress Studio 中打开实时预览"))
-    .accessibilityLabel(String(localized: "实时预览"))
-    .accessibilityValue(availability.livePreviewAccessibilityValue)
-    .accessibilityIdentifier("workspace-live-preview")
-  }
-}
-
-/// Kept separate from the in-app preview so the real native toolbar item owns
-/// this exact AX label and action rather than inheriting the live-preview one.
-struct WorkspaceBrowserPreviewToolbarButton: View {
-  let availability: WorkspaceTopBarPresentation.PreviewAvailability
   let openBrowserPreview: () -> Void
 
   var body: some View {
-    Button(action: openBrowserPreview) {
-      Label(String(localized: "浏览器预览"), systemImage: "safari")
+    Menu {
+      Button(action: openBrowserPreview) {
+        Label(String(localized: "在浏览器打开当前文章"), systemImage: "safari")
+      }
+      .disabled(!availability.isBrowserPreviewEnabled)
+
+      Button(action: openLivePreview) {
+        Label(
+          String(localized: "在应用内预览"),
+          systemImage: availability.isLivePreviewRunning ? "play.rectangle.fill" : "play.rectangle"
+        )
+      }
+      .disabled(!availability.isLivePreviewEnabled)
+    } label: {
+      // Menus ignore the toolbar ButtonStyle, so the title visibility must be
+      // chosen on the label itself.
+      if showsTitle {
+        previewLabel.labelStyle(.titleAndIcon)
+      } else {
+        previewLabel.labelStyle(.iconOnly)
+      }
+    } primaryAction: {
+      switch availability.defaultAction {
+      case .browser: openBrowserPreview()
+      case .inApp: openLivePreview()
+      case .unavailable: break
+      }
     }
+    .menuStyle(.borderlessButton)
+    .menuIndicator(.visible)
     .buttonStyle(
       WorkspaceToolbarIconButtonStyle(
         isActive: false,
-        showsTitle: false
+        showsTitle: showsTitle
       )
     )
-    .disabled(!availability.isBrowserPreviewEnabled)
-    .help(String(localized: "在默认浏览器中打开预览"))
-    .accessibilityLabel(String(localized: "浏览器预览"))
-    .accessibilityValue(availability.browserPreviewAccessibilityValue)
-    .accessibilityIdentifier("workspace-open-preview-browser")
+    .disabled(availability.defaultAction == .unavailable)
+    .help(
+      availability.defaultAction == .browser
+        ? String(localized: "在系统浏览器中打开当前文章；按住可打开菜单")
+        : String(localized: "在 RepoPress Studio 中打开实时预览")
+    )
+    .accessibilityLabel(String(localized: "预览"))
+    .accessibilityValue(availability.accessibilityValue)
+    .accessibilityIdentifier("workspace-preview")
+  }
+
+  private var previewLabel: Label<Text, Image> {
+    Label(
+      String(localized: "预览"),
+      systemImage: availability.defaultAction == .browser ? "safari" : "play.rectangle"
+    )
   }
 }
 
@@ -819,7 +839,7 @@ struct PublishingStatusToolbarControl: View {
       return [repositoryStatus, draftStatus, deploymentStatus]
     case .writing, .contentHealth:
       return [draftStatus, repositoryStatus, deploymentStatus]
-    case .library, .rss, .siteStarter, .images:
+    case .library, .rss, .images:
       return [draftStatus, repositoryStatus, deploymentStatus]
     }
   }
@@ -828,7 +848,7 @@ struct PublishingStatusToolbarControl: View {
     switch selectedSection {
     case .sync:
       return repositoryStatus
-    case .writing, .contentHealth, .library, .rss, .siteStarter, .images:
+    case .writing, .contentHealth, .library, .rss, .images:
       return draftStatus
     }
   }
@@ -839,7 +859,7 @@ struct PublishingStatusToolbarControl: View {
       return String(localized: "站点状态")
     case .contentHealth:
       return String(localized: "检查状态")
-    case .writing, .library, .rss, .siteStarter, .images:
+    case .writing, .library, .rss, .images:
       return String(localized: "文章状态")
     }
   }

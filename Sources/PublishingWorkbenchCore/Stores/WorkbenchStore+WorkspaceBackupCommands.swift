@@ -99,7 +99,8 @@ extension WorkbenchStore {
     at destinationURL: URL,
     applicationVersion: String? = nil,
     limits: WorkspaceBackupService.Limits = .init(),
-    actor: WorkbenchOperationLogActor = .user
+    actor: WorkbenchOperationLogActor = .user,
+    selectedCategories: Set<WorkspaceBackupCategory>? = nil
   ) async -> WorkspaceBackupPreview? {
     guard flushPendingChanges() else {
       setLastSaveStatus(CoreL10n.text("工作区备份失败：仍有草稿或站点文件未能保存"))
@@ -113,7 +114,11 @@ extension WorkbenchStore {
       return nil
     }
 
-    guard let operationHistoryDocument = await flushOperationLogPersistence() else {
+    let shouldIncludeHistory = selectedCategories?.contains(.operationHistory) ?? true
+    let operationHistoryDocument = shouldIncludeHistory
+      ? await flushOperationLogPersistence()
+      : nil
+    if shouldIncludeHistory && operationHistoryDocument == nil {
       setLastSaveStatus(CoreL10n.text("工作区备份失败：活动记录尚未安全写入磁盘"))
       _ = recordOperationEvent(
         WorkbenchOperationEventRecord(
@@ -146,7 +151,8 @@ extension WorkbenchStore {
           rssDatabaseURL: rssDatabaseURL,
           rssMediaDirectoryURL: rssMediaDirectoryURL,
           applicationVersion: resolvedApplicationVersion,
-          currentApplicationVersion: resolvedApplicationVersion
+          currentApplicationVersion: resolvedApplicationVersion,
+          selectedCategories: selectedCategories
         )
       }
       setLastSaveStatus(
@@ -180,6 +186,62 @@ extension WorkbenchStore {
         )
       )
       return nil
+    }
+  }
+
+  public func workspaceBackupSelectiveRestorePreview(
+    from backupURL: URL
+  ) async throws -> WorkspaceBackupSelectiveRestorePreview {
+    let appVersion = Self.workspaceBackupApplicationVersion
+    return try await runWorkspaceBackupIO {
+      try WorkspaceBackupService().inspectSelectiveRestore(
+        at: backupURL, currentApplicationVersion: appVersion
+      )
+    }
+  }
+
+  public func stageSelectiveWorkspaceBackupRestore(
+    from backupURL: URL,
+    categories: Set<WorkspaceBackupCategory>,
+    to stagingURL: URL
+  ) async throws -> WorkspaceBackupSelectiveRestoreStaging {
+    let appVersion = Self.workspaceBackupApplicationVersion
+    return try await runWorkspaceBackupIO {
+      try WorkspaceBackupService().stageSelectiveRestore(
+        from: backupURL,
+        categories: categories,
+        to: stagingURL,
+        currentApplicationVersion: appVersion
+      )
+    }
+  }
+
+  public func prepareSelectiveWorkspaceBackupRestore(
+    from backupURL: URL,
+    categories: Set<WorkspaceBackupCategory>
+  ) async throws -> WorkspaceBackupSelectiveRestorePreview {
+    let appVersion = Self.workspaceBackupApplicationVersion
+    let persistenceFileURL = persistenceStore.persistence.fileURL
+    return try await runWorkspaceBackupIO {
+      let service = WorkspaceBackupService()
+      let pendingURL = WorkspaceBackupService.pendingRestoreURL(for: persistenceFileURL)
+      guard !FileManager.default.fileExists(atPath: pendingURL.path) else {
+        throw WorkspaceBackupError.stagingFailed(CoreL10n.text("已有待处理恢复包，请先完成或取消它"))
+      }
+      let stagingURL = persistenceFileURL.deletingLastPathComponent()
+        .appendingPathComponent(".WorkspaceBackupCategoryStage-\(UUID().uuidString).psworkspacebackup",
+          isDirectory: true)
+      let staged = try service.stageSelectiveRestore(
+        from: backupURL, categories: categories, to: stagingURL,
+        currentApplicationVersion: appVersion
+      )
+      defer { try? FileManager.default.removeItem(at: staged.stagedPackageURL) }
+      _ = try service.stageRestore(
+        from: staged.stagedPackageURL,
+        persistenceFileURL: persistenceFileURL,
+        currentApplicationVersion: appVersion
+      )
+      return staged.preview
     }
   }
 

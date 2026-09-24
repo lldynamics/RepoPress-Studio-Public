@@ -67,7 +67,8 @@ final class DraftVersionComparisonLoader: ObservableObject {
 
   private let comparator: Comparator
   private var cache: [DraftVersionComparisonRequestKey: DraftVersionComparison] = [:]
-  private var inFlight: [DraftVersionComparisonRequestKey: Task<DraftVersionComparison, Never>] = [:]
+  private var inFlight: [DraftVersionComparisonRequestKey: Task<DraftVersionComparison, Never>] =
+    [:]
   private var currentKey: DraftVersionComparisonRequestKey?
   private var generation: UInt64 = 0
 
@@ -202,27 +203,20 @@ struct DraftVersionComparisonView: View {
 
       Divider()
 
-      HStack {
-        Text("恢复只替换文章内容；当前仓库路径、远端版本和发布状态会保留。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-        Spacer()
-        Button("取消") {
-          dismiss()
+      ViewThatFits(in: .horizontal) {
+        HStack {
+          restoreNotice
+          Spacer(minLength: 12)
+          restoreActions
         }
-        .keyboardShortcut(.cancelAction)
-        Button {
-          isRestoreConfirmationPresented = true
-        } label: {
-          Text("恢复左侧版本 · \(sourceVersion.capturedAt.formatted(date: .abbreviated, time: .shortened))")
+        VStack(alignment: .leading, spacing: 10) {
+          restoreNotice
+          restoreActions
         }
-        .workbenchProminentActionStyle()
-        .keyboardShortcut(.defaultAction)
-        .disabled(currentDraft == nil)
       }
       .padding(16)
     }
-    .frame(minWidth: 860, idealWidth: 980, minHeight: 640, idealHeight: 720)
+    .frame(idealWidth: 980, minHeight: 420, idealHeight: 720)
     .navigationTitle("版本差异")
     .confirmationDialog(
       String(localized: "恢复左侧版本？"),
@@ -244,7 +238,39 @@ struct DraftVersionComparisonView: View {
     .accessibilityIdentifier("draft-version-comparison")
   }
 
+  private var restoreNotice: some View {
+    Text("恢复只替换文章内容；当前仓库路径、远端版本和发布状态会保留。")
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+  }
+
+  private var restoreActions: some View {
+    HStack {
+      Spacer(minLength: 0)
+      Button("取消") {
+        dismiss()
+      }
+      .keyboardShortcut(.cancelAction)
+      Button {
+        isRestoreConfirmationPresented = true
+      } label: {
+        Text("恢复左侧版本 · \(sourceVersion.capturedAt.formatted(date: .abbreviated, time: .shortened))")
+      }
+      .workbenchProminentActionStyle()
+      .keyboardShortcut(.defaultAction)
+      .disabled(currentDraft == nil)
+    }
+  }
+
   private var comparisonHeader: some View {
+    ViewThatFits(in: .horizontal) {
+      comparisonHeaderRow
+      comparisonHeaderColumn
+    }
+  }
+
+  private var comparisonHeaderRow: some View {
     HStack(alignment: .center, spacing: 16) {
       versionLabel(
         title: "所选版本",
@@ -284,6 +310,31 @@ struct DraftVersionComparisonView: View {
         .accessibilityLabel(
           "元数据变化 \(comparison.fieldChanges.count) 项，新增 \(comparison.addedLineCount) 行，删除 \(comparison.removedLineCount) 行"
         )
+      }
+    }
+  }
+
+  private var comparisonHeaderColumn: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      versionLabel(
+        title: "所选版本", reason: sourceVersion.reason.localizedDisplayName,
+        date: sourceVersion.capturedAt)
+      VStack(alignment: .leading, spacing: 5) {
+        Text("对比目标").font(.caption).foregroundStyle(.secondary)
+        Picker("对比目标", selection: $target) {
+          Text("当前文章").tag(DraftVersionComparisonTarget.current)
+          ForEach(versions.filter { $0.id != sourceVersion.id }) { version in
+            Text(versionMenuTitle(version)).tag(DraftVersionComparisonTarget.version(version.id))
+          }
+        }
+        .labelsHidden().pickerStyle(.menu)
+      }
+      if let comparison = comparisonLoader.comparison {
+        HStack(spacing: 8) {
+          comparisonBadge("元数据 \(comparison.fieldChanges.count)", color: WorkbenchTheme.primary)
+          comparisonBadge("+\(comparison.addedLineCount)", color: WorkbenchTheme.success)
+          comparisonBadge("−\(comparison.removedLineCount)", color: WorkbenchTheme.risk)
+        }
       }
     }
   }
@@ -343,25 +394,45 @@ struct DraftVersionComparisonView: View {
           .foregroundStyle(.secondary)
       } else {
         ForEach(changes, id: \.field) { change in
-          HStack(alignment: .top, spacing: 12) {
-            Text(change.field.localizedDisplayName)
-              .font(.subheadline.weight(.semibold))
-              .frame(width: 84, alignment: .leading)
-
-            comparisonValue(change.previousValue, color: WorkbenchTheme.risk)
-
-            Image(systemName: "arrow.right")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .accessibilityHidden(true)
-
-            comparisonValue(change.currentValue, color: WorkbenchTheme.success)
+          ViewThatFits(in: .horizontal) {
+            metadataChangeRow(change)
+            metadataChangeColumn(change)
           }
-          .padding(10)
-          .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
         }
       }
     }
+  }
+
+  private func metadataChangeRow(_ change: DraftVersionFieldChange) -> some View {
+    HStack(alignment: .top, spacing: 12) {
+      Text(change.field.localizedDisplayName)
+        .font(.subheadline.weight(.semibold))
+        .frame(width: 84, alignment: .leading)
+      comparisonValue(change.previousValue, color: WorkbenchTheme.risk)
+      Image(systemName: "arrow.right")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .accessibilityHidden(true)
+      comparisonValue(change.currentValue, color: WorkbenchTheme.success)
+    }
+    .padding(10)
+    .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+  }
+
+  private func metadataChangeColumn(_ change: DraftVersionFieldChange) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text(change.field.localizedDisplayName)
+        .font(.subheadline.weight(.semibold))
+      comparisonValue(change.previousValue, color: WorkbenchTheme.risk)
+      Image(systemName: "arrow.down")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .accessibilityHidden(true)
+        .frame(maxWidth: .infinity, alignment: .center)
+      comparisonValue(change.currentValue, color: WorkbenchTheme.success)
+    }
+    .padding(10)
+    .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
   }
 
   private func comparisonValue(_ value: String, color: Color) -> some View {
@@ -403,7 +474,7 @@ struct DraftVersionComparisonView: View {
               DraftVersionLineDiffRow(line: line)
             }
           }
-          .frame(minWidth: 810, alignment: .leading)
+          .frame(maxWidth: .infinity, alignment: .leading)
           .textSelection(.enabled)
         }
         .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
@@ -494,8 +565,8 @@ private struct DraftVersionLineDiffRow: View {
   }
 }
 
-private extension DraftVersionEditableField {
-  var localizedDisplayName: String {
+extension DraftVersionEditableField {
+  fileprivate var localizedDisplayName: String {
     switch self {
     case .title: String(localized: "标题")
     case .date: String(localized: "日期")

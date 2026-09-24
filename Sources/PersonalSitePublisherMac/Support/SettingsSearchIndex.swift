@@ -148,8 +148,17 @@ enum SettingsSearchIndex {
       systemImage: "lock.shield"
     ),
     SettingsSearchItem(
+      id: "ai.siteConnection",
+      tab: .siteAI,
+      sectionTitle: SettingsSubsection.aiSiteConnection.title,
+      destination: .tab(.siteAI),
+      keywords: ["连接选择", "连接档案", "复制配置", "站点 AI", "connection profile"],
+      detail: SettingsSubsection.aiSiteConnection.subtitle,
+      systemImage: SettingsSubsection.aiSiteConnection.systemImage
+    ),
+    SettingsSearchItem(
       id: "ai.writingStyle",
-      tab: .ai,
+      tab: .siteAI,
       sectionTitle: String(localized: "AI 写作风格与个性化设定"),
       destination: .ai(.writingStyle),
       keywords: ["写作风格", "System Prompt", "语气", "润色偏好", "审稿规则", "提示词", "Template", "style"],
@@ -198,22 +207,10 @@ enum SettingsSearchIndex {
       systemImage: "gearshape.arrow.triangle.2.circlepath"
     ),
     SettingsSearchItem(
-      id: "appearance.extension",
-      tab: .appearance,
-      sectionTitle: String(localized: "浏览器采集扩展连接"),
-      destination: .tab(.appearance),
-      keywords: [
-        "Chrome", "Firefox", "浏览器插件", "采集扩展", "127.0.0.1", "回环接口", "Loopback", "Extension Token",
-        "剪藏",
-      ],
-      detail: String(localized: "管理 Chrome / Firefox 扩展连接令牌与本地安全接口状态。"),
-      systemImage: "puzzlepiece.extension"
-    ),
-    SettingsSearchItem(
       id: "appearance.defaults",
-      tab: .appearance,
+      tab: .editor,
       sectionTitle: SettingsSubsection.appearanceDefaults.title,
-      destination: .tab(.appearance),
+      destination: .tab(.editor),
       keywords: ["新文章", "默认值", "Front Matter", "全局预设"],
       detail: SettingsSubsection.appearanceDefaults.subtitle,
       systemImage: SettingsSubsection.appearanceDefaults.systemImage
@@ -230,7 +227,7 @@ enum SettingsSearchIndex {
         "typography",
       ],
       detail: String(localized: "调整 Markdown 编辑区正文字号、行距倍数与文本舒适阅读宽度。"),
-      systemImage: "textformat.size"
+      systemImage: "text.alignleft"
     ),
     SettingsSearchItem(
       id: "editor.comfort",

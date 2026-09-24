@@ -23,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "script" / "release_checks.json"
 DEFAULT_RESULT_JSON = ROOT / ".build" / "release-gate-result.json"
-RELEASE_PROFILES = ("direct", "chrome")
+RELEASE_PROFILES = ("direct",)
 PROFILE_GROUPS = ("common", *RELEASE_PROFILES)
 RESULT_SCHEMA = ROOT / "script" / "release_gate_result.schema.json"
 MAX_FAILURE_LOG_BYTES = 64 * 1024
@@ -549,7 +549,7 @@ def load_manifest() -> tuple[list[dict[str, object]], dict[str, list[str]], int]
     raw_profiles = data.get("profiles")
     if not isinstance(raw_profiles, dict) or set(raw_profiles) != set(PROFILE_GROUPS):
         raise SystemExit(
-            "release gate: profiles must define exactly common, direct, chrome"
+            "release gate: profiles must define exactly common and direct"
         )
     known_ids = set(ids)
     profile_check_ids: dict[str, list[str]] = {}
@@ -1007,7 +1007,7 @@ def validate_result_payload(payload: object) -> None:
         raise ValueError("generatedAt must not precede startedAt")
     if result["mode"] not in {"standard", "quick", "tooling", "selected", "strict"}:
         raise ValueError("mode is unsupported")
-    if result["profile"] is not None and result["profile"] not in {"direct", "chrome", "all"}:
+    if result["profile"] is not None and result["profile"] not in {"direct", "all"}:
         raise ValueError("profile is unsupported")
     repository = require_exact_keys(result["repository"], {"available", "commit", "branch", "isDirty"}, "repository")
     if not isinstance(repository["available"], bool):

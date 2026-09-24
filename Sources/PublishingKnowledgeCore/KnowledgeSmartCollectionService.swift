@@ -84,29 +84,29 @@ public struct KnowledgeSmartCollectionService: Sendable {
     return host
   }
 
-  public func browserOrganizationSuggestions(
+  public func organizationSuggestions(
     sourceURL: URL,
     authors: [String],
     tags: [String],
     documents: [KnowledgeDocument],
     folders: [KnowledgeFolder],
     limit: Int = 3
-  ) -> KnowledgeBrowserOrganizationSuggestions {
+  ) -> KnowledgeImportOrganizationSuggestions {
     guard limit > 0 else {
-      return KnowledgeBrowserOrganizationSuggestions(folders: [], tags: [])
+      return KnowledgeImportOrganizationSuggestions(folders: [], tags: [])
     }
     let incomingDomain = sourceDomain(for: sourceURL)
     let incomingAuthors = Set(authors.map(normalized).filter { !$0.isEmpty })
     let incomingTags = Set(tags.map(normalized).filter { !$0.isEmpty })
     let foldersByID = Dictionary(uniqueKeysWithValues: folders.map { ($0.id, $0) })
     var folderScores: [UUID: Double] = [:]
-    var folderReasons: [UUID: Set<KnowledgeBrowserFolderSuggestionReason>] = [:]
+    var folderReasons: [UUID: Set<KnowledgeImportFolderSuggestionReason>] = [:]
     var tagScores: [String: (displayValue: String, score: Double)] = [:]
 
     for document in documents {
       guard let folderID = document.folderID, foldersByID[folderID] != nil else { continue }
       var documentScore = 0.0
-      var reasons = Set<KnowledgeBrowserFolderSuggestionReason>()
+      var reasons = Set<KnowledgeImportFolderSuggestionReason>()
       if let incomingDomain,
          matches(document, rule: .sourceDomain(incomingDomain)) {
         documentScore += 6
@@ -136,7 +136,7 @@ public struct KnowledgeSmartCollectionService: Sendable {
 
     let folderSuggestions = folderScores.compactMap { folderID, score in
       foldersByID[folderID].map {
-        KnowledgeBrowserFolderSuggestion(
+        KnowledgeImportFolderSuggestion(
           folder: $0,
           score: score,
           reasons: Array(folderReasons[folderID] ?? []).sorted { $0.rawValue < $1.rawValue }
@@ -157,7 +157,7 @@ public struct KnowledgeSmartCollectionService: Sendable {
       .prefix(8)
       .map(\.displayValue)
 
-    return KnowledgeBrowserOrganizationSuggestions(
+    return KnowledgeImportOrganizationSuggestions(
       folders: Array(folderSuggestions),
       tags: suggestedTags
     )

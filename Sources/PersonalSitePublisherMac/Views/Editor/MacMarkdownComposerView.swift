@@ -1014,7 +1014,7 @@ struct MacMarkdownComposerView: View {
         id: "h1",
         title: String(localized: "一级标题"),
         subtitle: String(localized: "# 大标题"),
-        systemImage: "textformat.size"
+        systemImage: "number"
       ) {
         _ = apply("# ")
       },
@@ -1022,7 +1022,7 @@ struct MacMarkdownComposerView: View {
         id: "h2",
         title: String(localized: "二级标题"),
         subtitle: String(localized: "## 中标题"),
-        systemImage: "textformat.size"
+        systemImage: "number"
       ) {
         _ = apply("## ")
       },
@@ -1030,7 +1030,7 @@ struct MacMarkdownComposerView: View {
         id: "h3",
         title: String(localized: "三级标题"),
         subtitle: String(localized: "### 小标题"),
-        systemImage: "textformat.size"
+        systemImage: "number"
       ) {
         _ = apply("### ")
       },

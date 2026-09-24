@@ -3,6 +3,18 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class SettingsSubsectionNavigationTests: XCTestCase {
+  func testOverviewOpensAtTaskShortcutsWhileHealthSearchTargetsReadiness() {
+    XCTAssertEqual(
+      SettingsSubsection.sections(for: .configurationStatus),
+      [.configurationTasks, .configurationReadiness]
+    )
+    XCTAssertEqual(SettingsRoute.tab(.configurationStatus).subsection, .configurationTasks)
+    XCTAssertEqual(
+      SettingsSubsection.section(forSearchItemID: "status.health"),
+      .configurationReadiness
+    )
+  }
+
   func testEverySettingsTabHasAtLeastOneFocusedSubsection() {
     for tab in SettingsTab.allCases {
       let sections = SettingsSubsection.sections(for: tab)
@@ -23,7 +35,26 @@ final class SettingsSubsectionNavigationTests: XCTestCase {
     )
     XCTAssertEqual(
       SettingsSubsection.sections(for: .ai),
-      [.aiConnection, .aiAdvanced, .aiWritingStyle]
+      [.aiConnection, .aiAdvanced]
+    )
+  }
+
+  func testMovedSettingsRetainTheirLegacyEntryPoints() {
+    XCTAssertEqual(
+      SettingsSubsection.sections(for: .siteAI), [.aiSiteConnection, .aiWritingStyle]
+    )
+    XCTAssertEqual(SettingsRoute.requestedID("ai.writingStyle"), .subsection(.aiWritingStyle))
+    XCTAssertEqual(SettingsRoute.requestedID("ai.writingStyle")?.tab, .siteAI)
+    XCTAssertEqual(
+      SettingsRoute.requestedID("appearance.defaults"), .subsection(.appearanceDefaults))
+    XCTAssertEqual(SettingsRoute.requestedID("appearance.defaults")?.tab, .editor)
+    XCTAssertEqual(
+      SettingsRoute.workspace(destination: .tab(.appearance), subsection: .appearanceDefaults),
+      .subsection(.appearanceDefaults)
+    )
+    XCTAssertEqual(
+      SettingsRoute.workspace(destination: .tab(.ai), subsection: .aiWritingStyle),
+      .subsection(.aiWritingStyle)
     )
   }
 
@@ -100,13 +131,13 @@ final class SettingsSubsectionNavigationTests: XCTestCase {
       "ai.provider": .aiConnection,
       "ai.credentials": .aiConnection,
       "ai.advanced": .aiAdvanced,
+      "ai.siteConnection": .aiSiteConnection,
       "ai.writingStyle": .aiWritingStyle,
       "data.drafts": .dataDrafts,
       "data.storage": .dataStorage,
       "data.backup": .dataBackup,
       "data.migration": .dataMigration,
       "appearance.launch": .appearanceBehavior,
-      "appearance.extension": .appearanceBehavior,
       "appearance.theme": .appearanceTheme,
       "appearance.language": .appearanceLanguage,
       "appearance.defaults": .appearanceDefaults,

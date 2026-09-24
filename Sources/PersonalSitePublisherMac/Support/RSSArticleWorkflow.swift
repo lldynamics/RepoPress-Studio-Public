@@ -18,7 +18,7 @@ enum RSSArticleWorkflow {
     return KnowledgeSmartCollectionService().sourceDomain(for: link)
   }
 
-  /// Reuses the same source-domain organization signal as browser captures.
+  /// Uses existing source-domain history to suggest a folder for imported articles.
   /// If there is no prior folder history for this domain, the imported
   /// document still participates in the existing source-domain smart
   /// collection through its source URL.
@@ -28,7 +28,7 @@ enum RSSArticleWorkflow {
     folders: [KnowledgeFolder]
   ) -> KnowledgeImportDestination {
     guard let sourceURL = article.link else { return .preserveExisting }
-    let suggestions = KnowledgeSmartCollectionService().browserOrganizationSuggestions(
+    let suggestions = KnowledgeSmartCollectionService().organizationSuggestions(
       sourceURL: sourceURL,
       authors: article.author.map { [$0] } ?? [],
       tags: article.tags,

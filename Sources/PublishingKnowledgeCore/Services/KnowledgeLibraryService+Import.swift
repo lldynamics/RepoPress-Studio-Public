@@ -182,15 +182,6 @@ extension KnowledgeLibraryService {
     }
   }
 
-  public func makeBrowserImportPreview(
-    capture: KnowledgeBrowserCapture
-  ) async throws -> KnowledgeImportPreview {
-    let service = self
-    return try await Task.detached(priority: .userInitiated) {
-      try service.makeBrowserImportPreviewSynchronously(capture)
-    }.value
-  }
-
   func makeImportPreviewSynchronously(
     sourceURL: URL,
     options: KnowledgeImportOptions
@@ -347,7 +338,7 @@ extension KnowledgeLibraryService {
     var warnings: [String] = []
     var totalBytes = 0
     let supportedExtensions = Set([
-      "md", "markdown", "mdx", "txt", "text", "html", "htm", "pdf", "epub", "jpg", "jpeg", "png",
+      "md", "markdown", "mdx", "txt", "text", "html", "htm", "pdf", "jpg", "jpeg", "png",
       "heic", "heif", "webp",
     ])
 
@@ -521,156 +512,6 @@ extension KnowledgeLibraryService {
         return parts.joined(separator: "\n\n")
       }.joined(separator: "\n\n")
     )
-  }
-
-  func makeBrowserImportPreviewSynchronously(
-    _ capture: KnowledgeBrowserCapture
-  ) throws -> KnowledgeImportPreview {
-    guard capture.schemaVersion == KnowledgeBrowserCapture.currentSchemaVersion else {
-      throw KnowledgeLibraryError.invalidBrowserCapture("不支持的数据版本 \(capture.schemaVersion)。")
-    }
-    guard var components = URLComponents(url: capture.sourceURL, resolvingAgainstBaseURL: false),
-      let scheme = components.scheme?.lowercased(),
-      ["http", "https"].contains(scheme),
-      components.host?.nilIfEmpty != nil,
-      components.user == nil,
-      components.password == nil
-    else {
-      throw KnowledgeLibraryError.invalidBrowserCapture("页面地址无效。")
-    }
-    components.fragment = nil
-    guard let sourceURL = components.url else {
-      throw KnowledgeLibraryError.invalidBrowserCapture("页面地址无效。")
-    }
-
-    guard capture.contentText.utf8.count <= 5 * 1_024 * 1_024 else {
-      throw KnowledgeLibraryError.sourceLimitExceeded("浏览器提取的正文超过 5 MB。")
-    }
-    if let archiveData = capture.archiveData,
-      archiveData.count > 24 * 1_024 * 1_024
-    {
-      throw KnowledgeLibraryError.sourceLimitExceeded("完整页面归档超过 24 MB，请关闭大型媒体后重试。")
-    }
-    if let originalHTML = capture.originalHTML,
-      originalHTML.utf8.count > 6 * 1_024 * 1_024
-    {
-      throw KnowledgeLibraryError.sourceLimitExceeded("页面 HTML 超过 6 MB。")
-    }
-
-    let sanitizedHTML = capture.originalHTML?.nilIfEmpty.map {
-      webContentSanitizer.sanitize(html: $0)
-    }
-    let title =
-      capture.title.trimmedForPublishing.nilIfEmpty
-      ?? sanitizedHTML?.title
-      ?? sourceURL.host
-      ?? "浏览器保存的页面"
-    var sections = sanitizedHTML?.sections ?? []
-    if sections.isEmpty {
-      sections = webContentSanitizer.sanitizeExtractedText(capture.contentText)
-    }
-    sections = sections.map { section in
-      KnowledgeExtractedSection(
-        headingPath: section.headingPath?.nilIfEmpty ?? title,
-        locator: section.locator?.nilIfEmpty ?? sourceURL.absoluteString,
-        text: section.text
-      )
-    }
-    let normalizedText = normalizedText(from: sections)
-    guard !normalizedText.isEmpty else {
-      throw KnowledgeLibraryError.invalidBrowserCapture("没有提取到可检索正文。")
-    }
-
-    let archiveFormat = capture.archiveFormat?
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-      .lowercased()
-    let originalData: Data
-    let originalExtension: String
-    if let archiveData = capture.archiveData {
-      guard archiveFormat == "mhtml" || archiveFormat == "html" else {
-        throw KnowledgeLibraryError.invalidBrowserCapture("页面归档格式无效。")
-      }
-      originalData = archiveData
-      originalExtension = archiveFormat ?? "mhtml"
-    } else if let originalHTML = capture.originalHTML?.nilIfEmpty {
-      originalData = Data(originalHTML.utf8)
-      originalExtension = "html"
-    } else {
-      originalData = Data(capture.contentText.utf8)
-      originalExtension = "txt"
-    }
-
-    let originalHash = KnowledgeChunkingService.contentHash(for: originalData)
-    let normalizedHash = KnowledgeChunkingService.contentHash(for: normalizedText)
-    let existing = try database().existingDocument(
-      sourceURL: sourceURL,
-      originalHash: originalHash,
-      normalizedHash: normalizedHash,
-      parserVersion: Self.parserVersion
-    )
-    let disposition: KnowledgeImportDisposition
-    if let existing {
-      disposition = existing.identical ? .duplicate : .update
-    } else {
-      disposition = .new
-    }
-    var warnings = [
-      "页面由浏览器插件在 \(capture.capturedAt.formatted(date: .abbreviated, time: .shortened)) 保存；正文和归档均留在本机。"
-    ]
-    switch capture.captureMode {
-    case .cleanedArticle:
-      warnings.append("本次使用净化正文模式，只保存适合阅读与检索的正文。")
-    case .fullPage:
-      warnings.append("本次使用完整网页模式，同时保存可检索正文和页面归档。")
-    case .selection:
-      warnings.append("本次仅保存用户在网页中选中的文字。")
-    case .linkOnly:
-      warnings.append("本次仅保存页面标题和原始链接。")
-    case nil:
-      break
-    }
-    if archiveFormat == "html", let embeddedCount = capture.archiveEmbeddedResourceCount {
-      warnings.append("离线 HTML 已内联 \(embeddedCount) 个图片、样式或字体资源。")
-    }
-    if let missingCount = capture.archiveMissingResourceCount, missingCount > 0 {
-      warnings.append("有 \(missingCount) 个外部资源因跨域、网络或大小限制未能内联；离线外观可能不完整。")
-    }
-    if capture.archiveWasTruncated == true {
-      warnings.append("网页归档已达到 24 MB 上限，已保留可检索正文和可用的精简 HTML。")
-    }
-    if let sanitizedHTML {
-      warnings.append("保存前已在本机重新净化网页正文，原始页面归档保持不变。")
-      if sanitizedHTML.removedNoiseBlockCount > 0 {
-        warnings.append("已移除 \(sanitizedHTML.removedNoiseBlockCount) 个导航、广告或交互噪声区块。")
-      }
-    }
-    let candidate = KnowledgeImportCandidate(
-      existingDocumentID: existing?.document.id,
-      disposition: disposition,
-      kind: .webpage,
-      title: title,
-      authors: {
-        let captured = capture.authors.map(\.trimmedForPublishing).filter { !$0.isEmpty }
-        return captured.isEmpty ? (sanitizedHTML?.authors ?? []) : captured
-      }(),
-      language: capture.language?.trimmedForPublishing.nilIfEmpty ?? sanitizedHTML?.language,
-      summary: capture.summary.trimmedForPublishing.nilIfEmpty ?? sanitizedHTML?.summary ?? "",
-      tags: capture.tags.map(\.trimmedForPublishing).filter { !$0.isEmpty },
-      sourceURL: sourceURL,
-      sourceName: sourceURL.host ?? sourceURL.absoluteString,
-      sourceModifiedAt: nil,
-      allowsLocalSemanticIndex: capture.allowsLocalSemanticIndex,
-      allowsRemoteAIUse: capture.allowsRemoteAIUse,
-      originalFilenameExtension: originalExtension,
-      originalData: originalData,
-      capturedText: capture.contentText,
-      originalContentHash: originalHash,
-      normalizedText: normalizedText,
-      normalizedContentHash: normalizedHash,
-      sections: sections,
-      warnings: warnings
-    )
-    return KnowledgeImportPreview(sourceName: sourceURL.absoluteString, candidates: [candidate])
   }
 
 }

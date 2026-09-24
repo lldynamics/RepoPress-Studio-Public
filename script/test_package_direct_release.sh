@@ -555,4 +555,5 @@ grep -Fq "NOTICE-MANIFEST dependency declaration does not match Package.resolved
   <<<"$package_pin_output" \
   || fail "Package.resolved pin mismatch failed without an explicit dependency diagnostic"
 
+python3 -B "$ROOT_DIR/script/test_verify_cloud_signature.py"
 echo "direct release package test: passed"

@@ -13,8 +13,7 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     harness.sessionRecovery.requestSafeModeOnNextLaunch()
     let coordinator = WorkbenchLaunchCoordinator(
       pathStore: harness.pathStore,
-      sessionRecovery: harness.sessionRecovery,
-      browserBridgeConnectionKeychainStore: harness.browserBridgeConnectionKeychainStore
+      sessionRecovery: harness.sessionRecovery
     )
 
     XCTAssertNil(coordinator.store)
@@ -46,8 +45,7 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     harness.sessionRecovery.requestSafeModeOnNextLaunch()
     let coordinator = WorkbenchLaunchCoordinator(
       pathStore: harness.pathStore,
-      sessionRecovery: harness.sessionRecovery,
-      browserBridgeConnectionKeychainStore: harness.browserBridgeConnectionKeychainStore
+      sessionRecovery: harness.sessionRecovery
     )
 
     await coordinator.start()
@@ -72,8 +70,7 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     harness.sessionRecovery.requestSafeModeOnNextLaunch()
     let coordinator = WorkbenchLaunchCoordinator(
       pathStore: harness.pathStore,
-      sessionRecovery: harness.sessionRecovery,
-      browserBridgeConnectionKeychainStore: harness.browserBridgeConnectionKeychainStore
+      sessionRecovery: harness.sessionRecovery
     )
 
     await coordinator.start()
@@ -99,8 +96,7 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     harness.sessionRecovery.requestSafeModeOnNextLaunch()
     let restartedCoordinator = WorkbenchLaunchCoordinator(
       pathStore: harness.pathStore,
-      sessionRecovery: harness.sessionRecovery,
-      browserBridgeConnectionKeychainStore: harness.browserBridgeConnectionKeychainStore
+      sessionRecovery: harness.sessionRecovery
     )
     await restartedCoordinator.start()
 
@@ -127,8 +123,7 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     harness.sessionRecovery.requestSafeModeOnNextLaunch()
     let coordinator = WorkbenchLaunchCoordinator(
       pathStore: harness.pathStore,
-      sessionRecovery: harness.sessionRecovery,
-      browserBridgeConnectionKeychainStore: harness.browserBridgeConnectionKeychainStore
+      sessionRecovery: harness.sessionRecovery
     )
 
     await coordinator.start()
@@ -182,8 +177,7 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     harness.sessionRecovery.requestSafeModeOnNextLaunch()
     let coordinator = WorkbenchLaunchCoordinator(
       pathStore: harness.pathStore,
-      sessionRecovery: harness.sessionRecovery,
-      browserBridgeConnectionKeychainStore: harness.browserBridgeConnectionKeychainStore
+      sessionRecovery: harness.sessionRecovery
     )
 
     await coordinator.start()
@@ -215,8 +209,7 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     harness.sessionRecovery.requestSafeModeOnNextLaunch()
     let coordinator = WorkbenchLaunchCoordinator(
       pathStore: harness.pathStore,
-      sessionRecovery: harness.sessionRecovery,
-      browserBridgeConnectionKeychainStore: harness.browserBridgeConnectionKeychainStore
+      sessionRecovery: harness.sessionRecovery
     )
 
     await coordinator.start()
@@ -299,8 +292,7 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
         rootDirectoryURL: rootURL.appendingPathComponent("ManagedAttachments")
       ),
       workspaceBackupDirectoryURL: rootURL.appendingPathComponent("WorkspaceBackups"),
-      sessionRecovery: sessionRecovery,
-      browserBridgeConnectionKeychainStore: makeInMemoryBrowserBridgeConnectionKeychainStore()
+      sessionRecovery: sessionRecovery
     )
 
     await coordinator.start()
@@ -339,8 +331,7 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
         rootDirectoryURL: rootURL.appendingPathComponent("ManagedAttachments")
       ),
       workspaceBackupDirectoryURL: rootURL.appendingPathComponent("WorkspaceBackups"),
-      sessionRecovery: sessionRecovery,
-      browserBridgeConnectionKeychainStore: makeInMemoryBrowserBridgeConnectionKeychainStore()
+      sessionRecovery: sessionRecovery
     )
 
     let cancelledStart = Task { await coordinator.start() }
@@ -381,8 +372,7 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     harness.sessionRecovery.requestSafeModeOnNextLaunch()
     let coordinator = WorkbenchLaunchCoordinator(
       pathStore: harness.pathStore,
-      sessionRecovery: harness.sessionRecovery,
-      browserBridgeConnectionKeychainStore: harness.browserBridgeConnectionKeychainStore
+      sessionRecovery: harness.sessionRecovery
     )
 
     await coordinator.start()
@@ -412,7 +402,6 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
       suiteName: suiteName,
       pathStore: pathStore,
       probeRecorder: probeRecorder,
-      browserBridgeConnectionKeychainStore: makeInMemoryBrowserBridgeConnectionKeychainStore(),
       sessionRecovery: WorkbenchSessionRecovery(
         defaults: defaults,
         keyPrefix: "launch-session"
@@ -426,7 +415,6 @@ private struct LaunchCoordinatorHarness {
   let suiteName: String
   let pathStore: WorkbenchDataRootPathStore
   let probeRecorder: PathProbeRecorder
-  let browserBridgeConnectionKeychainStore: KeychainTokenStore
   let sessionRecovery: WorkbenchSessionRecovery
 
   func cleanup() {
@@ -449,13 +437,4 @@ private final class PathProbeRecorder: @unchecked Sendable {
     storedMainThreadFlags.append(isMainThread)
     lock.unlock()
   }
-}
-
-private func makeInMemoryBrowserBridgeConnectionKeychainStore() -> KeychainTokenStore {
-  KeychainTokenStore(
-    service: KeychainCredentialServices.browserBridge,
-    accountPrefix: "workbench-launch-coordinator-\(UUID().uuidString)",
-    inMemory: true,
-    allowsAuthenticationInteraction: false
-  )
 }

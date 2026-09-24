@@ -23,7 +23,7 @@ python3 script/check_swift_module_boundaries.py --describe-policy
 
 | 层次 | 职责和方向 |
 | --- | --- |
-| `PublishingCoreSupport`、`PublishingDomainContracts`、`BrowserExtensionProtocolSupport` | 通用基础设施、跨域值契约、扩展协议；不依赖业务或工作台 target |
+| `PublishingCoreSupport`、`PublishingDomainContracts` | 通用基础设施、跨域值契约；不依赖业务或工作台 target |
 | `PublishingMarkdownCore`、`PublishingGitCore`、`PublishingAICore` | 各自领域能力；仅使用策略列出的底层依赖，不反向依赖 Workbench 或 App |
 | `PublishingKnowledgeCore`、`PublishingAgentContracts` | 组合所需的领域能力或契约；新增跨域边须说明必要性 |
 | `PublishingWorkbenchCore` | 跨域编排、Store 与兼容适配；兼容导出集中于指定 umbrella 文件 |

@@ -26,6 +26,10 @@ extension WorkspaceBackupService {
       at: pendingURL,
       currentApplicationVersion: currentApplicationVersion
     )
+    let selectedCategories = Set(availableCategories(in: validated.manifest))
+    let includesWorkbench = selectedCategories.contains(.workbench)
+    let includesKnowledge = selectedCategories.contains(.knowledgeLibrary)
+    let includesOperationHistory = selectedCategories.contains(.operationHistory)
     try Task.checkCancellation()
     let parentURL = persistenceFileURL.deletingLastPathComponent()
     let transactionID = UUID()
@@ -41,27 +45,33 @@ extension WorkspaceBackupService {
       }
     }
 
-    let restoredSnapshot = try restoredSnapshot(
-      validated.snapshot,
-      references: validated.manifest.attachmentReferences,
-      attachmentRootURL: attachmentRootURL
-    )
-    try WorkbenchSnapshotSemanticValidator.validate(restoredSnapshot)
-    let restoredSnapshotData = try encodedWorkbenchSnapshot(restoredSnapshot)
-    guard Int64(restoredSnapshotData.count) <= limits.maximumWorkbenchByteCount else {
-      throw WorkspaceBackupError.fileTooLarge(
-        path: Self.workbenchRelativePath,
-        maximumByteCount: limits.maximumWorkbenchByteCount
+    let restoredSnapshotData: Data?
+    if includesWorkbench {
+      guard let snapshot = validated.snapshot else {
+        throw WorkspaceBackupError.missingFile(Self.workbenchRelativePath)
+      }
+      let restoredSnapshot = try restoredSnapshot(
+        snapshot,
+        references: validated.manifest.attachmentReferences,
+        attachmentRootURL: attachmentRootURL
       )
+      try WorkbenchSnapshotSemanticValidator.validate(restoredSnapshot)
+      let data = try encodedWorkbenchSnapshot(restoredSnapshot)
+      guard Int64(data.count) <= limits.maximumWorkbenchByteCount else {
+        throw WorkspaceBackupError.fileTooLarge(
+          path: Self.workbenchRelativePath,
+          maximumByteCount: limits.maximumWorkbenchByteCount
+        )
+      }
+      try data.write(to: stagingURL.appendingPathComponent("workbench.json"), options: .atomic)
+      try data.write(to: stagingURL.appendingPathComponent("last-known-good.json"), options: .atomic)
+      restoredSnapshotData = data
+    } else {
+      restoredSnapshotData = nil
     }
 
-    let stagedWorkbenchURL = stagingURL.appendingPathComponent("workbench.json")
-    let stagedLastKnownGoodURL = stagingURL.appendingPathComponent("last-known-good.json")
-    try restoredSnapshotData.write(to: stagedWorkbenchURL, options: .atomic)
-    try restoredSnapshotData.write(to: stagedLastKnownGoodURL, options: .atomic)
-
     let restoredOperationHistoryData: Data?
-    if validated.manifest.formatVersion >= 3 {
+    if includesOperationHistory && validated.manifest.formatVersion >= 3 {
       let data = try boundedData(
         at: pendingURL.appendingPathComponent(Self.operationHistoryRelativePath),
         maximumByteCount: WorkbenchOperationLedgerPersistence.maximumLedgerByteCount,
@@ -77,7 +87,7 @@ extension WorkspaceBackupService {
       Self.knowledgePackageName,
       isDirectory: true
     )
-    for record in validated.manifest.files where record.relativePath.hasPrefix(
+    for record in validated.manifest.files where includesKnowledge && record.relativePath.hasPrefix(
       Self.knowledgePackageName + "/"
     ) {
       try Task.checkCancellation()
@@ -95,14 +105,14 @@ extension WorkspaceBackupService {
         throw WorkspaceBackupError.checksumMismatch(record.relativePath)
       }
     }
-    do {
+    if includesKnowledge { do {
       _ = try KnowledgeLibraryService(
         rootURL: stagedKnowledgeURL,
         fileManager: fileManager
       ).inspectBackupSynchronously(at: stagedKnowledgeURL)
     } catch {
       throw WorkspaceBackupError.knowledgeLibraryInvalid(error.localizedDescription)
-    }
+    } }
 
     let stagedRSSDirectoryURL = stagingURL.appendingPathComponent(
       "RSSReader",
@@ -111,7 +121,7 @@ extension WorkspaceBackupService {
     let stagedRSSDatabaseURL = stagedRSSDirectoryURL.appendingPathComponent(
       RSSReaderBackupService.databaseFileName
     )
-    let includesRSS = validated.manifest.files.contains {
+    let includesRSS = selectedCategories.contains(.rssReader) && validated.manifest.files.contains {
       $0.relativePath == Self.rssDatabaseRelativePath && $0.component == .rssReader
     }
     if includesRSS {
@@ -163,11 +173,10 @@ extension WorkspaceBackupService {
       "ManagedAttachments",
       isDirectory: true
     )
-    try fileManager.createDirectory(
-      at: stagedAttachmentsURL,
-      withIntermediateDirectories: true
-    )
-    for reference in validated.manifest.attachmentReferences {
+    if includesWorkbench {
+      try fileManager.createDirectory(at: stagedAttachmentsURL, withIntermediateDirectories: true)
+    }
+    for reference in includesWorkbench ? validated.manifest.attachmentReferences : [] {
       try Task.checkCancellation()
       let destination = stagedAttachmentsURL.appendingPathComponent(
         reference.restoredRelativePath
@@ -191,7 +200,7 @@ extension WorkspaceBackupService {
 
     let transaction = makeRestoreTransaction(
       transactionID: transactionID,
-      includesRSS: includesRSS,
+      selectedCategories: selectedCategories,
       paths: runtimePaths
     )
     let recoveryRoot = restoreRecoveryRootURL(
@@ -235,13 +244,15 @@ extension WorkspaceBackupService {
       try restoreMutationHook(.existingDataMoved)
       try Task.checkCancellation()
 
-      let lastKnownGoodURL = WorkbenchPersistence(fileURL: persistenceFileURL).lastKnownGoodURL
-      try fileManager.createDirectory(
-        at: persistenceFileURL.deletingLastPathComponent(),
-        withIntermediateDirectories: true
-      )
-      try restoredSnapshotData.write(to: persistenceFileURL, options: .atomic)
-      try restoredSnapshotData.write(to: lastKnownGoodURL, options: .atomic)
+      if let restoredSnapshotData {
+        let lastKnownGoodURL = WorkbenchPersistence(fileURL: persistenceFileURL).lastKnownGoodURL
+        try fileManager.createDirectory(
+          at: persistenceFileURL.deletingLastPathComponent(),
+          withIntermediateDirectories: true
+        )
+        try restoredSnapshotData.write(to: persistenceFileURL, options: .atomic)
+        try restoredSnapshotData.write(to: lastKnownGoodURL, options: .atomic)
+      }
       if let restoredOperationHistoryData {
         let operationLedger = WorkbenchOperationLedgerPersistence(
           fileURL: WorkbenchPersistence(fileURL: persistenceFileURL).operationLedgerURL
@@ -253,20 +264,14 @@ extension WorkspaceBackupService {
         )
       }
 
-      try installDirectory(
-        stagedKnowledgeURL,
-        at: knowledgeRootURL
-      )
+      if includesKnowledge { try installDirectory(stagedKnowledgeURL, at: knowledgeRootURL) }
       if includesRSS {
         try installDirectory(
           stagedRSSDirectoryURL,
           at: rssDatabaseURL.deletingLastPathComponent()
         )
       }
-      try installDirectory(
-        stagedAttachmentsURL,
-        at: attachmentRootURL
-      )
+      if includesWorkbench { try installDirectory(stagedAttachmentsURL, at: attachmentRootURL) }
       try restoreMutationHook(.newDataInstalled)
 
       try fileManager.removeItem(at: recoveryRoot.appendingPathComponent("restored-manifest.json"))
@@ -317,12 +322,13 @@ extension WorkspaceBackupService {
   }
 
   struct RestoreTransaction: Codable, Hashable, Sendable {
-    static let currentFormatVersion = 3
+    static let currentFormatVersion = 4
 
     var formatVersion: Int
     var transactionID: UUID
     var includesRSS: Bool
     var items: [RestoreTransactionItem]
+    var selectedCategories: Set<WorkspaceBackupCategory>?
   }
 
   struct RestoreItemPaths {
@@ -332,22 +338,21 @@ extension WorkspaceBackupService {
 
   func makeRestoreTransaction(
     transactionID: UUID,
-    includesRSS: Bool,
+    selectedCategories: Set<WorkspaceBackupCategory>,
     paths: RestoreRuntimePaths
   ) -> RestoreTransaction {
-    var kinds: [RestoreItemKind] = [
-      .workbench,
-      .documentRecords,
-      .lastKnownGood,
-      .draftRecoveryJournal,
-      .operationLedger,
-      .operationLedgerLastKnownGood,
-      .knowledgeLibrary
-    ]
-    if includesRSS {
-      kinds.append(.rssReader)
+    var kinds = [RestoreItemKind]()
+    if selectedCategories.contains(.workbench) {
+      kinds.append(contentsOf: [.workbench, .documentRecords, .lastKnownGood,
+        .draftRecoveryJournal, .managedAttachments])
     }
-    kinds.append(contentsOf: [.managedAttachments, .pendingKnowledgeRestore])
+    if selectedCategories.contains(.operationHistory) {
+      kinds.append(contentsOf: [.operationLedger, .operationLedgerLastKnownGood])
+    }
+    if selectedCategories.contains(.knowledgeLibrary) {
+      kinds.append(contentsOf: [.knowledgeLibrary, .pendingKnowledgeRestore])
+    }
+    if selectedCategories.contains(.rssReader) { kinds.append(.rssReader) }
     let recoveryRoot = restoreRecoveryRootURL(
       transactionID: transactionID,
       parentURL: paths.persistenceFileURL.deletingLastPathComponent()
@@ -366,8 +371,9 @@ extension WorkspaceBackupService {
     return RestoreTransaction(
       formatVersion: RestoreTransaction.currentFormatVersion,
       transactionID: transactionID,
-      includesRSS: includesRSS,
-      items: items
+      includesRSS: selectedCategories.contains(.rssReader),
+      items: items,
+      selectedCategories: selectedCategories
     )
   }
 
@@ -485,16 +491,33 @@ extension WorkspaceBackupService {
     guard (1...RestoreTransaction.currentFormatVersion).contains(transaction.formatVersion) else {
       throw CocoaError(.fileReadCorruptFile)
     }
-    var expectedKinds = Set(RestoreItemKind.allCases)
-    if transaction.formatVersion < 3 {
-      expectedKinds.remove(.documentRecords)
-    }
-    if transaction.formatVersion == 1 {
-      expectedKinds.remove(.operationLedger)
-      expectedKinds.remove(.operationLedgerLastKnownGood)
-    }
-    if !transaction.includesRSS {
-      expectedKinds.remove(.rssReader)
+    var expectedKinds = Set<RestoreItemKind>()
+    if transaction.formatVersion >= 4 {
+      guard let categories = transaction.selectedCategories, !categories.isEmpty else {
+        throw CocoaError(.fileReadCorruptFile)
+      }
+      if categories.contains(.workbench) {
+        expectedKinds.formUnion([.workbench, .documentRecords, .lastKnownGood,
+          .draftRecoveryJournal, .managedAttachments])
+      }
+      if categories.contains(.operationHistory) {
+        expectedKinds.formUnion([.operationLedger, .operationLedgerLastKnownGood])
+      }
+      if categories.contains(.knowledgeLibrary) {
+        expectedKinds.formUnion([.knowledgeLibrary, .pendingKnowledgeRestore])
+      }
+      if categories.contains(.rssReader) { expectedKinds.insert(.rssReader) }
+      guard transaction.includesRSS == categories.contains(.rssReader) else {
+        throw CocoaError(.fileReadCorruptFile)
+      }
+    } else {
+      expectedKinds = Set(RestoreItemKind.allCases)
+      if transaction.formatVersion < 3 { expectedKinds.remove(.documentRecords) }
+      if transaction.formatVersion == 1 {
+        expectedKinds.remove(.operationLedger)
+        expectedKinds.remove(.operationLedgerLastKnownGood)
+      }
+      if !transaction.includesRSS { expectedKinds.remove(.rssReader) }
     }
     let actualKinds = transaction.items.map(\.kind)
     guard actualKinds.count == Set(actualKinds).count,
@@ -626,7 +649,7 @@ extension WorkspaceBackupService {
 
   struct ValidatedBackup {
     var manifest: WorkspaceBackupManifest
-    var snapshot: WorkbenchSnapshot
+    var snapshot: WorkbenchSnapshot?
     var preview: WorkspaceBackupPreview
   }
 

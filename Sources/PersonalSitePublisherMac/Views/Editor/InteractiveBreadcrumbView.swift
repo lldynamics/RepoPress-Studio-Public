@@ -8,6 +8,10 @@ struct InteractiveBreadcrumbView: View {
 
   @State private var hoveredSegmentIndex: Int? = nil
 
+  private var shouldCollapse: Bool {
+    pathSegments.count > 4 || markdownPath.count > 56
+  }
+
   init(markdownPath: String, fileURL: URL?) {
     self.markdownPath = markdownPath
     self.fileURL = fileURL
@@ -16,39 +20,22 @@ struct InteractiveBreadcrumbView: View {
   }
 
   var body: some View {
+    Group {
+      if shouldCollapse { collapsedBreadcrumb } else { fullBreadcrumb }
+    }
+    .lineLimit(1)
+    .contextMenu {
+      breadcrumbActions
+    }
+    .help(markdownPath)
+  }
+
+  private var fullBreadcrumb: some View {
     HStack(spacing: 3) {
       ForEach(Array(pathSegments.enumerated()), id: \.offset) { index, segment in
         let isLast = index == pathSegments.count - 1
-
         HStack(spacing: 3) {
-          Button {
-            if isLast {
-              revealInFinder()
-            } else {
-              copyToClipboard(pathSegments.prefix(index + 1).joined(separator: "/"))
-            }
-          } label: {
-            Text(segment)
-              .font(.caption.monospaced())
-              .foregroundStyle(isLast ? .primary : .secondary)
-              .padding(.horizontal, 4)
-              .padding(.vertical, 1)
-              .background(
-                RoundedRectangle(cornerRadius: 4)
-                  .fill(
-                    hoveredSegmentIndex == index
-                      ? Color.primary.opacity(0.08)
-                      : Color.clear
-                  )
-              )
-              .contentShape(RoundedRectangle(cornerRadius: 4))
-          }
-          .buttonStyle(.plain)
-          .accessibilityHint(isLast ? "在 Finder 中显示" : "复制相对路径")
-          .onHover { isHovered in
-            hoveredSegmentIndex = isHovered ? index : nil
-          }
-
+          breadcrumbButton(segment: segment, index: index, isLast: isLast)
           if !isLast {
             Image(systemName: "chevron.right")
               .font(.system(size: 8, weight: .bold))
@@ -57,11 +44,74 @@ struct InteractiveBreadcrumbView: View {
         }
       }
     }
-    .lineLimit(1)
-    .contextMenu {
-      breadcrumbActions
+  }
+
+  private var collapsedBreadcrumb: some View {
+    HStack(spacing: 4) {
+      Button {
+        copyToClipboard(pathSegments.first.map { String($0) } ?? markdownPath)
+      } label: {
+        Text(pathSegments.first ?? markdownPath)
+          .font(.caption.monospaced())
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+          .truncationMode(.middle)
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("复制路径起点")
+      Menu {
+        breadcrumbActions
+        Divider()
+        ForEach(Array(pathSegments.enumerated()), id: \.offset) { index, segment in
+          Button {
+            copyToClipboard(pathSegments.prefix(index + 1).joined(separator: "/"))
+          } label: {
+            Text(segment).lineLimit(1)
+          }
+        }
+      } label: {
+        Label("完整路径", systemImage: "ellipsis")
+          .labelStyle(.iconOnly)
+      }
+      .menuStyle(.borderlessButton)
+      .accessibilityLabel("显示完整路径和操作")
+      Button {
+        revealInFinder()
+      } label: {
+        Text(pathSegments.last ?? markdownPath)
+          .font(.caption.monospaced())
+          .foregroundStyle(.primary)
+          .lineLimit(1)
+          .truncationMode(.middle)
+      }
+      .buttonStyle(.plain)
+      .accessibilityHint("在 Finder 中显示")
     }
-    .help(markdownPath)
+  }
+
+  private func breadcrumbButton(segment: String, index: Int, isLast: Bool) -> some View {
+    Button {
+      if isLast {
+        revealInFinder()
+      } else {
+        copyToClipboard(pathSegments.prefix(index + 1).joined(separator: "/"))
+      }
+    } label: {
+      Text(segment)
+        .font(.caption.monospaced())
+        .foregroundStyle(isLast ? .primary : .secondary)
+        .lineLimit(1)
+        .truncationMode(.middle)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 1)
+        .background(
+          RoundedRectangle(cornerRadius: 4)
+            .fill(hoveredSegmentIndex == index ? Color.primary.opacity(0.08) : Color.clear)
+        )
+    }
+    .buttonStyle(.plain)
+    .accessibilityHint(isLast ? "在 Finder 中显示" : "复制相对路径")
+    .onHover { hoveredSegmentIndex = $0 ? index : nil }
   }
 
   @ViewBuilder

@@ -2,7 +2,7 @@
 
 > 文档类型：当前操作指南。来源与冲突处理见[文档来源与维护规则](README.md)。
 
-本文记录 RepoPress Studio 的 Developer ID 签名、公证和 Sparkle 更新产物流程。权威执行语义来自 [`script/package_direct_release.sh`](../script/package_direct_release.sh)；签名权限来自 [`Packaging/DirectDistribution.entitlements`](../Packaging/DirectDistribution.entitlements)，版本来自 [`Packaging/BuildVersion.xcconfig`](../Packaging/BuildVersion.xcconfig)。正式参数以打包脚本的 `--help` 和环境变量读取项为准。
+本文记录 RepoPress Studio 的 Developer ID 签名、公证和 Sparkle 更新产物流程。权威执行语义来自 [`script/package_direct_release.sh`](../script/package_direct_release.sh)；默认签名权限来自 [`Packaging/DirectDistribution.entitlements`](../Packaging/DirectDistribution.entitlements)，启用 iCloud 时使用 [`Packaging/CloudDirectDistribution.entitlements`](../Packaging/CloudDirectDistribution.entitlements)，版本来自 [`Packaging/BuildVersion.xcconfig`](../Packaging/BuildVersion.xcconfig)。正式参数以打包脚本的 `--help` 和环境变量读取项为准。
 
 脚本和门禁可以证明本地产物满足既定约束，但不能证明官网已经部署、下载链接在线或某个版本正在对外发布。
 
@@ -51,6 +51,12 @@ export REPOPRESS_UPDATE_CHANNEL="stable" # 或 beta
 ```bash
 ./script/package_direct_release.sh --help
 ```
+
+### iCloud 笔记能力
+
+首次发行 iCloud 笔记备份和同步前，在团队 `3H8UVVUCP3` 中创建并关联容器 `iCloud.com.chengjinfang.repopress`，为 Mac App ID `com.jinfang.PersonalSitePublisherMac` 授权 CloudKit、iCloud Documents 和 Push Notifications，并取得与该 App ID、容器和 Production 环境匹配的 Developer ID provisioning profile。构建和正式发行时设置 `PERSONAL_SITE_PUBLISHER_CLOUD_PROVISIONING_PROFILE` 为该 profile 的绝对路径；脚本会验证权限、有效期和签名证书与 profile 的匹配，嵌入 profile 并选择云端签名权限文件。不要把 profile 加入仓库。`--validate` 会按发行 manifest 记录的权限模式检查签名；云版还会核对应用包中的 profile，无需在验证机上另存一份 profile。
+
+未设置这个变量时，打包沿用现有权限；这只能验证本地应用和离线功能，不能证明 iCloud 可用。还需在 CloudKit Dashboard 部署 `RPNoteV1` 记录类型的 Production schema；应用会在私有数据库中创建 `RepoPressNotesV1` zone。最后用同一 iCloud 账号的实际 iPhone/iPad 与 Mac 完成备份、同步和冲突恢复验收。`--dry-run` 不会替代签名后的真实设备测试。
 
 ## 四种模式
 

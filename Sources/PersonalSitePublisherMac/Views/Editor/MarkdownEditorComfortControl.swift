@@ -33,14 +33,14 @@ struct MarkdownEditorComfortControl: View {
       isPresented.toggle()
     } label: {
       if showsTitle {
-        Label("编辑显示与辅助功能", systemImage: "textformat.size.smaller")
+        Label("编辑显示与辅助功能", systemImage: "accessibility")
           .labelStyle(.titleAndIcon)
           .font(.workbenchButtonLabel)
           .fixedSize(horizontal: true, vertical: false)
           .padding(.horizontal, 6)
           .frame(minHeight: 28)
       } else {
-        Image(systemName: "textformat.size.smaller")
+        Image(systemName: "accessibility")
           .frame(width: 28, height: 28)
       }
     }
@@ -55,7 +55,7 @@ struct MarkdownEditorComfortControl: View {
 
   private var controls: some View {
     VStack(alignment: .leading, spacing: 14) {
-      Label("编辑显示与辅助功能", systemImage: "textformat.size")
+      Label("编辑显示与辅助功能", systemImage: "accessibility")
         .font(.headline)
 
       preferenceSlider(

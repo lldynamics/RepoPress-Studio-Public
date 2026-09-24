@@ -10,20 +10,19 @@ final class KnowledgeSettingsPresentationTests: XCTestCase {
     XCTAssertFalse(state.vectorSearch)
     XCTAssertFalse(state.smartCollections)
     XCTAssertFalse(state.backup)
-    XCTAssertFalse(state.browserConnection)
   }
 
   func testSettingsTabsAreCompleteAcrossSiteAndApplicationGroups() {
     XCTAssertEqual(
       SettingsTab.siteSettings,
-      [.configurationStatus, .defaultRules, .token, .ai]
+      [.configurationStatus, .defaultRules, .token, .siteAI]
     )
     XCTAssertEqual(
       SettingsTab.applicationSettings,
-      [.dataManagement, .appearance, .editor, .rss, .privacy]
+      [.appearance, .editor, .ai, .rss, .dataManagement, .privacy]
     )
     let groupedTabs = SettingsTab.siteSettings + SettingsTab.applicationSettings
-    XCTAssertEqual(SettingsTab.allCases.count, 9)
+    XCTAssertEqual(SettingsTab.allCases.count, 10)
     XCTAssertEqual(groupedTabs.count, SettingsTab.allCases.count)
     XCTAssertEqual(Set(groupedTabs), Set(SettingsTab.allCases))
     XCTAssertEqual(Set(groupedTabs.map(\.id)).count, groupedTabs.count)
@@ -33,12 +32,12 @@ final class KnowledgeSettingsPresentationTests: XCTestCase {
     XCTAssertEqual(SettingsTab.configurationStatus.title, "站点概览")
     XCTAssertEqual(SettingsTab.defaultRules.title, "内容与路径")
     XCTAssertEqual(SettingsTab.token.title, "发布连接")
-    XCTAssertEqual(SettingsTab.ai.title, "AI 助手")
+    XCTAssertEqual(SettingsTab.ai.title, "AI 连接")
     XCTAssertEqual(SettingsTab.appearance.title, "通用与外观")
     XCTAssertEqual(SettingsTab.appearance.systemImage, "paintpalette")
     XCTAssertFalse(SettingsTab.appearance.isSiteScoped)
     XCTAssertEqual(SettingsTab.editor.title, "编辑器")
-    XCTAssertEqual(SettingsTab.editor.systemImage, "textformat")
+    XCTAssertEqual(SettingsTab.editor.systemImage, "pencil.line")
     XCTAssertFalse(SettingsTab.editor.isSiteScoped)
     XCTAssertEqual(SettingsTab.rss.title, "RSS 阅读")
     XCTAssertEqual(SettingsTab.privacy.title, "隐私与安全")
@@ -52,6 +51,7 @@ final class KnowledgeSettingsPresentationTests: XCTestCase {
       .defaultRules: "defaultRules",
       .token: "token",
       .ai: "ai",
+      .siteAI: "siteAI",
       .appearance: "appearance",
       .editor: "editor",
       .rss: "rss",
@@ -88,7 +88,7 @@ final class KnowledgeSettingsPresentationTests: XCTestCase {
   func testSettingsDestinationMapsSectionsToTheirTopLevelTab() {
     XCTAssertEqual(SettingsDestination.rules(.paths).tab, .defaultRules)
     XCTAssertEqual(SettingsDestination.token(.deployment).tab, .token)
-    XCTAssertEqual(SettingsDestination.ai(.writingStyle).tab, .ai)
+    XCTAssertEqual(SettingsDestination.ai(.writingStyle).tab, .siteAI)
     XCTAssertEqual(SettingsDestination.data(.backup).tab, .dataManagement)
   }
 

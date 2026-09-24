@@ -39,6 +39,7 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
     "blobs",
     "captured",
     "normalized",
+    "attachments",
   ]
   private static let restoreTransactionFileName = ".KnowledgeLibraryRestoreTransaction.json"
 

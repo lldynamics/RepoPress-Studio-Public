@@ -54,8 +54,6 @@ struct MetadataColumn: View {
       switch WorkspaceInspectorPresentation.route(
         for: selectedSection
       ) {
-      case .siteStarter:
-        SiteStarterInspectorView(store: store)
       case .repository:
         if repositoryContextStage == .source,
           repositorySourceSession.activeDocument != nil

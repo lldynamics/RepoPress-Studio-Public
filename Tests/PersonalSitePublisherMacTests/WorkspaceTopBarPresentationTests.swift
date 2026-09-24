@@ -96,15 +96,30 @@ final class WorkspaceTopBarPresentationTests: XCTestCase {
     XCTAssertEqual(WorkspaceTopBarPresentation.searchWidth(for: .minimal), 32)
   }
 
-  func testPreviewAvailabilityKeepsEachActionStateSeparate() {
-    let state = WorkspaceTopBarPresentation.PreviewAvailability(
+  func testPreviewDefaultsToBrowserAndFallsBackToInAppWhenUnavailable() {
+    let browserReady = WorkspaceTopBarPresentation.PreviewAvailability(
+      isLivePreviewEnabled: true,
+      isLivePreviewRunning: true,
+      isBrowserPreviewEnabled: true
+    )
+    XCTAssertEqual(browserReady.defaultAction, .browser)
+    XCTAssertEqual(browserReady.accessibilityValue, "在浏览器中预览当前文章")
+
+    let inAppOnly = WorkspaceTopBarPresentation.PreviewAvailability(
       isLivePreviewEnabled: true,
       isLivePreviewRunning: true,
       isBrowserPreviewEnabled: false
     )
+    XCTAssertEqual(inAppOnly.defaultAction, .inApp)
+    XCTAssertEqual(inAppOnly.accessibilityValue, "正在运行")
 
-    XCTAssertEqual(state.livePreviewAccessibilityValue, "正在运行")
-    XCTAssertEqual(state.browserPreviewAccessibilityValue, "不可用")
+    let unavailable = WorkspaceTopBarPresentation.PreviewAvailability(
+      isLivePreviewEnabled: false,
+      isLivePreviewRunning: false,
+      isBrowserPreviewEnabled: false
+    )
+    XCTAssertEqual(unavailable.defaultAction, .unavailable)
+    XCTAssertEqual(unavailable.accessibilityValue, "不可用")
   }
 
   func testSidebarVisibilityProvidesShownAndHiddenAccessibilitySemantics() {

@@ -218,7 +218,7 @@ struct MacMarkdownFormattingToolbar: View {
     case .diagnostics:
       diagnosticButton(showsTitle: showsTitle)
     case .formatChineseTypography:
-      toolbarButton(title: "中英文排版", systemName: "textformat", showsTitle: showsTitle) {
+      toolbarButton(title: "中英文排版", systemName: "paragraphsign", showsTitle: showsTitle) {
         onFormatChineseTypography?()
       }
     default:
@@ -456,7 +456,7 @@ struct MacMarkdownFormattingToolbar: View {
               isStatsPopoverPresented = false
               onFormatChineseTypography()
             } label: {
-              Label("排版优化", systemImage: "textformat")
+              Label("排版优化", systemImage: "paragraphsign")
                 .font(.caption)
             }
           }
@@ -508,7 +508,7 @@ struct MacMarkdownFormattingToolbar: View {
       }
     } label: {
       if showsTitle {
-        Label("标题", systemImage: "textformat.size")
+        Label("标题", systemImage: "number")
       } else {
         HStack(spacing: 2) {
           Text("H")

@@ -71,7 +71,7 @@ final class KnowledgeSmartCollectionServiceTests: XCTestCase {
     XCTAssertFalse(service.matches(document, rule: .aiPermission(false)))
   }
 
-  func testBrowserOrganizationSuggestionsRankFolderAndRelatedTagsWithoutApplyingThem() throws {
+  func testImportOrganizationSuggestionsRankFolderAndRelatedTagsWithoutApplyingThem() throws {
     let research = KnowledgeFolder(name: "产品研究")
     let reading = KnowledgeFolder(name: "待读")
     var domainAndAuthor = makeDocument(
@@ -102,7 +102,7 @@ final class KnowledgeSmartCollectionServiceTests: XCTestCase {
     )
     onlyTag.folderID = reading.id
 
-    let suggestions = service.browserOrganizationSuggestions(
+    let suggestions = service.organizationSuggestions(
       sourceURL: try XCTUnwrap(URL(string: "https://example.com/new")),
       authors: ["陈作者"],
       tags: ["AI"],

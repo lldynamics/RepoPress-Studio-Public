@@ -215,7 +215,7 @@ struct ImageBatchOperationPreviewView: View {
               ? "\(selectedSensitiveMetadataCount)"
               : ByteCountFormatter.string(fromByteCount: estimatedSavedBytes, countStyle: .file),
           systemImage: preview.action.isMetadataFill
-            ? "textformat"
+            ? "text.below.photo"
             : preview.action.isPrivacyMetadataRemoval ? "hand.raised" : "arrow.down.circle"
         )
       }

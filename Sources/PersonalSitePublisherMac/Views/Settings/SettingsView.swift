@@ -23,18 +23,14 @@ struct SettingsView: View {
   private var requestedSettingsTabID = ""
   @AppStorage(SettingsNavigation.lastViewedTabStorageKey)
   private var lastViewedSettingsTabID = ""
-  @State private var selectedRoute: SettingsRoute
-  @State private var navigationDestination: SettingsDestination?
-  @State private var navigationRequestID = UUID()
-  @State private var healthDestination: SettingsConfigurationHealthDestination?
-  @State private var healthNavigationRequestID = UUID()
+  @State private var navigationSession: SettingsNavigationSession
   @State private var pendingSiteKind: SiteKind?
   @State private var searchSession = SettingsSearchSession()
   @FocusState private var isSearchFocused: Bool
   @State private var subsectionAnchorFrames: [SettingsSubsection: CGRect] = [:]
   @State private var detailScrollObservation = 0
   @State private var detailScrollIsAtBottom = false
-  @State private var detailScrollRequest: SettingsSubsectionScrollRequest?
+  @State private var appliedScrollRequestID: UUID?
   @ScaledMetric(relativeTo: .body)
   private var scaledSidebarWidth = WorkbenchSettingsMetrics.sidebarWidth
 
@@ -61,8 +57,12 @@ struct SettingsView: View {
     self.workspaceDestination = workspaceDestination
     self.workspaceSubsection = workspaceSubsection
     self.workspaceNavigationRequestID = workspaceNavigationRequestID
-    _selectedRoute = State(initialValue: initialRoute)
-    _navigationDestination = State(initialValue: workspaceDestination)
+    _navigationSession = State(
+      initialValue: SettingsNavigationSession(
+        selectedRoute: initialRoute,
+        navigationDestination: workspaceDestination
+      )
+    )
   }
 
   var body: some View {
@@ -102,7 +102,7 @@ struct SettingsView: View {
     .onChange(of: workspaceNavigationRequestID) { _, _ in
       applyWorkspaceNavigation()
     }
-    .onChange(of: selectedRoute) { _, route in
+    .onChange(of: navigationSession.selectedRoute) { _, route in
       lastViewedSettingsTabID = route.tab.id
     }
     .onChange(of: autoRunPreflight) { _, newValue in
@@ -216,14 +216,16 @@ struct SettingsView: View {
     presentation: SettingsWorkspaceLayout.Presentation
   ) -> some View {
     return VStack(alignment: .leading, spacing: 0) {
-      profileBar
+      settingsSidebarSearchField(minimumHeight: presentation.searchFieldHeight)
         .padding(.horizontal, WorkbenchSpacing.content)
         .padding(.top, WorkbenchSpacing.content)
         .padding(.bottom, WorkbenchSpacing.card)
 
-      settingsSidebarSearchField(minimumHeight: presentation.searchFieldHeight)
-        .padding(.horizontal, WorkbenchSpacing.content)
-        .padding(.bottom, WorkbenchSpacing.card)
+      if selectedSettingsTab.isSiteScoped {
+        profileBar
+          .padding(.horizontal, WorkbenchSpacing.content)
+          .padding(.bottom, WorkbenchSpacing.card)
+      }
 
       if searchSession.canReturnToResults {
         Button {
@@ -305,17 +307,12 @@ struct SettingsView: View {
   }
 
   private func selectSettingsSearchItem(_ item: SettingsSearchItem) {
-    let subsection = SettingsSubsection.section(forSearchItemID: item.id)
-    if let destination = item.destination {
-      selectSettingsDestination(
-        destination,
-        healthDestination: nil,
-        targetRoute: subsection.map(SettingsRoute.subsection)
-      )
-    } else {
-      let route = subsection.map(SettingsRoute.subsection) ?? .tab(item.tab)
-      selectSettingsDestination(.tab(item.tab), healthDestination: nil, targetRoute: route)
-    }
+    let target = SettingsNavigationTarget.searchItem(item)
+    selectSettingsDestination(
+      target.destination,
+      healthDestination: target.healthDestination,
+      targetRoute: target.route
+    )
     searchSession.open(item)
     isSearchFocused = false
   }
@@ -390,20 +387,21 @@ struct SettingsView: View {
       autoRunPreflightBinding: autoRunPreflightBinding,
       scanRepositoryOnLaunch: $scanRepositoryOnLaunch,
       siteKindBinding: siteKindBinding,
-      healthDestination: healthDestination,
-      healthNavigationRequestID: healthNavigationRequestID,
-      navigationDestination: navigationDestination,
-      navigationRequestID: navigationRequestID,
-      selectConfigurationHealthDestination: openConfigurationHealthDestination
+      healthDestination: navigationSession.healthDestination,
+      healthNavigationRequestID: navigationSession.healthNavigationRequestID,
+      navigationDestination: navigationSession.navigationDestination,
+      navigationRequestID: navigationSession.navigationRequestID,
+      selectConfigurationHealthDestination: openConfigurationHealthDestination,
+      selectSettingsDestination: openSettingsDestination
     )
   }
 
   private var selectedSettingsTab: SettingsTab {
-    selectedRoute.tab
+    navigationSession.selectedRoute.tab
   }
 
   private var selectedSubsection: SettingsSubsection {
-    selectedRoute.subsection
+    navigationSession.selectedRoute.subsection
   }
 
   /// Each top-level page owns exactly one native vertical scroll container:
@@ -431,17 +429,23 @@ struct SettingsView: View {
         .scrollIndicators(.hidden)
         .onPreferenceChange(SettingsSubsectionAnchorFramePreferenceKey.self) { frames in
           subsectionAnchorFrames = frames
-          synchronizeVisibleSubsection()
+          if let request = navigationSession.detailScrollRequest,
+            appliedScrollRequestID != request.id
+          {
+            scroll(proxy, to: request)
+          } else {
+            synchronizeVisibleSubsection()
+          }
         }
         .onChange(of: detailScrollObservation) { _, _ in
           synchronizeVisibleSubsection()
         }
-        .onChange(of: detailScrollRequest) { _, request in
+        .onChange(of: navigationSession.detailScrollRequest) { _, request in
           guard let request else { return }
           scroll(proxy, to: request)
         }
         .onAppear {
-          if let detailScrollRequest {
+          if let detailScrollRequest = navigationSession.detailScrollRequest {
             scroll(proxy, to: detailScrollRequest)
           }
         }
@@ -462,10 +466,9 @@ struct SettingsView: View {
 
   private var settingsRouteSelection: Binding<SettingsRoute> {
     Binding(
-      get: { selectedRoute },
+      get: { navigationSession.selectedRoute },
       set: { route in
-        clearFocusedSettingsDestination()
-        selectRoute(route)
+        apply(navigationSession.selectSidebarRoute(route))
       }
     )
   }
@@ -479,23 +482,12 @@ struct SettingsView: View {
   }
 
   private func applyWorkspaceNavigation() {
-    healthDestination = nil
-    healthNavigationRequestID = UUID()
-    navigationDestination = workspaceDestination
-    navigationRequestID = UUID()
-    if let route = SettingsRoute.workspace(
+    if let selection = navigationSession.applyWorkspaceNavigation(
       destination: workspaceDestination,
       subsection: workspaceSubsection
     ) {
-      selectRoute(route)
+      apply(selection)
     }
-  }
-
-  private func clearFocusedSettingsDestination() {
-    healthDestination = nil
-    healthNavigationRequestID = UUID()
-    navigationDestination = nil
-    navigationRequestID = UUID()
   }
 
   private var selectedInterfaceDensity: WorkbenchInterfaceDensity {
@@ -542,53 +534,39 @@ struct SettingsView: View {
   private func openConfigurationHealthDestination(
     _ destination: SettingsConfigurationHealthDestination
   ) {
-    healthDestination = destination
-    healthNavigationRequestID = UUID()
     selectSettingsDestination(
       Self.settingsDestination(for: destination),
       healthDestination: destination
     )
   }
 
+  private func openSettingsDestination(_ destination: SettingsDestination) {
+    selectSettingsDestination(destination, healthDestination: nil)
+  }
+
   private func applyRequestedSettingsTab(_ requestedTabID: String) {
     guard !requestedTabID.isEmpty else {
       return
     }
-    guard let destination = SettingsDestination(requestedID: requestedTabID) else {
+    guard
+      let target = SettingsNavigationTarget.requestedID(
+        requestedTabID,
+        shouldOpenAIKeyConnection: {
+          let config = store.aiProviderConfig(for: store.activeProfile)
+          return Self.shouldOpenAIKeyConnection(
+            for: config,
+            tokenAvailability: store.ai.tokenAvailability
+          )
+        }
+      )
+    else {
       requestedSettingsTabID = ""
       return
     }
-
-    let compatibilityHealthDestination: SettingsConfigurationHealthDestination?
-    var resolvedDestination = destination
-    switch destination {
-    case .rules(.paths):
-      compatibilityHealthDestination = .defaultRules
-    case .token(.repository):
-      compatibilityHealthDestination = .repositoryToken
-    case .ai(.credentials):
-      let config = store.aiProviderConfig(for: store.activeProfile)
-      if Self.shouldOpenAIKeyConnection(
-        for: config,
-        tokenAvailability: store.ai.tokenAvailability
-      ) {
-        compatibilityHealthDestination = .aiKey
-        resolvedDestination = .ai(.connection)
-      } else {
-        compatibilityHealthDestination = nil
-      }
-    default:
-      compatibilityHealthDestination = nil
-    }
-    let requestedRoute = SettingsRoute.requestedID(requestedTabID)
-    let targetRoute =
-      requestedRoute?.tab == resolvedDestination.tab
-      ? requestedRoute
-      : nil
     selectSettingsDestination(
-      resolvedDestination,
-      healthDestination: compatibilityHealthDestination,
-      targetRoute: targetRoute
+      target.destination,
+      healthDestination: target.healthDestination,
+      targetRoute: target.route
     )
     requestedSettingsTabID = ""
   }
@@ -598,31 +576,41 @@ struct SettingsView: View {
     healthDestination: SettingsConfigurationHealthDestination?,
     targetRoute: SettingsRoute? = nil
   ) {
-    self.healthDestination = healthDestination
-    healthNavigationRequestID = UUID()
-    navigationDestination = destination
-    navigationRequestID = UUID()
-    selectRoute(targetRoute ?? .destination(destination))
-  }
-
-  private func selectRoute(_ route: SettingsRoute) {
-    searchSession.dismissHighlight()
-    if selectedRoute.tab != route.tab {
-      subsectionAnchorFrames = [:]
-    }
-    selectedRoute = route
-    requestDetailScroll(to: route.subsection)
+    apply(
+      navigationSession.selectDestination(
+        destination,
+        healthDestination: healthDestination,
+        targetRoute: targetRoute
+      )
+    )
   }
 
   private func requestDetailScroll(to subsection: SettingsSubsection) {
-    detailScrollRequest = SettingsSubsectionScrollRequest(subsection: subsection)
+    navigationSession.requestDetailScroll(to: subsection)
+  }
+
+  private func apply(_ selection: SettingsNavigationSession.RouteSelection) {
+    if selection.dismissesSearchHighlight {
+      searchSession.dismissHighlight()
+    }
+    if selection.clearsSubsectionAnchors {
+      subsectionAnchorFrames = [:]
+    }
   }
 
   private func scroll(
     _ proxy: ScrollViewProxy,
     to request: SettingsSubsectionScrollRequest
   ) {
+    guard request.subsection.tab == selectedSettingsTab,
+      subsectionAnchorFrames.keys.contains(where: { $0.tab == selectedSettingsTab }),
+      appliedScrollRequestID != request.id
+    else { return }
     DispatchQueue.main.async {
+      guard navigationSession.detailScrollRequest?.id == request.id,
+        appliedScrollRequestID != request.id
+      else { return }
+      appliedScrollRequestID = request.id
       let performScroll = {
         proxy.scrollTo(request.subsection.id, anchor: .top)
       }
@@ -637,6 +625,10 @@ struct SettingsView: View {
   }
 
   private func synchronizeVisibleSubsection() {
+    // Initial/deep-link scrolling waits for the page's first layout. The
+    // destination itself may be outside a lazily realized Form viewport.
+    // Observations from the old viewport must not replace that selection.
+    guard navigationSession.detailScrollRequest?.id == appliedScrollRequestID else { return }
     guard
       let visibleSubsection = SettingsSubsectionVisibilityPolicy.visibleSubsection(
         in: selectedSettingsTab,
@@ -650,7 +642,7 @@ struct SettingsView: View {
 
     // Do not call `selectRoute` here: this state change comes from native
     // scrolling and must never produce a compensating scrollTo feedback loop.
-    selectedRoute = .subsection(visibleSubsection)
+    _ = navigationSession.synchronizeManuallyScrolledSubsection(visibleSubsection)
   }
 
   static func settingsDestination(

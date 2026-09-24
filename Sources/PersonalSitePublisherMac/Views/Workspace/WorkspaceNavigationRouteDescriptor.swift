@@ -15,7 +15,7 @@ enum WorkspaceNavigationRouteDescriptor {
   /// Contextual site tools keep their parent selected without becoming primary entries.
   static func primarySection(for section: WorkspaceSection) -> WorkspaceSection {
     switch section {
-    case .images, .siteStarter:
+    case .images:
       return .sync
     case .writing, .library, .rss, .sync, .contentHealth:
       return section

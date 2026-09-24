@@ -35,5 +35,20 @@ final class WorkspaceBackupScheduleModelsTests: XCTestCase {
     XCTAssertNil(settings.lastValidationAt)
     XCTAssertNil(settings.lastBackupPath)
     XCTAssertNil(settings.lastError)
+    XCTAssertFalse(settings.preserveAutomaticBackupHistoryOnSelectedDisk)
+    XCTAssertFalse(settings.destinationIsICloud)
+    XCTAssertNil(settings.destinationVolumeUUID)
+    XCTAssertFalse(settings.deferAutomaticBackupPruningUntilNextBackup)
+  }
+
+  func testLegacyScheduleSettingsDecodeWithSafeBackupPolicyDefaults() throws {
+    let data = Data(#"{"frequency":"weekly","destinationPath":"/Volumes/Backups"}"#.utf8)
+    let decoded = try JSONDecoder().decode(WorkspaceBackupScheduleSettings.self, from: data)
+
+    XCTAssertEqual(decoded.frequency, .weekly)
+    XCTAssertFalse(decoded.preserveAutomaticBackupHistoryOnSelectedDisk)
+    XCTAssertFalse(decoded.destinationIsICloud)
+    XCTAssertNil(decoded.destinationVolumeUUID)
+    XCTAssertFalse(decoded.deferAutomaticBackupPruningUntilNextBackup)
   }
 }

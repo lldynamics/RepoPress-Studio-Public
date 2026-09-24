@@ -7,7 +7,6 @@ final class PublishReadinessNavigationTests: XCTestCase {
   func testWritingEntryUsesCurrentArticleWhileProjectEntryUsesRepository() {
     XCTAssertEqual(PublishScope.initialScope(for: .writing), .currentArticle)
     XCTAssertEqual(PublishScope.initialScope(for: .sync), .repository)
-    XCTAssertEqual(PublishScope.initialScope(for: .siteStarter), .repository)
   }
 
   func testBodyImageIssuePreservesItsSearchTarget() {

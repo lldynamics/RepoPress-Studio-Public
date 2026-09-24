@@ -55,13 +55,6 @@ extension WorkbenchStore {
   }
   public var remoteReviewDraft: RemoteReviewDraft? { publishingStore.remoteReviewDraft }
   public var batchRemoteReviewDraft: RemoteReviewDraft? { publishingStore.batchRemoteReviewDraft }
-  public var siteStarterResult: SiteStarterResult? { publishingStore.siteStarterResult }
-  public var siteStarterImportResult: SiteStarterImportResult? {
-    publishingStore.siteStarterImportResult
-  }
-  public var siteStarterPushResult: SiteStarterPushResult? { publishingStore.siteStarterPushResult }
-  public var siteStarterProgress: SiteStarterProgress? { publishingStore.siteStarterProgress }
-  public var isSiteStarterOperationRunning: Bool { publishingStore.isSiteStarterOperationRunning }
   public var preflightIssues: [PreflightIssue] { publishingStore.preflightIssues }
   public var isInspectorPresented: Bool { publishingStore.isInspectorPresented }
   public var editorFocusRequest: EditorFocusRequest? { publishingStore.editorFocusRequest }

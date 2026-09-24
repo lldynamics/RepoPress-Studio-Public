@@ -1,9 +1,6 @@
 import SwiftUI
 
 struct SettingsNavigationList: View {
-  @SceneStorage(SettingsNavigationExpansionState.sceneStorageKey)
-  private var expandedTabIDsRawValue = SettingsNavigationExpansionState.defaultRawValue
-
   let searchText: String
   let searchItems: [SettingsSearchItem]
   @Binding var selection: SettingsRoute
@@ -13,12 +10,11 @@ struct SettingsNavigationList: View {
   let selectSearchItem: (SettingsSearchItem) -> Void
 
   var body: some View {
-    List(selection: visibleSelection) {
+    List(selection: $selection) {
       if isSearching {
         searchResults
       } else {
-        pageSection("当前站点", tabs: SettingsTab.siteSettings)
-        pageSection("应用", tabs: SettingsTab.applicationSettings)
+        taskGroupSections
       }
     }
     .listStyle(.sidebar)
@@ -29,16 +25,6 @@ struct SettingsNavigationList: View {
 
   private var isSearching: Bool {
     !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-  }
-
-  private var visibleSelection: Binding<SettingsRoute> {
-    Binding(
-      get: {
-        SettingsNavigationExpansionState(rawValue: expandedTabIDsRawValue)
-          .visibleSelection(for: selection)
-      },
-      set: { selection = $0 }
-    )
   }
 
   @ViewBuilder
@@ -90,45 +76,31 @@ struct SettingsNavigationList: View {
           .accessibilityIdentifier("settings-search-result-\(item.id)")
         }
       } header: {
-        sidebarSectionHeader("搜索结果")
+        sidebarSectionHeader(String(localized: "搜索结果"))
+          .accessibilityIdentifier("settings-search-results")
       }
-      .accessibilityIdentifier("settings-search-results")
     }
   }
 
   @ViewBuilder
-  private func pageSection(
-    _ title: LocalizedStringKey,
-    tabs: [SettingsTab]
-  ) -> some View {
-    Section {
-      ForEach(tabs) { tab in
-        DisclosureGroup(isExpanded: expansionBinding(for: tab)) {
-          ForEach(SettingsSubsection.sections(for: tab)) { subsection in
-            subsectionRow(subsection)
-          }
-        } label: {
+  private var taskGroupSections: some View {
+    ForEach(SettingsTaskGroup.allCases) { group in
+      Section {
+        ForEach(group.tabs) { tab in
           pageRow(tab)
-        }
-        .tag(SettingsRoute.tab(tab))
-      }
-    } header: {
-      sidebarSectionHeader(title)
-    }
-  }
+            .tag(SettingsRoute.tab(tab))
 
-  private func expansionBinding(for tab: SettingsTab) -> Binding<Bool> {
-    Binding(
-      get: {
-        SettingsNavigationExpansionState(rawValue: expandedTabIDsRawValue)
-          .contains(tab)
-      },
-      set: { isExpanded in
-        var expansionState = SettingsNavigationExpansionState(rawValue: expandedTabIDsRawValue)
-        expansionState.setExpanded(isExpanded, for: tab)
-        expandedTabIDsRawValue = expansionState.rawValue
+          if selection.tab == tab {
+            ForEach(SettingsSubsection.sections(for: tab)) { subsection in
+              subsectionRow(subsection)
+            }
+          }
+        }
+      } header: {
+        sidebarSectionHeader(group.title)
+          .accessibilityIdentifier("settings-task-group-\(group.id)")
       }
-    )
+    }
   }
 
   private func pageRow(_ tab: SettingsTab) -> some View {
@@ -190,7 +162,7 @@ struct SettingsNavigationList: View {
     .accessibilityIdentifier("settings-subsection-\(subsection.id)")
   }
 
-  private func sidebarSectionHeader(_ title: LocalizedStringKey) -> some View {
+  private func sidebarSectionHeader(_ title: String) -> some View {
     Text(title)
       .font(.caption.weight(.semibold))
       .foregroundStyle(.secondary)

@@ -86,13 +86,13 @@ struct RepositoryWorktreePushRetryConfirmationView: View {
         .font(.headline)
       LabeledContent("分支", value: "origin/\(confirmation.snapshot.branch)")
       LabeledContent(
-        "本地 HEAD",
+        "本地版本",
         value: RepositoryWorktreePublishPresentation.shortSHA(
           confirmation.snapshot.localHeadSHA
         )
       )
       LabeledContent(
-        "远端基线",
+        "远端版本",
         value: RepositoryWorktreePublishPresentation.shortSHA(
           confirmation.snapshot.remoteBranchSHA
         )

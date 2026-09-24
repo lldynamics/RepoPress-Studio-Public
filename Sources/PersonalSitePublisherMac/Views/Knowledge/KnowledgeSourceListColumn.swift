@@ -6,14 +6,15 @@ struct KnowledgeSourceListColumn: View {
   @State private var sceneCommandOwnerID = UUID()
   let store: WorkbenchStore
   @ObservedObject var knowledge: KnowledgeStore
-  @EnvironmentObject private var browserBridge: KnowledgeBrowserBridge
   @Environment(\.openSettings) var openSettings
   @Environment(\.settingsWorkspaceCommandAction) var settingsWorkspaceCommandAction
   @AppStorage("dataManagementRequestedSection") var dataManagementRequestedSection =
     DataManagementSection.backup.rawValue
   @State var searchText = ""
   @State var isImportPresented = false
-  @State var isBrowserExtensionPresented = false
+  @State var isNoteTransferPresented = false
+  @State var isArchivedNotesPresented = false
+  @State var noteEditor: KnowledgeNote?
   @State var folderEditorMode: FolderEditorMode = .create
   @State var folderName = ""
   @State var isFolderEditorPresented = false
@@ -71,9 +72,27 @@ struct KnowledgeSourceListColumn: View {
     .sheet(isPresented: $isImportPresented) {
       KnowledgeImportAssistantView(knowledge: knowledge)
     }
-    .sheet(isPresented: $isBrowserExtensionPresented) {
-      BrowserExtensionConnectionView()
-        .environmentObject(browserBridge)
+    .sheet(isPresented: $isNoteTransferPresented) {
+      KnowledgeNoteTransferSheet(
+        knowledge: knowledge,
+        selectedDocumentIDs: selectedDocumentIDs
+      )
+    }
+    .sheet(isPresented: $isArchivedNotesPresented) {
+      KnowledgeArchivedNotesSheet(knowledge: knowledge)
+    }
+    .sheet(item: $noteEditor) { note in
+      KnowledgeNoteEditorView(
+        note: note,
+        expectedContentRevision: knowledge.noteEditRevision(note),
+        onSave: { updated, expectedRevision in
+          await knowledge.saveNoteEditorDraft(updated, expectedContentRevision: expectedRevision)
+        },
+        onCreateConflictCopy: { copy in
+          guard let saved = await knowledge.createNote(copy) else { return nil }
+          return (saved, knowledge.noteEditRevision(saved))
+        }
+      )
     }
     .sheet(isPresented: $isRecycleBinPresented) {
       KnowledgeRecycleBinView(knowledge: knowledge)
@@ -84,7 +103,6 @@ struct KnowledgeSourceListColumn: View {
     .sheet(isPresented: $isSettingsPresented) {
       KnowledgeSettingsView(
         knowledge: knowledge,
-        browserBridge: browserBridge,
         onOpenLibrary: {
           isSettingsPresented = false
         }

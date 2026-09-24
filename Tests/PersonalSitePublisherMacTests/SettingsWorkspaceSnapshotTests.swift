@@ -8,7 +8,7 @@ import XCTest
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD
   @MainActor
   final class SettingsWorkspaceSnapshotTests: XCTestCase {
-    func testRenderUnifiedSettingsWorkspaceWhenSnapshotPathIsProvided() throws {
+    func testRenderUnifiedSettingsWorkspaceWhenSnapshotPathIsProvided() async throws {
       guard
         let outputPath = ProcessInfo.processInfo.environment[
           "PERSONAL_SITE_PUBLISHER_SETTINGS_SNAPSHOT_PATH"
@@ -40,6 +40,12 @@ import XCTest
       }
 
       let environment = ProcessInfo.processInfo.environment
+      let requestedTab =
+        environment["PERSONAL_SITE_PUBLISHER_SETTINGS_SNAPSHOT_TAB"] ?? "appearance"
+      let route =
+        requestedTab == "overview"
+        ? SettingsRoute.tab(.configurationStatus)
+        : SettingsRoute.requestedID(requestedTab) ?? .tab(.appearance)
       let width =
         Double(environment["PERSONAL_SITE_PUBLISHER_SETTINGS_SNAPSHOT_WIDTH"] ?? "")
         ?? 1_487
@@ -56,8 +62,8 @@ import XCTest
         store: store,
         launchCoordinator: launchCoordinator,
         closeWorkspace: {},
-        workspaceDestination: .tab(.appearance),
-        workspaceSubsection: .appearanceTheme,
+        workspaceDestination: .tab(route.tab),
+        workspaceSubsection: requestedTab == "appearance" ? .appearanceTheme : route.subsection,
         workspaceNavigationRequestID: UUID()
       )
       .frame(width: contentSize.width, height: contentSize.height)
@@ -74,8 +80,10 @@ import XCTest
       window.contentView = hostingView
       window.layoutIfNeeded()
 
-      for _ in 0..<5 {
-        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+      for _ in 0..<15 {
+        // Let SwiftUI and the navigation request run on the main actor before
+        // capturing. A nested synchronous run loop can leave both pending.
+        try await Task.sleep(for: .milliseconds(100))
         window.displayIfNeeded()
         hostingView.displayIfNeeded()
       }

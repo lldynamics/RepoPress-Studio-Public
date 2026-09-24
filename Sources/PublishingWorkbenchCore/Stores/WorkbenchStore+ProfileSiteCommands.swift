@@ -37,55 +37,6 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func createSiteFromStarter(_ request: SiteStarterRequest) async -> SiteStarterResult? {
-    await waitForPendingDraftWordCountRefreshes()
-    return await publishingStore.createSiteFromStarter(request, store: self)
-  }
-
-  @discardableResult
-  public func importExistingSiteFromStarter(_ request: SiteStarterImportRequest) async -> SiteStarterImportResult? {
-    await waitForPendingDraftWordCountRefreshes()
-    let importOutcome = await publishingStore.importExistingSiteFromStarterOutcome(
-      request,
-      store: self
-    )
-    let result = importOutcome.result
-    _ = recordOperationEvent(
-      WorkbenchOperationEventRecord(
-        kind: .siteImport,
-        outcome: importOutcome.operationLogOutcome,
-        profileID: result?.profile.id,
-        createdItemCount: result?.importedDraftCount,
-        updatedItemCount: result?.updatedDraftCount,
-        skippedItemCount: result?.skippedPathCount
-      )
-    )
-    return result
-  }
-
-  @discardableResult
-  public func configureStarterSiteOrigin() async -> Bool {
-    await publishingStore.configureStarterSiteOrigin(store: self)
-  }
-
-  @discardableResult
-  public func prepareStarterSitePushConfirmation() async -> SiteStarterPushConfirmation? {
-    await publishingStore.prepareStarterSitePushConfirmation(store: self)
-  }
-
-  @discardableResult
-  public func resumeSiteStarterProgress() -> Bool {
-    publishingStore.resumeSiteStarterProgress(store: self)
-  }
-
-  @discardableResult
-  public func commitAndPushStarterSite(
-    confirmation: SiteStarterPushConfirmation
-  ) async -> SiteStarterPushResult? {
-    await publishingStore.commitAndPushStarterSite(confirmation: confirmation, store: self)
-  }
-
-  @discardableResult
   public func createGitHubRepositoryForActiveProfile(
     privateRepository: Bool = true
   ) async -> RemoteRepositoryCreationResult? {

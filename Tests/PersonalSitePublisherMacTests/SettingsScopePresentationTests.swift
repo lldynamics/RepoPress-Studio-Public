@@ -4,11 +4,14 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class SettingsScopePresentationTests: XCTestCase {
-  func testAISettingsRetainTheirSiteNavigationGroupButPresentMixedScope() {
-    XCTAssertTrue(SettingsTab.ai.isSiteScoped)
-    XCTAssertEqual(SettingsTab.ai.scopePresentation, .mixed)
-    XCTAssertEqual(SettingsTab.ai.scopePresentation.badgeTitle, "混合作用范围")
-    XCTAssertTrue(SettingsTab.ai.scopePresentation.accessibilityDescription.contains("连接档案共享"))
+  func testSharedConnectionsAndSiteWritingPreferencesHaveDistinctScopes() {
+    XCTAssertFalse(SettingsTab.ai.isSiteScoped)
+    XCTAssertEqual(SettingsTab.ai.scopePresentation, .sharedConnection)
+    XCTAssertTrue(SettingsTab.ai.scopePresentation.accessibilityDescription.contains("所有引用"))
+    XCTAssertTrue(SettingsTab.siteAI.isSiteScoped)
+    XCTAssertEqual(SettingsTab.siteAI.scopePresentation, .currentSite)
+    XCTAssertEqual(SettingsDestination.ai(.writingStyle).tab, .siteAI)
+    XCTAssertEqual(SettingsDestination.ai(.credentials).tab, .ai)
   }
 
   func testConnectionUsageListsOnlyReferencingSiteNamesOnceInProfileOrder() {

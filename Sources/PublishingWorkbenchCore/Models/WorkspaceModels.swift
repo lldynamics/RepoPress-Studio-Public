@@ -4,10 +4,23 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
   case writing
   case library
   case rss
-  case siteStarter
   case sync
   case images
   case contentHealth
+
+  /// Retired wizard routes in saved automation data open the existing site workspace.
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    let value = try container.decode(String.self)
+    if value == "siteStarter" {
+      self = .sync
+    } else if let section = Self(rawValue: value) {
+      self = section
+    } else {
+      throw DecodingError.dataCorruptedError(
+        in: container, debugDescription: "Unknown workspace section: \(value)")
+    }
+  }
 
   public var id: String { rawValue }
 
@@ -33,7 +46,7 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
       return "workspace.writing.page"
     case .sync:
       return "workspace.sync.page"
-    case .library, .rss, .siteStarter, .images, .contentHealth:
+    case .library, .rss, .images, .contentHealth:
       return localizationKey
     }
   }
@@ -46,8 +59,6 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
       return "books.vertical"
     case .rss:
       return "dot.radiowaves.left.and.right"
-    case .siteStarter:
-      return "sparkles.rectangle.stack"
     case .sync:
       return "arrow.triangle.2.circlepath"
     case .contentHealth:
@@ -65,8 +76,6 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
       return "2"
     case .rss:
       return "9"
-    case .siteStarter:
-      return "5"
     case .sync:
       return "3"
     case .images:
@@ -113,7 +122,7 @@ public enum WorkspaceArea: String, CaseIterable, Identifiable, Sendable {
     case .resources:
       return [.library, .rss]
     case .site:
-      return [.sync, .contentHealth, .images, .siteStarter]
+      return [.sync, .contentHealth, .images]
     }
   }
 
@@ -137,7 +146,6 @@ public enum WorkspaceCenterSurface: String, CaseIterable, Sendable {
   case editor
   case knowledgeLibrary
   case rssReader
-  case siteStarter
   case repository
   case images
   case contentHealth
@@ -150,7 +158,6 @@ public enum WorkspaceInspectorRoute: String, CaseIterable, Sendable {
   case knowledgeLibrary
   case rssLibrary
   case repository
-  case siteStarter
   case aiAssistant
   case unavailable
 }
@@ -192,8 +199,6 @@ public enum WorkspaceInspectorPresentation {
       return .articleImages
     case .sync:
       return isRepositoryHistoryPresented ? .unavailable : .repository
-    case .siteStarter:
-      return .siteStarter
     }
   }
 
@@ -250,7 +255,6 @@ extension WorkspaceSection {
     case .writing: .editor
     case .library: .knowledgeLibrary
     case .rss: .rssReader
-    case .siteStarter: .siteStarter
     case .sync: .repository
     case .images: .images
     case .contentHealth: .contentHealth
@@ -300,10 +304,6 @@ public enum WorkspaceVisibilityPolicy {
     .images
   ]
 
-  public static let secondaryEntrySections: [WorkspaceSection] = [
-    .siteStarter
-  ]
-
   /// Keep this independent from `allCases`; context-only subpages are routed
   /// by their owning workspace and are not command-palette workspaces.
   public static let commandPaletteSections: [WorkspaceSection] = [
@@ -312,7 +312,6 @@ public enum WorkspaceVisibilityPolicy {
     .rss,
     .sync,
     .contentHealth,
-    .siteStarter,
   ]
 }
 
@@ -322,8 +321,6 @@ public enum WorkspaceNavigationPresentation {
   public static let commandMenuItems = WorkspaceVisibilityPolicy.commandMenuPrimarySections.map(
     WorkspaceNavigationItem.init(section:)
   )
-  public static let secondaryEntryItems = WorkspaceVisibilityPolicy.secondaryEntrySections.map(
-    WorkspaceNavigationItem.init(section:))
   public static let commandPaletteSections = WorkspaceVisibilityPolicy.commandPaletteSections
 }
 

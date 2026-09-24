@@ -16,7 +16,7 @@
     "startedAt": { "type": "string", "format": "date-time" },
     "generatedAt": { "type": "string", "format": "date-time" },
     "mode": { "enum": ["standard", "quick", "tooling", "selected", "strict"] },
-    "profile": { "type": ["string", "null"], "enum": ["direct", "chrome", "all", null] },
+    "profile": { "type": ["string", "null"], "enum": ["direct", "all", null] },
     "repository": { "$ref": "#/$defs/repository" },
     "releaseIdentity": { "$ref": "#/$defs/releaseIdentity" },
     "execution": { "$ref": "#/$defs/execution" },

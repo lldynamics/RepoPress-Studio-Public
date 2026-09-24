@@ -3,27 +3,36 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class WorkspaceModelsTests: XCTestCase {
+  func testRetiredStarterRouteDecodesToExistingSiteWithoutReappearingInNavigation() throws {
+    let decoded = try JSONDecoder().decode(
+      WorkspaceSection.self, from: Data("\"siteStarter\"".utf8))
+    XCTAssertEqual(decoded, .sync)
+    XCTAssertNil(WorkspaceSection(rawValue: "siteStarter"))
+    XCTAssertEqual(try JSONEncoder().encode(decoded), Data("\"sync\"".utf8))
+    XCTAssertThrowsError(
+      try JSONDecoder().decode(WorkspaceSection.self, from: Data("\"unknown-route\"".utf8)))
+  }
+
   func testWorkspaceSectionsExposeStableCommandNumberShortcuts() {
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.displayNameLocalizationKey),
       [
-        "workspace.writing", "workspace.library", "workspace.rss", "workspace.siteStarter",
+        "workspace.writing", "workspace.library", "workspace.rss",
         "workspace.sync", "workspace.images", "workspace.contentHealth",
       ]
     )
     XCTAssertEqual(
       WorkspaceSection.allCases.map { String($0.keyboardShortcutKey) },
-      ["1", "2", "9", "5", "3", "6", "4"])
+      ["1", "2", "9", "3", "6", "4"])
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.keyboardShortcutLabel),
-      ["⌘1", "⌘2", "⌘9", "⌘5", "⌘3", "⌘6", "⌘4"])
+      ["⌘1", "⌘2", "⌘9", "⌘3", "⌘6", "⌘4"])
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.localizationKey),
       [
         "workspace.writing",
         "workspace.library",
         "workspace.rss",
-        "workspace.siteStarter",
         "workspace.sync",
         "workspace.images",
         "workspace.contentHealth",
@@ -36,7 +45,7 @@ final class WorkspaceModelsTests: XCTestCase {
       WorkspaceSection.allCases.map(\.detailLocalizationKey),
       [
         "workspace.writing.detail", "workspace.library.detail", "workspace.rss.detail",
-        "workspace.siteStarter.detail", "workspace.sync.detail", "workspace.images.detail",
+        "workspace.sync.detail", "workspace.images.detail",
         "workspace.contentHealth.detail",
       ]
     )
@@ -56,21 +65,13 @@ final class WorkspaceModelsTests: XCTestCase {
       ]
     )
     XCTAssertEqual(
-      WorkspaceNavigationPresentation.secondaryEntryItems.map(\.section),
-      [.siteStarter]
-    )
-    XCTAssertEqual(
-      WorkspaceNavigationPresentation.secondaryEntryItems.map(\.keyboardShortcutLabel),
-      ["⌘5"]
-    )
-    XCTAssertEqual(
       WorkspaceNavigationPresentation.commandMenuItems.map(\.keyboardShortcutLabel),
       ["⌘1", "⌘2", "⌘9", "⌘3", "⌘4"]
     )
     XCTAssertEqual(WorkspaceVisibilityPolicy.siteResourceSections, [.images])
     XCTAssertEqual(
       WorkspaceNavigationPresentation.commandPaletteSections,
-      [.writing, .library, .rss, .sync, .contentHealth, .siteStarter]
+      [.writing, .library, .rss, .sync, .contentHealth]
     )
   }
 
@@ -79,7 +80,7 @@ final class WorkspaceModelsTests: XCTestCase {
     XCTAssertEqual(WorkspaceNavigationPresentation.primaryAreas, WorkspaceArea.allCases)
     XCTAssertEqual(WorkspaceArea.writing.sections, [.writing])
     XCTAssertEqual(WorkspaceArea.resources.sections, [.library, .rss])
-    XCTAssertEqual(WorkspaceArea.site.sections, [.sync, .contentHealth, .images, .siteStarter])
+    XCTAssertEqual(WorkspaceArea.site.sections, [.sync, .contentHealth, .images])
     XCTAssertEqual(WorkspaceArea.writing.defaultSection, .writing)
     XCTAssertEqual(WorkspaceArea.resources.defaultSection, .library)
     XCTAssertEqual(WorkspaceArea.site.defaultSection, .sync)
@@ -105,7 +106,7 @@ final class WorkspaceModelsTests: XCTestCase {
   func testEveryWorkspaceSectionHasAnExplicitCenterSurfaceRoute() {
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.centerSurface),
-      [.editor, .knowledgeLibrary, .rssReader, .siteStarter, .repository, .images, .contentHealth]
+      [.editor, .knowledgeLibrary, .rssReader, .repository, .images, .contentHealth]
     )
     XCTAssertEqual(
       WorkspaceSection.allCases.filter(\.requiresEditableDraftForCenterSurface),
@@ -122,7 +123,6 @@ final class WorkspaceModelsTests: XCTestCase {
         .articleMetadata,
         .knowledgeLibrary,
         .rssLibrary,
-        .siteStarter,
         .repository,
         .articleImages,
         .articleChecks,
@@ -143,7 +143,6 @@ final class WorkspaceModelsTests: XCTestCase {
       WorkspaceInspectorPresentation.supportsInspector(
         for: .contentHealth, isMaintenancePresented: true)
     )
-    XCTAssertTrue(WorkspaceInspectorPresentation.supportsInspector(for: .siteStarter))
     XCTAssertTrue(WorkspaceInspectorPresentation.supportsInspector(for: .library))
     XCTAssertTrue(WorkspaceInspectorPresentation.supportsInspector(for: .rss))
   }

@@ -149,7 +149,7 @@ struct WorkspacePrimarySidebar: View {
       return .imageResources
     case .contentHealth:
       return .aiFixes
-    case .writing, .library, .rss, .siteStarter, .sync:
+    case .writing, .library, .rss, .sync:
       return .recent
     }
   }

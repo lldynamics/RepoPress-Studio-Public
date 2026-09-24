@@ -10,11 +10,14 @@ final class SettingsApplicationSubsectionPresentationTests: XCTestCase {
     )
     XCTAssertEqual(
       SettingsSubsection.sections(for: .appearance),
-      [.appearanceBehavior, .appearanceTheme, .appearanceLanguage, .appearanceDefaults]
+      [.appearanceBehavior, .appearanceTheme, .appearanceLanguage]
     )
     XCTAssertEqual(
       SettingsSubsection.sections(for: .editor),
-      [.editorPreview, .editorTypography, .editorAssistance, .editorAutomation]
+      [
+        .editorPreview, .editorTypography, .editorAssistance, .editorAutomation,
+        .appearanceDefaults,
+      ]
     )
     XCTAssertEqual(
       SettingsSubsection.sections(for: .rss),

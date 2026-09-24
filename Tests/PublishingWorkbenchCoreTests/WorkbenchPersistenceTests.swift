@@ -4,6 +4,39 @@ import XCTest
 
 @MainActor
 final class WorkbenchPersistenceTests: XCTestCase {
+  func testLegacyStarterProgressDoesNotDiscardExistingSiteOrDrafts() throws {
+    let url = temporaryPersistenceURL()
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let snapshot = try JSONDecoder.workbench.decode(
+      WorkbenchSnapshot.self, from: JSONEncoder.workbench.encode(makeSnapshot()))
+    var object = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: JSONEncoder.workbench.encode(snapshot)) as? [String: Any])
+    object["siteStarterProgress"] =
+      [
+        "profileID": snapshot.activeProfileID.uuidString,
+        "initialDraftID": try XCTUnwrap(snapshot.drafts.first).id.uuidString,
+        "repositoryRootPath": "/legacy/site",
+        "templateID": "zola-blog",
+        "createdFilePaths": ["content/welcome.md"],
+        "initializedGit": true,
+        "originConfigured": true,
+        "firstPushStage": "committed",
+        "localCommitSHA": String(repeating: "a", count: 40),
+      ] as [String: Any]
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try JSONSerialization.data(withJSONObject: object).write(to: url)
+
+    let restored = try XCTUnwrap(WorkbenchPersistence(fileURL: url).load())
+    XCTAssertEqual(restored.profiles, snapshot.profiles)
+    XCTAssertEqual(restored.activeProfileID, snapshot.activeProfileID)
+    XCTAssertEqual(restored.drafts, snapshot.drafts)
+    XCTAssertEqual(restored.releaseRecords, snapshot.releaseRecords)
+    let reencoded = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: JSONEncoder.workbench.encode(restored)) as? [String: Any])
+    XCTAssertNil(reencoded["siteStarterProgress"])
+  }
+
   func testPreloadedSnapshotAvoidsReadingCorruptPersistenceOnMainActor() throws {
     let url = temporaryPersistenceURL()
     defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -242,14 +275,47 @@ final class WorkbenchPersistenceTests: XCTestCase {
     XCTAssertTrue(chinese[2].bodyMarkdown.contains("独立免费版中直接开放"))
     XCTAssertTrue(
       english[2].bodyMarkdown.contains("available directly in the free standalone edition"))
-    XCTAssertTrue(chinese[3].bodyMarkdown.contains("不包含在 App 包内"))
-    XCTAssertTrue(english[3].bodyMarkdown.contains("Chrome extension is not included"))
+    XCTAssertTrue(chinese[3].bodyMarkdown.contains("网页地址"))
+    XCTAssertTrue(english[3].bodyMarkdown.contains("webpage URL"))
     XCTAssertTrue(chinese[4].bodyMarkdown.contains("保存到本地"))
     XCTAssertTrue(english[4].bodyMarkdown.contains("Save Locally"))
     XCTAssertTrue(
       (chinese + english).allSatisfy { !$0.summary.isEmpty && !$0.bodyMarkdown.isEmpty })
     XCTAssertTrue((chinese + english).allSatisfy { $0.authors == [profile.defaultAuthor] })
     XCTAssertTrue((chinese + english).allSatisfy(\.isGeneralDraft))
+    XCTAssertTrue(
+      (chinese + english).allSatisfy {
+        !$0.bodyMarkdown.contains("Site Starter") && !$0.bodyMarkdown.contains("建站")
+      })
+  }
+
+  func testRetiredBrowserGuideRefreshesOnlyManagedContent() throws {
+    let profile = SiteProfile.defaultProfile
+    let template = try XCTUnwrap(
+      ArticleDraft.samples(profile: profile, preferredLanguage: "zh-Hans")
+        .first { $0.softwareGuideID == "knowledge-library" }
+    )
+    var managed = template
+    managed.softwareGuideTemplateVersion = 4
+    managed.bodyMarkdown = "# 旧版资料库指南\n\n安装浏览器扩展并连接本机令牌。"
+
+    let refreshed = ArticleDraft.synchronizeSoftwareGuides(
+      in: [managed], profile: profile, previousSeedVersion: 4, preferredLanguage: "zh-Hans"
+    )
+    XCTAssertEqual(refreshed.addedGuideCount, 0)
+    XCTAssertEqual(refreshed.refreshedGuideCount, 1)
+    XCTAssertEqual(refreshed.drafts.first?.id, managed.id)
+    XCTAssertEqual(refreshed.drafts.first?.bodyMarkdown, template.bodyMarkdown)
+
+    var customized = managed
+    customized.softwareGuideTemplateVersion = 0
+    customized.bodyMarkdown = "# 我的网页资料工作流\n\n保留个人笔记。"
+    let preserved = ArticleDraft.synchronizeSoftwareGuides(
+      in: [customized], profile: profile, previousSeedVersion: 4, preferredLanguage: "zh-Hans"
+    )
+    XCTAssertEqual(preserved.addedGuideCount, 0)
+    XCTAssertEqual(preserved.refreshedGuideCount, 0)
+    XCTAssertEqual(preserved.drafts.first?.bodyMarkdown, customized.bodyMarkdown)
   }
 
   func testSoftwareGuideVersionUpgradeRefreshesManagedGuidesAndAddsOnlyNewGuide() async throws {

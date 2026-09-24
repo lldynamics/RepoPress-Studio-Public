@@ -97,22 +97,21 @@ final class FirstRunSetupPresentationTests: XCTestCase {
     )
   }
 
-  func testFirstRunOffersTheThreePathsInProductOrder() {
+  func testFirstRunOffersRepositoryConnectionAndLocalDraftPaths() {
     XCTAssertEqual(
       FirstRunSetupPath.allCases.map(\.rawValue),
       [
         "connectExistingRepository",
-        "createNewSite",
         "localDrafts",
       ]
     )
     XCTAssertEqual(
       FirstRunSetupPath.allCases.map(\.title),
-      ["连接已有仓库", "创建新站点", "暂不配置站点"]
+      ["连接已有仓库", "暂不配置站点"]
     )
     XCTAssertEqual(
       FirstRunSetupPath.allCases.map(\.destination),
-      [.repositoryWizard, .siteStarter, .localDrafts]
+      [.repositoryWizard, .localDrafts]
     )
   }
 
@@ -128,15 +127,10 @@ final class FirstRunSetupPresentationTests: XCTestCase {
     XCTAssertEqual(repositoryCompletion.stagedProfile?.siteKind, .astro)
     XCTAssertEqual(repositoryCompletion.stagedProfile?.localRepositoryRootPath, "/tmp/site")
 
-    let starterCompletion = FirstRunSetupCompletion(
-      path: .createNewSite,
-      stagedProfile: nil
-    )
     let localDraftCompletion = FirstRunSetupCompletion(
       path: .localDrafts,
       stagedProfile: nil
     )
-    XCTAssertNil(starterCompletion.stagedProfile)
     XCTAssertNil(localDraftCompletion.stagedProfile)
   }
 

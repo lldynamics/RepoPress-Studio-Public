@@ -47,7 +47,7 @@ extension KnowledgeSourceListColumn {
           .accessibilityHidden(true)
       }
       VStack(alignment: .leading, spacing: KnowledgeSidebarMetrics.rowTextSpacing) {
-        Text(document.title)
+        Text(displayTitle(for: document))
           .font(.workbenchItemTitle)
           .workbenchTruncatedIdentity(document.title)
         Text(row.subtitle)
@@ -123,7 +123,12 @@ extension KnowledgeSourceListColumn {
 
   @ViewBuilder
   private func documentActionItems(_ document: KnowledgeDocument) -> some View {
-    documentFolderMenu(document)
+      documentFolderMenu(document)
+    if document.kind == .note {
+      Button("编辑笔记…") {
+        beginEditingNote(document)
+      }
+    }
     Divider()
     Button(
       document.allowsLocalSemanticIndex
@@ -162,6 +167,12 @@ extension KnowledgeSourceListColumn {
       requestDocumentDeletion(document)
     }
     .disabled(knowledge.isBusy)
+  }
+
+  private func displayTitle(for document: KnowledgeDocument) -> String {
+    document.kind == .note && document.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      ? "未命名笔记"
+      : document.title
   }
 
   private func requestSelectedDocumentDeletion() {

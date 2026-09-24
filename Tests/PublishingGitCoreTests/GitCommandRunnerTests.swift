@@ -80,9 +80,10 @@ final class GitCommandRunnerTests: XCTestCase {
   }
 
   private static func runSynchronously(
-    _ runner: GitCommandRunner, _ arguments: [String], at root: URL
+    _ runner: GitCommandRunner, _ arguments: [String], at root: URL,
+    inputLines: [String]? = nil
   ) -> GitCommandResult {
-    runner.run(arguments, rootURL: root)
+    runner.run(arguments, rootURL: root, inputLines: inputLines)
   }
 
   func testContinuouslyDrainsNoisyStandardStreamsWithinOutputLimit() throws {
@@ -262,6 +263,134 @@ final class GitCommandRunnerTests: XCTestCase {
     XCTAssertTrue(result.didTimeOut)
   }
 
+  func testLargeInputToEarlyExitingChildDoesNotTerminateHost() async throws {
+    let scriptURL = try makeFakeGitExecutable()
+    defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+    let runner = GitCommandRunner(executableURL: scriptURL, timeout: 1)
+    let input = [String(repeating: "x", count: 1_000_000)]
+    let root = scriptURL.deletingLastPathComponent()
+
+    let synchronous = Self.runSynchronously(
+      runner, ["exit-before-input"], at: root, inputLines: input)
+    let asynchronous = await runner.runAsync(
+      ["exit-before-input"], rootURL: root, inputLines: input)
+
+    for result in [synchronous, asynchronous] {
+      XCTAssertEqual(result.terminationStatus, 17, result.output)
+      XCTAssertFalse(result.didTimeOut)
+      XCTAssertTrue(result.output.contains("Git stdin write failed"), result.output)
+    }
+  }
+
+  func testRealGitCheckIgnoreOutsideRepositorySurvivesLargeInput() throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("GitCommandRunnerNonRepository-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let result = GitCommandRunner(timeout: 2).run(
+      ["check-ignore", "--stdin", "-z"],
+      rootURL: root,
+      inputLines: [String(repeating: "x", count: 1_000_000)],
+      inputDelimiter: .nul
+    )
+
+    XCTAssertNotEqual(result.terminationStatus, 0)
+    XCTAssertFalse(result.didTimeOut, result.output)
+  }
+
+  func testLargeInputToNonReadingChildHonorsTimeout() async throws {
+    let scriptURL = try makeFakeGitExecutable()
+    defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+    let runner = GitCommandRunner(executableURL: scriptURL, timeout: 0.05)
+    let input = [String(repeating: "x", count: 1_000_000)]
+    let root = scriptURL.deletingLastPathComponent()
+
+    let synchronousStart = Date()
+    let synchronous = Self.runSynchronously(
+      runner, ["never-read-input"], at: root, inputLines: input)
+    XCTAssertEqual(synchronous.terminationStatus, 124, synchronous.output)
+    XCTAssertTrue(synchronous.didTimeOut)
+    XCTAssertLessThan(Date().timeIntervalSince(synchronousStart), 1.5)
+
+    let asynchronousStart = Date()
+    let asynchronous = await runner.runAsync(
+      ["never-read-input"], rootURL: root, inputLines: input)
+    XCTAssertEqual(asynchronous.terminationStatus, 124, asynchronous.output)
+    XCTAssertTrue(asynchronous.didTimeOut)
+    XCTAssertLessThan(Date().timeIntervalSince(asynchronousStart), 1.5)
+  }
+
+  func testAsyncTimeoutContinuesAfterChildExitsWhileStdinReaderRemainsOpen() async throws {
+    let scriptURL = try makeFakeGitExecutable()
+    defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+    let runner = GitCommandRunner(executableURL: scriptURL, timeout: 0.05)
+    let start = Date()
+
+    let result = await runner.runAsync(
+      ["exit-with-reader"],
+      rootURL: scriptURL.deletingLastPathComponent(),
+      inputLines: [String(repeating: "x", count: 1_000_000)]
+    )
+
+    XCTAssertEqual(result.terminationStatus, 124, result.output)
+    XCTAssertTrue(result.didTimeOut)
+    XCTAssertLessThan(Date().timeIntervalSince(start), 1.5)
+  }
+
+  func testAsyncCancellationReturnsWhileLargeInputWriterIsBlocked() async throws {
+    let scriptURL = try makeFakeGitExecutable()
+    defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+    let markerURL = scriptURL.deletingLastPathComponent().appendingPathComponent("reading-started")
+    let runner = GitCommandRunner(executableURL: scriptURL, timeout: 5)
+    let task = Task {
+      await runner.runAsync(
+        ["never-read-input", markerURL.path],
+        rootURL: scriptURL.deletingLastPathComponent(),
+        inputLines: [String(repeating: "x", count: 1_000_000)]
+      )
+    }
+
+    for _ in 0..<100 where !FileManager.default.fileExists(atPath: markerURL.path) {
+      try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    XCTAssertTrue(FileManager.default.fileExists(atPath: markerURL.path))
+    let start = Date()
+    task.cancel()
+    let result = await task.value
+
+    XCTAssertEqual(result.terminationStatus, 130, result.output)
+    XCTAssertFalse(result.didTimeOut)
+    XCTAssertLessThan(Date().timeIntervalSince(start), 1.5)
+  }
+
+  func testAsyncCancellationReturnsAfterChildExitsWhileStdinReaderRemainsOpen() async throws {
+    let scriptURL = try makeFakeGitExecutable()
+    defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+    let markerURL = scriptURL.deletingLastPathComponent().appendingPathComponent("child-exited")
+    let runner = GitCommandRunner(executableURL: scriptURL, timeout: 5)
+    let task = Task {
+      await runner.runAsync(
+        ["exit-with-reader", markerURL.path],
+        rootURL: scriptURL.deletingLastPathComponent(),
+        inputLines: [String(repeating: "x", count: 1_000_000)]
+      )
+    }
+
+    for _ in 0..<100 where !FileManager.default.fileExists(atPath: markerURL.path) {
+      try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    XCTAssertTrue(FileManager.default.fileExists(atPath: markerURL.path))
+    try await Task.sleep(nanoseconds: 100_000_000)
+    let start = Date()
+    task.cancel()
+    let result = await task.value
+
+    XCTAssertEqual(result.terminationStatus, 130, result.output)
+    XCTAssertFalse(result.didTimeOut)
+    XCTAssertLessThan(Date().timeIntervalSince(start), 1.5)
+  }
+
   func testAsyncRunnerCancelsChildProcess() async throws {
     let launchEntered = DispatchSemaphore(value: 0)
     let releaseLaunch = DispatchSemaphore(value: 0)
@@ -340,6 +469,18 @@ final class GitCommandRunnerTests: XCTestCase {
       fi
       if [ "$1" = "sleep" ]; then
         sleep 2
+        exit 0
+      fi
+      if [ "$1" = "exit-before-input" ]; then
+        exit 17
+      fi
+      if [ "$1" = "never-read-input" ]; then
+        if [ -n "$2" ]; then printf 'started' > "$2"; fi
+        while :; do :; done
+      fi
+      if [ "$1" = "exit-with-reader" ]; then
+        sleep 2 <&0 >/dev/null 2>&1 &
+        if [ -n "$2" ]; then printf 'exited' > "$2"; fi
         exit 0
       fi
       if [ "$1" = "startup-barrier" ]; then

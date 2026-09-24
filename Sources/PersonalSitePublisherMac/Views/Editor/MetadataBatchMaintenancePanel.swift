@@ -90,11 +90,11 @@ struct MetadataBatchMaintenancePanel: View {
           )
           .accessibilityLabel(String(localized: "新标签或分类（已有值会合并）"))
         }
-        Button(String(localized: "生成逐篇预览"), action: generatePlan)
+        Button(String(localized: "生成修改预览"), action: generatePlan)
           .workbenchProminentActionStyle()
           .disabled(!hasValidInput)
       }
-      Text(String(localized: "预览会冻结生成时的目标字段；应用前将逐篇复验该字段，发生变化时必须重新预览。正文和其它 Front Matter 字段不会写入。"))
+      Text(String(localized: "修改仅作用于目标字段，保存前会自动核对最新变动。正文和其它 Front Matter 字段不会修改。"))
         .font(.caption)
         .foregroundStyle(.secondary)
     }

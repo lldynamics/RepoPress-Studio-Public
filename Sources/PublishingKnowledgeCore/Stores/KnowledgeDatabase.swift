@@ -49,7 +49,7 @@ public enum KnowledgeDatabaseWALCheckpointMode: Sendable {
 }
 
 final class KnowledgeDatabase: @unchecked Sendable, KnowledgeBackupSnapshotSource {
-  static let currentSchemaVersion = 10
+  static let currentSchemaVersion = 12
 
   let lock = NSLock()
   /// Immutable flat vector snapshots keyed by model and dimension.  All

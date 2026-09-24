@@ -89,8 +89,6 @@ struct EditorCenterColumn: View {
         filter: $contentHealthFilter,
         sidebarProjection: contentHealthSidebarProjection
       )
-    case .siteStarter:
-      SiteStarterWorkspaceView(store: store)
     case .editor:
       writingEditorDetail
     }
@@ -130,15 +128,6 @@ struct EditorCenterColumn: View {
             systemImage: "arrow.triangle.2.circlepath",
             action: {
               store.selectSection(.sync)
-            }
-          ),
-          GuidedEmptyStateAction(
-            id: "configure-site-repository",
-            title: "绑定站点仓库",
-            subtitle: "配置 Hexo / Hugo / Astro 静态建站框架目录",
-            systemImage: "folder.badge.gearshape",
-            action: {
-              store.selectSection(.siteStarter)
             }
           ),
         ]

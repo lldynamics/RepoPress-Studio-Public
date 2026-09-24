@@ -2181,6 +2181,15 @@
 "无法为图片创建不冲突的导出文件名。" = "A non-conflicting export filename could not be created for the image.";
 "未命名图片" = "Untitled Image";
 "未知资料" = "Unknown item";
+"至少选择一类备份数据" = "Select at least one backup category.";
+"此备份只包含部分数据，请使用分类恢复" = "This backup contains only selected data categories; use selective restore.";
+"备份类别与文件依赖不一致" = "Backup categories do not match their required files.";
+"备份类别清单无效" = "The backup category manifest is invalid.";
+"备份类别统计与文件清单不一致" = "Backup category totals do not match the file manifest.";
+"未选择工作台却包含工作台数据" = "Workbench data is present although the Workbench category was not selected.";
+"所选恢复类别不在备份中" = "The selected restore category is not available in this backup.";
+"恢复暂存目录已存在" = "The restore staging folder already exists.";
+"已有待处理恢复包，请先完成或取消它" = "A restore package is already pending. Apply or cancel it first.";
 "正在导出 %d 项中的图片…" = "Exporting images from %d selected items…";
 "目标必须是普通文件夹。" = "The destination must be a regular folder.";
 "目标必须是本机文件夹。" = "The destination must be a local folder.";
@@ -2188,3 +2197,10 @@
 "资料已更新，已打开最新版本；请重新搜索以定位片段。" = "The reference has changed. Its latest version is open; search again to locate the passage.";
 "资料库中找不到要打开的资料。" = "The reference to open could not be found in the library.";
 "部分图片未能导出。" = "Some images could not be exported.";
+"所选数据没有变化，已跳过本次自动备份" = "No selected data changed; this automatic backup was skipped.";
+"目标磁盘空间不足：预计至少需要 %@，当前可用 %@。请释放空间或选择其他磁盘；现有备份已保留。" = "Not enough space on the destination disk: about %@ is required and %@ is available. Free space or choose another disk; existing backups were kept.";
+"目标磁盘空间不足；现有备份已保留，请释放空间或改选容量更大的磁盘后重试。" = "The destination disk ran out of space. Existing backups were kept. Free space or choose a larger disk, then try again.";
+"所选备份磁盘当前未挂载，未写入系统磁盘：%@" = "The selected backup disk is not mounted. Nothing was written to the system disk: %@";
+"%@；备份未创建" = "%@; the backup was not created";
+"无法识别所选磁盘，不能将其用作自动备份目标：%@" = "The selected disk cannot be identified and cannot be used for automatic backups: %@";
+"备份目标已换成另一块磁盘；为避免写错位置，操作已停止：%@" = "The backup destination now refers to a different disk. The operation stopped to avoid writing to the wrong location: %@";

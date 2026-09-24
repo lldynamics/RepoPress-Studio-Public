@@ -167,7 +167,8 @@ extension KnowledgeLibraryService {
       components.count >= 2,
       components.first == "blobs"
         || components.first == "captured"
-        || components.first == "normalized",
+        || components.first == "normalized"
+        || components.first == "attachments",
       components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." })
     else {
       return nil

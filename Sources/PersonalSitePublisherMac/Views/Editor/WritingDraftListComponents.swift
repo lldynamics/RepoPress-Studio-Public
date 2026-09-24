@@ -138,23 +138,20 @@ private func writingDraftRowHelp(
 struct WritingDraftRowPresentation {
   let title: String
   let metadata: String
+  let identity: String
   let leadingSystemImage: String
   let help: String
 
   init(draft: ArticleDraft, profile: SiteProfile, display: PrivateContentDisplay) {
     title = display.title.nilIfEmpty ?? String(localized: "未命名文章")
-    var metadataParts = [
+    metadata = [
       draft.metadataUpdatedAt.workbenchShortText,
       "\(draft.wordCount) \(String(localized: "字/词"))",
-      draft.status.localizedDisplayName,
-    ]
-    if draft.isGeneralDraft {
-      metadataParts.append(String(localized: "通用草稿"))
-    }
-    if draft.isPrivate {
-      metadataParts.append(draft.visibility.localizedDisplayName)
-    }
-    metadata = metadataParts.joined(separator: " · ")
+    ].joined(separator: " · ")
+    var identityParts = [draft.status.localizedDisplayName]
+    if draft.isGeneralDraft { identityParts.append(String(localized: "通用草稿")) }
+    if draft.isPrivate { identityParts.append(draft.visibility.localizedDisplayName) }
+    identity = identityParts.joined(separator: " · ")
     if draft.isPrivate {
       leadingSystemImage = display.isMasked ? "lock.shield.fill" : "lock.fill"
     } else {
@@ -186,6 +183,11 @@ struct WritingDraftRow: View {
           .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
           .lineLimit(1)
+        Text(presentation.identity)
+          .font(.workbenchSupporting.weight(.medium))
+          .foregroundStyle(.secondary)
+          .lineLimit(nil)
+          .fixedSize(horizontal: false, vertical: true)
       }
     }
     .padding(.horizontal, 4)

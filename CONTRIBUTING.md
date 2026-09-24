@@ -8,11 +8,9 @@ and safe for a public repository.
 1. Create a focused branch and avoid unrelated formatting or generated files.
 2. Run `./script/check_release_gate.sh --quick` on macOS 14 or later; it includes
    the Swift behavior tests and shared development checks.
-3. For browser-extension changes, run `npm ci --ignore-scripts` followed by the
-   relevant tests documented in `README.md`.
-4. Confirm that no credential, personal data, private repository name, local
+3. Confirm that no credential, personal data, private repository name, local
    home path, release artifact, or real user screenshot is included.
-5. Describe the user impact and the checks you ran.
+4. Describe the user impact and the checks you ran.
 
 ## Test framework strategy
 

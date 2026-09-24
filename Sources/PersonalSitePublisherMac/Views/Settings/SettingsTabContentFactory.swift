@@ -22,6 +22,8 @@ struct SettingsTabContentFactory {
       SettingsTokenTabFactory.make(context: context)
     case .ai:
       SettingsAITabFactory.make(context: context)
+    case .siteAI:
+      SettingsAITabFactory.makeSite(context: context)
     case .appearance:
       AppearanceSettingsView(
         autoRunPreflightBinding: context.autoRunPreflightBinding,

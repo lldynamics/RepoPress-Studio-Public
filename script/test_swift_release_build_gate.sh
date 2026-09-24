@@ -154,10 +154,6 @@ if grep -Eq -- '--screenshot-demo|--screenshot-surface|--list-screenshot-surface
   fail "build_and_run.sh still exposes the removed App Store screenshot demo mode"
 fi
 
-chrome_checks="$(bash "$ROOT_DIR/script/check_release_gate.sh" --profile chrome --list)"
-grep -q $'^chrome-extension-store-readiness\tstrict\t' <<<"$chrome_checks" \
-  || fail "Chrome profile omitted Chrome Web Store readiness"
-
 direct_checks="$(bash "$ROOT_DIR/script/check_release_gate.sh" --profile direct --list)"
 grep -q $'^direct-release-package-path\talways\t' <<<"$direct_checks" \
   || fail "Direct profile omitted the Developer ID package workflow"
@@ -167,12 +163,7 @@ grep -q $'^release-performance\tstandard\t' <<<"$direct_checks" \
   || fail "Direct profile omitted the standard performance gate"
 grep -q $'^direct-release-notarization-readiness\tstrict\t' <<<"$direct_checks" \
   || fail "Direct profile omitted signed/notarized artifact validation"
-if grep -Eq '^chrome-extension-store-readiness\t' \
-  <<<"$direct_checks"; then
-  fail "Direct profile included a Chrome-only release check"
-fi
-
-for removed_profile in edge firefox; do
+for removed_profile in chrome edge firefox; do
   if bash "$ROOT_DIR/script/check_release_gate.sh" \
     --profile "$removed_profile" --list >/dev/null 2>&1; then
     fail "removed $removed_profile channel still has a release profile"

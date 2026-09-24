@@ -6,7 +6,7 @@ struct AISettingsView: View {
   let activeProfileBinding: Binding<SiteProfile>
   let connectionProfiles: [AIConnectionProfile]
   let referencingSiteProfiles: [SiteProfile]
-  let selectedConnectionProfileID: Binding<UUID>
+  let activeConnectionProfileID: UUID
   let updateConnectionProfile: (AIConnectionProfile) -> Bool
   let createConnectionProfile: (String, AIProviderPreset) -> AIConnectionProfile
   let duplicateConnectionProfile: (UUID) -> AIConnectionProfile?
@@ -33,12 +33,7 @@ struct AISettingsView: View {
   let revokeDataSharingConsent: () -> Void
   let isCodexDataSharingConsentGranted: (CodexAppServerAccountStatus?) -> Bool
   let grantCodexDataSharingConsent: (CodexAppServerAccountStatus) -> Void
-  let writingStyleArticles: [ArticleDraft]
-  let writingStylePreview: AIWritingStyleProfilePreview?
-  let isWritingStyleExtractionRunning: Bool
-  let generateWritingStylePreview: (Set<UUID>) async -> AIWritingStyleProfilePreview?
-  let applyWritingStylePreview: (AIWritingStyleProfilePreview) -> Bool
-  let discardWritingStylePreview: () -> Void
+  let openSiteAISettings: () -> Void
 
   @State private var aiAPIKeyInput = ""
   @State private var aiConnectionReport: AIConnectionTestReport?
@@ -58,7 +53,7 @@ struct AISettingsView: View {
         AIConnectionProfilesSection(
           profiles: connectionProfiles,
           referencingSiteProfiles: referencingSiteProfiles,
-          selectedProfileID: selectedConnectionProfileID,
+          selectedProfileID: .constant(activeConnectionProfileID),
           updateProfile: { profile in
             _ = commitConnectionUpdate(profile)
           },
@@ -67,8 +62,18 @@ struct AISettingsView: View {
           currentActionMessage: currentActionMessage,
           deleteProfile: deleteConnectionProfile,
           deletableProfiles: deletableConnectionProfiles,
+          presentation: .sharedEditor,
+          currentSiteName: activeProfile.name,
+          editSharedConnection: nil,
           subsectionAnchor: .aiConnection
         )
+
+        Section {
+          Button("选择当前站点的连接", action: openSiteAISettings)
+            .accessibilityIdentifier("settings-ai-open-site-connection")
+        } footer: {
+          Text("此页只编辑当前站点正在使用的共享连接。请在站点 AI 设置中选择、新建或复制连接。")
+        }
 
         AIConnectionSetupSection(
           config: activeConnection.config,
@@ -193,27 +198,6 @@ struct AISettingsView: View {
           }
         }
 
-        AIWritingStyleScopeNotice(siteName: activeProfile.name)
-        AIWritingStyleSection(
-          siteProfileID: activeProfile.id,
-          presetBinding: aiWritingStylePresetBinding,
-          presetDisplayName: activeProfile.resolvedAIWritingStyle.preset.localizedDisplayName,
-          toneText: aiWritingStyleTextBinding(\.tone),
-          audienceText: aiWritingStyleTextBinding(\.audience),
-          summaryGuidanceText: aiWritingStyleTextBinding(\.summaryGuidance),
-          tagGuidanceText: aiWritingStyleTextBinding(\.tagGuidance),
-          seoGuidanceText: aiWritingStyleTextBinding(\.seoGuidance),
-          preferredTerminologyText: aiWritingStyleTerminologyBinding(\.preferredTerminology),
-          avoidedExpressionsText: aiWritingStyleTerminologyBinding(\.avoidedExpressions),
-          exemplarArticleIDs: aiWritingStyleExemplarBinding,
-          eligibleArticles: writingStyleArticles,
-          initialPreview: writingStylePreview,
-          isExtracting: isWritingStyleExtractionRunning,
-          generatePreview: generateWritingStylePreview,
-          applyPreview: applyWritingStylePreview,
-          discardPreview: discardWritingStylePreview,
-          currentActionMessage: currentActionMessage
-        )
       }
       .formStyle(.grouped)
       .scrollIndicators(.hidden)
@@ -229,7 +213,7 @@ struct AISettingsView: View {
         else { return }
         invalidateConnectionReport()
       }
-      .onChange(of: selectedConnectionProfileID.wrappedValue) { _, _ in
+      .onChange(of: activeConnectionProfileID) { _, _ in
         aiAPIKeyInput = ""
         connectionUpdateFailed = false
         selectedCapabilityProbes = []
@@ -326,9 +310,9 @@ struct AISettingsView: View {
   }
 
   private var activeConnection: AIConnectionProfile {
-    connectionProfiles.first(where: { $0.id == selectedConnectionProfileID.wrappedValue })
+    connectionProfiles.first(where: { $0.id == activeConnectionProfileID })
       ?? AIConnectionProfile(
-        id: selectedConnectionProfileID.wrappedValue,
+        id: activeConnectionProfileID,
         name: activeProfile.aiProviderConfig.normalizedDisplayName,
         config: activeProfile.aiProviderConfig
       )
@@ -343,65 +327,6 @@ struct AISettingsView: View {
         connection.config.preset = preset
         connection.config.applyPresetDefaults()
         _ = commitConnectionUpdate(connection)
-      }
-    )
-  }
-
-  private var aiWritingStylePresetBinding: Binding<AIWritingStylePreset> {
-    Binding(
-      get: { activeProfileBinding.wrappedValue.resolvedAIWritingStyle.preset },
-      set: { preset in
-        var profile = activeProfileBinding.wrappedValue
-        var style = profile.resolvedAIWritingStyle
-        style.applyPreset(preset)
-        profile.resolvedAIWritingStyle = style
-        activeProfileBinding.wrappedValue = profile
-      }
-    )
-  }
-
-  private func aiWritingStyleTextBinding(_ keyPath: WritableKeyPath<AIWritingStyleConfig, String>)
-    -> Binding<String>
-  {
-    Binding(
-      get: { activeProfileBinding.wrappedValue.resolvedAIWritingStyle[keyPath: keyPath] },
-      set: { value in
-        var profile = activeProfileBinding.wrappedValue
-        var style = profile.resolvedAIWritingStyle
-        style.preset = .custom
-        style[keyPath: keyPath] = value
-        profile.resolvedAIWritingStyle = style
-        activeProfileBinding.wrappedValue = profile
-      }
-    )
-  }
-
-  private func aiWritingStyleTerminologyBinding(
-    _ keyPath: WritableKeyPath<AIWritingStyleConfig, [String]>
-  ) -> Binding<String> {
-    Binding(
-      get: { activeProfileBinding.wrappedValue.resolvedAIWritingStyle[keyPath: keyPath].joined(separator: "\n") },
-      set: { value in
-        var profile = activeProfileBinding.wrappedValue
-        var style = profile.resolvedAIWritingStyle
-        style.preset = .custom
-        style[keyPath: keyPath] = value.components(separatedBy: .newlines)
-        profile.resolvedAIWritingStyle = style
-        activeProfileBinding.wrappedValue = profile
-      }
-    )
-  }
-
-  private var aiWritingStyleExemplarBinding: Binding<Set<UUID>> {
-    Binding(
-      get: { Set(activeProfileBinding.wrappedValue.resolvedAIWritingStyle.exemplarArticleIDs) },
-      set: { ids in
-        var profile = activeProfileBinding.wrappedValue
-        var style = profile.resolvedAIWritingStyle
-        style.exemplarArticleIDs = Array(ids).sorted { $0.uuidString < $1.uuidString }
-        style.normalizeWhitespace()
-        profile.resolvedAIWritingStyle = style
-        activeProfileBinding.wrappedValue = profile
       }
     )
   }
@@ -542,70 +467,4 @@ struct AISettingsView: View {
     return sanitized
   }
 
-}
-
-private struct AIWritingStyleScopeNotice: View {
-  let siteName: String
-
-  var body: some View {
-    Section {
-      Label(
-        "写作偏好只应用于当前站点“\(siteName)”。修改语气、受众和 SEO 指引不会改动共享的连接档案。",
-        systemImage: "text.quote"
-      )
-      .font(.caption)
-      .foregroundStyle(.secondary)
-      .accessibilityIdentifier("settings-ai-writing-style-current-site-scope")
-      .settingsSubsectionAnchor(.aiWritingStyle)
-    }
-  }
-}
-
-enum AISettingsSection: String, CaseIterable, Identifiable {
-  case connection
-  case credentials
-  case writingStyle
-
-  var id: String { rawValue }
-
-  init(destination: SettingsAIDestination) {
-    switch destination {
-    case .connection:
-      self = .connection
-    case .credentials:
-      self = .credentials
-    case .writingStyle:
-      self = .writingStyle
-    }
-  }
-
-  init(destination: SettingsAIDestination, shouldFocusAPIKey: Bool) {
-    if shouldFocusAPIKey {
-      self = .connection
-    } else {
-      self.init(destination: destination)
-    }
-  }
-
-  var title: String {
-    switch self {
-    case .connection:
-      return String(localized: "模型与连接")
-    case .credentials:
-      return String(localized: "参数与网络")
-    case .writingStyle:
-      return String(localized: "写作风格")
-    }
-  }
-
-  var systemImage: String {
-    switch self {
-    case .connection:
-      return "sparkles"
-    case .credentials:
-      return "slider.horizontal.3"
-    case .writingStyle:
-      return "text.quote"
-    }
-  }
 }

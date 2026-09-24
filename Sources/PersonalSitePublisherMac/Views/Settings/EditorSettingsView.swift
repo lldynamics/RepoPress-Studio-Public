@@ -40,6 +40,7 @@ struct EditorSettingsView: View {
       typographySection
       assistanceSection
       automationSection
+      EditorArticleDefaultsSection()
     }
     .formStyle(.grouped)
     .scrollIndicators(.hidden)

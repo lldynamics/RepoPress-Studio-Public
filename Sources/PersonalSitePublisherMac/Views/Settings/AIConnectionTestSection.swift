@@ -1,5 +1,5 @@
 import PublishingAICore
-import PublishingWorkbenchCore
+import PublishingCoreSupport
 import SwiftUI
 
 enum AIConnectionTestAvailability: Equatable {

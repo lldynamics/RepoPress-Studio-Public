@@ -4,7 +4,7 @@ import PublishingWorkbenchCore
 enum SettingsScopePresentation: Equatable, Sendable {
   case currentSite
   case shared
-  case mixed
+  case sharedConnection
 
   var badgeTitle: String {
     switch self {
@@ -12,8 +12,8 @@ enum SettingsScopePresentation: Equatable, Sendable {
       return String(localized: "当前站点")
     case .shared:
       return String(localized: "全局共享")
-    case .mixed:
-      return String(localized: "混合作用范围")
+    case .sharedConnection:
+      return String(localized: "共享连接")
     }
   }
 
@@ -23,7 +23,7 @@ enum SettingsScopePresentation: Equatable, Sendable {
       return "globe.asia.australia"
     case .shared:
       return "globe"
-    case .mixed:
+    case .sharedConnection:
       return "rectangle.3.group"
     }
   }
@@ -34,8 +34,8 @@ enum SettingsScopePresentation: Equatable, Sendable {
       return String(localized: "当前站点，切换站点后可分别配置")
     case .shared:
       return String(localized: "全局共享，适用于所有站点")
-    case .mixed:
-      return String(localized: "混合作用范围，连接档案共享，写作偏好仅当前站点")
+    case .sharedConnection:
+      return String(localized: "共享连接，修改会影响所有引用此连接的站点")
     }
   }
 }

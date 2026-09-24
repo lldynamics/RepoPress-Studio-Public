@@ -5,10 +5,9 @@ struct KnowledgeAdvancedSettingsExpansionState: Equatable {
   var vectorSearch = false
   var smartCollections = false
   var backup = false
-  var browserConnection = false
 
   var isFullyCollapsed: Bool {
-    !vectorSearch && !smartCollections && !backup && !browserConnection
+    !vectorSearch && !smartCollections && !backup
   }
 }
 
@@ -17,13 +16,11 @@ struct KnowledgeSettingsView: View {
   @Environment(\.openSettings) private var openSettings
   @Environment(\.settingsWorkspaceCommandAction) private var settingsWorkspaceCommandAction
   @ObservedObject var knowledge: KnowledgeStore
-  let browserBridge: KnowledgeBrowserBridge?
   let onOpenLibrary: () -> Void
 
   @AppStorage("knowledgeSavedCollectionsV1") private var savedCollectionsJSON = "[]"
   @AppStorage("dataManagementRequestedSection") private var dataManagementRequestedSection = DataManagementSection.backup.rawValue
   @State private var expansionState = KnowledgeAdvancedSettingsExpansionState()
-  @State private var isBrowserConnectionPresented = false
 
   var body: some View {
     VStack(spacing: 0) {
@@ -77,27 +74,10 @@ struct KnowledgeSettingsView: View {
             )
           }
           .accessibilityIdentifier("knowledge-settings-backup")
-
-          DisclosureGroup(isExpanded: $expansionState.browserConnection) {
-            browserConnectionSettings
-          } label: {
-            advancedGroupLabel(
-              title: String(localized: "浏览器连接"),
-              detail: String(localized: "从 Chrome 或 Firefox 保存网页"),
-              systemImage: "puzzlepiece.extension"
-            )
-          }
-          .accessibilityIdentifier("knowledge-settings-browser-connection")
         }
       }
       .formStyle(.grouped)
       .padding(WorkbenchSpacing.content)
-    }
-    .sheet(isPresented: $isBrowserConnectionPresented) {
-      if let browserBridge {
-        BrowserExtensionConnectionView()
-          .environmentObject(browserBridge)
-      }
     }
     .onChange(of: expansionState.vectorSearch) { _, isExpanded in
       guard isExpanded, knowledge.healthSnapshot == nil, !knowledge.isLoadingHealth else { return }
@@ -122,7 +102,7 @@ struct KnowledgeSettingsView: View {
         Text("资料库设置")
           .font(.workbenchPageTitle)
           .accessibilityAddTraits(.isHeader)
-        Text("管理本地检索、智能集合、备份和浏览器连接。")
+        Text("管理本地检索、智能集合和备份。")
           .font(.workbenchPageSubtitle)
           .foregroundStyle(.secondary)
       }
@@ -198,33 +178,6 @@ struct KnowledgeSettingsView: View {
         openDataManagement()
       } label: {
         Label("打开数据管理", systemImage: "externaldrive")
-      }
-    }
-    .padding(.leading, 22)
-    .padding(.vertical, 8)
-  }
-
-  private var browserConnectionSettings: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      if let browserBridge {
-        LabeledContent("连接状态") {
-          Label(
-            browserBridge.localizedStatusDisplayName,
-            systemImage: browserBridge.state == .ready ? "checkmark.circle.fill" : "circle.dotted"
-          )
-          .foregroundStyle(browserBridge.state == .ready ? WorkbenchTheme.success : Color.secondary)
-        }
-        Text("浏览器插件通过当前用户专属的本机连接保存网页，不向公网暴露资料库端口。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-        Button {
-          isBrowserConnectionPresented = true
-        } label: {
-          Label("打开浏览器连接设置…", systemImage: "puzzlepiece.extension")
-        }
-      } else {
-        Text("浏览器连接尚未就绪，请重新打开设置。")
-          .foregroundStyle(.secondary)
       }
     }
     .padding(.leading, 22)

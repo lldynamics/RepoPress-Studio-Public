@@ -35,7 +35,7 @@ struct KnowledgeLibraryDetailView: View {
       } else {
         EmptyStateView(
           title: "资料库",
-          message: LocalizedStringKey("导入图片、EPUB 书籍、文章、网页或 PDF，写作和对话时可以按需检索与引用。"),
+          message: LocalizedStringKey("导入图片、文章、网页或 PDF，写作和对话时可以按需检索与引用。"),
           systemImage: "books.vertical",
           density: .fullPage,
           actionTitle: knowledge.documents.isEmpty ? "导入资料" : nil,

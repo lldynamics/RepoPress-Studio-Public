@@ -339,7 +339,22 @@ if actual.get("com.apple.security.app-sandbox") is True:
     raise SystemExit("direct release: signed app unexpectedly enables App Sandbox")
 if actual.get("com.apple.security.get-task-allow") is True:
     raise SystemExit("direct release: signed app unexpectedly allows debugging")
+if "com.apple.developer.icloud-services" in actual and \
+        "com.apple.developer.icloud-services" not in expected:
+    raise SystemExit("direct release: signed app has unrecorded iCloud entitlements")
 PY
+
+  if [[ "$(basename "$DIRECT_ENTITLEMENTS")" == "CloudDirectDistribution.entitlements" ]]; then
+    local embedded_profile="$app_bundle/Contents/embedded.provisionprofile"
+    [[ -f "$embedded_profile" ]] || fail "cloud release app has no embedded provisioning profile"
+    if [[ -n "${PERSONAL_SITE_PUBLISHER_CLOUD_PROVISIONING_PROFILE:-}" ]]; then
+      cmp -s "$embedded_profile" "$PERSONAL_SITE_PUBLISHER_CLOUD_PROVISIONING_PROFILE" \
+        || fail "embedded cloud profile differs from the configured profile"
+    fi
+    "$PYTHON_TOOL" "$ROOT_DIR/script/verify_cloud_signature.py" \
+      "$embedded_profile" "$app_bundle" Production \
+      || fail "cloud release signature does not match its provisioning profile"
+  fi
 
   if [[ "$require_notary_ticket" == "1" ]]; then
     "$XCRUN_TOOL" stapler validate "$app_bundle" \
@@ -459,7 +474,7 @@ write_release_manifest() {
     "$manifest" "$app_bundle" "$zip_path" "$dmg_path" "$appcast_path" \
     "$app_receipt" "$dmg_receipt" "$ROOT_DIR" "$OUTPUT_DIR" \
     "$MARKETING_VERSION" "$BUILD_NUMBER" "$BUNDLE_ID" "$team_identifier" \
-    "$UPDATE_DOWNLOAD_URL_PREFIX" "$UPDATE_CHANNEL" <<'PY'
+    "$UPDATE_DOWNLOAD_URL_PREFIX" "$UPDATE_CHANNEL" "$DIRECT_ENTITLEMENTS" <<'PY'
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -484,6 +499,7 @@ import sys
     team_identifier,
     download_url_prefix,
     update_channel,
+    entitlements_path,
 ) = sys.argv[1:]
 manifest = Path(manifest_value)
 app = Path(app_value)
@@ -545,7 +561,7 @@ payload = {
         "teamIdentifier": team_identifier,
         "hardenedRuntime": True,
         "timestamped": True,
-        "entitlements": "Packaging/DirectDistribution.entitlements",
+        "entitlements": "Packaging/" + Path(entitlements_path).name,
     },
     "notarization": {
         "app": {"id": app_receipt.get("id"), "status": app_receipt.get("status")},
@@ -603,7 +619,7 @@ validate_manifest_and_checksums() {
 
   "$PYTHON_TOOL" - \
     "$app_bundle" "$zip_path" "$dmg_path" "$manifest" "$checksums" "$appcast" \
-    "$MARKETING_VERSION" "$BUILD_NUMBER" "$BUNDLE_ID" <<'PY'
+    "$MARKETING_VERSION" "$BUILD_NUMBER" "$BUNDLE_ID" "$DIRECT_ENTITLEMENTS" <<'PY'
 import hashlib
 import json
 import os
@@ -613,7 +629,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 app, zip_path, dmg_path, manifest, checksums, appcast = map(Path, sys.argv[1:7])
-version, build, bundle_id = sys.argv[7:10]
+version, build, bundle_id, entitlements_path = sys.argv[7:11]
 
 def digest(path: Path) -> str:
     value = hashlib.sha256()
@@ -650,6 +666,8 @@ if payload.get("signing", {}).get("kind") != "Developer ID Application":
     raise SystemExit("direct release: manifest does not record Developer ID signing")
 if payload.get("signing", {}).get("hardenedRuntime") is not True:
     raise SystemExit("direct release: manifest does not record hardened runtime")
+if payload.get("signing", {}).get("entitlements") != "Packaging/" + Path(entitlements_path).name:
+    raise SystemExit("direct release: manifest does not match the validated signing entitlements")
 for target in ("app", "dmg"):
     if payload.get("notarization", {}).get(target, {}).get("status") != "Accepted":
         raise SystemExit(f"direct release: manifest notarization status is not Accepted: {target}")
@@ -715,10 +733,29 @@ validate_complete_release() {
   local output_tree=""
   local extracted_tree=""
   local extract_dir="$TMP_DIR/zip-validation"
+  local recorded_entitlements=""
 
   for path in "$dmg_path" "$zip_path" "$manifest" "$checksums" "$appcast"; do
     [[ -f "$path" ]] || fail "release artifact is missing: $path"
   done
+  recorded_entitlements="$("$PYTHON_TOOL" - "$manifest" <<'PY'
+import json
+from pathlib import Path
+import sys
+print(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")).get("signing", {}).get("entitlements", ""))
+PY
+)" || fail "could not read signing mode from release manifest"
+  case "$recorded_entitlements" in
+    Packaging/DirectDistribution.entitlements)
+      [[ -z "${PERSONAL_SITE_PUBLISHER_CLOUD_PROVISIONING_PROFILE:-}" ]] \
+        || fail "configured cloud profile conflicts with a non-cloud release manifest"
+      DIRECT_ENTITLEMENTS="$ROOT_DIR/Packaging/DirectDistribution.entitlements"
+      ;;
+    Packaging/CloudDirectDistribution.entitlements)
+      DIRECT_ENTITLEMENTS="$ROOT_DIR/Packaging/CloudDirectDistribution.entitlements"
+      ;;
+    *) fail "release manifest has an unknown signing entitlement set" ;;
+  esac
   app_team="$(validate_signed_app "$app_bundle" 1 | tail -n 1)"
   validate_signed_disk_image "$dmg_path" "$app_team" >/dev/null
   "$XCRUN_TOOL" stapler validate "$dmg_path" \
@@ -825,6 +862,9 @@ done
 ROOT_DIR="$(canonical_path "$ROOT_DIR")"
 OUTPUT_DIR="$(canonical_path "$OUTPUT_DIR")"
 DIRECT_ENTITLEMENTS="$ROOT_DIR/Packaging/DirectDistribution.entitlements"
+if [[ -n "${PERSONAL_SITE_PUBLISHER_CLOUD_PROVISIONING_PROFILE:-}" ]]; then
+  DIRECT_ENTITLEMENTS="$ROOT_DIR/Packaging/CloudDirectDistribution.entitlements"
+fi
 case "$OUTPUT_DIR" in
   /|"${HOME:-}"|"$ROOT_DIR"|"$ROOT_DIR/dist")
     fail "refusing unsafe output directory: $OUTPUT_DIR"

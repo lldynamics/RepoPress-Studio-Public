@@ -73,7 +73,7 @@ struct RepositorySafeSyncConfirmationView: View {
         .font(.headline)
       LabeledContent("当前分支", value: snapshot.branch)
       LabeledContent("Upstream", value: snapshot.upstream)
-      LabeledContent("本地 HEAD", value: String(snapshot.localHeadSHA.prefix(12)))
+      LabeledContent("本地版本", value: String(snapshot.localHeadSHA.prefix(12)))
       LabeledContent("目标提交", value: String(snapshot.remoteHeadSHA.prefix(12)))
       LabeledContent("快进距离", value: "\(snapshot.behindCount) 个远端提交")
     }
@@ -170,7 +170,7 @@ struct RepositoryRebaseSyncConfirmationView: View {
     VStack(spacing: 0) {
       confirmationHeader(
         title: "确认变基同步",
-        detail: "把本地提交重放到已审阅的远端提交，并安全封存、恢复未提交改动。",
+        detail: "将本地提交合并到已审阅的远端提交之上，并安全恢复本地未提交改动。",
         systemImage: "arrow.triangle.branch"
       )
       Divider()
@@ -181,16 +181,16 @@ struct RepositoryRebaseSyncConfirmationView: View {
               .font(.headline)
             LabeledContent("当前分支", value: snapshot.branch)
             LabeledContent("Upstream", value: snapshot.upstream)
-            LabeledContent("本地 HEAD", value: String(snapshot.localHeadSHA.prefix(12)))
-            LabeledContent("已审阅远端", value: String(snapshot.remoteHeadSHA.prefix(12)))
+            LabeledContent("本地版本", value: String(snapshot.localHeadSHA.prefix(12)))
+            LabeledContent("远端版本", value: String(snapshot.remoteHeadSHA.prefix(12)))
             LabeledContent("分叉", value: "领先 \(snapshot.aheadCount) · 落后 \(snapshot.behindCount)")
           }
           syncCard {
             Label("确认后依次执行", systemImage: "list.number")
               .font(.headline)
-            rebaseStep(1, "冻结并封存当前未提交改动")
-            rebaseStep(2, "只对已审阅的远端 SHA 执行 rebase")
-            rebaseStep(3, "按精确 stash commit SHA 恢复改动")
+            rebaseStep(1, "安全暂存当前未提交改动")
+            rebaseStep(2, "同步远端最新提交并变基")
+            rebaseStep(3, "恢复暂存的本地改动")
           }
           syncCard {
             Label("将封存的本地改动（\(snapshot.localChanges.count)）", systemImage: "shippingbox")

@@ -35,7 +35,6 @@ struct WorkbenchPersistenceSnapshotInput: Sendable {
   let deploymentPollingStateByProfileID: [UUID: DeploymentPollingState]
   let deploymentStatusSnapshots: [UUID: DeploymentStatusSnapshot]
   let deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]]
-  let siteStarterProgress: SiteStarterProgress?
   let deferredProjectFileWrites: [SiteDraftFileSaveFailure]
 
   init(
@@ -72,7 +71,6 @@ struct WorkbenchPersistenceSnapshotInput: Sendable {
     deploymentPollingStateByProfileID: [UUID: DeploymentPollingState],
     deploymentStatusSnapshots: [UUID: DeploymentStatusSnapshot],
     deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]],
-    siteStarterProgress: SiteStarterProgress?,
     deferredProjectFileWrites: [SiteDraftFileSaveFailure] = []
   ) {
     self.profiles = profiles
@@ -108,7 +106,6 @@ struct WorkbenchPersistenceSnapshotInput: Sendable {
     self.deploymentPollingStateByProfileID = deploymentPollingStateByProfileID
     self.deploymentStatusSnapshots = deploymentStatusSnapshots
     self.deploymentStatusHistory = deploymentStatusHistory
-    self.siteStarterProgress = siteStarterProgress
     self.deferredProjectFileWrites = deferredProjectFileWrites
   }
 }
@@ -151,7 +148,6 @@ extension WorkbenchPersistence {
       deploymentPollingStateByProfileID: input.deploymentPollingStateByProfileID,
       deploymentStatusSnapshots: Array(input.deploymentStatusSnapshots.values),
       deploymentStatusHistory: input.deploymentStatusHistory,
-      siteStarterProgress: input.siteStarterProgress,
       deferredProjectFileWrites: input.deferredProjectFileWrites
     )
   }
@@ -196,7 +192,6 @@ extension WorkbenchPersistence {
       deploymentPollingStateByProfileID: store.deploymentStore.deploymentPollingStateByProfileID,
       deploymentStatusSnapshots: store.deploymentStatusSnapshots,
       deploymentStatusHistory: store.deploymentStatusHistory,
-      siteStarterProgress: store.siteStarterProgress,
       deferredProjectFileWrites: store.currentSiteDraftFileSaveFailures.sorted { $0.draftID.uuidString < $1.draftID.uuidString }
     )
   }

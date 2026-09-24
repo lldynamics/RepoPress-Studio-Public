@@ -83,32 +83,3 @@ public final class PublishSessionStore: ObservableObject {
     self.isLocalRepositoryMutationRunning = false
   }
 }
-
-/// Owns the transient lifecycle of the site-creation wizard independently of
-/// draft editing and ordinary publishing state.
-@MainActor
-public final class SiteStarterStore: ObservableObject {
-  let service: SiteStarterService
-  var operationGeneration: UInt64 = 0
-
-  @Published public internal(set) var result: SiteStarterResult?
-  @Published public internal(set) var importResult: SiteStarterImportResult?
-  @Published public internal(set) var pushResult: SiteStarterPushResult?
-  @Published public internal(set) var progress: SiteStarterProgress?
-  @Published public internal(set) var isOperationRunning: Bool
-
-  init(
-    service: SiteStarterService,
-    result: SiteStarterResult?,
-    importResult: SiteStarterImportResult?,
-    pushResult: SiteStarterPushResult?,
-    progress: SiteStarterProgress?
-  ) {
-    self.service = service
-    self.result = result
-    self.importResult = importResult
-    self.pushResult = pushResult
-    self.progress = progress
-    self.isOperationRunning = false
-  }
-}

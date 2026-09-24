@@ -14,17 +14,14 @@ final class AISettingsFlowPresentationTests: XCTestCase {
     XCTAssertEqual(AIConnectionKind(preset: .custom), .apiKey)
   }
 
-  func testStructuredDestinationsSelectTheExpectedAISection() {
-    XCTAssertEqual(AISettingsSection(destination: .connection), .connection)
-    XCTAssertEqual(AISettingsSection(destination: .credentials), .credentials)
-    XCTAssertEqual(AISettingsSection(destination: .writingStyle), .writingStyle)
-  }
-
-  func testAISectionsUseTaskOrientedTitles() {
+  func testWritingStyleDestinationUsesTheSiteAISubsection() {
     XCTAssertEqual(
-      AISettingsSection.allCases.map(\.title),
-      ["模型与连接", "参数与网络", "写作风格"]
+      SettingsSubsection.section(for: .ai(.writingStyle)),
+      .aiWritingStyle
     )
+    XCTAssertEqual(SettingsSubsection.aiWritingStyle.tab, .siteAI)
+    XCTAssertEqual(SettingsSubsection.aiSiteConnection.tab, .siteAI)
+    XCTAssertEqual(SettingsSubsection.aiConnection.tab, .ai)
   }
 
   func testConnectionTestRequiresEndpointThenKeyThenConsent() {
@@ -282,14 +279,6 @@ final class AISettingsFlowPresentationTests: XCTestCase {
     XCTAssertEqual(
       SettingsView.settingsDestination(for: .aiKey),
       .ai(.connection)
-    )
-    XCTAssertEqual(
-      AISettingsSection(destination: .credentials, shouldFocusAPIKey: true),
-      .connection
-    )
-    XCTAssertEqual(
-      AISettingsSection(destination: .credentials, shouldFocusAPIKey: false),
-      .credentials
     )
   }
 

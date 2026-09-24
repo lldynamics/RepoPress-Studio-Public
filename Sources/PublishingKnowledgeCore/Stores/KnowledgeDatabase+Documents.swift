@@ -10,9 +10,16 @@ extension KnowledgeDatabase {
                source_url, source_name, folder_id, source_byte_count,
                allows_ai_use, allows_local_semantic_index, is_archived,
                imported_at, updated_at, current_revision_id
-        FROM knowledge_documents
-        WHERE is_archived = 0
-        ORDER BY imported_at DESC, title COLLATE NOCASE ASC;
+        FROM knowledge_documents d
+        WHERE d.is_archived = 0
+          AND (
+            d.kind <> 'note'
+            OR NOT EXISTS (
+              SELECT 1 FROM knowledge_note_metadata m
+              WHERE m.document_id = d.id AND m.is_archived = 1
+            )
+          )
+        ORDER BY d.imported_at DESC, d.title COLLATE NOCASE ASC;
         """
       return try withCachedStatementUnlocked(sql) { statement in
         var output: [KnowledgeDocument] = []

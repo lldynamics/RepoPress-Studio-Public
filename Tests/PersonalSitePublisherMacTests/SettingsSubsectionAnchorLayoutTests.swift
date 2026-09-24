@@ -54,7 +54,9 @@ final class SettingsSubsectionAnchorLayoutTests: XCTestCase {
     file: StaticString = #filePath,
     line: UInt = #line
   ) {
-    XCTAssertEqual(baseline.contentFrames.count, 4, file: file, line: line)
+    XCTAssertEqual(
+      baseline.contentFrames.count, SettingsSubsection.sections(for: .editor).count, file: file,
+      line: line)
     XCTAssertEqual(anchored.contentFrames, baseline.contentFrames, file: file, line: line)
   }
 
@@ -64,8 +66,10 @@ final class SettingsSubsectionAnchorLayoutTests: XCTestCase {
     line: UInt = #line
   ) throws {
     let state = rendered.state
-    XCTAssertEqual(state.anchorFrames.count, 4, file: file, line: line)
-    for subsection in SettingsSubsection.sections(for: .appearance) {
+    XCTAssertEqual(
+      state.anchorFrames.count, SettingsSubsection.sections(for: .editor).count, file: file,
+      line: line)
+    for subsection in SettingsSubsection.sections(for: .editor) {
       let anchor = try XCTUnwrap(state.anchorFrames[subsection], file: file, line: line)
       let content = try XCTUnwrap(state.contentFrames[subsection], file: file, line: line)
       XCTAssertEqual(anchor.minY, content.minY, accuracy: 1, file: file, line: line)
@@ -74,25 +78,25 @@ final class SettingsSubsectionAnchorLayoutTests: XCTestCase {
       XCTAssertGreaterThan(anchor.width, 300, file: file, line: line)
       XCTAssertEqual(anchor.height, 0, file: file, line: line)
     }
-    let originalTarget = try XCTUnwrap(state.anchorFrames[.appearanceLanguage]).minY
+    let originalTarget = try XCTUnwrap(state.anchorFrames[.editorAssistance]).minY
     XCTAssertGreaterThan(originalTarget, 300, file: file, line: line)
-    state.target = .appearanceLanguage
+    state.target = .editorAssistance
     settle(rendered.window)
-    let scrolledTarget = try XCTUnwrap(state.anchorFrames[.appearanceLanguage])
+    let scrolledTarget = try XCTUnwrap(state.anchorFrames[.editorAssistance])
     XCTAssertEqual(
       scrolledTarget.minY, WorkbenchSpacing.content, accuracy: 1, file: file, line: line
     )
     XCTAssertLessThan(
-      try XCTUnwrap(state.anchorFrames[.appearanceBehavior]).minY, 0,
+      try XCTUnwrap(state.anchorFrames[.editorPreview]).minY, 0,
       file: file, line: line
     )
     XCTAssertEqual(
       SettingsSubsectionVisibilityPolicy.visibleSubsection(
-        in: .appearance, anchorFrames: state.anchorFrames
+        in: .editor, anchorFrames: state.anchorFrames
       ),
-      .appearanceLanguage, file: file, line: line
+      .editorAssistance, file: file, line: line
     )
-    let highlight = SettingsSearchHighlight(subsection: .appearanceLanguage)
+    let highlight = SettingsSearchHighlight(subsection: .editorAssistance)
     let frame = highlight.visibleFrame(
       anchorFrames: state.anchorFrames,
       viewport: CGRect(x: 0, y: 0, width: rendered.window.frame.width, height: 300)
@@ -160,7 +164,7 @@ private struct AnchorLayoutFixture: View {
   var body: some View {
     ScrollViewReader { proxy in
       Form {
-        ForEach(SettingsSubsection.sections(for: .appearance)) { subsection in
+        ForEach(SettingsSubsection.sections(for: .editor)) { subsection in
           if placement == .header {
             Section {
               rows

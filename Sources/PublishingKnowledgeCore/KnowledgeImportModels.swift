@@ -1,5 +1,26 @@
 import Foundation
 
+public struct KnowledgeImportOptions: Hashable, Sendable {
+  public var performsPDFOCR: Bool
+  public var performsImageOCR: Bool
+  public var maximumPDFOCRPageCount: Int
+
+  public init(
+    performsPDFOCR: Bool = true,
+    performsImageOCR: Bool = true,
+    maximumPDFOCRPageCount: Int = 200
+  ) {
+    self.performsPDFOCR = performsPDFOCR
+    self.performsImageOCR = performsImageOCR
+    self.maximumPDFOCRPageCount = min(max(maximumPDFOCRPageCount, 1), 500)
+  }
+}
+public enum KnowledgeImportDestination: Hashable, Sendable {
+  case preserveExisting
+  case unfiled
+  case folder(UUID)
+}
+
 public struct KnowledgeImportCandidate: Identifiable, Hashable, Sendable {
   public var id: UUID
   public var existingDocumentID: UUID?
@@ -160,5 +181,37 @@ public struct KnowledgeBatchExportReport: Hashable, Sendable {
   public init(exportedDocumentCount: Int, destinationDirectory: URL) {
     self.exportedDocumentCount = max(0, exportedDocumentCount)
     self.destinationDirectory = destinationDirectory
+  }
+}
+
+public enum KnowledgeImportFolderSuggestionReason: String, Codable, Hashable, Sendable {
+  case sourceDomain = "source-domain"
+  case author
+  case tag
+}
+
+public struct KnowledgeImportFolderSuggestion: Hashable, Sendable {
+  public var folder: KnowledgeFolder
+  public var score: Double
+  public var reasons: [KnowledgeImportFolderSuggestionReason]
+
+  public init(
+    folder: KnowledgeFolder,
+    score: Double,
+    reasons: [KnowledgeImportFolderSuggestionReason]
+  ) {
+    self.folder = folder
+    self.score = score
+    self.reasons = reasons
+  }
+}
+
+public struct KnowledgeImportOrganizationSuggestions: Hashable, Sendable {
+  public var folders: [KnowledgeImportFolderSuggestion]
+  public var tags: [String]
+
+  public init(folders: [KnowledgeImportFolderSuggestion], tags: [String]) {
+    self.folders = folders
+    self.tags = tags
   }
 }

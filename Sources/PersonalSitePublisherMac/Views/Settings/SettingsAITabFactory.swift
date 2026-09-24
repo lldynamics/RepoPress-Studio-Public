@@ -7,10 +7,7 @@ struct SettingsAITabFactory {
       activeProfileBinding: context.activeProfileBinding,
       connectionProfiles: context.store.aiConnectionProfiles,
       referencingSiteProfiles: context.store.profiles,
-      selectedConnectionProfileID: Binding(
-        get: { context.store.activeAIConnectionProfile.id },
-        set: { context.store.selectAIConnectionProfile($0) }
-      ),
+      activeConnectionProfileID: context.store.activeAIConnectionProfile.id,
       updateConnectionProfile: { profile in
         context.store.updateAIConnectionProfile(profile)
       },
@@ -77,6 +74,29 @@ struct SettingsAITabFactory {
       grantCodexDataSharingConsent: { accountStatus in
         context.store.ai.grantCodexDataSharingConsent(for: accountStatus)
       },
+      openSiteAISettings: {
+        context.selectSettingsDestination(.tab(.siteAI))
+      }
+    )
+  }
+
+  static func makeSite(context: SettingsContext) -> some View {
+    AISiteSettingsView(
+      activeProfileBinding: context.activeProfileBinding,
+      connectionProfiles: context.store.aiConnectionProfiles,
+      selectedConnectionProfileID: Binding(
+        get: { context.store.activeAIConnectionProfile.id },
+        set: { _ = context.store.selectAIConnectionProfile($0) }
+      ),
+      createConnectionProfile: { name, preset in
+        context.store.createAIConnectionProfile(named: name, preset: preset)
+      },
+      duplicateConnectionProfile: { connectionID in
+        context.store.duplicateAIConnectionProfileForActiveSite(connectionID)
+      },
+      currentActionMessage: {
+        context.store.ai.actionMessage
+      },
       writingStyleArticles: context.store.drafts.filter { draft in
         draft.belongs(toSiteProfileID: context.store.activeProfileID)
           && !draft.isPrivate
@@ -92,6 +112,9 @@ struct SettingsAITabFactory {
       },
       discardWritingStylePreview: {
         context.store.discardAIWritingStyleProfilePreview()
+      },
+      openSharedConnectionSettings: {
+        context.selectSettingsDestination(.ai(.connection))
       }
     )
   }

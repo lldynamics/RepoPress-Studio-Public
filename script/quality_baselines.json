@@ -2,7 +2,6 @@
   "schemaVersion": 2,
   "sourceLineCoveragePercentMinimum": 44.0,
   "sourceLineCoveragePercentMinimumByTarget": {
-    "BrowserExtensionProtocolSupport": 0.01,
     "PersonalSitePublisherMac": 8.0,
     "PublishingAICore": 87.0,
     "PublishingAgentContracts": 70.0,
@@ -16,7 +15,6 @@
   "changedExecutableSourceLineCoveragePercentMinimum": 100.0,
   "swiftFormatWarningMaximums": {
     "sourcesByTarget": {
-      "BrowserExtensionProtocolSupport": 0,
       "PersonalSitePublisherMac": 1656,
       "PublishingAICore": 33,
       "PublishingAgentContracts": 0,

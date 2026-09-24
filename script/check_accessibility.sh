@@ -77,11 +77,6 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
-  "WorkspaceNavigationPresentation.secondaryEntryItems" \
-  "the Go menu must expose every secondary workspace without an extra advanced submenu"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
   "workspaceCommandPaletteAction?.openMaintenance()" \
   "site maintenance must remain directly reachable from the Go menu"
 
@@ -119,11 +114,6 @@ require_literal \
   "Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift" \
   ".tint(selectedAccentPalette.color)" \
   "global navigation controls must use the selected app accent palette"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
-  "ForEach(WorkspaceNavigationPresentation.secondaryEntryItems)" \
-  "the workspace switcher menu must expose every advanced destination as a labeled button"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
@@ -370,8 +360,7 @@ for top_bar_identifier in \
   "workspace-profile-menu" \
   "workspace-publishing-status" \
   "workspace-command-search" \
-  "workspace-live-preview" \
-  "workspace-open-preview-browser" \
+  "workspace-preview" \
   "workspace-task-center-toggle" \
   "workspace-prepare-publish"; do
   require_literal_count \
@@ -383,8 +372,8 @@ done
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTopBarView.swift" \
-  ".accessibilityLabel(String(localized: \"浏览器预览\"))" \
-  "browser preview must retain its own native accessibility name"
+  ".accessibilityLabel(String(localized: \"预览\"))" \
+  "combined preview must retain its own native accessibility name"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPalette.swift" \
@@ -671,18 +660,6 @@ require_literal \
   "markdown focus requests must make the native editor first responder"
 
 require_literal_any_file \
-  ".accessibilityLabel(\"建站模式\")" \
-  "site starter mode picker must expose an accessibility label" \
-  "Sources/PersonalSitePublisherMac/Views/Site/SiteStarterWorkspaceView.swift" \
-  "Sources/PersonalSitePublisherMac/Views/Site/SiteStarterWorkspaceComponents.swift"
-
-require_literal_any_file \
-  ".accessibilityLabel(\"GitHub Owner\")" \
-  "site starter GitHub owner field must expose an accessibility label" \
-  "Sources/PersonalSitePublisherMac/Views/Site/SiteStarterWorkspaceView.swift" \
-  "Sources/PersonalSitePublisherMac/Views/Site/SiteStarterWorkspaceComponents.swift"
-
-require_literal_any_file \
   ".accessibilityLabel(\"启用自动检查远端\")" \
   "repository remote auto-check toggle must expose an accessibility label" \
   "Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspaceView.swift" \
@@ -839,8 +816,8 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTopBarView.swift" \
-  ".accessibilityLabel(String(localized: \"实时预览\"))" \
-  "local preview toolbar control must expose an accessibility label"
+  ".accessibilityValue(availability.accessibilityValue)" \
+  "preview toolbar control must expose its default action status"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownExternalBrowserPreviewControl.swift" \
@@ -1441,7 +1418,7 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MarkdownEditorComfortControl.swift" \
-  "Label(\"编辑显示与辅助功能\", systemImage: \"textformat.size.smaller\")" \
+  "Label(\"编辑显示与辅助功能\", systemImage: \"accessibility\")" \
   "editor display accessibility control must expose text when space permits"
 
 require_literal \
@@ -1568,4 +1545,4 @@ else
 fi
 [[ -z "$prominent_style_gaps" ]] || fail "prominent buttons bypassing the shared high-contrast style: $prominent_style_gaps"
 
-echo "accessibility gate: labels, values, hints, text editors, semantic knowledge headings, VoiceOver status announcements, selection traits, keyboard shortcuts, command routing, visible focus states, responsive text labels, prominent-action contrast, first-run setup, status light, settings, editor, site starter, diff review, and publish recovery verified"
+echo "accessibility gate: labels, values, hints, text editors, semantic knowledge headings, VoiceOver status announcements, selection traits, keyboard shortcuts, command routing, visible focus states, responsive text labels, prominent-action contrast, first-run setup, status light, settings, editor, diff review, and publish recovery verified"

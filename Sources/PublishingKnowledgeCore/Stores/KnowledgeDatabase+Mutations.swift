@@ -624,7 +624,7 @@ extension KnowledgeDatabase {
       FROM knowledge_revisions
       WHERE document_id = ?;
       """
-    return try withCachedStatementUnlocked(sql) { statement in
+    var references = try withCachedStatementUnlocked(sql) { statement in
       bind(documentID.uuidString, at: 1, to: statement)
       var references = Set<String>()
       while sqlite3_step(statement) == SQLITE_ROW {
@@ -641,6 +641,8 @@ extension KnowledgeDatabase {
       try checkStatementCompletion(statement)
       return references
     }
+    references.formUnion(try noteAttachmentReferencesUnlocked(documentID: documentID))
+    return references
   }
 
   func storageReferenceIsInUseUnlocked(_ reference: String) throws -> Bool {
@@ -650,12 +652,17 @@ extension KnowledgeDatabase {
       WHERE original_storage_ref = ?
          OR captured_text_storage_ref = ?
          OR normalized_storage_ref = ?
+      UNION
+      SELECT 1
+      FROM knowledge_note_attachments
+      WHERE storage_ref = ?
       LIMIT 1;
       """
     return try withCachedStatementUnlocked(sql) { statement in
       bind(reference, at: 1, to: statement)
       bind(reference, at: 2, to: statement)
-      bind(reference, at: 3, to: statement)
+        bind(reference, at: 3, to: statement)
+        bind(reference, at: 4, to: statement)
       let result = sqlite3_step(statement)
       guard result == SQLITE_ROW || result == SQLITE_DONE else { throw databaseError() }
       return result == SQLITE_ROW

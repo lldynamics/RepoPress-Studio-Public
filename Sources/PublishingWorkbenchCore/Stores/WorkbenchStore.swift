@@ -30,7 +30,7 @@ public final class WorkbenchStore: ObservableObject {
   var draftRecoveryWriteGeneration: UInt64 = 0
 
   /// Safe mode keeps the persisted workspace available while skipping
-  /// automatic preflight, preview, maintenance, and browser startup work.
+  /// automatic preflight, preview, and maintenance startup work.
   public let isSafeMode: Bool
 
   let publishingStore: PublishingStore
@@ -93,8 +93,6 @@ public final class WorkbenchStore: ObservableObject {
     WorkbenchReleaseHistoryObservationFacade(store: self)
   public lazy var publishDrawerObservation: WorkbenchPublishDrawerObservationFacade =
     WorkbenchPublishDrawerObservationFacade(store: self)
-  public lazy var siteStarterObservation: WorkbenchSiteStarterObservationFacade =
-    WorkbenchSiteStarterObservationFacade(store: self)
   public lazy var workspaceBackupScheduler: WorkspaceBackupScheduler =
     WorkspaceBackupScheduler(
       store: self,
@@ -250,7 +248,6 @@ public final class WorkbenchStore: ObservableObject {
       RemoteRepositoryPublishService(),
     deploymentStatusService: DeploymentStatusService = DeploymentStatusService(),
     siteAnalyticsService: SiteAnalyticsService = SiteAnalyticsService(),
-    siteStarterService: SiteStarterService = SiteStarterService(),
     imageWorkbenchService: SiteImageWorkbenchService = SiteImageWorkbenchService(),
     seoAuditService: SEOAuditService = SEOAuditService(),
     seoSocialPreviewService: SEOSocialPreviewService = SEOSocialPreviewService(),
@@ -592,7 +589,6 @@ public final class WorkbenchStore: ObservableObject {
       releaseRecords: snapshot?.releaseRecords ?? [],
       selectedDraftID: initialSelectedDraftID,
       draftListContentScope: initialDraftListContentScope,
-      siteStarterProgress: snapshot?.siteStarterProgress,
       markdownEditorSessionStates: snapshot?.markdownEditorSessionStates ?? [:],
       maintenanceOperationRecords: snapshot?.maintenanceOperationRecords ?? [],
       preflightService: preflightService,
@@ -606,7 +602,6 @@ public final class WorkbenchStore: ObservableObject {
       batchPublishCommandBuilder: batchPublishCommandBuilder,
       remotePublishRiskService: remotePublishRiskService,
       localContentImportService: localContentImportService,
-      siteStarterService: siteStarterService,
       generalDraftLibraryService: generalDraftLibraryService,
       localSitePreviewService: localSitePreviewService,
       localSitePreviewProcessService: localSitePreviewProcessService,
@@ -716,9 +711,6 @@ public final class WorkbenchStore: ObservableObject {
     repositoryDeploymentCoordinator.refreshTokenAvailability(store: self)
     aiStore.refreshAIKeyAvailability()
     refreshSiteAnalyticsTokenAvailability()
-    if snapshot?.siteStarterProgress?.profileID == initialActiveProfileID {
-      _ = publishingStore.resumeSiteStarterProgress(store: self)
-    }
     for failure in snapshot?.deferredProjectFileWrites ?? [] {
       guard initialDrafts.contains(where: {
         $0.id == failure.draftID && $0.siteProfileID == failure.profileID

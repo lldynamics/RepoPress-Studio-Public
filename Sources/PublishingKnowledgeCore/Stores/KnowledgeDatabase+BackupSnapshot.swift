@@ -64,6 +64,7 @@ extension KnowledgeDatabase {
 
       var stepResult: Int32 = SQLITE_OK
       var stepCount = 0
+      var busyRetryCount = 0
       while true {
         try Task.checkCancellation()
         stepResult = sqlite3_backup_step(backup, 128)
@@ -75,10 +76,12 @@ extension KnowledgeDatabase {
           break
         }
         if stepResult == SQLITE_BUSY || stepResult == SQLITE_LOCKED {
+          busyRetryCount += 1
+          if busyRetryCount >= 500 { break }
           sqlite3_sleep(10)
           continue
         }
-
+        if stepResult == SQLITE_OK { continue }
         break
       }
       let finishResult = sqlite3_backup_finish(backup)

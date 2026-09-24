@@ -113,7 +113,7 @@ struct RemoteRepositoryConflictResolverView: View {
 
   private func conflictColumns(_ item: RemoteRepositoryConflictItem) -> some View {
     HStack(alignment: .top, spacing: 10) {
-      readOnlyColumn(title: "我的修改", subtitle: "冻结发布包", content: item.local)
+      readOnlyColumn(title: "我的修改", subtitle: "本地准备发布", content: item.local)
       readOnlyColumn(title: "远端版本", subtitle: "当前目标分支", content: item.remote)
       VStack(alignment: .leading, spacing: 5) {
         Text("合并协调区").font(.callout.weight(.semibold))

@@ -835,24 +835,38 @@
       else {
         return
       }
-      let capture = KnowledgeBrowserCapture(
-        sourceURL: sourceURL,
+      let content = """
+        # 资料库辅助功能演示
+
+        这是一份只保存在隔离测试资料库中的合成内容，不包含真实文章、账号或本机路径。
+
+        ## 可访问性检查
+
+        标题、阅读区、检查器开关、资料操作与导入按钮都应拥有唯一标识。
+        """
+      let candidate = KnowledgeImportCandidate(
+        kind: .webpage,
         title: "资料库辅助功能演示",
         authors: ["Demo Author"],
         language: "zh-Hans",
         summary: "用于验证资料详情标题、阅读区和操作控件的辅助功能标识。",
         tags: ["辅助功能", "资料库"],
-        contentText: """
-          # 资料库辅助功能演示
-
-          这是一份只保存在隔离测试资料库中的合成内容，不包含真实文章、账号或本机路径。
-
-          ## 可访问性检查
-
-          标题、阅读区、检查器开关、资料操作与导入按钮都应拥有唯一标识。
-          """,
-        captureMode: .cleanedArticle,
-        allowsAIUse: false
+        sourceURL: sourceURL,
+        sourceName: "example.com",
+        allowsRemoteAIUse: false,
+        originalFilenameExtension: "txt",
+        originalData: Data(content.utf8),
+        capturedText: content,
+        originalContentHash: KnowledgeChunkingService.contentHash(for: content),
+        normalizedText: content,
+        normalizedContentHash: KnowledgeChunkingService.contentHash(for: content),
+        sections: [
+          KnowledgeExtractedSection(
+            headingPath: "资料库辅助功能演示",
+            locator: sourceURL.absoluteString,
+            text: content
+          )
+        ]
       )
       let statusURL = ProcessInfo.processInfo.environment[knowledgeRootEnvironmentKey].map {
         URL(fileURLWithPath: $0, isDirectory: true)
@@ -864,10 +878,8 @@
       }
       recordStatus("started")
       do {
-        _ = try await knowledge.importBrowserCapture(
-          capture,
-          folderID: nil,
-          newFolderName: nil
+        _ = try await knowledge.commit(
+          KnowledgeImportPreview(sourceName: sourceURL.absoluteString, candidates: [candidate])
         )
         recordStatus("completed: \(knowledge.documents.count) documents")
       } catch {

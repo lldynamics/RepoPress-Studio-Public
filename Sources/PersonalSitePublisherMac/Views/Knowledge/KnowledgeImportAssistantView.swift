@@ -87,7 +87,7 @@ struct KnowledgeImportAssistantView: View {
       VStack(alignment: .leading, spacing: 3) {
         Text("导入资料")
           .font(.title2.weight(.semibold))
-        Text("把图片、EPUB 书籍、文章、网页或 PDF 保存到本机资料库并建立检索索引。")
+        Text("把图片、文章、网页或 PDF 保存到本机资料库并建立检索索引。")
           .font(.callout)
           .foregroundStyle(.secondary)
       }
@@ -146,7 +146,7 @@ struct KnowledgeImportAssistantView: View {
           VStack(alignment: .leading, spacing: 3) {
             Text("本地文件或文件夹")
               .font(.callout.weight(.medium))
-            Text("支持 JPEG、PNG、HEIC、EPUB、Markdown、TXT、HTML、PDF；文件夹会批量分析。")
+            Text("支持 JPEG、PNG、HEIC、Markdown、TXT、HTML、PDF；文件夹会批量分析。")
               .font(.caption)
               .foregroundStyle(.secondary)
             Text("图片按原文件保存，保留拍摄与位置信息；预览和 OCR 不修改图片。")

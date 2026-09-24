@@ -2,11 +2,10 @@ import SwiftUI
 
 /// A stable second navigation level shared by every top-level settings page.
 ///
-/// Top-level tabs keep their existing identifiers for deep-link and restoration
-/// compatibility. Subsections only control which focused group is visible in
-/// the detail pane, so long settings forms no longer require users to scan one
-/// continuous page.
+/// Top-level tabs keep their identifiers for deep links and restoration.
+/// Subsections are transient scroll anchors within the selected page.
 enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
+  case configurationTasks
   case configurationReadiness
 
   case rulesBasics
@@ -20,6 +19,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
 
   case aiConnection
   case aiAdvanced
+  case aiSiteConnection
   case aiWritingStyle
 
   case dataDrafts
@@ -30,12 +30,13 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
   case appearanceBehavior
   case appearanceTheme
   case appearanceLanguage
-  case appearanceDefaults
 
   case editorPreview
   case editorTypography
   case editorAssistance
   case editorAutomation
+  // Keep the original ID for existing search and workspace anchors.
+  case appearanceDefaults
 
   case rssRefresh
   case rssReading
@@ -51,19 +52,22 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
 
   var tab: SettingsTab {
     switch self {
-    case .configurationReadiness:
+    case .configurationTasks, .configurationReadiness:
       return .configurationStatus
     case .rulesBasics, .rulesDiscovery, .rulesFrontMatter, .rulesPaths:
       return .defaultRules
     case .tokenRepository, .tokenDeployment, .tokenAnalytics:
       return .token
-    case .aiConnection, .aiAdvanced, .aiWritingStyle:
+    case .aiConnection, .aiAdvanced:
       return .ai
+    case .aiSiteConnection, .aiWritingStyle:
+      return .siteAI
     case .dataDrafts, .dataStorage, .dataBackup, .dataMigration:
       return .dataManagement
-    case .appearanceBehavior, .appearanceTheme, .appearanceLanguage, .appearanceDefaults:
+    case .appearanceBehavior, .appearanceTheme, .appearanceLanguage:
       return .appearance
-    case .editorPreview, .editorTypography, .editorAssistance, .editorAutomation:
+    case .editorPreview, .editorTypography, .editorAssistance, .editorAutomation,
+      .appearanceDefaults:
       return .editor
     case .rssRefresh, .rssReading, .rssOfflineNetwork, .rssMigration, .rssCleanup:
       return .rss
@@ -74,6 +78,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
 
   var title: String {
     switch self {
+    case .configurationTasks: return String(localized: "常用任务")
     case .configurationReadiness: return String(localized: "就绪状态")
     case .rulesBasics: return String(localized: "常用默认值")
     case .rulesDiscovery: return String(localized: "仓库发现")
@@ -84,6 +89,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
     case .tokenAnalytics: return String(localized: "阅读数据")
     case .aiConnection: return String(localized: "模型与连接")
     case .aiAdvanced: return String(localized: "参数与网络")
+    case .aiSiteConnection: return String(localized: "本站使用的连接")
     case .aiWritingStyle: return String(localized: "写作风格")
     case .dataDrafts: return String(localized: "草稿生命周期")
     case .dataStorage: return String(localized: "存储管理")
@@ -110,6 +116,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
 
   var subtitle: String {
     switch self {
+    case .configurationTasks: return String(localized: "常用设置快捷入口")
     case .configurationReadiness: return String(localized: "发布基础、凭据和需要处理的项目")
     case .rulesBasics: return String(localized: "作者、分类与站点类型")
     case .rulesDiscovery: return String(localized: "识别仓库中的内容结构")
@@ -120,6 +127,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
     case .tokenAnalytics: return String(localized: "统计服务和验证状态")
     case .aiConnection: return String(localized: "账号、服务商、模型与凭据")
     case .aiAdvanced: return String(localized: "生成参数、网络与能力检查")
+    case .aiSiteConnection: return String(localized: "为当前站点选择或复制 AI 连接")
     case .aiWritingStyle: return String(localized: "当前站点的写作偏好")
     case .dataDrafts: return String(localized: "版本、回收站与保留策略")
     case .dataStorage: return String(localized: "数据位置和空间使用")
@@ -146,6 +154,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
 
   var systemImage: String {
     switch self {
+    case .configurationTasks: return "square.grid.2x2"
     case .configurationReadiness: return "checkmark.seal"
     case .rulesBasics: return "slider.horizontal.3"
     case .rulesDiscovery: return "magnifyingglass"
@@ -156,6 +165,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
     case .tokenAnalytics: return "chart.bar"
     case .aiConnection: return "link"
     case .aiAdvanced: return "dial.medium"
+    case .aiSiteConnection: return "link"
     case .aiWritingStyle: return "text.quote"
     case .dataDrafts: return "doc.on.doc"
     case .dataStorage: return "externaldrive"
@@ -166,7 +176,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
     case .appearanceLanguage: return "globe"
     case .appearanceDefaults: return "doc.badge.plus"
     case .editorPreview: return "eye"
-    case .editorTypography: return "textformat.size"
+    case .editorTypography: return "text.alignleft"
     case .editorAssistance: return "wand.and.stars"
     case .editorAutomation: return "gearshape.2"
     case .rssRefresh: return "arrow.clockwise"
@@ -185,7 +195,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
   }
 
   static func defaultSection(for tab: SettingsTab) -> SettingsSubsection {
-    sections(for: tab).first ?? .configurationReadiness
+    sections(for: tab).first ?? .configurationTasks
   }
 
   static func section(for destination: SettingsDestination) -> SettingsSubsection {
@@ -226,12 +236,13 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
     case "token.analytics": return .tokenAnalytics
     case "ai.provider", "ai.credentials": return .aiConnection
     case "ai.advanced": return .aiAdvanced
+    case "ai.siteConnection": return .aiSiteConnection
     case "ai.writingStyle": return .aiWritingStyle
     case "data.drafts": return .dataDrafts
     case "data.storage": return .dataStorage
     case "data.backup": return .dataBackup
     case "data.migration": return .dataMigration
-    case "appearance.launch", "appearance.extension": return .appearanceBehavior
+    case "appearance.launch": return .appearanceBehavior
     case "appearance.theme": return .appearanceTheme
     case "appearance.language": return .appearanceLanguage
     case "appearance.defaults": return .appearanceDefaults
@@ -253,7 +264,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
 }
 
 private struct SettingsSubsectionEnvironmentKey: EnvironmentKey {
-  static let defaultValue = SettingsSubsection.configurationReadiness
+  static let defaultValue = SettingsSubsection.configurationTasks
 }
 
 extension EnvironmentValues {

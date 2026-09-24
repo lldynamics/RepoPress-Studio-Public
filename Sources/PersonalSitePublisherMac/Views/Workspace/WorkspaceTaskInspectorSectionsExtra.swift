@@ -61,7 +61,7 @@ enum ArticleInspectorTab: String, CaseIterable, Identifiable {
       return .checks
     case .images:
       return .images
-    case .siteStarter, .library, .rss:
+    case .library, .rss:
       return .metadata
     }
   }
@@ -76,8 +76,6 @@ enum ArticleInspectorTab: String, CaseIterable, Identifiable {
       return [.images]
     case .sync, .library, .rss:
       return []
-    case .siteStarter:
-      return [.metadata]
     }
   }
 }

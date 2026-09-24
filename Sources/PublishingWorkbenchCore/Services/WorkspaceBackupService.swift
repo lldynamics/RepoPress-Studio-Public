@@ -115,7 +115,8 @@ public final class WorkspaceBackupService: Sendable {
     rssDatabaseURL: URL? = nil,
     rssMediaDirectoryURL: URL? = nil,
     applicationVersion: String,
-    currentApplicationVersion: String? = nil
+    currentApplicationVersion: String? = nil,
+    selectedCategories requestedCategories: Set<WorkspaceBackupCategory>? = nil
   ) throws -> WorkspaceBackupPreview {
     try Task.checkCancellation()
     let packageURL = normalizedPackageURL(destinationURL)
@@ -132,30 +133,46 @@ public final class WorkspaceBackupService: Sendable {
       if shouldRemoveTemporary { try? fileManager.removeItem(at: temporaryURL) }
     }
 
-    let preparedAttachments = try prepareAttachmentSnapshot(snapshot)
+    let hasExplicitCategorySelection = requestedCategories != nil
+    let selectedCategories = requestedCategories ?? Set([
+      .workbench, .knowledgeLibrary
+    ] + (rssDatabaseURL == nil ? [] : [.rssReader])
+      + (operationHistoryDocument == nil ? [] : [.operationHistory]))
+    guard !selectedCategories.isEmpty else {
+      throw WorkspaceBackupError.invalidManifest(CoreL10n.text("至少选择一类备份数据"))
+    }
+    let includesWorkbench = selectedCategories.contains(.workbench)
+    let preparedAttachments = includesWorkbench
+      ? try prepareAttachmentSnapshot(snapshot)
+      : PreparedAttachmentSnapshot(snapshot: snapshot, references: [], unresolvedAttachmentCount: 0)
     try Task.checkCancellation()
     let sanitizedSnapshot = preparedAttachments.snapshot
-    let workbenchURL = temporaryURL.appendingPathComponent(Self.workbenchRelativePath)
-    try fileManager.createDirectory(
-      at: workbenchURL.deletingLastPathComponent(),
-      withIntermediateDirectories: true
-    )
-    let workbenchData = try encodedWorkbenchSnapshot(sanitizedSnapshot)
-    guard Int64(workbenchData.count) <= limits.maximumWorkbenchByteCount else {
-      throw WorkspaceBackupError.fileTooLarge(
-        path: Self.workbenchRelativePath,
-        maximumByteCount: limits.maximumWorkbenchByteCount
+    var records = [WorkspaceBackupFileRecord]()
+    if includesWorkbench {
+      let workbenchURL = temporaryURL.appendingPathComponent(Self.workbenchRelativePath)
+      try fileManager.createDirectory(
+        at: workbenchURL.deletingLastPathComponent(),
+        withIntermediateDirectories: true
       )
+      let workbenchData = try encodedWorkbenchSnapshot(sanitizedSnapshot)
+      guard Int64(workbenchData.count) <= limits.maximumWorkbenchByteCount else {
+        throw WorkspaceBackupError.fileTooLarge(
+          path: Self.workbenchRelativePath,
+          maximumByteCount: limits.maximumWorkbenchByteCount
+        )
+      }
+      try workbenchData.write(to: workbenchURL, options: .atomic)
+      records.append(try fileRecord(
+        relativePath: Self.workbenchRelativePath,
+        component: .workbenchState,
+        under: temporaryURL
+      ))
     }
-    try workbenchData.write(to: workbenchURL, options: .atomic)
 
-    var records = [try fileRecord(
-      relativePath: Self.workbenchRelativePath,
-      component: .workbenchState,
-      under: temporaryURL
-    )]
-
-    if let operationHistoryDocument {
+    if selectedCategories.contains(.operationHistory) {
+      guard let operationHistoryDocument else {
+        throw WorkspaceBackupError.sourceUnavailable(Self.operationHistoryRelativePath)
+      }
       try Task.checkCancellation()
       let operationHistoryURL = temporaryURL.appendingPathComponent(
         Self.operationHistoryRelativePath
@@ -189,28 +206,30 @@ public final class WorkspaceBackupService: Sendable {
       ))
     }
 
-    let knowledgePackageURL = temporaryURL.appendingPathComponent(
-      Self.knowledgePackageName,
-      isDirectory: true
-    )
-    let knowledgeService = KnowledgeLibraryService(
-      rootURL: knowledgeRootURL,
-      fileManager: fileManager
-    )
-    try Task.checkCancellation()
-    _ = try knowledgeService.createBackupSynchronously(
-      at: knowledgePackageURL,
-      applicationVersion: applicationVersion
-    )
-    records.append(contentsOf: try recordsInDirectory(
-      knowledgePackageURL,
-      relativePrefix: Self.knowledgePackageName,
-      component: .knowledgeLibrary,
-      under: temporaryURL
-    ))
+    if selectedCategories.contains(.knowledgeLibrary) {
+      let knowledgePackageURL = temporaryURL.appendingPathComponent(
+        Self.knowledgePackageName,
+        isDirectory: true
+      )
+      let knowledgeService = KnowledgeLibraryService(
+        rootURL: knowledgeRootURL,
+        fileManager: fileManager
+      )
+      try Task.checkCancellation()
+      _ = try knowledgeService.createBackupSynchronously(
+        at: knowledgePackageURL,
+        applicationVersion: applicationVersion
+      )
+      records.append(contentsOf: try recordsInDirectory(
+        knowledgePackageURL,
+        relativePrefix: Self.knowledgePackageName,
+        component: .knowledgeLibrary,
+        under: temporaryURL
+      ))
+    }
 
     var includesRSS = false
-    if let rssDatabaseURL {
+    if selectedCategories.contains(.rssReader), let rssDatabaseURL {
       try Task.checkCancellation()
       let rssBackupURL = temporaryURL.appendingPathComponent(Self.rssDatabaseRelativePath)
       _ = try RSSReaderBackupService(fileManager: fileManager).createBackup(
@@ -237,15 +256,18 @@ public final class WorkspaceBackupService: Sendable {
         ))
       }
       includesRSS = true
+    } else if selectedCategories.contains(.rssReader) {
+      throw WorkspaceBackupError.sourceUnavailable(Self.rssDatabaseRelativePath)
     }
 
     // Preserve the historical contracts for callers that do not yet supply an
     // operation ledger. A complete app backup supplies the ledger and writes
     // v3; legacy workspace-only and RSS-aware callers continue to write v1/v2.
-    let formatVersion =
-      operationHistoryDocument != nil
+    let formatVersion = hasExplicitCategorySelection
       ? WorkspaceBackupManifest.currentFormatVersion
-      : (includesRSS ? 2 : WorkspaceBackupManifest.minimumSupportedFormatVersion)
+      : (operationHistoryDocument != nil
+          ? 3
+          : (includesRSS ? 2 : WorkspaceBackupManifest.minimumSupportedFormatVersion))
 
     records.sort { $0.relativePath < $1.relativePath }
     try Task.checkCancellation()
@@ -254,17 +276,23 @@ public final class WorkspaceBackupService: Sendable {
       formatVersion: formatVersion,
       applicationVersion: applicationVersion,
       includesAPIKeys: false,
-      profileCount: sanitizedSnapshot.profiles.count,
-      draftCount: sanitizedSnapshot.drafts.count,
-      draftVersionCount: sanitizedSnapshot.draftVersions.count,
-      releaseRecordCount: sanitizedSnapshot.releaseRecords.count,
+      profileCount: includesWorkbench ? sanitizedSnapshot.profiles.count : 0,
+      draftCount: includesWorkbench ? sanitizedSnapshot.drafts.count : 0,
+      draftVersionCount: includesWorkbench ? sanitizedSnapshot.draftVersions.count : 0,
+      releaseRecordCount: includesWorkbench ? sanitizedSnapshot.releaseRecords.count : 0,
       attachmentReferenceCount: preparedAttachments.references.count,
       unresolvedAttachmentCount: preparedAttachments.unresolvedAttachmentCount,
       components: componentSummaries(for: records, formatVersion: formatVersion),
       fileCount: records.count,
       totalByteCount: totalByteCount,
       attachmentReferences: preparedAttachments.references.map(\.reference),
-      files: records
+      files: records,
+      selectedCategories: hasExplicitCategorySelection
+        ? WorkspaceBackupCategory.allCases.filter { selectedCategories.contains($0) }
+        : nil,
+      categorySummaries: hasExplicitCategorySelection
+        ? categorySummaries(for: records, selectedCategories: selectedCategories)
+        : nil
     )
     try encodeManifest(
       manifest,
@@ -297,6 +325,111 @@ public final class WorkspaceBackupService: Sendable {
       at: packageURL,
       currentApplicationVersion: currentApplicationVersion
     ).preview
+  }
+
+  public func inspectSelectiveRestore(
+    at backupURL: URL,
+    currentApplicationVersion: String? = nil
+  ) throws -> WorkspaceBackupSelectiveRestorePreview {
+    let validated = try validatedBackup(at: normalizedPackageURL(backupURL),
+      currentApplicationVersion: currentApplicationVersion)
+    let available = availableCategories(in: validated.manifest)
+    return WorkspaceBackupSelectiveRestorePreview(
+      backupPreview: validated.preview,
+      availableCategories: available,
+      selectedCategories: Set(available),
+      replacementCategories: Set(available),
+      categorySummaries: validated.manifest.categorySummaries
+        ?? categorySummaries(for: validated.manifest.files, selectedCategories: Set(available))
+    )
+  }
+
+  /// Produces a separately validated, isolated package containing only the
+  /// chosen categories. It does not mutate live stores.
+  public func stageSelectiveRestore(
+    from backupURL: URL,
+    categories: Set<WorkspaceBackupCategory>,
+    to stagingURL: URL,
+    currentApplicationVersion: String? = nil
+  ) throws -> WorkspaceBackupSelectiveRestoreStaging {
+    try Task.checkCancellation()
+    let sourceURL = normalizedPackageURL(backupURL)
+    let validated = try validatedBackup(at: sourceURL,
+      currentApplicationVersion: currentApplicationVersion)
+    let available = Set(availableCategories(in: validated.manifest))
+    guard !categories.isEmpty, categories.isSubset(of: available) else {
+      throw WorkspaceBackupError.invalidManifest(CoreL10n.text("所选恢复类别不在备份中"))
+    }
+    let chosenRecords = validated.manifest.files.filter { record in
+      switch record.component {
+      case .workbenchState, .draftAttachments: return categories.contains(.workbench)
+      case .knowledgeLibrary: return categories.contains(.knowledgeLibrary)
+      case .rssReader: return categories.contains(.rssReader)
+      case .operationHistory: return categories.contains(.operationHistory)
+      }
+    }
+    var manifest = validated.manifest
+    manifest.formatVersion = WorkspaceBackupManifest.currentFormatVersion
+    manifest.selectedCategories = WorkspaceBackupCategory.allCases.filter { categories.contains($0) }
+    manifest.files = chosenRecords
+    manifest.fileCount = chosenRecords.count
+    manifest.totalByteCount = try validateFileLimits(chosenRecords)
+    manifest.components = componentSummaries(for: chosenRecords, formatVersion: manifest.formatVersion)
+    manifest.categorySummaries = categorySummaries(for: chosenRecords, selectedCategories: categories)
+    if !categories.contains(.workbench) {
+      manifest.profileCount = 0
+      manifest.draftCount = 0
+      manifest.draftVersionCount = 0
+      manifest.releaseRecordCount = 0
+      manifest.attachmentReferenceCount = 0
+      manifest.unresolvedAttachmentCount = 0
+      manifest.attachmentReferences = []
+    }
+    let destinationURL = normalizedPackageURL(stagingURL)
+    guard !fileManager.fileExists(atPath: destinationURL.path) else {
+      throw WorkspaceBackupError.stagingFailed(CoreL10n.text("恢复暂存目录已存在"))
+    }
+    let parentURL = destinationURL.deletingLastPathComponent()
+    try fileManager.createDirectory(at: parentURL, withIntermediateDirectories: true)
+    let temporaryURL = parentURL.appendingPathComponent(".selective-restore-\(UUID().uuidString)",
+      isDirectory: true)
+    try? fileManager.removeItem(at: temporaryURL)
+    try fileManager.createDirectory(at: temporaryURL, withIntermediateDirectories: true)
+    defer { try? fileManager.removeItem(at: temporaryURL) }
+    for record in chosenRecords {
+      try Task.checkCancellation()
+      let copied = try copyRegularFile(
+        from: sourceURL.appendingPathComponent(record.relativePath),
+        to: temporaryURL.appendingPathComponent(record.relativePath),
+        relativePath: record.relativePath,
+        component: record.component
+      )
+      guard copied == record else { throw WorkspaceBackupError.checksumMismatch(record.relativePath) }
+    }
+    try encodeManifest(manifest, to: temporaryURL.appendingPathComponent(Self.manifestFileName))
+    _ = try validatedBackup(at: temporaryURL, currentApplicationVersion: currentApplicationVersion)
+    try fileManager.moveItem(at: temporaryURL, to: destinationURL)
+    let preview = WorkspaceBackupSelectiveRestorePreview(
+      backupPreview: validated.preview,
+      availableCategories: available.sorted { $0.rawValue < $1.rawValue },
+      selectedCategories: categories,
+      replacementCategories: categories,
+      categorySummaries: manifest.categorySummaries ?? []
+    )
+    return WorkspaceBackupSelectiveRestoreStaging(preview: preview, stagedPackageURL: destinationURL)
+  }
+
+  func availableCategories(in manifest: WorkspaceBackupManifest) -> [WorkspaceBackupCategory] {
+    if let declared = manifest.selectedCategories { return declared }
+    var result = [WorkspaceBackupCategory]()
+    let paths = Set(manifest.files.map(\.relativePath))
+    if paths.contains(Self.workbenchRelativePath) { result.append(.workbench) }
+    if paths.contains(where: { $0.hasPrefix(Self.knowledgePackageName + "/") }) {
+      result.append(.knowledgeLibrary)
+    }
+    if paths.contains(Self.rssDatabaseRelativePath) { result.append(.rssReader) }
+    if paths.contains(Self.operationHistoryRelativePath) { result.append(.operationHistory) }
+    return result
   }
 
   public func stageRestore(

@@ -152,8 +152,6 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
       publishStrategyDetail: activeProfile.repositoryPublishStrategy.detail
     )
 
-    TokenRepositoryAutomationSection(automationSettings: automationSettings)
-
     TokenRepositoryTokenSection(
       repositoryProvider: activeProfile.repositoryProvider,
       repositoryTokenInput: $credentialDrafts.repository,
@@ -193,6 +191,8 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
         }
       }
     }
+
+    TokenRepositoryAutomationSection(automationSettings: automationSettings)
   }
 
   @ViewBuilder
@@ -219,8 +219,6 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
       deploymentAccountID: optionalProfileStringBinding(\.deploymentAccountID),
       deploymentAccountIDDisplayValue: activeProfile.deploymentAccountID?.nilIfEmpty ?? "未填写"
     )
-
-    TokenDeploymentAutomationSection(automationSettings: automationSettings)
 
     TokenDeploymentTokenSection(
       deploymentProvider: activeDeploymentProvider,
@@ -278,6 +276,8 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
         }
       }
     }
+
+    TokenDeploymentAutomationSection(automationSettings: automationSettings)
   }
 
   @ViewBuilder

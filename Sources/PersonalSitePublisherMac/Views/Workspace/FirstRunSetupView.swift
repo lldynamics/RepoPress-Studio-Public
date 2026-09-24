@@ -3,7 +3,6 @@ import SwiftUI
 
 enum FirstRunSetupPath: String, CaseIterable, Identifiable {
   case connectExistingRepository
-  case createNewSite
   case localDrafts
 
   var id: String { rawValue }
@@ -12,8 +11,6 @@ enum FirstRunSetupPath: String, CaseIterable, Identifiable {
     switch self {
     case .connectExistingRepository:
       return String(localized: "连接已有仓库")
-    case .createNewSite:
-      return String(localized: "创建新站点")
     case .localDrafts:
       return String(localized: "暂不配置站点")
     }
@@ -23,8 +20,6 @@ enum FirstRunSetupPath: String, CaseIterable, Identifiable {
     switch self {
     case .connectExistingRepository:
       return String(localized: "选择已有的本地站点仓库，应用会按你选择的绝对路径读取配置并导入文章。")
-    case .createNewSite:
-      return String(localized: "从模板开始创建站点，目录、Git 和部署可以在建站向导中逐步完成。")
     case .localDrafts:
       return String(localized: "先写本地 Markdown 草稿，不要求仓库、站点类型或发布配置。")
     }
@@ -34,8 +29,6 @@ enum FirstRunSetupPath: String, CaseIterable, Identifiable {
     switch self {
     case .connectExistingRepository:
       return "externaldrive.badge.checkmark"
-    case .createNewSite:
-      return "sparkles.rectangle.stack"
     case .localDrafts:
       return "square.and.pencil"
     }
@@ -47,8 +40,6 @@ enum FirstRunSetupPath: String, CaseIterable, Identifiable {
     switch self {
     case .connectExistingRepository:
       return .repositoryWizard
-    case .createNewSite:
-      return .siteStarter
     case .localDrafts:
       return .localDrafts
     }
@@ -57,7 +48,6 @@ enum FirstRunSetupPath: String, CaseIterable, Identifiable {
 
 enum FirstRunSetupDestination: Equatable {
   case repositoryWizard
-  case siteStarter
   case localDrafts
 }
 
@@ -122,8 +112,6 @@ enum FirstRunSetupPersistenceCommit {
       guard store.commitActiveProfileSynchronously(stagedProfile) else {
         return .failed(message: persistenceFailureMessage(from: store))
       }
-      return .completed
-    case .siteStarter:
       return .completed
     case .localDrafts:
       store.prepareLocalDraftWorkspace()
@@ -706,7 +694,7 @@ struct FirstRunSetupView: View {
       repositoryDetectionID = nil
       isRepositorySetupActive = true
       step = .repository
-    case .siteStarter, .localDrafts:
+    case .localDrafts:
       complete(FirstRunSetupCompletion(path: selectedPath, stagedProfile: nil))
     }
   }

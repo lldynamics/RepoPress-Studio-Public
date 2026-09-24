@@ -5,6 +5,9 @@ struct SettingsConfigurationStatusView: View {
   let context: SettingsContext
   var body: some View {
     Form {
+      SettingsTaskShortcutsView(selectDestination: context.selectSettingsDestination)
+        .settingsSubsectionAnchor(.configurationTasks)
+
       SettingsConfigurationHealthCard(
         profile: context.store.activeProfile,
         aiProviderConfig: context.store.aiProviderConfig(for: context.store.activeProfile),

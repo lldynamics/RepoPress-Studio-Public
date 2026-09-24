@@ -15,8 +15,9 @@ public enum KnowledgeLibraryError: LocalizedError, Sendable {
   case invalidFolderName
   case duplicateFolderName(String)
   case missingFolder
-  case invalidBrowserCapture(String)
   case invalidMetadata(String)
+  case invalidNoteSourceURL
+  case staleNoteRevision
   case missingRevision
   case sourceRefreshUnavailable
   case contentRepairUnavailable(String)
@@ -39,8 +40,11 @@ public enum KnowledgeLibraryError: LocalizedError, Sendable {
     case .invalidFolderName: "文件夹名称不能为空，且最多使用 80 个字符。"
     case .duplicateFolderName(let name): "已经存在名为“\(name)”的资料文件夹。"
     case .missingFolder: "找不到这个资料文件夹。"
-    case .invalidBrowserCapture(let message): "浏览器页面保存失败：\(message)"
     case .invalidMetadata(let message): "资料元数据无效：\(message)"
+    case .invalidNoteSourceURL:
+      "笔记来源必须是包含站点域名的 HTTP(S) 地址，且不能包含用户名或密码。"
+    case .staleNoteRevision:
+      "笔记在你编辑时已在其他设备更新。没有覆盖新内容；请重新打开笔记，或保存为冲突副本。"
     case .missingRevision: "找不到这条资料修订。"
     case .sourceRefreshUnavailable: "这条资料没有可重新读取的来源。"
     case .contentRepairUnavailable(let message): "无法在本机修复这条资料：\(message)"

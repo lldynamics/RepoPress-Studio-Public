@@ -65,6 +65,9 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
   )
   let fileManager: FileManager
   let searchCancellationCheck: @Sendable () throws -> Void
+  // Internal test seam: post-commit cleanup must never make a committed note
+  // unavailable. Production leaves this nil and uses normal cleanup.
+  var notePostCommitCleanup: ((Set<String>) throws -> Void)?
 
   public convenience init(
     rootURL: URL? = nil,

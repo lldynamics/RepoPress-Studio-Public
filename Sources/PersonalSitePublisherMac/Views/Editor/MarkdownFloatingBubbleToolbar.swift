@@ -9,7 +9,7 @@ struct MarkdownHeadingMenuItems: View {
       Button {
         onSelectHeading(level)
       } label: {
-        Label("\(level) 级标题 (H\(level))", systemImage: "textformat.size")
+        Label("\(level) 级标题 (H\(level))", systemImage: "number")
       }
     }
   }

@@ -34,6 +34,9 @@ LOCALIZATION_SOURCE="$ROOT_DIR/Sources/PersonalSitePublisherMac/Resources"
 LOCALIZATION_CATALOG="$LOCALIZATION_SOURCE/Localizable.xcstrings"
 LOCAL_DEVELOPMENT_ENTITLEMENTS="$ROOT_DIR/Packaging/LocalDevelopment.entitlements"
 DIRECT_DISTRIBUTION_ENTITLEMENTS="$ROOT_DIR/Packaging/DirectDistribution.entitlements"
+CLOUD_DEVELOPMENT_ENTITLEMENTS="$ROOT_DIR/Packaging/CloudDevelopment.entitlements"
+CLOUD_DIRECT_ENTITLEMENTS="$ROOT_DIR/Packaging/CloudDirectDistribution.entitlements"
+CLOUD_PROVISIONING_PROFILE="${PERSONAL_SITE_PUBLISHER_CLOUD_PROVISIONING_PROFILE:-}"
 SPARKLE_FRAMEWORK_BUNDLE="$APP_FRAMEWORKS/Sparkle.framework"
 SPARKLE_LICENSE_SOURCE="$ROOT_DIR/Packaging/ThirdPartyNotices/Sparkle-LICENSE.txt"
 SPARKLE_LICENSE_BUNDLE="$APP_RESOURCES/ThirdPartyNotices/Sparkle-LICENSE.txt"
@@ -312,7 +315,6 @@ if [[ "${PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD:-0}" == "1" ]]; then
     -Xswiftc SCREENSHOT_CAPTURE_BUILD
   )
 fi
-python3 "$ROOT_DIR/script/generate_browser_extension_protocol.py" --check
 swift_build build "${swift_build_options[@]}" --disable-index-store --product "$APP_NAME"
 BUILD_BIN_DIR="$(swift_build build "${swift_build_options[@]}" --show-bin-path)"
 case "$BUILD_BIN_DIR" in
@@ -518,6 +520,42 @@ $SPARKLE_UPDATE_INFO_PLIST
   <array>
     <dict>
       <key>UTTypeIdentifier</key>
+      <string>com.repopress.workspace-exchange</string>
+      <key>UTTypeDescription</key>
+      <string>RepoPress Workspace Exchange</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.json</string>
+        <string>public.content</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>rpworkspaceexchange</string>
+        </array>
+      </dict>
+    </dict>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>com.repopress.notes-package</string>
+      <key>UTTypeDescription</key>
+      <string>RepoPress Notes Package</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>com.apple.package</string>
+        <string>public.content</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>rpnotes</string>
+        </array>
+      </dict>
+    </dict>
+    <dict>
+      <key>UTTypeIdentifier</key>
       <string>com.jinfang.personalsitepublisher.knowledge-library-backup</string>
       <key>UTTypeDescription</key>
       <string>RepoPress Knowledge Library Backup</string>
@@ -536,6 +574,20 @@ $SPARKLE_UPDATE_INFO_PLIST
   </array>
   <key>CFBundleDocumentTypes</key>
   <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>RepoPress Notes Package</string>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>LSHandlerRank</key>
+      <string>Owner</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>com.repopress.notes-package</string>
+      </array>
+      <key>LSTypeIsPackage</key>
+      <true/>
+    </dict>
     <dict>
       <key>CFBundleTypeName</key>
       <string>RepoPress Knowledge Library Backup</string>
@@ -569,25 +621,84 @@ if [[ -z "$resolved_code_sign_identity" && "$BUILD_CONFIGURATION" == "debug" ]];
   )"
 fi
 resolved_code_sign_identity="${resolved_code_sign_identity:--}"
+if [[ -n "$CLOUD_PROVISIONING_PROFILE" ]]; then
+  if [[ "$resolved_code_sign_identity" == "-" && "$BUILD_CONFIGURATION" == "debug" ]]; then
+    echo "CloudKit development packaging requires a matching Apple code-signing identity" >&2
+    exit 1
+  fi
+  [[ -f "$CLOUD_PROVISIONING_PROFILE" ]] || {
+    echo "CloudKit provisioning profile is missing: $CLOUD_PROVISIONING_PROFILE" >&2
+    exit 1
+  }
+  if [[ "$BUILD_CONFIGURATION" == "release" && "$DIRECT_DISTRIBUTION_BUILD" != "1" ]]; then
+    echo "CloudKit Release packaging requires --direct and a matching production profile" >&2
+    exit 1
+  fi
+  python3 - "$CLOUD_PROVISIONING_PROFILE" "$BUNDLE_ID" "$BUILD_CONFIGURATION" <<'PY'
+import plistlib
+import subprocess
+import sys
+
+profile_path, bundle_id, configuration = sys.argv[1:]
+if bundle_id != "com.jinfang.PersonalSitePublisherMac":
+    raise SystemExit("CloudKit packaging requires the registered Mac bundle identifier")
+try:
+    decoded = subprocess.check_output(
+        ["/usr/bin/security", "cms", "-D", "-i", profile_path], stderr=subprocess.DEVNULL
+    )
+    profile = plistlib.loads(decoded)
+except Exception as error:
+    raise SystemExit(f"CloudKit provisioning profile could not be decoded: {error}")
+entitlements = profile.get("Entitlements", {})
+application_id = entitlements.get("com.apple.application-identifier") or entitlements.get("application-identifier", "")
+container = "iCloud.com.chengjinfang.repopress"
+expected_environment = "Development" if configuration == "debug" else "Production"
+expected_push = "development" if configuration == "debug" else "production"
+if application_id != "3H8UVVUCP3." + bundle_id:
+    raise SystemExit("CloudKit provisioning profile does not match the Mac bundle identifier")
+if entitlements.get("com.apple.developer.team-identifier") != "3H8UVVUCP3":
+    raise SystemExit("CloudKit provisioning profile does not match the shared Apple Developer team")
+if container not in entitlements.get("com.apple.developer.icloud-container-identifiers", []):
+    raise SystemExit("CloudKit provisioning profile does not authorize the shared container")
+services = entitlements.get("com.apple.developer.icloud-services", [])
+if "CloudKit" not in services or "CloudDocuments" not in services:
+    raise SystemExit("CloudKit provisioning profile must authorize CloudKit and CloudDocuments")
+if container not in entitlements.get("com.apple.developer.ubiquity-container-identifiers", []):
+    raise SystemExit("CloudKit provisioning profile does not authorize the shared document container")
+if entitlements.get("com.apple.developer.icloud-container-environment") != expected_environment:
+    raise SystemExit("CloudKit provisioning profile uses the wrong environment")
+if entitlements.get("com.apple.developer.aps-environment") != expected_push:
+    raise SystemExit("CloudKit provisioning profile uses the wrong push environment")
+PY
+  cp "$CLOUD_PROVISIONING_PROFILE" "$APP_CONTENTS/embedded.provisionprofile"
+fi
 code_sign_arguments=(
   --force
   --sign "$resolved_code_sign_identity"
   --identifier "$BUNDLE_ID"
 )
 if [[ "$BUILD_CONFIGURATION" == "debug" ]]; then
-  [[ -f "$LOCAL_DEVELOPMENT_ENTITLEMENTS" ]] || {
-    echo "local development entitlements are missing: $LOCAL_DEVELOPMENT_ENTITLEMENTS" >&2
+  selected_entitlements="$LOCAL_DEVELOPMENT_ENTITLEMENTS"
+  if [[ -n "$CLOUD_PROVISIONING_PROFILE" ]]; then
+    selected_entitlements="$CLOUD_DEVELOPMENT_ENTITLEMENTS"
+  fi
+  [[ -f "$selected_entitlements" ]] || {
+    echo "local development entitlements are missing: $selected_entitlements" >&2
     exit 1
   }
-  code_sign_arguments+=(--entitlements "$LOCAL_DEVELOPMENT_ENTITLEMENTS")
+  code_sign_arguments+=(--entitlements "$selected_entitlements")
 elif [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
-  [[ -f "$DIRECT_DISTRIBUTION_ENTITLEMENTS" ]] || {
-    echo "direct-distribution entitlements are missing: $DIRECT_DISTRIBUTION_ENTITLEMENTS" >&2
+  selected_entitlements="$DIRECT_DISTRIBUTION_ENTITLEMENTS"
+  if [[ -n "$CLOUD_PROVISIONING_PROFILE" ]]; then
+    selected_entitlements="$CLOUD_DIRECT_ENTITLEMENTS"
+  fi
+  [[ -f "$selected_entitlements" ]] || {
+    echo "direct-distribution entitlements are missing: $selected_entitlements" >&2
     exit 1
   }
   code_sign_arguments+=(
     --options runtime
-    --entitlements "$DIRECT_DISTRIBUTION_ENTITLEMENTS"
+    --entitlements "$selected_entitlements"
   )
 fi
 bash "$ROOT_DIR/script/sign_sparkle_framework.sh" \
@@ -595,6 +706,14 @@ bash "$ROOT_DIR/script/sign_sparkle_framework.sh" \
   --identity "$resolved_code_sign_identity" >/dev/null
 "$CODESIGN_TOOL" "${code_sign_arguments[@]}" "$APP_BUNDLE"
 "$CODESIGN_TOOL" --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+if [[ -n "$CLOUD_PROVISIONING_PROFILE" && "$resolved_code_sign_identity" != "-" ]]; then
+  cloud_environment="Development"
+  if [[ "$BUILD_CONFIGURATION" == "release" ]]; then
+    cloud_environment="Production"
+  fi
+  python3 "$ROOT_DIR/script/verify_cloud_signature.py" \
+    "$CLOUD_PROVISIONING_PROFILE" "$APP_BUNDLE" "$cloud_environment"
+fi
 if [[ "$resolved_code_sign_identity" == "-" ]]; then
   echo "local app signing identity: ad hoc"
 else

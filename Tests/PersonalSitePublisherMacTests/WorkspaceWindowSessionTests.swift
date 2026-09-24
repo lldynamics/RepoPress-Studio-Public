@@ -90,6 +90,19 @@ final class WorkspaceWindowSessionTests: XCTestCase {
     XCTAssertEqual(restored.selectedDraftIDRawValue, expectedDraftID.uuidString)
   }
 
+  func testRetiredSiteStarterSceneStorageFallsBackToRepositoryWorkspace() {
+    let session = WorkspaceWindowSession(selectedSection: .writing)
+
+    let restored = session.restoreStorageIfNeeded(
+      windowIDRawValue: UUID().uuidString,
+      selectedSectionRawValue: "siteStarter",
+      fallbackSection: .sync
+    )
+
+    XCTAssertEqual(session.selectedSection, .sync)
+    XCTAssertEqual(restored.selectedSectionRawValue, WorkspaceSection.sync.rawValue)
+  }
+
   func testInvalidSceneStorageFallsBackWithoutReplacingGeneratedIdentityLater() {
     let generatedWindowID = UUID()
     let session = WorkspaceWindowSession(

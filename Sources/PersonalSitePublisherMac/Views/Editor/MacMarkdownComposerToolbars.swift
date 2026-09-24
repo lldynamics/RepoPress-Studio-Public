@@ -597,7 +597,7 @@ struct MacMarkdownEditorToolbar: View {
           } label: {
             Label(
               style.localizedDisplayName,
-              systemImage: style == .balanced ? "wand.and.stars" : "textformat"
+              systemImage: style == .balanced ? "wand.and.stars" : "paragraphsign"
             )
           }
           .disabled(!isRewriteEnabled)

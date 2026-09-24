@@ -21,14 +21,12 @@ and release lifecycle.
   Keychain credentials.
 - Optional bring-your-own-key AI workflows for article-aware chat, editing,
   metadata suggestions, reviews, and release copy.
-- Chrome and Firefox companion extensions that communicate with the
-  app through a token-protected `127.0.0.1` loopback interface.
 
 ## Product and privacy boundary
 
 RepoPress Studio is local-first, not fully offline. Files stay on the user's
 device by default. Network access occurs only for actions the user initiates,
-such as repository operations, deployment checks, AI requests, browser capture,
+such as repository operations, deployment checks, AI requests, webpage imports,
 or update checks.
 
 RepoPress does not include service credentials. Repository, deployment, and AI
@@ -46,7 +44,6 @@ released iOS app.
 - Git, Hugo, Zola, Codex CLI, and Node.js/npm as required by the selected local
   publishing, preview, or ChatGPT workflow. RepoPress resolves these from the
   system, Homebrew, or `PATH` and does not embed them in the app bundle.
-- Browser-extension tests and packaging also require Node.js and npm
 
 The authoritative deployment target, Swift tools version, language modes, and
 dependencies are in [Package.swift](Package.swift). CI pins its Xcode environment
@@ -70,9 +67,7 @@ Package the complete macOS app without launching it, or build and launch it:
 ./script/build_and_run.sh
 ```
 
-The macOS app contains no embedded browser extension; install and update the
-Chrome and Firefox extensions separately. A plain `swift build` does not
-produce the complete distributable app bundle.
+A plain `swift build` does not produce the complete distributable app bundle.
 
 Run the fast development gate:
 
@@ -100,15 +95,6 @@ the [direct-release guide](docs/direct-release.md); version changes follow the
 [release_checks.json](script/release_checks.json); use the selected mode with
 `--list` to inspect them without executing the checks.
 
-Browser-extension tests use pinned npm dependencies and install a local
-Chromium runtime. The complete Firefox path also requires Firefox on the Mac.
-
-```bash
-npm ci --ignore-scripts
-npm run install:browser-extension:e2e
-npm run test:browser-extension:e2e
-```
-
 Real UI launch, accessibility, signing, notarization, and online distribution
 are separate release evidence; a successful unit-test run does not prove them.
 
@@ -123,16 +109,9 @@ are separate release evidence; a successful unit-test run does not prove them.
   compatibility adapters, and the temporary umbrella export surface.
 - `Sources/PersonalSitePublisherMac/`: the macOS app, SwiftUI views, and narrow
   AppKit adapters.
-- `Sources/BrowserExtensionProtocolSupport/`: the generated app/extension
-  protocol contract.
-- `BrowserExtension/`: Chrome and Firefox extension sources and channel
-  configuration.
 - `Tests/` and `UITests/`: unit, integration, UI, and accessibility coverage.
 - `Packaging/` and `script/`: versioning, entitlements, quality gates, and
   release tooling.
-
-See [`BrowserExtension/README.md`](BrowserExtension/README.md) for extension
-installation and permission boundaries.
 
 ## Contributing and security
 

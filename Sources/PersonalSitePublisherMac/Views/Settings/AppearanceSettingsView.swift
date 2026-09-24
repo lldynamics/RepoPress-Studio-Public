@@ -9,7 +9,6 @@ struct AppearanceSettingsView: View {
   private var appearanceModeRawValue = WorkbenchAppearanceMode.system.rawValue
   @AppStorage(WorkbenchInterfaceDensity.storageKey)
   private var interfaceDensityRawValue = WorkbenchInterfaceDensity.comfortable.rawValue
-  @State private var showsGlobalFrontMatterPreset = false
 
   private var selectedPalette: WorkbenchAccentPalette {
     WorkbenchAccentPalette.resolved(rawValue: accentPaletteRawValue)
@@ -40,7 +39,6 @@ struct AppearanceSettingsView: View {
         isEmbedded: true,
         subsectionAnchor: .appearanceLanguage
       )
-      globalFrontMatterSection
     }
     .formStyle(.grouped)
     .scrollIndicators(.hidden)
@@ -59,26 +57,6 @@ struct AppearanceSettingsView: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("appearance-settings")
-  }
-
-  private var globalFrontMatterSection: some View {
-    Section {
-      DisclosureGroup(
-        String(localized: "全局 Front Matter 预设"),
-        isExpanded: $showsGlobalFrontMatterPreset
-      ) {
-        Text("此预设适用于所有站点的新文章；站点专属的作者、标签、分类和路径仍在“内容与路径”中设置。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-        DefaultRuleCustomFrontMatterSection()
-          .padding(.top, 4)
-      }
-      .accessibilityIdentifier("settings-global-front-matter-preset")
-    } header: {
-      Text("新建文章默认")
-        .settingsSubsectionAnchor(.appearanceDefaults)
-    }
   }
 
   private var appearanceSection: some View {

@@ -58,7 +58,6 @@ extension SiteProfilePurpose: WorkbenchDisplayNameLocalizable {}
 extension AIProviderPreset: WorkbenchDisplayNameLocalizable {}
 extension AIWritingStylePreset: WorkbenchDisplayNameLocalizable {}
 extension DeploymentProvider: WorkbenchDisplayNameLocalizable {}
-extension SiteStarterDeploymentTarget: WorkbenchDisplayNameLocalizable {}
 
 extension SiteAnalyticsProvider: WorkbenchDisplayNameLocalizable {
   var workbenchDisplayNameSemanticKey: String {

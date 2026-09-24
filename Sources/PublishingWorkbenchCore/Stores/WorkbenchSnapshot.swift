@@ -48,9 +48,6 @@ public struct WorkbenchSnapshot: Codable, Equatable, Sendable {
   public var deploymentPollingStateByProfileID: [UUID: DeploymentPollingState]
   public var deploymentStatusSnapshots: [DeploymentStatusSnapshot]
   public var deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]]
-  /// Minimal resume data for the starter wizard. Profile and draft contents
-  /// remain owned by their existing snapshot collections.
-  public var siteStarterProgress: SiteStarterProgress?
   public var deferredProjectFileWrites: [SiteDraftFileSaveFailure]
 
   public init(
@@ -88,7 +85,6 @@ public struct WorkbenchSnapshot: Codable, Equatable, Sendable {
     deploymentPollingStateByProfileID: [UUID: DeploymentPollingState]? = nil,
     deploymentStatusSnapshots: [DeploymentStatusSnapshot] = [],
     deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]] = [:],
-    siteStarterProgress: SiteStarterProgress? = nil,
     deferredProjectFileWrites: [SiteDraftFileSaveFailure] = []
   ) {
     self.formatVersion = Self.currentFormatVersion
@@ -182,7 +178,6 @@ public struct WorkbenchSnapshot: Codable, Equatable, Sendable {
     self.deploymentStatusSnapshots = Self.limitedDeploymentStatusSnapshots(
       deploymentStatusSnapshots)
     self.deploymentStatusHistory = Self.limitedDeploymentStatusHistory(deploymentStatusHistory)
-    self.siteStarterProgress = siteStarterProgress
     var deferredIDs = Set<UUID>()
     self.deferredProjectFileWrites = deferredProjectFileWrites.filter { failure in
       drafts.contains { draft in
@@ -230,7 +225,6 @@ public struct WorkbenchSnapshot: Codable, Equatable, Sendable {
     case deploymentPollingStateByProfileID
     case deploymentStatusSnapshots
     case deploymentStatusHistory
-    case siteStarterProgress
     case deferredProjectFileWrites
   }
 
@@ -449,10 +443,6 @@ public struct WorkbenchSnapshot: Codable, Equatable, Sendable {
     deferredProjectFileWrites = try container.decodeIfPresent(
       [SiteDraftFileSaveFailure].self, forKey: .deferredProjectFileWrites
     ) ?? []
-    siteStarterProgress = try container.decodeIfPresent(
-      SiteStarterProgress.self,
-      forKey: .siteStarterProgress
-    )
   }
 
   private static func limitedMetadataApplicationRecords(

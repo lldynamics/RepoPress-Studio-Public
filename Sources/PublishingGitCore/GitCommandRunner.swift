@@ -146,6 +146,7 @@ public struct GitCommandRunner: Sendable {
     acceptExistingCommitMessage: Bool = false,
     environmentOverrides: [String: String] = [:]
   ) -> GitCommandResult {
+    GitPipeSignalPolicy.install()
     if let reason = Self.repositoryConfigurationBlockReason(rootURL: rootURL) {
       return Self.blockedConfigurationResult(reason)
     }
@@ -195,26 +196,67 @@ public struct GitCommandRunner: Sendable {
     }
 
     let completed = DispatchSemaphore(value: 0)
+    let inputWriteCompleted = DispatchSemaphore(value: 0)
+    let inputWriteOutcome = GitInputWriteOutcome()
     process.terminationHandler = { _ in
       completed.signal()
     }
 
     do {
       try process.run()
+      let deadline = DispatchTime.now() + timeout
       // Process owns duplicated write descriptors after launch. Closing our
       // copies lets the drainers observe EOF as soon as Git exits.
       outputPipe.fileHandleForWriting.closeFile()
       errorPipe.fileHandleForWriting.closeFile()
       if let inputData {
-        inputPipe.fileHandleForWriting.write(inputData)
-        inputPipe.fileHandleForWriting.closeFile()
+        inputPipe.fileHandleForReading.closeFile()
+        GitStandardInputWriter(data: inputData, handle: inputPipe.fileHandleForWriting)
+          .start { errorMessage in
+            inputWriteOutcome.record(errorMessage)
+            inputWriteCompleted.signal()
+          }
       }
+      let processFinished = completed.wait(timeout: deadline) == .success
+      if !processFinished {
+        if process.isRunning { process.terminate() }
+        if completed.wait(timeout: .now() + 1) == .timedOut {
+          #if canImport(Darwin)
+            Darwin.kill(process.processIdentifier, SIGKILL)
+          #endif
+          _ = completed.wait(timeout: .now() + 1)
+        }
+      }
+
+      let inputFinished = inputData == nil
+        || inputWriteCompleted.wait(
+          timeout: processFinished ? deadline : .now() + 1
+        ) == .success
+      if !inputFinished {
+        inputWriteOutcome.record("stdin writer did not finish before the command timeout")
+      }
+
+      return result(
+        process: process,
+        outputPipe: outputPipe,
+        errorPipe: errorPipe,
+        outputCollector: outputCollector,
+        drainCoordinator: drainCoordinator,
+        arguments: arguments,
+        preserveStandardOutputWhitespace: preserveStandardOutputWhitespace,
+        didFinish: processFinished && inputFinished,
+        inputWriteError: inputWriteOutcome.errorMessage
+      )
     } catch {
       outputPipe.fileHandleForReading.readabilityHandler = nil
       errorPipe.fileHandleForReading.readabilityHandler = nil
       drainCoordinator.stopAndWait()
       outputPipe.fileHandleForWriting.closeFile()
       errorPipe.fileHandleForWriting.closeFile()
+      if inputData != nil {
+        inputPipe.fileHandleForReading.closeFile()
+        inputPipe.fileHandleForWriting.closeFile()
+      }
       return GitCommandResult(
         terminationStatus: 127,
         standardOutput: "",
@@ -222,17 +264,19 @@ public struct GitCommandRunner: Sendable {
       )
     }
 
-    let didFinish = completed.wait(timeout: .now() + timeout) == .success
-    if !didFinish {
-      process.terminate()
-      if completed.wait(timeout: .now() + 1) == .timedOut {
-        #if canImport(Darwin)
-          Darwin.kill(process.processIdentifier, SIGKILL)
-        #endif
-        _ = completed.wait(timeout: .now() + 1)
-      }
-    }
+  }
 
+  private func result(
+    process: Process,
+    outputPipe: Pipe,
+    errorPipe: Pipe,
+    outputCollector: BoundedOutputCollector,
+    drainCoordinator: GitPipeDrainCoordinator,
+    arguments: [String],
+    preserveStandardOutputWhitespace: Bool,
+    didFinish: Bool,
+    inputWriteError: String?
+  ) -> GitCommandResult {
     outputPipe.fileHandleForReading.readabilityHandler = nil
     errorPipe.fileHandleForReading.readabilityHandler = nil
     drainCoordinator.stopAndWait()
@@ -257,12 +301,19 @@ public struct GitCommandRunner: Sendable {
     let standardError = Self.redactedDiagnosticText(
       collected.standardError.trimmedForPublishing
     )
-    let statusMessage =
-      didFinish
-      ? nil
-      : "Git command timed out after \(Int(timeout))s: \(Self.redactedCommandDescription(arguments))"
+    let statusMessage: String?
+    if !didFinish {
+      statusMessage =
+        "Git command timed out after \(Int(timeout))s: \(Self.redactedCommandDescription(arguments))"
+    } else if let inputWriteError {
+      statusMessage = "Git stdin write failed: \(inputWriteError)"
+    } else {
+      statusMessage = nil
+    }
     return GitCommandResult(
-      terminationStatus: didFinish ? process.terminationStatus : 124,
+      terminationStatus: didFinish
+        ? (inputWriteError != nil && process.terminationStatus == 0 ? 74 : process.terminationStatus)
+        : 124,
       standardOutput: standardOutput,
       standardError: standardError,
       diagnosticOutput: diagnosticOutput(
@@ -284,6 +335,7 @@ public struct GitCommandRunner: Sendable {
     inputLines: [String]? = nil,
     inputDelimiter: GitCommandInputDelimiter = .newline
   ) async -> GitCommandResult {
+    GitPipeSignalPolicy.install()
     if let reason = Self.repositoryConfigurationBlockReason(rootURL: rootURL) {
       return Self.blockedConfigurationResult(reason)
     }
@@ -682,6 +734,62 @@ public struct GitCommandRunner: Sendable {
   }
 }
 
+private enum GitPipeSignalPolicy {
+  private static let installed: Void = {
+    #if canImport(Darwin)
+      _ = Darwin.signal(SIGPIPE, SIG_IGN)
+    #endif
+  }()
+
+  static func install() {
+    _ = installed
+  }
+}
+
+private final class GitInputWriteOutcome: @unchecked Sendable {
+  private let lock = NSLock()
+  private var recordedError: String?
+
+  func record(_ errorMessage: String?) {
+    lock.lock()
+    if let errorMessage { recordedError = errorMessage }
+    lock.unlock()
+  }
+
+  var errorMessage: String? {
+    lock.lock()
+    defer { lock.unlock() }
+    return recordedError
+  }
+}
+
+private final class GitStandardInputWriter: @unchecked Sendable {
+  private let data: Data
+  private let handle: FileHandle
+
+  init(data: Data, handle: FileHandle) {
+    self.data = data
+    self.handle = handle
+  }
+
+  func start(completion: @escaping @Sendable (String?) -> Void) {
+    DispatchQueue.global(qos: .utility).async { [self] in
+      var errorMessage: String?
+      do {
+        try handle.write(contentsOf: data)
+      } catch {
+        errorMessage = error.localizedDescription
+      }
+      do {
+        try handle.close()
+      } catch {
+        if errorMessage == nil { errorMessage = error.localizedDescription }
+      }
+      completion(errorMessage)
+    }
+  }
+}
+
 private final class GitCommandAsyncOperation: @unchecked Sendable {
   private let executableURL: URL
   private let timeout: TimeInterval
@@ -700,6 +808,9 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
   private var errorPipe: Pipe?
   private var timeoutTask: Task<Void, Never>?
   private var continuation: CheckedContinuation<GitCommandResult, Never>?
+  private var inputWriteCompleted: Bool
+  private var inputWriteError: String?
+  private var childTerminationStatus: Int32?
   private var didFinish = false
   private var didTimeOut = false
   private var wasCancelled = false
@@ -720,6 +831,7 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
     self.rootURL = rootURL
     self.beforeProcessRun = beforeProcessRun
     self.inputData = inputData
+    inputWriteCompleted = inputData == nil
     outputCollector = BoundedOutputCollector(limit: maximumOutputBytes)
   }
 
@@ -738,6 +850,7 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
       if let process {
         terminate(process)
       }
+      finishIfReady()
     }
   }
 
@@ -766,7 +879,8 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
     }
     process.terminationHandler = { [weak self] process in
       self?.lifecycleQueue.async { [weak self] in
-        self?.finish(terminationStatus: process.terminationStatus)
+        self?.childTerminationStatus = process.terminationStatus
+        self?.finishIfReady()
       }
     }
 
@@ -782,17 +896,15 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
       try process.run()
       outputPipe.fileHandleForWriting.closeFile()
       errorPipe.fileHandleForWriting.closeFile()
-      if let inputData {
-        inputPipe.fileHandleForWriting.write(inputData)
+    } catch {
+      outputPipe.fileHandleForWriting.closeFile()
+      errorPipe.fileHandleForWriting.closeFile()
+      if inputData != nil {
+        inputPipe.fileHandleForReading.closeFile()
         inputPipe.fileHandleForWriting.closeFile()
       }
-    } catch {
       finish(terminationStatus: 127, launchError: error.localizedDescription)
       return
-    }
-
-    if wasCancelled {
-      terminate(process)
     }
 
     let timeoutTask = Task.detached { [weak self] in
@@ -802,6 +914,29 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
       self?.timeOut()
     }
     self.timeoutTask = timeoutTask
+
+    if let inputData {
+      inputPipe.fileHandleForReading.closeFile()
+      GitStandardInputWriter(data: inputData, handle: inputPipe.fileHandleForWriting)
+        .start { [self] errorMessage in
+          lifecycleQueue.async { [self] in
+            inputWriteError = errorMessage
+            inputWriteCompleted = true
+            finishIfReady()
+          }
+        }
+    }
+
+    if wasCancelled {
+      terminate(process)
+    }
+  }
+
+  private func finishIfReady() {
+    guard let childTerminationStatus, inputWriteCompleted || didTimeOut || wasCancelled else {
+      return
+    }
+    finish(terminationStatus: childTerminationStatus)
   }
 
   private func timeOut() {
@@ -811,6 +946,7 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
       if let process {
         terminate(process)
       }
+      finishIfReady()
     }
   }
 
@@ -843,6 +979,7 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
     self.errorPipe = nil
     let timedOut = didTimeOut
     let cancelled = wasCancelled
+    let inputWriteError = self.inputWriteError
 
     process?.terminationHandler = nil
     outputPipe?.fileHandleForReading.readabilityHandler = nil
@@ -877,12 +1014,17 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
     } else if cancelled {
       statusMessage =
         "Git command canceled: \(GitCommandRunner.redactedCommandDescription(arguments))"
+    } else if let inputWriteError {
+      statusMessage = "Git stdin write failed: \(inputWriteError)"
     } else {
       statusMessage = nil
     }
     continuation?.resume(
       returning: GitCommandResult(
-        terminationStatus: timedOut ? 124 : (cancelled ? 130 : terminationStatus),
+        terminationStatus: timedOut
+          ? 124
+          : (cancelled ? 130
+            : (inputWriteError != nil && terminationStatus == 0 ? 74 : terminationStatus)),
         standardOutput: standardOutput,
         standardError: standardError,
         diagnosticOutput: diagnosticOutput(

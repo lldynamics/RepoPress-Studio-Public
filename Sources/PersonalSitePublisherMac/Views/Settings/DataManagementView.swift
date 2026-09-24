@@ -36,7 +36,7 @@ enum DataManagementSection: String, CaseIterable, Identifiable {
     case .drafts:
       return String(localized: "版本、回收站、仓库待清理和草稿归属")
     case .backup:
-      return String(localized: "创建、校验、恢复完整工作区并管理存储位置")
+      return String(localized: "选择工作区类别，创建本机或 iCloud 备份并预览恢复")
     case .migration:
       return String(localized: "导入外部内容并在写入前审阅转换计划")
     }
@@ -75,7 +75,7 @@ enum DataManagementTask: String, CaseIterable, Identifiable {
     case .storage:
       return String(localized: "查看空间占用，清理资料库数据，或更改存储位置。")
     case .backup:
-      return String(localized: "创建、校验和恢复完整工作区，并管理自动备份。")
+      return String(localized: "选择数据类别，创建本机或 iCloud 备份，并管理自动快照。")
     case .migration:
       return String(localized: "导入 WordPress、RSS、Markdown 等内容，写入前先审阅转换计划。")
     }

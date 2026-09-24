@@ -225,25 +225,3 @@ extension DeploymentProvider {
     }
   }
 }
-
-extension SiteStarterDeploymentTarget {
-  var workbenchDisplayNameSemanticKey: String {
-    switch self {
-    case .githubPages: "display.site-starter-deployment-target.github-pages"
-    case .netlify: "display.site-starter-deployment-target.netlify"
-    case .vercel: "display.site-starter-deployment-target.vercel"
-    case .cloudflarePages: "display.site-starter-deployment-target.cloudflare-pages"
-    case .none: "display.site-starter-deployment-target.none"
-    }
-  }
-
-  var fallbackDisplayName: String {
-    switch self {
-    case .githubPages: "GitHub Pages"
-    case .netlify: "Netlify"
-    case .vercel: "Vercel"
-    case .cloudflarePages: "Cloudflare Pages"
-    case .none: "Do Not Deploy"
-    }
-  }
-}

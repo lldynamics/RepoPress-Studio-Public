@@ -6,6 +6,8 @@ extension WritingDraftColumn {
     WorkspaceContextListHeader(title: "文章") {
       HStack(spacing: 6) {
         Text(String(localized: "\(filteredDraftCount) / \(visibleDraftCount) 篇"))
+          .lineLimit(1)
+          .fixedSize()
 
         if let delta = draftCountDelta {
           Text(delta > 0 ? "+\(delta)" : "\(delta)")
@@ -18,6 +20,7 @@ extension WritingDraftColumn {
                 .opacity(WorkbenchOpacity.accentBackground),
               in: Capsule()
             )
+            .fixedSize()
         }
       }
     } actions: {
@@ -42,11 +45,11 @@ extension WritingDraftColumn {
         store.flushDraftBodyEditorBuffers()
         openDataManagement(.drafts)
       } label: {
-        Label("数据管理", systemImage: "externaldrive")
+        // Icon-only like the neighbouring header actions so the article count
+        // keeps its space when the sidebar narrows beside the Inspector.
+        WorkspaceSidebarHeaderIcon("externaldrive")
       }
-      .buttonStyle(.bordered)
-      .controlSize(.regular)
-      .fixedSize()
+      .buttonStyle(.plain)
       .help(String(localized: "集中管理版本、回收站、备份和迁移"))
       .accessibilityLabel("打开数据管理")
 
@@ -192,82 +195,103 @@ extension WritingDraftColumn {
         )
       }
 
-      HStack(spacing: 6) {
-        if isCompact {
-          draftFilterMenu
-        } else {
-          ForEach(DraftListFilter.primaryFilters) { candidate in
-            Button(candidate.localizedDisplayName) {
-              filter = candidate
-            }
-            .buttonStyle(.bordered)
-            .tint(filter == candidate ? .accentColor : .secondary)
-            .controlSize(.small)
-            .accessibilityAddTraits(filter == candidate ? .isSelected : [])
-          }
-
-          Menu {
-            ForEach(DraftListFilter.overflowFilters) { candidate in
-              filterButton(candidate)
-            }
-          } label: {
-            Label(overflowFilterLabel, systemImage: "line.3.horizontal.decrease.circle")
-          }
-          .menuIndicator(.hidden)
-          .controlSize(.small)
-          .accessibilityLabel("更多草稿筛选")
-          .accessibilityValue(filter.localizedDisplayName)
+      // A 240pt sidebar beside the Inspector cannot hold the filter, scope
+      // picker and list menus on one line; stack the scope picker instead of
+      // letting the row overflow and shift the whole column.
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 6) {
+          draftListFilterControls
+          contentScopePicker
+          Spacer(minLength: 0)
+          draftListArrangementMenus
         }
 
-        contentScopePicker
-
-        Spacer(minLength: 0)
-
-        Menu {
-          ForEach(WritingDraftListDisplayMode.allCases) { option in
-            Button {
-              displayModeRawValue = option.rawValue
-            } label: {
-              if displayMode == option {
-                Label(writingDraftDisplayModeName(option), systemImage: "checkmark")
-              } else {
-                Text(writingDraftDisplayModeName(option))
-              }
-            }
+        VStack(alignment: .leading, spacing: 6) {
+          contentScopePicker
+          HStack(spacing: 6) {
+            draftListFilterControls
+            Spacer(minLength: 0)
+            draftListArrangementMenus
           }
-        } label: {
-          Image(systemName: effectiveDisplayMode == .folders ? "folder" : "list.bullet")
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .disabled(store.draftListContentScope == .general)
-        .help(String(localized: "文章分组方式"))
-        .accessibilityLabel(String(localized: "文章分组方式"))
-        .accessibilityValue(writingDraftDisplayModeName(effectiveDisplayMode))
-        .accessibilityIdentifier("writing-draft-display-mode")
-
-        Menu {
-          ForEach(WritingDraftSortOrder.allCases) { option in
-            Button {
-              sortOrderRawValue = option.rawValue
-            } label: {
-              if sortOrder == option {
-                Label(option.localizedDisplayName, systemImage: "checkmark")
-              } else {
-                Text(option.localizedDisplayName)
-              }
-            }
-          }
-        } label: {
-          Image(systemName: "arrow.up.arrow.down")
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .help(String(localized: "排序：\(sortOrder.localizedDisplayName)"))
-        .accessibilityLabel("文章排序")
-        .accessibilityValue(sortOrder.localizedDisplayName)
       }
     }
+  }
+
+  @ViewBuilder
+  private var draftListFilterControls: some View {
+    if isCompact {
+      draftFilterMenu
+    } else {
+      ForEach(DraftListFilter.primaryFilters) { candidate in
+        Button(candidate.localizedDisplayName) {
+          filter = candidate
+        }
+        .buttonStyle(.bordered)
+        .tint(filter == candidate ? .accentColor : .secondary)
+        .controlSize(.small)
+        .accessibilityAddTraits(filter == candidate ? .isSelected : [])
+      }
+
+      Menu {
+        ForEach(DraftListFilter.overflowFilters) { candidate in
+          filterButton(candidate)
+        }
+      } label: {
+        Label(overflowFilterLabel, systemImage: "line.3.horizontal.decrease.circle")
+      }
+      .menuIndicator(.hidden)
+      .controlSize(.small)
+      .accessibilityLabel("更多草稿筛选")
+      .accessibilityValue(filter.localizedDisplayName)
+    }
+  }
+
+  @ViewBuilder
+  private var draftListArrangementMenus: some View {
+    Menu {
+      ForEach(WritingDraftListDisplayMode.allCases) { option in
+        Button {
+          displayModeRawValue = option.rawValue
+        } label: {
+          if displayMode == option {
+            Label(writingDraftDisplayModeName(option), systemImage: "checkmark")
+          } else {
+            Text(writingDraftDisplayModeName(option))
+          }
+        }
+      }
+    } label: {
+      Image(systemName: effectiveDisplayMode == .folders ? "folder" : "list.bullet")
+    }
+    .menuStyle(.borderlessButton)
+    .menuIndicator(.hidden)
+    .disabled(store.draftListContentScope == .general)
+    .help(String(localized: "文章分组方式"))
+    .accessibilityLabel(String(localized: "文章分组方式"))
+    .accessibilityValue(writingDraftDisplayModeName(effectiveDisplayMode))
+    .accessibilityIdentifier("writing-draft-display-mode")
+
+    Menu {
+      ForEach(WritingDraftSortOrder.allCases) { option in
+        Button {
+          sortOrderRawValue = option.rawValue
+        } label: {
+          if sortOrder == option {
+            Label(option.localizedDisplayName, systemImage: "checkmark")
+          } else {
+            Text(option.localizedDisplayName)
+          }
+        }
+      }
+    } label: {
+      Image(systemName: "arrow.up.arrow.down")
+    }
+    .menuStyle(.borderlessButton)
+    .menuIndicator(.hidden)
+    .help(String(localized: "排序：\(sortOrder.localizedDisplayName)"))
+    .accessibilityLabel("文章排序")
+    .accessibilityValue(sortOrder.localizedDisplayName)
   }
 
   private var contentScopePicker: some View {
@@ -279,7 +303,7 @@ extension WritingDraftColumn {
     .labelsHidden()
     .controlSize(.regular)
     .font(.workbenchButtonLabel)
-    .frame(minWidth: 150, idealWidth: 180, maxWidth: 200)
+    .frame(minWidth: 150, idealWidth: 150, maxWidth: 200)
     .accessibilityLabel("内容范围")
   }
 
@@ -304,14 +328,22 @@ extension WritingDraftColumn {
         filterButton(candidate)
       }
     } label: {
-      Label(filter.localizedDisplayName, systemImage: "line.3.horizontal.decrease.circle")
-        .lineLimit(1)
+      // The compact row cannot fit the filter name next to the scope picker;
+      // the filled symbol signals an active filter and AX keeps the name.
+      Label(
+        filter.localizedDisplayName,
+        systemImage: filter == .all
+          ? "line.3.horizontal.decrease.circle"
+          : "line.3.horizontal.decrease.circle.fill"
+      )
+      .labelStyle(.iconOnly)
     }
     .menuIndicator(.hidden)
     .controlSize(.small)
     .accessibilityLabel("草稿筛选")
     .accessibilityValue(filter.localizedDisplayName)
     .help(String(localized: "筛选草稿"))
+    .fixedSize()
   }
 
   @ViewBuilder

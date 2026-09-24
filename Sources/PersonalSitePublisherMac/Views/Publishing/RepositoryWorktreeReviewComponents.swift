@@ -19,7 +19,7 @@ struct RepositoryWorktreeReviewFileList: View {
     VStack(alignment: .leading, spacing: 10) {
       Label("审阅文件内容", systemImage: "doc.text.magnifyingglass")
         .font(.headline)
-      Text("差异来自本次冻结快照；确认时仍会重新检查文件是否变化。")
+      Text("展示当前发布预览差异；确认时会自动核对文件是否变动。")
         .font(.caption)
         .foregroundStyle(.secondary)
       TextField("搜索文件路径", text: $search)

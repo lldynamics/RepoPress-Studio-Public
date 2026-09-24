@@ -74,8 +74,6 @@ if grep -F 'DEVELOPER_DIR:' "$SHARED_SWIFT_WORKFLOW" | grep -Fv 'DEVELOPER_DIR: 
 fi
 grep -Fq "uses: $CHECKOUT_ACTION" "$SHARED_SWIFT_WORKFLOW" \
   || fail "shared Swift Core workflow must pin actions/checkout to the approved commit"
-grep -Fq 'echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/ms-playwright" >> "$GITHUB_ENV"' "$TOOLING_WORKFLOW" \
-  || fail "release-tooling workflow must share one Playwright browser path across install and gates"
 if grep -Fq 'safari-web-extension-packager' "$WORKFLOW" \
   || grep -Fq 'safari-web-extension-packager' "$TOOLING_WORKFLOW"; then
   fail "CI still requires the removed Safari extension packager"
@@ -296,24 +294,8 @@ grep -Fq 'release_artifact_manifest.py' "$ROOT_DIR/script/check_swift_release_bu
 if grep -Fq 'swift build' "$ROOT_DIR/script/check_ui_runtime.sh"; then
   fail "UI runtime artifact gate must delegate build/package work to build_and_run"
 fi
-python3 "$ROOT_DIR/script/check_tooling_workflow_source_paths.py" \
-  --manifest "$RELEASE_CHECKS" \
-  --workflow "$TOOLING_WORKFLOW" \
-  || fail "release-tooling workflow paths do not cover every browser release input"
-python3 "$ROOT_DIR/script/test_tooling_workflow_source_paths.py" \
-  || fail "release-tooling workflow source-path regression tests failed"
-grep -Fq -- '--summary-markdown .build/browser-extension-gate-summary.md' "$TOOLING_WORKFLOW" \
-  || fail "release-tooling workflow must summarize the browser extension gate"
 grep -Fq -- '--summary-markdown .build/tooling-gate-summary.md' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow must summarize tooling self-tests"
-grep -Fq 'npm ci --ignore-scripts' "$TOOLING_WORKFLOW" \
-  || fail "release-tooling workflow must disable dependency lifecycle scripts"
-grep -Fq 'python3 script/check_node_toolchain_security.py' "$TOOLING_WORKFLOW" \
-  || fail "release-tooling workflow must reject retired Firefox dependency residue"
-grep -Fq 'python3 script/test_node_toolchain_security.py' "$TOOLING_WORKFLOW" \
-  || fail "release-tooling workflow must run Node security gate regressions"
-grep -Fq 'npm audit --audit-level=high --omit=optional' "$TOOLING_WORKFLOW" \
-  || fail "release-tooling workflow must reject high-severity npm advisories"
 grep -Fq 'GITHUB_STEP_SUMMARY' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow must publish its readable summary"
 

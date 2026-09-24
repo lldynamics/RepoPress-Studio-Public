@@ -198,6 +198,23 @@ extension KnowledgeSourceListColumn {
     }
   }
 
+  func beginQuickNote() {
+    Task {
+      if let note = await knowledge.createQuickNote() {
+        noteEditor = note
+      }
+    }
+  }
+
+  func beginEditingNote(_ document: KnowledgeDocument) {
+    guard document.kind == .note else { return }
+    Task {
+      if let note = await knowledge.note(documentID: document.id) {
+        noteEditor = note
+      }
+    }
+  }
+
   var commandActions: KnowledgeLibraryCommandActions {
     KnowledgeLibraryCommandActions(
       focusSearch: {

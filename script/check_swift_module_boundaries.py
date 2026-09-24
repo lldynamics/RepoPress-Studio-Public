@@ -42,9 +42,7 @@ GOVERNED_DEPENDENCIES: dict[str, set[str]] = {
         "PublishingKnowledgeCore",
         "PublishingMarkdownCore",
     },
-    "BrowserExtensionProtocolSupport": set(),
     "PersonalSitePublisherMac": {
-        "BrowserExtensionProtocolSupport",
         "PublishingAICore",
         "PublishingCoreSupport",
         "PublishingDomainContracts",
@@ -63,7 +61,6 @@ EXPECTED_PRODUCTION_TARGET_TYPES = {
     "PublishingAgentContracts": "regular",
     "PublishingKnowledgeCore": "regular",
     "PublishingWorkbenchCore": "regular",
-    "BrowserExtensionProtocolSupport": "regular",
     "PersonalSitePublisherMac": "executable",
 }
 TEST_TARGET_DEPENDENCIES: dict[str, set[str]] = {
@@ -78,7 +75,6 @@ TEST_TARGET_DEPENDENCIES: dict[str, set[str]] = {
     "PublishingCoreSupportTests": {"PublishingCoreSupport"},
     "PublishingKnowledgeCoreTests": {"PublishingKnowledgeCore"},
     "PublishingWorkbenchCoreTests": {
-        "BrowserExtensionProtocolSupport",
         "PublishingAICore",
         "PublishingAgentContracts",
         "PublishingCoreSupport",
@@ -89,7 +85,6 @@ TEST_TARGET_DEPENDENCIES: dict[str, set[str]] = {
         "PublishingWorkbenchCore",
     },
     "PersonalSitePublisherMacTests": {
-        "BrowserExtensionProtocolSupport",
         "PersonalSitePublisherMac",
         "PublishingAICore",
         "PublishingCoreSupport",
@@ -125,7 +120,6 @@ EXPECTED_EXTERNAL_PRODUCTS: dict[str, dict[str, str]] = {
     "PublishingAgentContracts": {},
     "PublishingKnowledgeCore": {},
     "PublishingWorkbenchCore": {},
-    "BrowserExtensionProtocolSupport": {},
     "PersonalSitePublisherMac": {"Sparkle": "Sparkle"},
 }
 EXPECTED_EXTERNAL_PRODUCTS.update(
@@ -148,7 +142,6 @@ LEAF_TARGETS = {
     "PublishingAICore",
     "PublishingAgentContracts",
     "PublishingKnowledgeCore",
-    "BrowserExtensionProtocolSupport",
 }
 LEAF_TEST_TARGETS = {
     f"{target_name}Tests"

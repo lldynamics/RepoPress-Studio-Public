@@ -13,7 +13,7 @@ enum KnowledgeSelectionPanel {
     panel.title = String(localized: "选择要加入资料库的文件或文件夹")
     panel.prompt = String(localized: "生成导入预览")
     panel.message = String(
-      localized: "支持 JPEG、PNG、HEIC 图片、EPUB、Markdown、文本、HTML、PDF 和包含这些文件的文件夹。"
+      localized: "支持 JPEG、PNG、HEIC 图片、Markdown、文本、HTML、PDF 和包含这些文件的文件夹。"
     )
     panel.canChooseFiles = true
     panel.canChooseDirectories = true
@@ -22,7 +22,6 @@ enum KnowledgeSelectionPanel {
       .jpeg,
       .png,
       .heic,
-      .epub,
       .pdf,
       .plainText,
       .html,

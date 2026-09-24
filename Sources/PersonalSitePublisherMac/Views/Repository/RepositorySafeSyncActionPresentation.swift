@@ -94,7 +94,7 @@ struct RepositorySafeSyncActionPresentation: Equatable {
     if branchStatus.aheadCount > 0 {
       return Self(
         title: String(localized: "审阅并变基同步…"),
-        help: String(localized: "先冻结当前分叉与工作区；确认后封存未提交改动、对已审阅远端提交变基，再恢复改动。"),
+        help: String(localized: "安全暂存本地未提交改动，合并远端最新提交后再恢复改动。"),
         isEnabled: true,
         reviewKind: .rebase
       )

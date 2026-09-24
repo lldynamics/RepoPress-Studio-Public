@@ -180,15 +180,6 @@ struct PublishingConsoleCommands: Commands {
           .disabled(!canUseProtectedWorkbench)
         }
 
-        Divider()
-
-        ForEach(WorkspaceNavigationPresentation.secondaryEntryItems) { item in
-          Button(workspaceNavigationLocalizedKey(item.displayNameLocalizationKey)) {
-            store.selectSection(item.section)
-          }
-          .keyboardShortcut(KeyEquivalent(item.keyboardShortcutKey), modifiers: [.command])
-          .disabled(!canUseProtectedWorkbench)
-        }
       }
 
       Divider()

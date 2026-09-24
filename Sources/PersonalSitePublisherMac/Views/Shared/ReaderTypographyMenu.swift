@@ -93,7 +93,7 @@ struct ReaderTypographyMenu: View {
         }
       }
     } label: {
-      Label("阅读排版", systemImage: "textformat.size")
+      Label("阅读排版", systemImage: "text.alignleft")
     }
     .menuStyle(.borderlessButton)
     .help("调整字体、行距、段间距、对齐和代码高亮")

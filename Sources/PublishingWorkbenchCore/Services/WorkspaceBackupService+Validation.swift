@@ -3,6 +3,57 @@ import Foundation
 import PublishingKnowledgeCore
 
 extension WorkspaceBackupService {
+  func categorySummaries(
+    for records: [WorkspaceBackupFileRecord],
+    selectedCategories: Set<WorkspaceBackupCategory>
+  ) -> [WorkspaceBackupCategorySummary] {
+    WorkspaceBackupCategory.allCases.filter { selectedCategories.contains($0) }.map { category in
+      let matching = records.filter { record in
+        switch category {
+        case .workbench: return record.component == .workbenchState || record.component == .draftAttachments
+        case .knowledgeLibrary: return record.component == .knowledgeLibrary
+        case .rssReader: return record.component == .rssReader
+        case .operationHistory: return record.component == .operationHistory
+        }
+      }
+      return WorkspaceBackupCategorySummary(
+        category: category, fileCount: matching.count,
+        byteCount: matching.reduce(0) { $0 + $1.byteCount }
+      )
+    }
+  }
+
+  func validateCategoryClosure(
+    manifest: WorkspaceBackupManifest,
+    selectedCategories: Set<WorkspaceBackupCategory>
+  ) throws {
+    let records = manifest.files
+    func has(_ component: WorkspaceBackupComponent) -> Bool { records.contains { $0.component == component } }
+    guard has(.workbenchState) == selectedCategories.contains(.workbench),
+          (!has(.draftAttachments) || selectedCategories.contains(.workbench)),
+          has(.knowledgeLibrary) == selectedCategories.contains(.knowledgeLibrary),
+          has(.rssReader) == selectedCategories.contains(.rssReader),
+          has(.operationHistory) == selectedCategories.contains(.operationHistory) else {
+      throw WorkspaceBackupError.invalidManifest(CoreL10n.text("备份类别与文件依赖不一致"))
+    }
+    if selectedCategories.contains(.workbench),
+       records.first(where: { $0.relativePath == Self.workbenchRelativePath }) == nil {
+      throw WorkspaceBackupError.missingFile(Self.workbenchRelativePath)
+    }
+    if selectedCategories.contains(.knowledgeLibrary),
+       !records.contains(where: { $0.relativePath.hasPrefix(Self.knowledgePackageName + "/") }) {
+      throw WorkspaceBackupError.missingFile(Self.knowledgePackageName)
+    }
+    if selectedCategories.contains(.rssReader),
+       !records.contains(where: { $0.relativePath == Self.rssDatabaseRelativePath }) {
+      throw WorkspaceBackupError.missingFile(Self.rssDatabaseRelativePath)
+    }
+    if selectedCategories.contains(.operationHistory),
+       !records.contains(where: { $0.relativePath == Self.operationHistoryRelativePath }) {
+      throw WorkspaceBackupError.missingFile(Self.operationHistoryRelativePath)
+    }
+  }
+
   func validatedBackup(
     at packageURL: URL,
     currentApplicationVersion: String? = nil
@@ -46,6 +97,22 @@ extension WorkspaceBackupService {
       throw WorkspaceBackupError.invalidManifest(
         CoreL10n.text("附件引用数量与清单不一致")
       )
+    }
+    let selectedCategories: Set<WorkspaceBackupCategory>
+    if manifest.formatVersion >= 4 {
+      guard let declared = manifest.selectedCategories,
+            !declared.isEmpty,
+            Set(declared).count == declared.count,
+            let summaries = manifest.categorySummaries else {
+        throw WorkspaceBackupError.invalidManifest(CoreL10n.text("备份类别清单无效"))
+      }
+      selectedCategories = Set(declared)
+      guard summaries == categorySummaries(for: manifest.files, selectedCategories: selectedCategories) else {
+        throw WorkspaceBackupError.invalidManifest(CoreL10n.text("备份类别统计与文件清单不一致"))
+      }
+      try validateCategoryClosure(manifest: manifest, selectedCategories: selectedCategories)
+    } else {
+      selectedCategories = Set(WorkspaceBackupCategory.allCases)
     }
 
     var seenPaths = Set<String>()
@@ -103,35 +170,40 @@ extension WorkspaceBackupService {
       )
     }
 
-    let workbenchData = try boundedData(
-      at: packageURL.appendingPathComponent(Self.workbenchRelativePath),
-      maximumByteCount: Int(limits.maximumWorkbenchByteCount),
-      relativePath: Self.workbenchRelativePath
-    )
-    let snapshot: WorkbenchSnapshot
-    do {
-      snapshot = try JSONDecoder.workbench.decode(WorkbenchSnapshot.self, from: workbenchData)
-      try WorkbenchSnapshotSemanticValidator.validate(snapshot)
-    } catch {
-      throw WorkspaceBackupError.invalidWorkbenchSnapshot(error.localizedDescription)
-    }
-    try validateAttachmentReferences(
-      in: snapshot,
-      references: manifest.attachmentReferences,
-      files: manifest.files
-    )
-    guard manifest.profileCount == snapshot.profiles.count,
-          manifest.draftCount == snapshot.drafts.count,
-          manifest.draftVersionCount == snapshot.draftVersions.count,
-          manifest.releaseRecordCount == snapshot.releaseRecords.count,
-          manifest.unresolvedAttachmentCount == unresolvedAttachmentCount(in: snapshot)
-    else {
-      throw WorkspaceBackupError.invalidManifest(
-        CoreL10n.text("工作区数据统计与快照不一致")
+    var snapshot: WorkbenchSnapshot?
+    if manifest.formatVersion < 4 || selectedCategories.contains(.workbench) {
+      let workbenchData = try boundedData(
+        at: packageURL.appendingPathComponent(Self.workbenchRelativePath),
+        maximumByteCount: Int(limits.maximumWorkbenchByteCount),
+        relativePath: Self.workbenchRelativePath
       )
+      do {
+        let decoded = try JSONDecoder.workbench.decode(WorkbenchSnapshot.self, from: workbenchData)
+        try WorkbenchSnapshotSemanticValidator.validate(decoded)
+        snapshot = decoded
+      } catch {
+        throw WorkspaceBackupError.invalidWorkbenchSnapshot(error.localizedDescription)
+      }
+      guard let snapshot else { throw WorkspaceBackupError.missingFile(Self.workbenchRelativePath) }
+      try validateAttachmentReferences(in: snapshot, references: manifest.attachmentReferences, files: manifest.files)
+      guard manifest.profileCount == snapshot.profiles.count,
+            manifest.draftCount == snapshot.drafts.count,
+            manifest.draftVersionCount == snapshot.draftVersions.count,
+            manifest.releaseRecordCount == snapshot.releaseRecords.count,
+            manifest.unresolvedAttachmentCount == unresolvedAttachmentCount(in: snapshot) else {
+        throw WorkspaceBackupError.invalidManifest(CoreL10n.text("工作区数据统计与快照不一致"))
+      }
+    } else if manifest.attachmentReferences.isEmpty,
+              manifest.profileCount == 0, manifest.draftCount == 0,
+              manifest.draftVersionCount == 0, manifest.releaseRecordCount == 0,
+              manifest.attachmentReferenceCount == 0, manifest.unresolvedAttachmentCount == 0 {
+      snapshot = nil
+    } else {
+      throw WorkspaceBackupError.invalidManifest(CoreL10n.text("未选择工作台却包含工作台数据"))
     }
 
-    if manifest.formatVersion >= 3 {
+    if manifest.formatVersion >= 3,
+       manifest.formatVersion < 4 || selectedCategories.contains(.operationHistory) {
       try Task.checkCancellation()
       guard
         manifest.files.contains(where: {
@@ -156,19 +228,19 @@ extension WorkspaceBackupService {
     }
 
     let knowledgeURL = packageURL.appendingPathComponent(Self.knowledgePackageName)
-    do {
-      _ = try KnowledgeLibraryService(
-        rootURL: knowledgeURL,
-        fileManager: fileManager
-      ).inspectBackupSynchronously(at: knowledgeURL)
-    } catch {
-      throw WorkspaceBackupError.knowledgeLibraryInvalid(error.localizedDescription)
+    if manifest.formatVersion < 4 || selectedCategories.contains(.knowledgeLibrary) {
+      do {
+        _ = try KnowledgeLibraryService(rootURL: knowledgeURL, fileManager: fileManager)
+          .inspectBackupSynchronously(at: knowledgeURL)
+      } catch {
+        throw WorkspaceBackupError.knowledgeLibraryInvalid(error.localizedDescription)
+      }
     }
 
     let includesRSS = manifest.files.contains {
       $0.relativePath == Self.rssDatabaseRelativePath && $0.component == .rssReader
     }
-    if manifest.formatVersion == 2 || includesRSS {
+    if manifest.formatVersion == 2 || includesRSS || (manifest.formatVersion >= 4 && selectedCategories.contains(.rssReader)) {
       guard includesRSS else {
         throw WorkspaceBackupError.missingFile(Self.rssDatabaseRelativePath)
       }

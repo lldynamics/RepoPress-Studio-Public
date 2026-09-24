@@ -101,7 +101,6 @@ struct KnowledgeFileDropImportModifier: ViewModifier {
             Label("Markdown", systemImage: "doc.text")
             Label("图片", systemImage: "photo")
             Label("PDF", systemImage: "doc.richtext")
-            Label("EPUB", systemImage: "book")
           }
           .font(.caption.monospaced())
           .foregroundStyle(.secondary)

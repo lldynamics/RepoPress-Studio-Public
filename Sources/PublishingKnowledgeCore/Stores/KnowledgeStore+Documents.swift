@@ -12,8 +12,127 @@ public enum KnowledgeBacklinkRecordingResult: Equatable, Sendable {
   }
 }
 
+/// The note editor uses this result to distinguish a stale revision from an
+/// ordinary save failure without inspecting localized error text.
+public enum KnowledgeNoteEditorSaveResult: Sendable {
+  case saved(KnowledgeNote)
+  case staleRevision
+  case failure(String)
+}
+
 @MainActor
 extension KnowledgeStore {
+  /// Creates a local-only blank note and selects it for immediate writing.
+  @discardableResult
+  public func createQuickNote() async -> KnowledgeNote? {
+    await createNote(KnowledgeNote())
+  }
+
+  @discardableResult
+  public func createNote(_ note: KnowledgeNote) async -> KnowledgeNote? {
+    let busyOperationID = beginBusyOperation()
+    defer { finishBusyOperation(busyOperationID) }
+    do {
+      let saved = try await performQueuedKnowledgeMutation { [service] in
+        try await service.createNoteAsync(note)
+      }
+      await waitAfterAcceptedMutationBeforeProjection()
+      await reloadAfterAcceptedMutation(selecting: saved.id)
+      Task { await refreshNoteCloudSync() }
+      statusMessage = "已新建本地笔记。"
+      lastError = nil
+      return saved
+    } catch {
+      lastError = error.localizedDescription
+      statusMessage = "新建笔记失败：\(error.localizedDescription)"
+      return nil
+    }
+  }
+
+  @discardableResult
+  public func updateNote(_ note: KnowledgeNote, expectedContentRevision: String? = nil) async -> KnowledgeNote? {
+    let busyOperationID = beginBusyOperation()
+    defer { finishBusyOperation(busyOperationID) }
+    do {
+      let saved = try await performQueuedKnowledgeMutation { [service] in
+        if let expectedContentRevision {
+          return try await service.updateNoteAsync(note, expectedContentRevision: expectedContentRevision)
+        }
+        return try await service.updateNoteAsync(note)
+      }
+      await waitAfterAcceptedMutationBeforeProjection()
+      await reloadAfterAcceptedMutation(selecting: saved.id)
+      Task { await refreshNoteCloudSync() }
+      statusMessage = saved.isArchived ? "笔记已归档。" : "笔记已保存。"
+      lastError = nil
+      return saved
+    } catch {
+      lastError = error.localizedDescription
+      statusMessage = "笔记保存失败：\(error.localizedDescription)"
+      return nil
+    }
+  }
+
+  /// Saves an editor draft and preserves a stale revision as a typed result so
+  /// the caller can make a durable conflict copy only for that condition.
+  public func saveNoteEditorDraft(
+    _ note: KnowledgeNote,
+    expectedContentRevision: String?
+  ) async -> KnowledgeNoteEditorSaveResult {
+    let busyOperationID = beginBusyOperation()
+    defer { finishBusyOperation(busyOperationID) }
+    do {
+      let saved = try await performQueuedKnowledgeMutation { [service] in
+        if let expectedContentRevision {
+          return try await service.updateNoteAsync(note, expectedContentRevision: expectedContentRevision)
+        }
+        return try await service.updateNoteAsync(note)
+      }
+      await waitAfterAcceptedMutationBeforeProjection()
+      await reloadAfterAcceptedMutation(selecting: saved.id)
+      Task { await refreshNoteCloudSync() }
+      statusMessage = saved.isArchived ? "笔记已归档。" : "笔记已保存。"
+      lastError = nil
+      return .saved(saved)
+    } catch {
+      let message = error.localizedDescription
+      lastError = message
+      statusMessage = "笔记保存失败：\(message)"
+      if let libraryError = error as? KnowledgeLibraryError,
+        case .staleNoteRevision = libraryError
+      {
+        return .staleRevision
+      }
+      return .failure(message)
+    }
+  }
+
+  public func noteEditRevision(_ note: KnowledgeNote) -> String {
+    service.noteEditRevision(note)
+  }
+
+  public func note(documentID: UUID) async -> KnowledgeNote? {
+    do {
+      return try await service.noteAsync(documentID: documentID)
+    } catch {
+      lastError = error.localizedDescription
+      statusMessage = "读取笔记失败：\(error.localizedDescription)"
+      return nil
+    }
+  }
+
+  /// Provides the distinct note archive without involving the document
+  /// recycle bin. Archive entries can be restored or exported from the UI.
+  public func archivedNotes() async -> [KnowledgeNote] {
+    do {
+      return try await service.notesAsync(includeArchived: true).filter(\.isArchived)
+    } catch {
+      lastError = error.localizedDescription
+      statusMessage = "读取归档笔记失败：\(error.localizedDescription)"
+      return []
+    }
+  }
+
   /// Keeps legacy synchronous UI actions responsive while their persistence
   /// work awaits the cancellable service boundary. The lease belongs to the
   /// scheduled operation, so another completion cannot clear busy state.
@@ -340,145 +459,6 @@ extension KnowledgeStore {
     }
   }
 
-  public func importBrowserCapture(
-    _ capture: KnowledgeBrowserCapture,
-    folderID: UUID?,
-    newFolderName: String?,
-    duplicateResolution: KnowledgeBrowserDuplicateResolution? = nil
-  ) async throws -> KnowledgeBrowserImportOutcome {
-    beginImport(title: "保存浏览器页面") { [weak self] in
-      guard let self else { return }
-      do {
-        _ = try await self.importBrowserCapture(
-          capture,
-          folderID: folderID,
-          newFolderName: newFolderName,
-          duplicateResolution: duplicateResolution
-        )
-      } catch {
-        // `importBrowserCapture` publishes the user-visible error state itself.
-      }
-    }
-    let busyOperationID = beginBusyOperation()
-    statusMessage = "正在保存浏览器页面并建立索引…"
-    defer { finishBusyOperation(busyOperationID) }
-    do {
-      importProgress = 0.25
-      var preview = try await service.makeBrowserImportPreview(capture: capture)
-      guard var candidate = preview.candidates.first else {
-        throw KnowledgeLibraryError.invalidBrowserCapture("浏览器页面没有可保存的内容。")
-      }
-      let currentDocuments = try await service.documentsAsync()
-      let currentFolders = try await service.foldersAsync()
-      let existingDocument = candidate.existingDocumentID.flatMap { documentID in
-        currentDocuments.first(where: { $0.id == documentID })
-      }
-      let hasSameURL =
-        existingDocument?.sourceURL?.absoluteString == candidate.sourceURL?.absoluteString
-      if let existingDocument, hasSameURL, duplicateResolution == nil {
-        let existingFolder = existingDocument.folderID.flatMap { existingFolderID in
-          currentFolders.first(where: { $0.id == existingFolderID })
-        }
-        statusMessage = "检测到同网址资料，请选择处理方式。"
-        lastError = nil
-        finishImport()
-        return .requiresDuplicateResolution(
-          KnowledgeBrowserDuplicateConflict(
-            document: existingDocument,
-            folder: existingFolder,
-            incomingHasChanges: candidate.disposition == .update
-          ))
-      }
-
-      let destination = try await browserImportDestination(
-        folderID: folderID,
-        newFolderName: newFolderName
-      )
-      let result: KnowledgeImportResult
-      let action: KnowledgeBrowserImportAction
-      importProgress = 0.62
-      if let existingDocument, hasSameURL, duplicateResolution == .moveOnly {
-        try await performQueuedKnowledgeMutation { [service] in
-          try await service.setFolderAsync(destination.folderID, documentID: existingDocument.id)
-        }
-        result = KnowledgeImportResult(
-          insertedCount: 0,
-          updatedCount: 0,
-          skippedCount: 0,
-          documentIDs: [existingDocument.id]
-        )
-        action = .moved
-      } else {
-        if let existingDocument, hasSameURL, duplicateResolution == .saveNewVersion {
-          candidate.existingDocumentID = existingDocument.id
-          candidate.disposition = .update
-        } else if hasSameURL, duplicateResolution == .keepCopy {
-          candidate.existingDocumentID = nil
-          candidate.disposition = .new
-          candidate.title = "\(candidate.title)（副本）"
-        }
-        preview.candidates = [candidate]
-        result = try await performQueuedKnowledgeMutation { [service] in
-          try await service.commit(preview, destination: destination.importDestination)
-        }
-        if duplicateResolution == .keepCopy, hasSameURL {
-          action = .copied
-        } else if result.insertedCount > 0 {
-          action = .inserted
-        } else if result.updatedCount > 0 {
-          action = .updated
-        } else {
-          action = .existing
-        }
-      }
-      // 新版本和副本的 AI 权限已由导入候选项带入数据库事务。
-      // “仅移动分类”不提交候选项，因此仍只更新分类并保留原 AI 权限。
-      await waitAfterAcceptedMutationBeforeProjection()
-      await reloadAfterAcceptedMutation(selecting: result.documentIDs.first)
-      finishImport()
-      statusMessage =
-        action == .moved
-        ? "已将原资料移到选定分类；正文、元数据和 AI 权限均保持不变。"
-        : "浏览器页面已保存到资料库。"
-      lastError = nil
-      recordKnowledgeImportEvent(
-        outcome: knowledgeImportOutcome(for: result),
-        result: result
-      )
-      return .saved(result: result, action: action)
-    } catch {
-      finishImport(failure: error.localizedDescription)
-      recordKnowledgeImportEvent(
-        outcome: error is CancellationError ? .cancelled : .failed
-      )
-      lastError = error.localizedDescription
-      statusMessage = "浏览器页面保存失败：\(error.localizedDescription)"
-      throw error
-    }
-  }
-
-  func browserImportDestination(
-    folderID: UUID?,
-    newFolderName: String?
-  ) async throws -> (importDestination: KnowledgeImportDestination, folderID: UUID?) {
-    if let requestedName = newFolderName?.trimmedForPublishing.nilIfEmpty {
-      if let existing = try await service.foldersAsync().first(where: {
-        $0.name.compare(requestedName, options: [.caseInsensitive, .diacriticInsensitive])
-          == .orderedSame
-      }) {
-        return (.folder(existing.id), existing.id)
-      }
-      let folder = try await performQueuedKnowledgeMutation { [service] in
-        try await service.createFolderAsync(name: requestedName)
-      }
-      return (.folder(folder.id), folder.id)
-    }
-    if let folderID {
-      return (.folder(folderID), folderID)
-    }
-    return (.unfiled, nil)
-  }
-
   public func setAllowsLocalSemanticIndex(_ allowsLocalSemanticIndex: Bool, documentID: UUID) async
   {
     await enqueueKnowledgeIO { [weak self] in
@@ -659,6 +639,7 @@ extension KnowledgeStore {
 
   private func moveToRecycleBinAsync(_ documentIDs: Set<UUID>) async -> Bool {
     do {
+      try await noteCloudSyncAdapter.prepareLocalDeletion(ids: documentIDs)
       let now = Date()
       let movingDocuments = documents.filter { documentIDs.contains($0.id) }
       try await service.moveToRecycleBinAsync(documentIDs: documentIDs)
@@ -674,6 +655,7 @@ extension KnowledgeStore {
       ensureVisibleSelection()
       statusMessage = "已将 \(documentIDs.count) 条资料移到回收站，可随时恢复。"
       lastError = nil
+      Task { await refreshNoteCloudSync() }
       return true
     } catch {
       lastError = error.localizedDescription
@@ -707,6 +689,7 @@ extension KnowledgeStore {
           return document
         })
       statusMessage = "已从回收站恢复 \(documentIDs.count) 条资料。"
+      Task { await refreshNoteCloudSync() }
       lastError = nil
       if let firstID = documentIDs.first { selectDocument(firstID) }
       return true
@@ -729,6 +712,7 @@ extension KnowledgeStore {
 
   private func deleteDocumentAsync(_ documentID: UUID) async -> Bool {
     do {
+      try await noteCloudSyncAdapter.prepareLocalDeletion(ids: [documentID])
       let report = try await service.deleteDocumentAsync(id: documentID)
       documents.removeAll { $0.id == documentID }
       recycledDocuments.removeAll { $0.id == documentID }
@@ -741,6 +725,7 @@ extension KnowledgeStore {
         statusMessage = "资料和检索索引已删除；有 \(report.failedStoredFileCount) 个本地副本因文件权限未能清理。"
       }
       lastError = nil
+      Task { await refreshNoteCloudSync() }
       return true
     } catch {
       lastError = error.localizedDescription
@@ -793,6 +778,7 @@ extension KnowledgeStore {
   ) async -> KnowledgeRecycleBinCleanupSummary {
     let result: KnowledgeRecycleBinDeletionResult
     do {
+      try await noteCloudSyncAdapter.prepareLocalDeletion(ids: Set(documentIDs))
       result = try await service.deleteDocumentsAsync(ids: documentIDs)
     } catch is CancellationError {
       return KnowledgeRecycleBinCleanupSummary(

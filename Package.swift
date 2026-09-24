@@ -149,7 +149,6 @@ let package = Package(
     .executableTarget(
       name: "PersonalSitePublisherMac",
       dependencies: [
-        "BrowserExtensionProtocolSupport",
         "PublishingAICore",
         "PublishingCoreSupport",
         "PublishingDomainContracts",
@@ -162,12 +161,6 @@ let package = Package(
       resources: [
         .process("Resources")
       ],
-      swiftSettings: [
-        .swiftLanguageMode(.v6)
-      ]
-    ),
-    .target(
-      name: "BrowserExtensionProtocolSupport",
       swiftSettings: [
         .swiftLanguageMode(.v6)
       ]
@@ -242,7 +235,6 @@ let package = Package(
     .testTarget(
       name: "PublishingWorkbenchCoreTests",
       dependencies: [
-        "BrowserExtensionProtocolSupport",
         "PublishingAICore",
         "PublishingAgentContracts",
         "PublishingCoreSupport",
@@ -260,7 +252,6 @@ let package = Package(
       name: "PersonalSitePublisherMacTests",
       dependencies: [
         "PersonalSitePublisherMac",
-        "BrowserExtensionProtocolSupport",
         "PublishingAICore",
         "PublishingCoreSupport",
         "PublishingDomainContracts",

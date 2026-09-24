@@ -1552,11 +1552,8 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     let commandSearch = mainWindow.descendants(matching: .any)
       .matching(identifier: "workspace-command-search")
       .firstMatch
-    let livePreviewButton = mainWindow.descendants(matching: .any)
-      .matching(identifier: "workspace-live-preview")
-      .firstMatch
-    let browserPreviewButton = mainWindow.descendants(matching: .any)
-      .matching(identifier: "workspace-open-preview-browser")
+    let previewButton = mainWindow.descendants(matching: .any)
+      .matching(identifier: "workspace-preview")
       .firstMatch
     XCTAssertTrue(
       sidebarButton.waitForExistence(timeout: 10),
@@ -1575,18 +1572,13 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "The active site selector must remain in the leading toolbar group."
     )
     XCTAssertTrue(
-      livePreviewButton.waitForExistence(timeout: 10),
-      "The in-app live preview must remain directly available."
-    )
-    XCTAssertTrue(
-      browserPreviewButton.waitForExistence(timeout: 10),
-      "The browser preview must remain visible even when its current context disables it."
+      previewButton.waitForExistence(timeout: 10),
+      "The combined preview control must remain visible even when browser preview is unavailable."
     )
     XCTAssertLessThan(sidebarButton.frame.midX, profileMenu.frame.midX)
     XCTAssertLessThan(profileMenu.frame.midX, commandSearch.frame.midX)
-    XCTAssertLessThan(commandSearch.frame.midX, livePreviewButton.frame.midX)
-    XCTAssertLessThan(livePreviewButton.frame.midX, browserPreviewButton.frame.midX)
-    XCTAssertLessThan(browserPreviewButton.frame.midX, taskCenterButton.frame.midX)
+    XCTAssertLessThan(commandSearch.frame.midX, previewButton.frame.midX)
+    XCTAssertLessThan(previewButton.frame.midX, taskCenterButton.frame.midX)
     XCTAssertLessThan(taskCenterButton.frame.midX, aiButton.frame.midX)
     XCTAssertLessThan(aiButton.frame.midX, inspectorButton.frame.midX)
     XCTAssertLessThan(inspectorButton.frame.midX, settingsButton.frame.midX)
@@ -1639,8 +1631,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       ("workspace-sidebar-toggle", ["隐藏侧栏", "显示侧栏"]),
       ("workspace-publishing-status", ["文章状态"]),
       ("workspace-command-search", ["全局搜索"]),
-      ("workspace-live-preview", ["实时预览"]),
-      ("workspace-open-preview-browser", ["浏览器预览"]),
+      ("workspace-preview", ["预览"]),
       ("workspace-task-center-toggle", ["任务", "统一任务中心"]),
     ]
 
@@ -1710,6 +1701,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       (tab: "defaultRules", content: "default-rule-settings"),
       (tab: "token", content: "token-settings"),
       (tab: "ai", content: "ai-settings"),
+      (tab: "siteAI", content: "site-ai-settings"),
       (tab: "dataManagement", content: "data-management-settings"),
       (tab: "appearance", content: "appearance-settings"),
       (tab: "editor", content: "editor-settings"),
@@ -1730,6 +1722,11 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       )
       assertUniqueIdentifier("settings-content")
       assertUniqueIdentifier(page.content)
+      XCTAssertEqual(
+        identifierExists("settings-profile-bar", in: settingsWindow),
+        ["configurationStatus", "defaultRules", "token", "siteAI"].contains(page.tab),
+        "Only site-scoped pages should expose a site switcher."
+      )
       if page.tab == "editor" {
         XCTAssertTrue(
           settingsWindow.sliders["字号"].waitForExistence(timeout: 10),
@@ -1746,6 +1743,41 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
         "Selecting \(page.tab) must expose exactly one settings page root."
       )
     }
+  }
+
+  func testSettingsSharedConnectionAndMovedSearchKeepTheirScopes() throws {
+    openSettings()
+    let settingsWindow = currentSettingsWindow()
+    select("settings-tab-siteAI", revealing: "site-ai-settings")
+    let picker = element(identifier: "settings-site-ai-connection-picker")
+    XCTAssertTrue(picker.waitForExistence(timeout: 10))
+    let originalSelection = picker.value as? String
+    XCTAssertNotNil(originalSelection)
+
+    element(identifier: "settings-site-ai-edit-shared-connection").click()
+    assertIdentifierExists("ai-settings", in: settingsWindow)
+    XCTAssertFalse(identifierExists("settings-site-ai-connection-picker", in: settingsWindow))
+    element(identifier: "settings-ai-open-site-connection").click()
+    assertIdentifierExists("site-ai-settings", in: settingsWindow)
+    XCTAssertEqual(picker.value as? String, originalSelection)
+
+    let search = element(identifier: "settings-search-field")
+    search.click()
+    search.typeText("全局预设")
+    let result = element(identifier: "settings-search-result-appearance.defaults")
+    XCTAssertTrue(result.waitForExistence(timeout: 10))
+    result.click()
+    assertIdentifierExists("editor-settings", in: settingsWindow)
+    assertIdentifierExists("settings-global-front-matter-preset", in: settingsWindow)
+    let presetVisible = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "hittable == true"),
+      object: element(identifier: "settings-global-front-matter-preset")
+    )
+    XCTAssertEqual(
+      XCTWaiter.wait(for: [presetVisible], timeout: 5), .completed,
+      "The moved search result must scroll the global preset into the visible viewport."
+    )
+    XCTAssertFalse(identifierExists("settings-profile-bar", in: settingsWindow))
   }
 
   func testDataManagementSheetsOpenAndCloseWithoutRunningTheirActions() throws {
@@ -1849,6 +1881,11 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
   }
 
   private func openSettings() {
+    // Foundation may keep its system temporary directory despite a launch
+    // TMPDIR override. Give this settings run an explicit fresh workspace so
+    // a stale screenshot fixture cannot open a recovery sheet over the UI.
+    application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_PERSISTENCE_ROOT"] =
+      knowledgeLibraryRootURL.appendingPathComponent("settings-workbench", isDirectory: true).path
     launchApplication(surface: "writing")
     showSettingsWindow()
 

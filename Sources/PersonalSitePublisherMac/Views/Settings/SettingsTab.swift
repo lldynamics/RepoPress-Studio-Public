@@ -16,6 +16,7 @@ struct SettingsContext {
   let navigationDestination: SettingsDestination?
   let navigationRequestID: UUID
   let selectConfigurationHealthDestination: (SettingsConfigurationHealthDestination) -> Void
+  let selectSettingsDestination: (SettingsDestination) -> Void
 
   var actions: SettingsStoreActions {
     SettingsStoreActions(store: store)
@@ -32,6 +33,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
   case defaultRules
   case token
   case ai
+  case siteAI
   case appearance
   case editor
   case rss
@@ -48,6 +50,8 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
       return "token"
     case .ai:
       return "ai"
+    case .siteAI:
+      return "siteAI"
     case .appearance:
       return "appearance"
     case .editor:
@@ -70,7 +74,9 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
     case .token:
       return String(localized: "发布连接")
     case .ai:
-      return String(localized: "AI 助手")
+      return String(localized: "AI 连接")
+    case .siteAI:
+      return String(localized: "AI 与写作偏好")
     case .appearance:
       return String(localized: "通用与外观")
     case .editor:
@@ -94,10 +100,12 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
       return "link"
     case .ai:
       return "sparkles"
+    case .siteAI:
+      return "text.quote"
     case .appearance:
       return "paintpalette"
     case .editor:
-      return "textformat"
+      return "pencil.line"
     case .rss:
       return "dot.radiowaves.left.and.right"
     case .privacy:
@@ -116,11 +124,13 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
     case .token:
       return String(localized: "连接代码仓库、部署平台和阅读数据服务。")
     case .ai:
-      return String(localized: "管理 AI 连接、凭据和当前站点的写作偏好。")
+      return String(localized: "编辑当前站点所用的共享连接，修改会影响所有引用此连接的站点。")
+    case .siteAI:
+      return String(localized: "选择当前站点使用的 AI 连接，并设置本站的写作风格。")
     case .appearance:
       return String(localized: "设置应用语言、启动行为、主题和强调色。")
     case .editor:
-      return String(localized: "集中管理文章编辑、正文分析与写作体验偏好。")
+      return String(localized: "管理文章编辑、写作体验与所有站点共用的新文章预设。")
     case .rss:
       return String(localized: "管理 RSS 正文离线保存、OPML、内网访问和历史文章清理。")
     case .privacy:
@@ -132,19 +142,19 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
 
   var isSiteScoped: Bool {
     switch self {
-    case .configurationStatus, .defaultRules, .token, .ai:
+    case .configurationStatus, .defaultRules, .token, .siteAI:
       return true
-    case .appearance, .editor, .rss, .privacy, .dataManagement:
+    case .ai, .appearance, .editor, .rss, .privacy, .dataManagement:
       return false
     }
   }
 
   var scopePresentation: SettingsScopePresentation {
     switch self {
-    case .ai:
-      return .mixed
-    case .configurationStatus, .defaultRules, .token:
+    case .configurationStatus, .defaultRules, .token, .siteAI:
       return .currentSite
+    case .ai:
+      return .sharedConnection
     case .appearance, .editor, .rss, .privacy, .dataManagement:
       return .shared
     }
@@ -154,7 +164,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
     switch self {
     case .appearance, .editor, .rss, .privacy:
       return WorkbenchSettingsMetrics.focusedContentWidth
-    case .configurationStatus, .defaultRules, .token, .ai, .dataManagement:
+    case .configurationStatus, .defaultRules, .token, .ai, .siteAI, .dataManagement:
       return WorkbenchSettingsMetrics.detailedContentWidth
     }
   }
@@ -163,14 +173,15 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
     switch self {
     case .dataManagement:
       return .nativeScrollView
-    case .configurationStatus, .defaultRules, .token, .ai, .appearance, .editor, .rss, .privacy:
+    case .configurationStatus, .defaultRules, .token, .ai, .siteAI, .appearance, .editor, .rss,
+      .privacy:
       return .nativeForm
     }
   }
 
-  static let siteSettings: [SettingsTab] = [.configurationStatus, .defaultRules, .token, .ai]
+  static let siteSettings: [SettingsTab] = [.configurationStatus, .defaultRules, .token, .siteAI]
   static let applicationSettings: [SettingsTab] = [
-    .dataManagement, .appearance, .editor, .rss, .privacy,
+    .appearance, .editor, .ai, .rss, .dataManagement, .privacy,
   ]
 
   var searchKeywords: [String] {
@@ -182,13 +193,15 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
     case .token:
       return ["仓库", "部署", "阅读数据", "GitHub", "GitLab", "Token", "令牌", "凭据", "权限"]
     case .ai:
-      return ["模型", "服务", "API Key", "授权", "连接测试", "写作风格", "本地 AI"]
+      return ["模型", "服务", "API Key", "授权", "连接测试", "共享连接", "本地 AI"]
+    case .siteAI:
+      return ["写作风格", "语气", "受众", "连接选择", "站点 AI", "提示词"]
     case .appearance:
       return ["通用", "启动", "自动检查", "扫描", "主题", "强调色", "语言", "外观"]
     case .editor:
       return [
         "编辑器", "字号", "行距", "正文宽度", "拼写检查", "打字机模式", "当前段落",
-        "纸张背景", "自动配对", "段落聚光灯", "editor",
+        "正文分析", "纸张背景", "自动配对", "段落聚光灯", "新文章", "全局预设", "Front Matter", "editor",
       ]
     case .rss:
       return [

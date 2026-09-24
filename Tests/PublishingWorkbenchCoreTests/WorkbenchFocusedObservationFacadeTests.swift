@@ -252,24 +252,4 @@ final class WorkbenchFocusedObservationFacadeTests: XCTestCase {
     XCTAssertEqual(changes, 3)
     withExtendedLifetime(cancellable) {}
   }
-
-  func testSiteStarterObservationIgnoresUnrelatedFeatures() {
-    let store = makeStore()
-    let facade = WorkbenchSiteStarterObservationFacade(store: store)
-    var changes = 0
-    let cancellable = facade.objectWillChange.sink { changes += 1 }
-
-    store.setAIChatMessage("流式状态")
-    store.siteMaintenanceStore.setRefreshing(true)
-    XCTAssertEqual(changes, 0)
-
-    store.publishingStore.isSiteStarterOperationRunning = true
-    XCTAssertEqual(changes, 1)
-    store.repositoryStore.isRemoteRepositoryChecking = true
-    XCTAssertEqual(changes, 2)
-    store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
-    XCTAssertEqual(changes, 3)
-
-    withExtendedLifetime(cancellable) {}
-  }
 }

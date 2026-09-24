@@ -248,6 +248,10 @@ extension KnowledgeDatabase {
           JOIN knowledge_documents d ON d.id = c.document_id
           WHERE c.revision_id = d.current_revision_id
             AND d.is_archived = 0
+            AND (d.kind <> 'note' OR NOT EXISTS (
+              SELECT 1 FROM knowledge_note_metadata m
+              WHERE m.document_id = d.id AND m.is_archived = 1
+            ))
             AND d.allows_local_semantic_index = 1
           ORDER BY d.updated_at DESC, c.ordinal ASC;
           """
@@ -321,6 +325,10 @@ extension KnowledgeDatabase {
             ON e.chunk_id = c.id AND e.model_id = ?
           WHERE c.revision_id = d.current_revision_id
             AND d.is_archived = 0
+            AND (d.kind <> 'note' OR NOT EXISTS (
+              SELECT 1 FROM knowledge_note_metadata m
+              WHERE m.document_id = d.id AND m.is_archived = 1
+            ))
             AND d.allows_local_semantic_index = 1
           ORDER BY d.updated_at DESC, c.ordinal ASC, c.id ASC
           LIMIT ? OFFSET ?;
@@ -577,6 +585,11 @@ extension KnowledgeDatabase {
         AND e.input_hash <> ''
         AND e.revision_id = c.revision_id
         AND c.revision_id = d.current_revision_id
+        AND d.is_archived = 0
+        AND (d.kind <> 'note' OR NOT EXISTS (
+          SELECT 1 FROM knowledge_note_metadata m
+          WHERE m.document_id = d.id AND m.is_archived = 1
+        ))
       ORDER BY d.updated_at DESC, c.ordinal ASC, c.id ASC;
       """
     ) { statement in
@@ -659,6 +672,10 @@ extension KnowledgeDatabase {
       WHERE c.id IN (\(placeholders))
         AND c.revision_id = d.current_revision_id
         AND d.is_archived = 0
+        AND (d.kind <> 'note' OR NOT EXISTS (
+          SELECT 1 FROM knowledge_note_metadata m
+          WHERE m.document_id = d.id AND m.is_archived = 1
+        ))
         AND d.allows_local_semantic_index = 1
         AND (? = 0 OR d.allows_ai_use = 1)
         \(idClause.sql)
@@ -876,6 +893,10 @@ extension KnowledgeDatabase {
       WHERE knowledge_chunks_fts MATCH ?
         AND c.revision_id = d.current_revision_id
         AND d.is_archived = 0
+        AND (d.kind <> 'note' OR NOT EXISTS (
+          SELECT 1 FROM knowledge_note_metadata m
+          WHERE m.document_id = d.id AND m.is_archived = 1
+        ))
         AND (? = 0 OR d.allows_ai_use = 1)
         \(idClause.sql)
       ORDER BY bm25(knowledge_chunks_fts, 0.0, 0.0, 5.0, 3.0, 2.0, 1.0) ASC
@@ -920,6 +941,10 @@ extension KnowledgeDatabase {
       JOIN knowledge_documents d ON d.id = c.document_id
       WHERE c.revision_id = d.current_revision_id
         AND d.is_archived = 0
+        AND (d.kind <> 'note' OR NOT EXISTS (
+          SELECT 1 FROM knowledge_note_metadata m
+          WHERE m.document_id = d.id AND m.is_archived = 1
+        ))
         AND (? = 0 OR d.allows_ai_use = 1)
         AND (d.title LIKE ? ESCAPE '\\'
           OR c.heading_path LIKE ? ESCAPE '\\'

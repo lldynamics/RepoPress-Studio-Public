@@ -574,7 +574,7 @@ struct WorkspaceTaskSEOSection: View {
         InspectorStatRow(
           title: "状态", value: report.statusTitle, systemImage: "chart.bar.doc.horizontal")
         InspectorStatRow(
-          title: "标题", value: "\(report.titleCharacterCount) 字", systemImage: "textformat.size")
+          title: "标题", value: "\(report.titleCharacterCount) 字", systemImage: "doc.plaintext")
         InspectorStatRow(
           title: "摘要", value: "\(report.summaryCharacterCount) 字", systemImage: "text.alignleft")
         InspectorStatRow(title: "H1", value: "\(report.h1Count)", systemImage: "number")
@@ -633,7 +633,7 @@ struct WorkspaceTaskSEOSection: View {
       ) {
         if let snapshot {
           InspectorStatRow(
-            title: "标题", value: "\(snapshot.titleCharacterCount) 字", systemImage: "textformat.size")
+            title: "标题", value: "\(snapshot.titleCharacterCount) 字", systemImage: "doc.plaintext")
           InspectorStatRow(
             title: "描述", value: "\(snapshot.descriptionCharacterCount) 字",
             systemImage: "text.alignleft")

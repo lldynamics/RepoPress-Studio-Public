@@ -7,7 +7,7 @@ struct WorkbenchSafeModeBanner: View {
       Label("安全模式", systemImage: "wrench.and.screwdriver")
         .font(.callout.weight(.semibold))
 
-      Text("自动预检、预览、后台维护和浏览器连接已暂停；关闭应用后重新打开即可退出安全模式。")
+      Text("自动预检、预览和后台维护已暂停；关闭应用后重新打开即可退出安全模式。")
         .font(.caption)
         .foregroundStyle(.secondary)
         .lineLimit(2)
@@ -32,6 +32,6 @@ struct WorkbenchSafeModeBanner: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityLabel("安全模式")
-    .accessibilityValue(String(localized: "自动预检、预览、后台维护和浏览器连接已暂停"))
+    .accessibilityValue(String(localized: "自动预检、预览和后台维护已暂停"))
   }
 }

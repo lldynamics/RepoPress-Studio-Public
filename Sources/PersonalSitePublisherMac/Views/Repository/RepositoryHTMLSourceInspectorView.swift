@@ -80,7 +80,7 @@ struct RepositoryHTMLSourceInspectorView: View {
   }
 
   private func formatCard(_ document: RepositoryTextDocument) -> some View {
-    inspectorCard(title: "文件格式", systemImage: "textformat") {
+    inspectorCard(title: "文件格式", systemImage: "doc.text") {
       InspectorStatRow(title: "模板档位", value: document.dialect.localizedDisplayName, systemImage: "curlybraces")
       InspectorStatRow(title: "编码", value: document.encoding.localizedDisplayName, systemImage: "character.cursor.ibeam")
       InspectorStatRow(

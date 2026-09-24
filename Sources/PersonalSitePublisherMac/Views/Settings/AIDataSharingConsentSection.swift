@@ -1,5 +1,4 @@
 import PublishingAICore
-import PublishingWorkbenchCore
 import SwiftUI
 
 enum AIDataSharingConsentSectionMode: Equatable {

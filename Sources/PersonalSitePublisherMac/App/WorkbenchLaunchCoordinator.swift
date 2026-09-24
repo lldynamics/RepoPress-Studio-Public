@@ -1,4 +1,3 @@
-import AppKit
 import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
@@ -12,7 +11,6 @@ enum WorkbenchLaunchPhase: Equatable {
 @MainActor
 final class WorkbenchLaunchCoordinator: ObservableObject {
   @Published private(set) var store: WorkbenchStore?
-  @Published private(set) var browserBridge: KnowledgeBrowserBridge?
   @Published private(set) var rssStore: RSSReaderStore?
   @Published private(set) var phase: WorkbenchLaunchPhase
   @Published private(set) var dataRootMessage: String?
@@ -23,7 +21,6 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
 
   private let pathStore: WorkbenchDataRootPathStore?
   private let explicitRuntimePaths: WorkbenchRuntimePaths?
-  private let browserBridgeConnectionKeychainStore: KeychainTokenStore?
   private let sessionRecovery: WorkbenchSessionRecovery
   private var dataRootSession: WorkbenchDataRootSession?
   private var didStart = false
@@ -31,14 +28,12 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
 
   convenience init(
     pathStore: WorkbenchDataRootPathStore = WorkbenchDataRootPathStore(),
-    sessionRecovery: WorkbenchSessionRecovery? = nil,
-    browserBridgeConnectionKeychainStore: KeychainTokenStore? = nil
+    sessionRecovery: WorkbenchSessionRecovery? = nil
   ) {
     self.init(
       pathStore: pathStore,
       explicitRuntimePaths: nil,
-      sessionRecovery: sessionRecovery,
-      browserBridgeConnectionKeychainStore: browserBridgeConnectionKeychainStore
+      sessionRecovery: sessionRecovery
     )
   }
 
@@ -48,8 +43,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     rssReaderFileURL: URL,
     managedAttachmentFileStore: ManagedAttachmentFileStore,
     workspaceBackupDirectoryURL: URL,
-    sessionRecovery: WorkbenchSessionRecovery? = nil,
-    browserBridgeConnectionKeychainStore: KeychainTokenStore? = nil
+    sessionRecovery: WorkbenchSessionRecovery? = nil
   ) {
     self.init(
       pathStore: nil,
@@ -60,20 +54,17 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
         managedAttachmentFileStore: managedAttachmentFileStore,
         workspaceBackupDirectoryURL: workspaceBackupDirectoryURL
       ),
-      sessionRecovery: sessionRecovery,
-      browserBridgeConnectionKeychainStore: browserBridgeConnectionKeychainStore
+      sessionRecovery: sessionRecovery
     )
   }
 
   private init(
     pathStore: WorkbenchDataRootPathStore?,
     explicitRuntimePaths: WorkbenchRuntimePaths?,
-    sessionRecovery: WorkbenchSessionRecovery?,
-    browserBridgeConnectionKeychainStore: KeychainTokenStore?
+    sessionRecovery: WorkbenchSessionRecovery?
   ) {
     self.pathStore = pathStore
     self.explicitRuntimePaths = explicitRuntimePaths
-    self.browserBridgeConnectionKeychainStore = browserBridgeConnectionKeychainStore
     let resolvedSessionRecovery = sessionRecovery ?? .shared
     self.sessionRecovery = resolvedSessionRecovery
     self.phase = .preparing(String(localized: "正在检查数据文件夹…"))
@@ -304,7 +295,6 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     dataRootMessage = nil
     rssStore.stopBackgroundRefresh()
     await store.workspaceBackupScheduler.stopAndWaitForBackgroundWork()
-    browserBridge?.stop()
 
     let destinationRootURL = Self.availableDataRootURL(
       in: parentURL,
@@ -527,16 +517,6 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
 
     self.store = workbenchStore
     self.rssStore = rssStore
-    let browserBridge = KnowledgeBrowserBridge(
-      knowledge: workbenchStore.knowledge,
-      connectionTokenKeychainStore: browserBridgeConnectionKeychainStore,
-      onOpenDocument: { [weak workbenchStore] _ in
-        workbenchStore?.selectSection(.library)
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.windows.first(where: \.canBecomeMain)?.makeKeyAndOrderFront(nil)
-      }
-    )
-    self.browserBridge = browserBridge
     dataRootMessage = nil
     phase = .ready
     // Publish the bounded first page immediately. Mutations fail closed until
@@ -566,9 +546,6 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     guard !isSafeMode else { return }
     store.workspaceBackupScheduler.start()
     startBackgroundRefreshIfNeeded(for: rssStore)
-    if browserBridge?.isEnabled == true {
-      browserBridge?.start()
-    }
   }
 
   nonisolated static func availableDataRootURL(
@@ -780,7 +757,7 @@ private struct WorkbenchLaunchPreparation: Sendable {
 
 struct WorkbenchLaunchRootView: View {
   @ObservedObject var coordinator: WorkbenchLaunchCoordinator
-  let onReady: (WorkbenchStore, KnowledgeBrowserBridge?) -> Void
+  let onReady: (WorkbenchStore) -> Void
 
   var body: some View {
     Group {
@@ -791,8 +768,7 @@ struct WorkbenchLaunchRootView: View {
         {
           readyContent(
             store: store,
-            rssStore: rssStore,
-            browserBridge: coordinator.browserBridge
+            rssStore: rssStore
           )
         } else {
           WorkbenchDataRootProgressView(message: String(localized: "正在准备工作台…"))
@@ -811,25 +787,16 @@ struct WorkbenchLaunchRootView: View {
   @ViewBuilder
   private func readyContent(
     store: WorkbenchStore,
-    rssStore: RSSReaderStore,
-    browserBridge: KnowledgeBrowserBridge?
+    rssStore: RSSReaderStore
   ) -> some View {
-    if let browserBridge {
-      ContentView(store: store, rssStore: rssStore)
-        .environmentObject(browserBridge)
-        .task {
-          guard coordinator.beginReadyServicesIfNeeded() else { return }
-          onReady(store, browserBridge)
-          if !coordinator.isSafeMode {
-            store.workspaceBackupScheduler.start()
-            coordinator.startBackgroundRefreshIfNeeded(for: rssStore)
-            if browserBridge.isEnabled {
-              browserBridge.start()
-            }
-          }
+    ContentView(store: store, rssStore: rssStore)
+      .task {
+        guard coordinator.beginReadyServicesIfNeeded() else { return }
+        onReady(store)
+        if !coordinator.isSafeMode {
+          store.workspaceBackupScheduler.start()
+          coordinator.startBackgroundRefreshIfNeeded(for: rssStore)
         }
-    } else {
-      WorkbenchDataRootProgressView(message: String(localized: "正在准备工作台…"))
-    }
+      }
   }
 }

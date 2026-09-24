@@ -5,6 +5,177 @@ import XCTest
 
 @MainActor
 final class WorkspaceBackupSchedulerTests: XCTestCase {
+  func testContentFingerprintIgnoresAutomaticBackupEventsAndNestedManifestTime() throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let scheduler = WorkspaceBackupScheduler(
+      store: harness.store, defaults: harness.defaults,
+      defaultDestinationFolderURL: harness.injectedBackupURL
+    )
+    let service = WorkspaceBackupService()
+    let profile = SiteProfile.defaultProfile
+    let snapshot = WorkbenchSnapshot(
+      profiles: [profile], activeProfileID: profile.id, drafts: [], releaseRecords: []
+    )
+    let knowledgeRootURL = harness.rootURL.appendingPathComponent("KnowledgeLibrary")
+    let userEvent = WorkbenchOperationEventRecord(
+      id: UUID(uuidString: "00000000-0000-0000-0000-000000000101")!,
+      kind: .siteImport, outcome: .succeeded, actor: .user,
+      occurredAt: Date(timeIntervalSince1970: 1_700_000_001)
+    )
+    let automaticEvent = WorkbenchOperationEventRecord(
+      id: UUID(uuidString: "00000000-0000-0000-0000-000000000102")!,
+      kind: .workspaceBackupCreated, outcome: .succeeded, actor: .background,
+      occurredAt: Date(timeIntervalSince1970: 1_700_000_002)
+    )
+    let manualEvent = WorkbenchOperationEventRecord(
+      id: UUID(uuidString: "00000000-0000-0000-0000-000000000103")!,
+      kind: .knowledgeImport, outcome: .succeeded, actor: .user,
+      occurredAt: Date(timeIntervalSince1970: 1_700_000_003)
+    )
+    let documents = [
+      WorkbenchOperationLedgerDocument(retentionPolicy: .forever, records: [userEvent]),
+      WorkbenchOperationLedgerDocument(
+        retentionPolicy: .forever, records: [userEvent, automaticEvent]
+      ),
+      WorkbenchOperationLedgerDocument(
+        retentionPolicy: .forever, records: [userEvent, automaticEvent, manualEvent]
+      ),
+    ]
+    let packages = documents.enumerated().map { index, _ in
+      harness.rootURL.appendingPathComponent("backup-\(index).psworkspacebackup")
+    }
+    for (index, item) in zip(packages, documents).enumerated() {
+      let (url, document) = item
+      if index > 0 {
+        // The nested manifest timestamp is serialized at whole-second precision.
+        Thread.sleep(forTimeInterval: 1.1)
+      }
+      _ = try service.createBackup(
+        at: url, snapshot: snapshot,
+        operationHistoryDocument: document,
+        knowledgeRootURL: knowledgeRootURL,
+        applicationVersion: "test",
+        selectedCategories: [.workbench, .knowledgeLibrary, .operationHistory]
+      )
+    }
+    let knowledgeManifestPath = "\(WorkspaceBackupService.knowledgePackageName)/manifest.json"
+    let firstNestedManifest = try Data(contentsOf: packages[0].appendingPathComponent(knowledgeManifestPath))
+    let secondNestedManifest = try Data(contentsOf: packages[1].appendingPathComponent(knowledgeManifestPath))
+    XCTAssertNotEqual(firstNestedManifest, secondNestedManifest,
+      "nested knowledge manifests should differ by creation time")
+    XCTAssertEqual(
+      scheduler.manifestContentFingerprint(at: packages[0]),
+      scheduler.manifestContentFingerprint(at: packages[1])
+    )
+    XCTAssertNotEqual(
+      scheduler.manifestContentFingerprint(at: packages[1]),
+      scheduler.manifestContentFingerprint(at: packages[2]),
+      "a real user operation must still produce a new fingerprint"
+    )
+  }
+
+  func testRealStoreBackupsWithKnowledgeAndHistoryHaveStableFingerprint() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let scheduler = WorkspaceBackupScheduler(
+      store: harness.store, defaults: harness.defaults,
+      defaultDestinationFolderURL: harness.injectedBackupURL
+    )
+    let selectedCategories: Set<WorkspaceBackupCategory> = [
+      .knowledgeLibrary, .operationHistory,
+    ]
+    let firstURL = harness.rootURL.appendingPathComponent("real-first.psworkspacebackup")
+    let secondURL = harness.rootURL.appendingPathComponent("real-second.psworkspacebackup")
+
+    let firstPreview = await harness.store.createWorkspaceBackup(
+      at: firstURL, applicationVersion: "test", actor: .background,
+      selectedCategories: selectedCategories
+    )
+    XCTAssertNotNil(firstPreview)
+    // Knowledge backup manifests use whole-second timestamps. Cross that
+    // boundary so this exercises normalization against real service output.
+    try await Task.sleep(for: .milliseconds(1_100))
+    let secondPreview = await harness.store.createWorkspaceBackup(
+      at: secondURL, applicationVersion: "test", actor: .background,
+      selectedCategories: selectedCategories
+    )
+    XCTAssertNotNil(secondPreview)
+
+    let firstFingerprint = scheduler.manifestContentFingerprint(at: firstURL)
+    let secondFingerprint = scheduler.manifestContentFingerprint(at: secondURL)
+    let diagnostic = firstFingerprint == secondFingerprint ? "" : [
+      "first fingerprint: \(firstFingerprint ?? "nil")",
+      "second fingerprint: \(secondFingerprint ?? "nil")",
+      "first manifest records (path|bytes|sha256): \(manifestRecordDiagnostics(at: firstURL))",
+      "second manifest records (path|bytes|sha256): \(manifestRecordDiagnostics(at: secondURL))",
+    ].joined(separator: "\n")
+    XCTAssertEqual(
+      firstFingerprint,
+      secondFingerprint,
+      "real unchanged KnowledgeLibrary and operation history should not retrigger snapshots. \(diagnostic)"
+    )
+  }
+
+  private func manifestRecordDiagnostics(at packageURL: URL) -> String {
+    let manifestURL = packageURL.appendingPathComponent(WorkspaceBackupService.manifestFileName)
+    guard let data = try? Data(contentsOf: manifestURL) else { return "<manifest unavailable>" }
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    guard let manifest = try? decoder.decode(WorkspaceBackupManifest.self, from: data) else {
+      return "<manifest invalid>"
+    }
+    return manifest.files.sorted { $0.relativePath < $1.relativePath }.map { record in
+      "\(record.relativePath)|\(record.byteCount)|\(record.sha256)"
+    }.joined(separator: "; ")
+  }
+
+  func testCloudUploadConfirmationRequiresEveryDeclaredFile() {
+    XCTAssertEqual(
+      WorkspaceBackupScheduler.confirmedCloudUploadStatus(
+        isUbiquitousPackage: true, declaredFileUploadStates: [true, true, true]
+      ),
+      .uploadConfirmed
+    )
+    XCTAssertEqual(
+      WorkspaceBackupScheduler.confirmedCloudUploadStatus(
+        isUbiquitousPackage: true, declaredFileUploadStates: [true, false]
+      ),
+      .waitingForUpload
+    )
+    XCTAssertEqual(
+      WorkspaceBackupScheduler.confirmedCloudUploadStatus(
+        isUbiquitousPackage: true, declaredFileUploadStates: [true, nil]
+      ),
+      .waitingForUpload
+    )
+    XCTAssertEqual(
+      WorkspaceBackupScheduler.confirmedCloudUploadStatus(
+        isUbiquitousPackage: false, declaredFileUploadStates: [nil]
+      ),
+      .localCopyComplete
+    )
+  }
+
+  func testBackupURLSelectionSkipsExistingPackagePath() throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let existingURL = harness.rootURL.appendingPathComponent("collision.psworkspacebackup")
+    try FileManager.default.createDirectory(at: existingURL, withIntermediateDirectories: true)
+    let markerURL = existingURL.appendingPathComponent("keep.txt")
+    try Data("existing snapshot".utf8).write(to: markerURL)
+
+    var names = ["collision.psworkspacebackup", "fresh.psworkspacebackup"]
+    let selectedURL = WorkspaceBackupScheduler.nextAvailableBackupURL(
+      in: harness.rootURL, fileManager: .default
+    ) {
+      names.removeFirst()
+    }
+
+    XCTAssertEqual(selectedURL.lastPathComponent, "fresh.psworkspacebackup")
+    XCTAssertEqual(try Data(contentsOf: markerURL), Data("existing snapshot".utf8))
+  }
+
   func testLegacyDefaultPathDoesNotOverrideInjectedDataRootBackupDirectory() throws {
     let harness = try makeHarness()
     defer { harness.cleanup() }
@@ -64,7 +235,7 @@ final class WorkspaceBackupSchedulerTests: XCTestCase {
     XCTAssertEqual(persisted.destinationPath, standardizedURL.path)
   }
 
-  func testAutomaticBackupRefreshBoundsOwnedPackagesWithoutRemovingManualPackages() async throws {
+  func testAutomaticBackupRefreshDoesNotRemoveAutomaticOrManualPackages() async throws {
     let harness = try makeHarness()
     defer { harness.cleanup() }
     try FileManager.default.createDirectory(
@@ -100,8 +271,148 @@ final class WorkspaceBackupSchedulerTests: XCTestCase {
     let automatic = remaining.filter {
       $0.lastPathComponent.hasPrefix(WorkspaceBackupService.automaticBackupFilePrefix)
     }
-    XCTAssertEqual(automatic.count, WorkspaceBackupScheduler.automaticRetentionCount)
+    XCTAssertEqual(automatic.count, WorkspaceBackupScheduler.automaticRetentionCount + 2)
     XCTAssertTrue(FileManager.default.fileExists(atPath: manualURL.path))
+  }
+
+  func testSelectedDiskOptInPreservesSnapshotsDuringRefreshAndManualBackup() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    try FileManager.default.createDirectory(
+      at: harness.injectedBackupURL,
+      withIntermediateDirectories: true
+    )
+    for index in 0..<(WorkspaceBackupScheduler.automaticRetentionCount + 2) {
+      let url = harness.injectedBackupURL.appendingPathComponent(
+        "\(WorkspaceBackupService.automaticBackupFilePrefix)20260804-\(String(format: "%06d", index)).psworkspacebackup",
+        isDirectory: true
+      )
+      try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+      try Data("automatic-\(index)".utf8).write(to: url.appendingPathComponent("payload"))
+    }
+    let scheduler = WorkspaceBackupScheduler(
+      store: harness.store,
+      defaults: harness.defaults,
+      defaultDestinationFolderURL: harness.injectedBackupURL
+    )
+    try scheduler.setDestinationFolder(harness.injectedBackupURL)
+    XCTAssertTrue(scheduler.setPreserveAutomaticBackupHistoryOnSelectedDisk(true))
+    scheduler.setSelectedCategories([.operationHistory])
+
+    await scheduler.refreshRecentBackups()
+    XCTAssertEqual(try automaticBackupCount(in: harness.injectedBackupURL),
+      WorkspaceBackupScheduler.automaticRetentionCount + 2)
+
+    await scheduler.runBackupNow()
+    XCTAssertEqual(scheduler.statusLevel, .success, scheduler.statusMessage ?? "missing backup status")
+    XCTAssertEqual(try automaticBackupCount(in: harness.injectedBackupURL),
+      WorkspaceBackupScheduler.automaticRetentionCount + 3)
+
+    XCTAssertTrue(scheduler.setPreserveAutomaticBackupHistoryOnSelectedDisk(false))
+    await scheduler.refreshRecentBackups()
+    XCTAssertEqual(try automaticBackupCount(in: harness.injectedBackupURL),
+      WorkspaceBackupScheduler.automaticRetentionCount + 3,
+      "switching back to bounded retention must not prune during refresh")
+    await scheduler.runBackupNow()
+    XCTAssertEqual(try automaticBackupCount(in: harness.injectedBackupURL),
+      WorkspaceBackupScheduler.automaticRetentionCount,
+      "the next successful backup applies the bounded retention policy")
+  }
+
+  func testSelectedDiskRecentInventoryValidatesOnlyLatestTwelveSnapshots() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    try FileManager.default.createDirectory(
+      at: harness.injectedBackupURL,
+      withIntermediateDirectories: true
+    )
+    for index in 0..<14 {
+      let packageURL = harness.injectedBackupURL.appendingPathComponent(
+        "\(WorkspaceBackupService.automaticBackupFilePrefix)20260923-\(String(format: "%06d", index)).psworkspacebackup",
+        isDirectory: true
+      )
+      try FileManager.default.createDirectory(at: packageURL, withIntermediateDirectories: true)
+      try Data("snapshot-\(index)".utf8).write(to: packageURL.appendingPathComponent("payload"))
+    }
+
+    let scheduler = WorkspaceBackupScheduler(
+      store: harness.store,
+      defaults: harness.defaults,
+      defaultDestinationFolderURL: harness.injectedBackupURL
+    )
+    try scheduler.setDestinationFolder(harness.injectedBackupURL)
+    XCTAssertTrue(scheduler.setPreserveAutomaticBackupHistoryOnSelectedDisk(true))
+    try await Task.sleep(for: .milliseconds(300))
+    await scheduler.refreshRecentBackups()
+
+    XCTAssertEqual(scheduler.destinationFolderURL, harness.injectedBackupURL)
+    XCTAssertEqual(scheduler.statusLevel, .warning, scheduler.statusMessage ?? "missing inventory status")
+    XCTAssertLessThanOrEqual(scheduler.recentBackups.count, WorkspaceBackupScheduler.selectedDiskRecentInventoryLimit)
+    XCTAssertEqual(scheduler.invalidRecentBackupCount, WorkspaceBackupScheduler.selectedDiskRecentInventoryLimit)
+    XCTAssertEqual(try automaticBackupCount(in: harness.injectedBackupURL), 14)
+  }
+
+  func testChangingDestinationEnablesRetentionAndICloudClearsIt() throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let scheduler = WorkspaceBackupScheduler(
+      store: harness.store,
+      defaults: harness.defaults,
+      defaultDestinationFolderURL: harness.injectedBackupURL
+    )
+    try scheduler.setDestinationFolder(harness.injectedBackupURL)
+    XCTAssertTrue(scheduler.setPreserveAutomaticBackupHistoryOnSelectedDisk(true))
+
+    try scheduler.setDestinationFolder(harness.rootURL.appendingPathComponent("OtherDisk"))
+    XCTAssertTrue(scheduler.settings.preserveAutomaticBackupHistoryOnSelectedDisk)
+    scheduler.setICloudDestinationFolder(harness.rootURL.appendingPathComponent("iCloud"))
+    XCTAssertTrue(scheduler.settings.destinationIsICloud)
+    XCTAssertFalse(scheduler.canPreserveAutomaticBackupHistoryOnSelectedDisk)
+    XCTAssertFalse(scheduler.setPreserveAutomaticBackupHistoryOnSelectedDisk(true))
+  }
+
+  func testCloudFileProviderDestinationDoesNotEnableLocalDiskRetention() throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let homeURL = harness.rootURL.appendingPathComponent("FakeHome", isDirectory: true)
+    let cloudURL = homeURL.appendingPathComponent("Library/CloudStorage/GoogleDrive-user/Backups", isDirectory: true)
+    let siblingURL = homeURL.appendingPathComponent("Library/CloudStorageBackup", isDirectory: true)
+    XCTAssertTrue(WorkspaceBackupScheduler.isCloudFileProviderURL(cloudURL, homeURL: homeURL))
+    XCTAssertFalse(WorkspaceBackupScheduler.isCloudFileProviderURL(siblingURL, homeURL: homeURL))
+
+    let scheduler = WorkspaceBackupScheduler(
+      store: harness.store,
+      defaults: harness.defaults,
+      defaultDestinationFolderURL: harness.injectedBackupURL
+    )
+    let actualCloudURL = FileManager.default.homeDirectoryForCurrentUser
+      .appendingPathComponent("Library/CloudStorage/GoogleDrive-test/Backups", isDirectory: true)
+    try scheduler.setDestinationFolder(actualCloudURL)
+
+    XCTAssertFalse(scheduler.settings.destinationIsICloud,
+      "Google Drive must not be represented as iCloud")
+    XCTAssertFalse(scheduler.settings.preserveAutomaticBackupHistoryOnSelectedDisk)
+    XCTAssertTrue(scheduler.settings.deferAutomaticBackupPruningUntilNextBackup)
+    XCTAssertFalse(scheduler.canPreserveAutomaticBackupHistoryOnSelectedDisk)
+    XCTAssertFalse(scheduler.setPreserveAutomaticBackupHistoryOnSelectedDisk(true))
+  }
+
+  func testUnmountedSelectedVolumeCannotFallBackToSystemDisk() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let path = URL(fileURLWithPath: "/Volumes/CodexMissing-\(UUID().uuidString)/Backups", isDirectory: true)
+    try persist(
+      WorkspaceBackupScheduleSettings(destinationPath: path.path),
+      in: harness.defaults
+    )
+    let scheduler = WorkspaceBackupScheduler(store: harness.store, defaults: harness.defaults)
+    XCTAssertThrowsError(try scheduler.setDestinationFolder(path))
+    await scheduler.refreshRecentBackups()
+    await scheduler.runBackupNow()
+
+    XCTAssertEqual(scheduler.statusLevel, .error)
+    XCTAssertTrue(scheduler.statusMessage?.contains("未挂载") == true)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: path.path))
   }
 
   func testRunBackupNowRecordsUserActorForTerminalBackupEvent() async throws {
@@ -150,7 +461,7 @@ final class WorkspaceBackupSchedulerTests: XCTestCase {
     await scheduler.refreshRecentBackups()
     XCTAssertEqual(
       try automaticBackupCount(in: harness.injectedBackupURL),
-      WorkspaceBackupScheduler.automaticRetentionCount)
+      WorkspaceBackupScheduler.automaticRetentionCount + 2)
   }
 
   func testImmediateStopCancelsQueuedStartupInventory() async throws {
@@ -251,6 +562,149 @@ final class WorkspaceBackupSchedulerTests: XCTestCase {
 
     XCTAssertEqual(scheduler.statusLevel, .error)
     XCTAssertNotNil(scheduler.statusMessage)
+  }
+
+  func testRefreshPreservesTheOnlyExpiredBackupWhenAutomationIsOff() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let scheduler = makeScheduler(harness)
+    await scheduler.performBackup(isAutomatic: true)
+    let path = try XCTUnwrap(scheduler.settings.lastBackupPath)
+    try FileManager.default.setAttributes(
+      [
+        .modificationDate: Date().addingTimeInterval(-100 * 24 * 60 * 60)
+      ], ofItemAtPath: path)
+
+    XCTAssertEqual(scheduler.settings.frequency, .off)
+    await scheduler.refreshRecentBackups()
+
+    XCTAssertTrue(FileManager.default.fileExists(atPath: path))
+    XCTAssertEqual(scheduler.recentBackups.count, 1)
+    _ = try WorkspaceBackupService().inspectBackup(at: URL(fileURLWithPath: path))
+  }
+
+  func testMissingBackupIsRecreatedEvenWhenContentIsUnchanged() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let scheduler = makeScheduler(harness)
+    await scheduler.performBackup(isAutomatic: true)
+    let firstPath = try XCTUnwrap(scheduler.settings.lastBackupPath)
+    let fingerprint = scheduler.settings.lastContentFingerprint
+    try FileManager.default.removeItem(atPath: firstPath)
+
+    await scheduler.performBackup(isAutomatic: true)
+
+    let replacementPath = try XCTUnwrap(scheduler.settings.lastBackupPath)
+    XCTAssertNotEqual(firstPath, replacementPath)
+    XCTAssertEqual(scheduler.settings.lastContentFingerprint, fingerprint)
+    XCTAssertEqual(try automaticBackupCount(in: harness.injectedBackupURL), 1)
+    _ = try WorkspaceBackupService().inspectBackup(at: URL(fileURLWithPath: replacementPath))
+  }
+
+  func testCorruptBackupDoesNotSuppressAnUnchangedReplacement() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let scheduler = makeScheduler(harness)
+    await scheduler.performBackup(isAutomatic: true)
+    let oldURL = URL(fileURLWithPath: try XCTUnwrap(scheduler.settings.lastBackupPath))
+    try Data("corrupt".utf8).write(
+      to: oldURL.appendingPathComponent(
+        WorkspaceBackupService.operationHistoryRelativePath))
+
+    await scheduler.performBackup(isAutomatic: true)
+
+    let replacementURL = URL(fileURLWithPath: try XCTUnwrap(scheduler.settings.lastBackupPath))
+    XCTAssertNotEqual(replacementURL, oldURL)
+    _ = try WorkspaceBackupService().inspectBackup(at: replacementURL)
+  }
+
+  func testChangedDestinationReceivesAnUnchangedBackup() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let scheduler = makeScheduler(harness)
+    await scheduler.performBackup(isAutomatic: true)
+    let firstPath = try XCTUnwrap(scheduler.settings.lastBackupPath)
+    let secondFolder = harness.rootURL.appendingPathComponent("SecondDestination")
+    try scheduler.setDestinationFolder(secondFolder)
+    XCTAssertTrue(scheduler.setPreserveAutomaticBackupHistoryOnSelectedDisk(false))
+
+    await scheduler.performBackup(isAutomatic: true)
+
+    let path = try XCTUnwrap(scheduler.settings.lastBackupPath)
+    XCTAssertEqual(URL(fileURLWithPath: path).deletingLastPathComponent().path, secondFolder.path)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: firstPath))
+    _ = try WorkspaceBackupService().inspectBackup(at: URL(fileURLWithPath: path))
+  }
+
+  func testICloudRetentionWaitsForUploadConfirmationAndThenKeepsVerifiedCopy() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let scheduler = makeScheduler(harness)
+    scheduler.setICloudDestinationFolder(harness.injectedBackupURL)
+    try FileManager.default.createDirectory(
+      at: harness.injectedBackupURL, withIntermediateDirectories: true)
+    for index in 0..<13 {
+      let old = harness.injectedBackupURL.appendingPathComponent(
+        "\(WorkspaceBackupService.automaticBackupFilePrefix)old-\(index).psworkspacebackup")
+      try FileManager.default.createDirectory(at: old, withIntermediateDirectories: true)
+      try FileManager.default.setAttributes(
+        [
+          .modificationDate: Date().addingTimeInterval(-100 * 24 * 60 * 60)
+        ], ofItemAtPath: old.path)
+    }
+    scheduler.cloudUploadStatusReader = { _ in .waitingForUpload }
+    await scheduler.performBackup(isAutomatic: true)
+    let waitingPath = try XCTUnwrap(scheduler.settings.lastBackupPath)
+    XCTAssertEqual(try automaticBackupCount(in: harness.injectedBackupURL), 14)
+
+    scheduler.cloudUploadStatusReader = { _ in .uploadFailed("quota exceeded") }
+    await scheduler.refreshRecentBackups()
+    XCTAssertEqual(scheduler.cloudUploadStatus, .uploadFailed("quota exceeded"))
+    XCTAssertEqual(try automaticBackupCount(in: harness.injectedBackupURL), 14)
+
+    scheduler.cloudUploadStatusReader = { _ in .uploadConfirmed }
+    await scheduler.performBackup(isAutomatic: true)
+    XCTAssertEqual(
+      scheduler.settings.lastBackupPath, waitingPath,
+      "a confirmed intact copy should deduplicate and allow deferred retention")
+    XCTAssertEqual(try automaticBackupCount(in: harness.injectedBackupURL), 1)
+    _ = try WorkspaceBackupService().inspectBackup(at: URL(fileURLWithPath: waitingPath))
+  }
+
+  func testUploadErrorsTakePrecedenceOverUploadedFlags() {
+    XCTAssertEqual(
+      WorkspaceBackupScheduler.confirmedCloudUploadStatus(
+        isUbiquitousPackage: true, declaredFileUploadStates: [true, true],
+        uploadErrorDescriptions: ["quota exceeded"]
+      ), .uploadFailed("quota exceeded"))
+  }
+
+  func testBackupSettingsCannotChangeDuringBackup() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let scheduler = makeScheduler(harness)
+    let initialFrequency = scheduler.settings.frequency
+    scheduler.cloudUploadStatusReader = { [weak scheduler] _ in
+      guard let scheduler else { return .localCopyComplete }
+      scheduler.setFrequency(initialFrequency == .off ? .daily : .off)
+      scheduler.setICloudDestinationFolder(harness.rootURL.appendingPathComponent("Other"))
+      scheduler.setSelectedCategories([.workbench])
+      return .localCopyComplete
+    }
+    await scheduler.performBackup(isAutomatic: true)
+    XCTAssertEqual(scheduler.destinationFolderURL, harness.injectedBackupURL)
+    XCTAssertEqual(scheduler.selectedCategories, [.operationHistory])
+    XCTAssertEqual(scheduler.settings.frequency, initialFrequency)
+  }
+
+  private func makeScheduler(_ harness: WorkspaceBackupSchedulerHarness) -> WorkspaceBackupScheduler
+  {
+    let scheduler = WorkspaceBackupScheduler(
+      store: harness.store, defaults: harness.defaults,
+      defaultDestinationFolderURL: harness.injectedBackupURL
+    )
+    scheduler.setSelectedCategories([.operationHistory])
+    return scheduler
   }
 
   private func makeHarness() throws -> WorkspaceBackupSchedulerHarness {

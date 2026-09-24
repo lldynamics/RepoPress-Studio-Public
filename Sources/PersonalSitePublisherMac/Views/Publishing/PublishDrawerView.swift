@@ -655,7 +655,7 @@ struct PublishDrawerView: View {
 
     return PublishDrawerCard(title: "发布仓库全部变更", systemImage: "shippingbox.and.arrow.backward") {
       VStack(alignment: .leading, spacing: 10) {
-        Text("默认流程会审阅 Git 工作区的全部待提交变更：文章、图片、配置、主题、CSS/脚本，以及删除和重命名。确认前会冻结并重新扫描完整清单。")
+        Text("默认流程会审阅 Git 工作区的全部待提交变更：文章、图片、配置、主题、CSS/脚本，以及删除和重命名。发布前会自动核对最新变更。")
           .font(.callout)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -683,7 +683,7 @@ struct PublishDrawerView: View {
           .disabled(isBusy)
           .accessibilityIdentifier("publish-drawer-action-publish-all")
           .accessibilityLabel("审阅并发布仓库全部变更")
-          .accessibilityHint("先冻结完整 Git 工作区清单；确认后创建一次非强制推送的提交")
+          .accessibilityHint("核对 Git 工作区变更；确认后创建安全提交并推送")
 
           Button {
             prepareRepositoryWorktreePushRetry()

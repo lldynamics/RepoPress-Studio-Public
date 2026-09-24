@@ -30,7 +30,6 @@ required_localizable_keys=(
   app.name
   workspace.writing
   workspace.rss
-  workspace.siteStarter
   workspace.sync
   workspace.images
   workspace.contentHealth

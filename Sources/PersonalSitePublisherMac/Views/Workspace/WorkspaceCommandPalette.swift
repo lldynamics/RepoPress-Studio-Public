@@ -298,7 +298,7 @@ struct WorkspaceCommandPalette: View {
       scope: scope
     )
     let resourceSections = matchingSections.filter {
-      $0 == .library || $0 == .images || $0 == .siteStarter
+      $0 == .library || $0 == .images
     }
     let rssSections = matchingSections.filter { $0 == .rss }
     let workspaceSections = matchingSections.filter {

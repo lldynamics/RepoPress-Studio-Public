@@ -9,21 +9,7 @@ struct AIOutboundPayloadSummaryView: View {
   @ObservedObject private var broker = AIOutboundPayloadApprovalBroker.shared
 
   var body: some View {
-    Group {
-      if let preview = broker.lastPreview(for: scopeID) {
-        Label(
-          preview.isLoopback
-            ? "最近本地 AI 请求摘要：\(payloadSummary(preview))"
-            : "最近远程 AI 请求（已自动脱敏）：\(payloadSummary(preview))",
-          systemImage: preview.isLoopback ? "desktopcomputer" : "checkmark.shield"
-        )
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .lineLimit(3)
-        .fixedSize(horizontal: false, vertical: true)
-        .accessibilityIdentifier("ai-outbound-payload-summary")
-      }
-    }
+    EmptyView()
   }
 
   private func payloadSummary(_ preview: AIOutboundPayloadPreview) -> String {

@@ -47,7 +47,7 @@ struct RepositoryWorktreePublishConfirmationView: View {
       VStack(alignment: .leading, spacing: 3) {
         Text("确认发布仓库全部文件")
           .font(.headline)
-        Text("确认前会重新扫描冻结快照；确认后仅创建一次提交并以非强制方式推送。")
+        Text("确认前会自动核对变更清单；确认后将安全提交并推送。")
           .font(.caption)
           .foregroundStyle(.secondary)
       }
@@ -61,9 +61,12 @@ struct RepositoryWorktreePublishConfirmationView: View {
       Label("发布目标", systemImage: "arrow.triangle.branch")
         .font(.headline)
       LabeledContent("分支", value: "origin/\(confirmation.snapshot.branch)")
-      LabeledContent("HEAD", value: RepositoryWorktreePublishPresentation.shortSHA(confirmation.snapshot.headSHA))
       LabeledContent(
-        "远端 SHA",
+        "本地版本",
+        value: RepositoryWorktreePublishPresentation.shortSHA(confirmation.snapshot.headSHA)
+      )
+      LabeledContent(
+        "远端版本",
         value: RepositoryWorktreePublishPresentation.shortSHA(confirmation.snapshot.remoteBranchSHA)
       )
       LabeledContent("origin", value: confirmation.snapshot.pushOriginURL)
@@ -151,7 +154,7 @@ struct RepositoryWorktreePublishConfirmationView: View {
 
   private var safetyNote: some View {
     Label(
-      "确认前会重新运行站点检查，并逐项核对完整变更清单、HEAD、远端 SHA、文件 blob 与权限。不会强制推送；远端变化或快照变化会停止本次发布。",
+      "发布前将自动核对本地与远端代码，确保内容安全同步；若检测到远端冲突将自动停止。",
       systemImage: "lock.shield"
     )
     .font(.caption)
@@ -182,7 +185,7 @@ struct RepositoryWorktreePublishConfirmationView: View {
             || RepositoryPublishConfirmationFeedback.needsReview(feedback)
         )
         .accessibilityIdentifier("publish-worktree-confirm")
-        .accessibilityHint("重新检查冻结快照，创建一次提交并以非强制方式推送全部路径")
+        .accessibilityHint("重新核对变更清单，创建提交并推送到远端")
     }
     .padding(WorkbenchSpacing.spacious)
   }

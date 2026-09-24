@@ -96,13 +96,11 @@ public enum KeychainCredentialServices {
     public static let repository = "PersonalSitePublisherMac.LocalDevelopment.RepositoryProvider"
     public static let deployment = "PersonalSitePublisherMac.LocalDevelopment.DeploymentProvider"
     public static let analytics = "PersonalSitePublisherMac.LocalDevelopment.SiteAnalytics"
-    public static let browserBridge = "PersonalSitePublisherMac.LocalDevelopment.BrowserBridge"
   #else
     public static let ai = "PersonalSitePublisherMac.AIProvider"
     public static let repository = "PersonalSitePublisherMac.RepositoryProvider"
     public static let deployment = "PersonalSitePublisherMac.DeploymentProvider"
     public static let analytics = "PersonalSitePublisherMac.SiteAnalytics"
-    public static let browserBridge = "PersonalSitePublisherMac.BrowserBridge"
   #endif
 }
 

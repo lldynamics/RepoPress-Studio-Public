@@ -63,7 +63,7 @@ extension ArticleDraft {
     }
   }
 
-  public static let currentSoftwareGuideSeedVersion = 4
+  public static let currentSoftwareGuideSeedVersion = 6
 
   public struct SoftwareGuideSynchronizationResult: Sendable {
     public let drafts: [ArticleDraft]
@@ -284,7 +284,7 @@ extension ArticleDraft {
 
         ## 左侧：按任务切换工作区
 
-        工作区包含“写作、资料库、建站、仓库与发布、图片、内容健康、维护、发布记录”。中央区域随工作区显示编辑器、资料阅读、仓库差异或检查结果；右侧检查器显示当前任务的元数据与操作。窗口较窄或进入专注模式时，侧栏和检查器可能自动收起。
+        工作区提供“RSS、资料库、站点、检查、写作”五个入口，图片、维护和发布记录可从相应工作区进入。中央区域随工作区显示编辑器、资料阅读、仓库差异或检查结果；右侧检查器显示当前任务的元数据与操作。窗口较窄或进入专注模式时，侧栏和检查器可能自动收起。
 
         写作列表上方有两个范围：
 
@@ -294,7 +294,7 @@ extension ArticleDraft {
         ## 推荐的第一次使用顺序
 
         1. 已有网站时，在“仓库与发布”选择本地仓库，并确认站点类型、分支、文章目录和图片目录。
-        2. 还没有网站时，从“建站”选择模板，先审阅文件预览，再创建站点。
+        2. 还没有网站时，选择“暂不配置站点”；以后准备好仓库后再连接站点。
         3. 回到“写作”，新建或导入文章，补全标题、摘要、slug、标签和分类。
         4. 在“内容健康”修复阻断问题，然后打开顶部“发布状态”。
         5. 在发布抽屉审阅检查与差异，选择“保存到本地”或“发布所有变更”。
@@ -387,7 +387,7 @@ extension ArticleDraft {
       slug: "personal-site-publisher-knowledge-library",
       tags: ["使用指南", "资料库", "研究"],
       categories: ["指南"],
-      summary: "导入本地文档或通过 Chrome、Firefox 保存网页，建立可搜索、可引用且保留来源的长期资料库。",
+      summary: "导入本地文档或网页地址，建立可搜索、可引用且保留来源的长期资料库。",
       bodyMarkdown: """
         # 资料库：整理并引用长期资料
 
@@ -400,14 +400,9 @@ extension ArticleDraft {
         3. 导入后检查章节划分、正文识别和元数据，扫描型 PDF 可按需要使用 OCR。
         4. 使用标签、注释和收藏把资料整理为以后仍能理解的结构。
 
-        ## 从浏览器保存网页
+        ## 导入网页地址
 
-        打开“浏览器资料采集”查看本机连接和令牌。当前版本支持 Chrome 与 Firefox。macOS 应用不内嵌浏览器扩展，两个扩展都需要单独安装：
-
-        - **Chrome 扩展**不包含在 App 包内，需要从 Chrome 网上应用店单独安装和更新。
-        - **Firefox 扩展**不包含在 App 包内，从 `about:debugging` 临时加载 `BrowserExtension/Firefox/manifest.json`。
-
-        扩展只连接 `127.0.0.1` 本机地址，并使用随机令牌验证。令牌只粘贴到你安装的扩展中，不要放到网页、文章或截图。Chrome 优先保存自包含 MHTML；Firefox 在大小上限内保存离线 HTML。应用暂时关闭时，扩展会在浏览器本地排队并稍后重试。
+        在资料库导入窗口选择网页地址，粘贴公开网页的 HTTPS 地址，预览提取结果后保存。网页需要登录或无法读取时，可改用本地文件导入。
 
         ## 搜索与引用
 
@@ -525,7 +520,7 @@ extension ArticleDraft {
 
         ## Left side: switch by task
 
-        The workspaces are Writing, Library, Site Starter, Repository & Publish, Images, Content Health, Maintenance, and Release History. The center shows the editor, source reader, repository differences, or checks; the right inspector follows the current task. Sidebars may collapse in a narrow window or Focus Mode.
+        The five workspace entries are RSS, Library, Site, Checks, and Writing. Images, maintenance, and release history are available within their corresponding workspaces. The center shows the editor, source reader, repository differences, or checks; the right inspector follows the current task. Sidebars may collapse in a narrow window or Focus Mode.
 
         Writing has two content scopes:
 
@@ -535,7 +530,7 @@ extension ArticleDraft {
         ## A good first-use sequence
 
         1. For an existing site, choose its local repository in Repository & Publish, then confirm the site type, branch, content path, and image path.
-        2. For a new site, choose a template in Site Starter and review the file preview before creation.
+        2. Without a site, start with local drafts and connect a site after its repository is ready.
         3. Return to Writing, create or import an article, and complete its title, summary, slug, tags, and category.
         4. Resolve blocking issues in Content Health, then open Publishing Status.
         5. Review checks and file differences, then choose Save Locally or Publish All Changes.
@@ -632,7 +627,7 @@ extension ArticleDraft {
       tags: ["Guide", "Library", "Research"],
       categories: ["Guides"],
       summary:
-        "Import local documents or save pages from Chrome and Firefox to build a searchable, citable library with clear provenance.",
+        "Import local documents or webpage URLs to build a searchable, citable library with clear provenance.",
       bodyMarkdown: """
         # Library: Organize and Cite Long-Term Sources
 
@@ -645,14 +640,9 @@ extension ArticleDraft {
         3. After import, inspect chapter boundaries, extracted text, and metadata. Use OCR only when a scanned PDF needs it.
         4. Add tags, annotations, and favorites that will still make sense months later.
 
-        ## Save pages from a browser
+        ## Import a webpage URL
 
-        Open Browser Capture to see the local connection and token. This release supports Chrome and Firefox. The macOS app contains no embedded browser extension, so install both extensions separately:
-
-        - The **Chrome extension is not included in the app bundle**. Install and update it separately through the Chrome Web Store.
-        - The **Firefox extension is not included in the app bundle**. Load `BrowserExtension/Firefox/manifest.json` temporarily from `about:debugging`.
-
-        Extensions connect only to `127.0.0.1` and authenticate with a random token. Paste that token only into your installed extension—never into a webpage, article, or screenshot. Chrome prefers self-contained MHTML; Firefox saves offline HTML within its size limit. If RepoPress Studio is closed, the extension queues the item locally and retries later.
+        In the Library import window, choose a webpage URL, paste the public page's HTTPS address, and review the extracted content before saving. If the page requires sign-in or cannot be read, import a local file instead.
 
         ## Search and cite
 

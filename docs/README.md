@@ -25,7 +25,6 @@
 | 构建与启动模式 | [build_and_run.sh](../script/build_and_run.sh) | 通过 `--help` 查询参数；README 保留最小构建/启动示例 |
 | Developer ID 发布行为与参数 | [package_direct_release.sh](../script/package_direct_release.sh)、[entitlements](../Packaging/DirectDistribution.entitlements) | [直发指南](direct-release.md)是唯一人工操作步骤；它不证明线上已发布 |
 | 性能采集与判定 | [采集入口](../script/capture_release_performance_trace.sh)、[trace 分析器](../script/analyze_markdown_scroll_trace.py)、[Release 基准入口](../script/run_release_performance_benchmarks.py) | [性能指南](performance-profiling.md)集中维护复现方法和人工验收边界 |
-| 浏览器协议、渠道和扩展身份 | [browser-extension-protocol.json](../BrowserExtension/browser-extension-protocol.json) | [扩展说明](../BrowserExtension/README.md)解释安装；生成的 Swift/JavaScript 常量不手工维护 |
 | 一级导航的顺序与路由 | [WorkspaceNavigationRouteDescriptor.swift](../Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceNavigationRouteDescriptor.swift) | README 概括产品入口，工作区文档解释状态归属，不各自设计导航 |
 | 审核译文与应用资源同步 | [翻译主表](../script/ui_localization_translations.json)、[同步器](../script/sync_ui_localizations.py) | 临时片段归并到主表；已管理的资源通过同步器更新，不另建翻译主表 |
 
@@ -35,20 +34,23 @@
 ./script/check_release_gate.sh --quick --list
 ./script/check_release_gate.sh --tooling --list
 ./script/check_release_gate.sh --profile direct --list
-./script/check_release_gate.sh --profile chrome --list
 ```
 
 `--list` 默认只显示默认选择，不能当作包含所有自测和严格检查的总表。按 ID 定向运行也不等于完成整个发行 profile。完整发行 profile 面向含维护工作流与渠道台账的开发仓；公开快照使用其安装的源码 CI，不因包含同一运行器就具备完整发行条件。
 
 ## 文档类型与适用范围
 
-共同维护并随公开快照导出的指南：本文、[直发指南](direct-release.md)、[版本规则](release-versioning.md)、[性能指南](performance-profiling.md)、[模块依赖指南](module-dependencies.md)。脚本职责目录和浏览器扩展说明随各自目录导出。
+共同维护并随公开快照导出的指南：本文、[直发指南](direct-release.md)、[版本规则](release-versioning.md)、[性能指南](performance-profiling.md)、[模块依赖指南](module-dependencies.md)。脚本职责目录随脚本目录导出。
 
 以下为**开发仓索引**，不随公开快照导出；路径用于在开发仓定位，内容中的历史证据仍受原始日期和源码范围限制：
 
 | 路径 | 类型与职责 |
 | --- | --- |
 | `docs/document-workspace-design.md` | 当前架构说明：导航、状态归属、持久化与发布恢复 |
+| `docs/notes-interchange-v1.md` | 跨 iOS/macOS 的笔记交换格式与隐私、导入边界 |
+| `docs/notes-icloud-sync-v2.md` | 跨 iOS/macOS 的 CloudKit 笔记同步记录格式、附件拆分与验收要求 |
+| `docs/workspace-backups.md` | Mac 工作区按类别备份、iCloud 状态与恢复预览说明 |
+| `docs/workspace-exchange.md` | iOS/macOS 草稿与附件单文件交换格式、导入边界及云盘同步限制 |
 | `docs/ai-chat-evolution-design.md` | 当前架构说明：AI 上下文、工具和授权边界 |
 | `docs/view-directory-structure.md` | 当前维护指南：视图领域与源码目录 |
 | `docs/ai-connection-setup.md` | 当前连接指南；末尾日期测试是历史证据 |

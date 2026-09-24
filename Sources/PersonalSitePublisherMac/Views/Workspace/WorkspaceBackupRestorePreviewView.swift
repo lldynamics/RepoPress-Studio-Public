@@ -245,7 +245,7 @@ struct WorkspaceBackupRestorePreviewView: View {
   }
 }
 
-private struct WorkspaceBackupArticleSelectionView: View {
+struct WorkspaceBackupArticleSelectionView: View {
   @ObservedObject var dataManagement: WorkbenchDataManagementFeatureFacade
   let backupPreview: WorkspaceBackupPreview
   let requiresCompatibilityConfirmation: Bool
@@ -476,6 +476,275 @@ private struct WorkspaceBackupArticleSelectionView: View {
     case .unavailable: return String(localized: "当前工作台暂不可用，无法恢复文章。")
     case .persistenceFailed:
       return String(localized: "未能确认草稿保存结果。请检查存储空间，并重新打开工作区核对后再试。")
+    }
+  }
+}
+
+
+struct WorkspaceExchangeRestorePreviewSheet: View {
+  let preview: WorkspaceExchangePreview
+  let store: WorkbenchStore
+  let onImported: (Int) -> Void
+  @Environment(\.dismiss) private var dismiss
+  @State private var choices: [UUID: ProfileChoice] = [:]
+  @State private var slugOverrides: [UUID: String] = [:]
+  @State private var isImporting = false
+  @State private var errorMessage: String?
+
+  private enum ProfileChoice: Hashable {
+    case choose
+    case importAsNew
+    case existing(UUID)
+  }
+
+  private var sourceProfileIDs: [UUID] {
+    var ids = preview.package.payload.drafts.compactMap { draft in
+      draft.scope == "site" ? draft.sourceProfileID : nil
+    }
+    ids += preview.package.payload.profiles.map(\.id)
+    return Array(Set(ids)).sorted { $0.uuidString < $1.uuidString }
+  }
+
+  private var profileByID: [UUID: WorkspaceExchangeProfile] {
+    Dictionary(uniqueKeysWithValues: preview.package.payload.profiles.map { ($0.id, $0) })
+  }
+
+  private var mappingsAreComplete: Bool {
+    sourceProfileIDs.allSatisfy { id in
+      guard let choice = choices[id] else { return false }
+      switch choice {
+      case .choose: return false
+      case .importAsNew: return profileByID[id] != nil
+      case .existing(let destinationID): return store.profiles.contains { $0.id == destinationID }
+      }
+    }
+  }
+
+  private var selectedMappings: [UUID: WorkspaceExchangeProfileMapping] {
+    Dictionary(uniqueKeysWithValues: choices.compactMap { sourceID, choice -> (UUID, WorkspaceExchangeProfileMapping)? in
+      switch choice {
+      case .choose: nil
+      case .importAsNew: (sourceID, .importAsNewProfile)
+      case .existing(let destinationID): (sourceID, .existing(destinationID))
+      }
+    })
+  }
+
+  private var pathValidation: (conflicts: [WorkspaceExchangePublishPathConflict], error: String?) {
+    guard mappingsAreComplete else { return ([], nil) }
+    do {
+      return (try WorkspaceExchangePathConflictService.conflicts(
+        package: preview.package,
+        profileMappings: selectedMappings,
+        slugOverrides: slugOverrides,
+        existingProfiles: store.profiles,
+        existingDrafts: store.drafts
+      ), nil)
+    } catch {
+      return ([], error.localizedDescription)
+    }
+  }
+
+  var body: some View {
+    let validation = pathValidation
+    return VStack(alignment: .leading, spacing: 16) {
+      Text("跨端交换文件预览")
+        .font(.title2.weight(.semibold))
+      Text("文件会作为新草稿追加。重复导入也会创建新副本；现有草稿和站点配置不会被覆盖。")
+        .foregroundStyle(.secondary)
+
+      Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 8) {
+        metric("站点配置", value: preview.package.payload.profiles.count)
+        metric("草稿", value: preview.package.payload.drafts.count)
+        metric("附件", value: preview.package.manifest.itemCounts.attachments)
+        metric("文件大小", detail: preview.estimatedSizeBytes.formatted(.byteCount(style: .file)))
+      }
+
+      if !preview.conflictingProfileNames.isEmpty {
+        warning("同名站点配置：\(preview.conflictingProfileNames.joined(separator: "、"))。导入后仍会创建或映射到你选择的目标。")
+      }
+      if preview.unmappedSiteDraftCount > 0 {
+        warning("\(preview.unmappedSiteDraftCount) 篇站点文章需要显式映射来源站点配置。")
+      }
+      if preview.attachmentAccessibilityMetadataCount > 0 {
+        warning("有 \(preview.attachmentAccessibilityMetadataCount) 个附件包含替代文字或说明。当前 iOS 文章附件模型不保存这些字段，Mac→iOS→Mac 往返可能丢失它们。")
+      }
+      warning("Markdown 正文中的附件链接保持原样；导入会保留相对发布路径，不会改写正文链接。")
+
+      if !sourceProfileIDs.isEmpty {
+        Text("为每个来源配置选择处理方式")
+          .font(.headline)
+        ScrollView {
+          VStack(alignment: .leading, spacing: 12) {
+            ForEach(sourceProfileIDs, id: \.self) { sourceID in
+              profileMappingRow(sourceID)
+            }
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxHeight: 260)
+      }
+
+      let conflictsByDraftID = Dictionary(
+        uniqueKeysWithValues: validation.conflicts.map { ($0.sourceDraftID, $0) })
+      let editableDrafts = preview.package.payload.drafts.filter { draft in
+        conflictsByDraftID[draft.id] != nil || slugOverrides[draft.id] != nil
+      }
+      if !editableDrafts.isEmpty {
+        Text("调整重复的发布路径")
+          .font(.headline)
+        Text("以下草稿在所选目标站点生成了相同发布路径。请修改 Slug，直到冲突消失；原有文章不会被覆盖。")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+        ScrollView {
+          LazyVStack(alignment: .leading, spacing: 12) {
+            ForEach(editableDrafts, id: \.id) { draft in
+              let conflict = conflictsByDraftID[draft.id]
+              VStack(alignment: .leading, spacing: 4) {
+                Text(draft.title.isEmpty ? String(localized: "未命名文章") : draft.title)
+                  .font(.subheadline.weight(.semibold))
+                if let conflict {
+                  Text("\(conflict.destinationProfileName) · \(conflict.path)")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.orange)
+                    .textSelection(.enabled)
+                } else {
+                  Text("发布路径冲突已解决")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+                TextField("新 Slug", text: slugBinding(for: draft))
+                  .textFieldStyle(.roundedBorder)
+                  .accessibilityLabel("\(draft.title) 的新 Slug")
+                if slugOverrides[draft.id] != nil {
+                  Button("恢复原 Slug") { slugOverrides.removeValue(forKey: draft.id) }
+                    .buttonStyle(.link)
+                }
+              }
+              .padding(10)
+              .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 8))
+            }
+          }
+        }
+        .frame(maxHeight: 220)
+      }
+
+      if let validationError = validation.error {
+        AccessibleStatusMessage(message: validationError, severity: .error)
+          .textSelection(.enabled)
+      }
+
+      if let errorMessage {
+        AccessibleStatusMessage(message: errorMessage, severity: .error)
+          .textSelection(.enabled)
+      }
+
+      HStack {
+        Button("取消") { dismiss() }
+          .keyboardShortcut(.cancelAction)
+        Spacer()
+        Button {
+          importPackage()
+        } label: {
+          if isImporting {
+            ProgressView().controlSize(.small)
+          } else {
+            Text("导入为新草稿")
+          }
+        }
+        .keyboardShortcut(.defaultAction)
+        .disabled(isImporting || !mappingsAreComplete || !validation.conflicts.isEmpty || validation.error != nil)
+      }
+    }
+    .padding(24)
+    .frame(minWidth: 620, minHeight: 480)
+  }
+
+  private func metric(_ title: LocalizedStringKey, value: Int) -> some View {
+    GridRow {
+      Text(title).foregroundStyle(.secondary)
+      Text(value.formatted()).monospacedDigit()
+    }
+  }
+
+  private func metric(_ title: LocalizedStringKey, detail: String) -> some View {
+    GridRow {
+      Text(title).foregroundStyle(.secondary)
+      Text(detail).monospacedDigit()
+    }
+  }
+
+  @ViewBuilder
+  private func profileMappingRow(_ sourceID: UUID) -> some View {
+    let source = profileByID[sourceID]
+    VStack(alignment: .leading, spacing: 5) {
+      Text(source?.name ?? "包中未包含来源配置")
+        .font(.subheadline.weight(.semibold))
+      if let source {
+        Text("\(source.siteKind) · \(source.repoOwner)/\(source.repoName) · \(source.branch)")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      } else {
+        Text(sourceID.uuidString)
+          .font(.caption.monospaced())
+          .foregroundStyle(.secondary)
+      }
+      Picker("目标配置", selection: choiceBinding(for: sourceID)) {
+        Text("请选择…").tag(ProfileChoice.choose)
+        if source != nil {
+          Text("作为新的本地配置导入").tag(ProfileChoice.importAsNew)
+        }
+        ForEach(store.profiles) { profile in
+          Text("映射到：\(profile.name)").tag(ProfileChoice.existing(profile.id))
+        }
+      }
+      .labelsHidden()
+    }
+    .padding(10)
+    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 8))
+  }
+
+  private func choiceBinding(for sourceID: UUID) -> Binding<ProfileChoice> {
+    Binding(
+      get: { choices[sourceID] ?? .choose },
+      set: { choices[sourceID] = $0 }
+    )
+  }
+
+  private func slugBinding(for draft: WorkspaceExchangeDraft) -> Binding<String> {
+    Binding(
+      get: { slugOverrides[draft.id] ?? draft.slug },
+      set: { slugOverrides[draft.id] = $0 }
+    )
+  }
+
+  private func warning(_ message: String) -> some View {
+    Label(message, systemImage: "info.circle")
+      .font(.callout)
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+  }
+
+  private func importPackage() {
+    guard mappingsAreComplete else { return }
+    let validation = pathValidation
+    guard validation.conflicts.isEmpty, validation.error == nil else { return }
+    isImporting = true
+    errorMessage = nil
+    let mappings = selectedMappings
+    Task {
+      defer { isImporting = false }
+      do {
+        let count = try await store.importWorkspaceExchange(
+          preview,
+          profileMappings: mappings,
+          slugOverrides: slugOverrides
+        )
+        onImported(count)
+        dismiss()
+      } catch {
+        errorMessage = error.localizedDescription
+      }
     }
   }
 }

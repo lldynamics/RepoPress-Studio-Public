@@ -175,36 +175,4 @@ extension PublishingStore {
     get { publishSession.batchPublishPlanRefreshGeneration }
     set { publishSession.batchPublishPlanRefreshGeneration = newValue }
   }
-
-  var siteStarterService: SiteStarterService { siteStarter.service }
-
-  var siteStarterOperationGeneration: UInt64 {
-    get { siteStarter.operationGeneration }
-    set { siteStarter.operationGeneration = newValue }
-  }
-
-  public internal(set) var siteStarterResult: SiteStarterResult? {
-    get { siteStarter.result }
-    set { siteStarter.result = newValue }
-  }
-
-  public internal(set) var siteStarterImportResult: SiteStarterImportResult? {
-    get { siteStarter.importResult }
-    set { siteStarter.importResult = newValue }
-  }
-
-  public internal(set) var siteStarterPushResult: SiteStarterPushResult? {
-    get { siteStarter.pushResult }
-    set { siteStarter.pushResult = newValue }
-  }
-
-  public internal(set) var siteStarterProgress: SiteStarterProgress? {
-    get { siteStarter.progress }
-    set { siteStarter.progress = newValue }
-  }
-
-  public internal(set) var isSiteStarterOperationRunning: Bool {
-    get { siteStarter.isOperationRunning }
-    set { siteStarter.isOperationRunning = newValue }
-  }
 }
