@@ -1623,3 +1623,90 @@ private final class LocalContentImportInvocationCounter: @unchecked Sendable {
     lock.unlock()
   }
 }
+
+final class ExternalDraftFolderServiceTests: XCTestCase {
+  func testPreservesUTF8BOMForConflictBaselineAndTitle() throws {
+    let root = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("bom.md")
+    let bytes = Data([0xEF, 0xBB, 0xBF]) + Data("# Heading\n".utf8)
+    try bytes.write(to: source)
+
+    let file = try XCTUnwrap(ExternalDraftFolderService().scan(rootURL: root).first)
+
+    XCTAssertEqual(file.title, "Heading")
+    XCTAssertEqual(Data(file.markdown.utf8), bytes)
+  }
+
+  func testScansNestedMarkdownFilesInDeterministicOrderAndUsesFirstH1() throws {
+    let root = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(
+      at: root.appendingPathComponent("nested"), withIntermediateDirectories: true)
+    try "intro\n# Nested title\nbody".write(
+      to: root.appendingPathComponent("nested/b.markdown"), atomically: true, encoding: .utf8)
+    try "# Root title\nraw".write(
+      to: root.appendingPathComponent("a.md"), atomically: true, encoding: .utf8)
+    try "Plain text body".write(
+      to: root.appendingPathComponent("nested/plain.txt"), atomically: true, encoding: .utf8)
+
+    let files = try ExternalDraftFolderService().scan(rootURL: root)
+
+    XCTAssertEqual(files.map(\.relativePath), ["a.md", "nested/b.markdown", "nested/plain.txt"])
+    XCTAssertEqual(files.map(\.title), ["Root title", "Nested title", "plain"])
+    XCTAssertEqual(files[1].markdown, "intro\n# Nested title\nbody")
+    XCTAssertEqual(files[0].fingerprint.count, 64)
+  }
+
+  func testSkipsHiddenEntriesAndSymlinksThatWouldEscapeRoot() throws {
+    let root = try makeTemporaryDirectory()
+    let outside = try makeTemporaryDirectory()
+    defer {
+      try? FileManager.default.removeItem(at: root)
+      try? FileManager.default.removeItem(at: outside)
+    }
+    try FileManager.default.createDirectory(
+      at: root.appendingPathComponent(".obsidian"), withIntermediateDirectories: true)
+    try "# Hidden".write(
+      to: root.appendingPathComponent(".obsidian/hidden.md"), atomically: true, encoding: .utf8)
+    try "# Outside".write(
+      to: outside.appendingPathComponent("outside.md"), atomically: true, encoding: .utf8)
+    try FileManager.default.createSymbolicLink(
+      at: root.appendingPathComponent("escape.md"),
+      withDestinationURL: outside.appendingPathComponent("outside.md")
+    )
+    try "# Visible".write(
+      to: root.appendingPathComponent("visible.md"), atomically: true, encoding: .utf8)
+
+    let files = try ExternalDraftFolderService().scan(rootURL: root)
+
+    XCTAssertEqual(files.map(\.relativePath), ["visible.md"])
+  }
+
+  func testChangedContentProducesChangedFingerprint() throws {
+    let root = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("draft.md")
+    try "# Same title\nfirst".write(to: file, atomically: true, encoding: .utf8)
+    let first = try XCTUnwrap(ExternalDraftFolderService().scan(rootURL: root).first)
+    try "# Same title\nsecond".write(to: file, atomically: true, encoding: .utf8)
+    let second = try XCTUnwrap(ExternalDraftFolderService().scan(rootURL: root).first)
+
+    XCTAssertEqual(first.title, second.title)
+    XCTAssertNotEqual(first.fingerprint, second.fingerprint)
+  }
+
+  func testMissingRootFailsSafely() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+
+    XCTAssertThrowsError(try ExternalDraftFolderService().scan(rootURL: root)) { error in
+      XCTAssertEqual(error as? ExternalDraftFolderServiceError, .inaccessibleRoot)
+    }
+  }
+
+  private func makeTemporaryDirectory() throws -> URL {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    return directory
+  }
+}

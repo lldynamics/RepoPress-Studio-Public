@@ -1,0 +1,36 @@
+{
+  "capability": "publish-conflict-diff",
+  "description": "Compares Unicode lines without normalization.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "lines": [
+        {
+          "id": 0,
+          "kind": "same",
+          "marker": " ",
+          "text": "标题"
+        },
+        {
+          "id": 1,
+          "kind": "remote",
+          "marker": "-",
+          "text": "😀"
+        },
+        {
+          "id": 2,
+          "kind": "local",
+          "marker": "+",
+          "text": "🧪"
+        }
+      ],
+      "strategy": "lcs"
+    }
+  },
+  "id": "diff-unicode",
+  "input": {
+    "local": "标题\n🧪",
+    "remote": "标题\n😀"
+  },
+  "validity": "valid"
+}

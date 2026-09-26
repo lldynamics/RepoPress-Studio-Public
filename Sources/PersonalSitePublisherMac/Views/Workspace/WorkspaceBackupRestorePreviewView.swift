@@ -1,4 +1,5 @@
 import AppKit
+import PublishingBackupCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -567,7 +568,11 @@ struct WorkspaceExchangeRestorePreviewSheet: View {
         warning("\(preview.unmappedSiteDraftCount) 篇站点文章需要显式映射来源站点配置。")
       }
       if preview.attachmentAccessibilityMetadataCount > 0 {
-        warning("有 \(preview.attachmentAccessibilityMetadataCount) 个附件包含替代文字或说明。当前 iOS 文章附件模型不保存这些字段，Mac→iOS→Mac 往返可能丢失它们。")
+        warning(
+          String(
+            localized:
+              "有 \(preview.attachmentAccessibilityMetadataCount) 个附件包含替代文字或说明。此版本会保留这些内容；通过旧版 iOS 再次导出时仍可能丢失。"
+          ))
       }
       warning("Markdown 正文中的附件链接保持原样；导入会保留相对发布路径，不会改写正文链接。")
 

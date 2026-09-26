@@ -1,6 +1,5 @@
 import Foundation
 import PublishingKnowledgeCore
-import PublishingWorkbenchCore
 
 enum RSSArticleWorkflow {
   static func summary(for article: RSSArticle, maximumCharacters: Int = 360) -> String {

@@ -32,7 +32,7 @@
       "rationale": "POSIX process-group lifecycle callbacks, bounded output, stop state, timeout ownership, and the single continuation are protected by one NSLock; group cleanup and reader cleanup are each admitted exactly once before callbacks cross queues."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/LocalSitePreviewHTTPMetadataProbe.swift",
+      "file": "Sources/PublishingPreviewCore/Services/LocalSitePreviewHTTPMetadataProbe.swift",
       "declaration": "LocalSitePreviewHTTPMetadataTransaction",
       "rationale": "All mutable connection lifecycle, cancellation, timeout, receive-buffer, and continuation state is confined to one private serial DispatchQueue; immutable request metadata is established before the transaction crosses task and Network callbacks."
     },
@@ -152,7 +152,7 @@
       "rationale": "Process lifecycle mutations are protected by the service lock."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/LocalSitePreviewTrustStore.swift",
+      "file": "Sources/PublishingPreviewCore/Services/LocalSitePreviewTrustStore.swift",
       "declaration": "LocalSitePreviewTrustStore",
       "rationale": "Trust-document reads and writes are serialized by one NSLock, and store configuration is immutable after initialization."
     },
@@ -237,7 +237,7 @@
       "rationale": "Index mutations are serialized by the static lock; instance dependencies are immutable and filesystem access uses the SendableFileManager boundary."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/LocalSitePreviewFileWatcher.swift",
+      "file": "Sources/PublishingPreviewCore/Services/LocalSitePreviewFileWatcher.swift",
       "declaration": "LocalSitePreviewFileWatcher",
       "rationale": "Mutable watcher sources are confined to its serial queue and lifecycle flags are protected by the state lock."
     },
@@ -430,6 +430,21 @@
       "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchPersistenceBaseline.swift",
       "declaration": "WorkbenchPersistenceBaseline",
       "rationale": "The sole mutable revision dictionary is private and every read/write is enclosed by the same NSLock; copies of the persistence value intentionally share this synchronized baseline."
+    },
+    {
+      "file": "Sources/PublishingKnowledgeCore/Services/KnowledgeNoteSnapshotBackupService.swift",
+      "declaration": "KnowledgeNoteSnapshotPreferences",
+      "rationale": "The wrapper holds one immutable UserDefaults reference and forwards each call to it; UserDefaults is documented as thread-safe, so no additional state crosses isolation domains."
+    },
+    {
+      "file": "Tests/PublishingKnowledgeCoreTests/KnowledgeNoteSnapshotBackupTests.swift",
+      "declaration": "SnapshotTestClock",
+      "rationale": "The test-only clock protects its sole mutable Date with NSLock on every read and advance."
+    },
+    {
+      "file": "Tests/PublishingKnowledgeCoreTests/KnowledgeNoteSnapshotBackupTests.swift",
+      "declaration": "SnapshotTestCounter",
+      "rationale": "The test-only counter protects its sole mutable Int with NSLock on every read and increment."
     }
   ],
   "forcedOperations": [
@@ -480,6 +495,12 @@
       "kind": "try!",
       "contains": "try! JSONSerialization.data(withJSONObject: [",
       "rationale": "The general-agent response envelopes are fixed JSON-compatible fixtures and serialization failure should abort immediately."
+    },
+    {
+      "file": "Tests/PublishingKnowledgeCoreTests/RPNotesPackageCodecTests.swift",
+      "kind": "try!",
+      "contains": "JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys])",
+      "rationale": "The fixture manifest is a fixed JSON-compatible dictionary built by the test; a serialization failure is a broken fixture and should abort the test immediately."
     }
   ],
   "optionalOperations": [
@@ -596,12 +617,6 @@
       "category": "probeFallback",
       "contains": "try? request.supportedRecognitionLanguages()",
       "rationale": "OCR language discovery is advisory; unsupported language metadata causes the caller to use its supported default path."
-    },
-    {
-      "file": "Sources/PublishingKnowledgeCore/KnowledgeSemanticEmbeddingService.swift",
-      "category": "cacheBestEffort",
-      "contains": "try? await model.requestAssets()",
-      "rationale": "On-device model asset preparation is optional background work and a missing model is reported through the embedding availability path."
     },
     {
       "file": "Sources/PublishingKnowledgeCore/KnowledgeSemanticEmbeddingService.swift",
@@ -812,6 +827,120 @@
       "category": "validationFallback",
       "contains": "try? loadRecordSnapshot(existingManifest)",
       "rationale": "Generation reuse requires a fully validated current snapshot. Failure selects a fresh generation, retaining the old database and its independent recovery copy; unsupported versions already fail closed at the locked revision check."
+    },
+    {
+      "file": "Sources/PersonalSitePublisherMac/Support/iCloudWorkspaceBackupStore.swift",
+      "category": "parsing",
+      "contains": "try? decoder.decode(WorkspaceBackupManifest.self, from: data)",
+      "rationale": "An unreadable manifest yields nil payload paths; the upload-state probe then reports the backup as pending upload instead of trusting undeclared files."
+    },
+    {
+      "file": "Sources/PersonalSitePublisherMac/Views/Knowledge/KnowledgeNoteTransferSheet.swift",
+      "category": "probeFallback",
+      "contains": "try? KnowledgeNoteSnapshotBackupService.iCloudNotesBackupDirectory()",
+      "rationale": "The iCloud notes directory is only probed to decide whether a manual snapshot also refreshes the automatic-backup signature; without iCloud the manual snapshot is still written."
+    },
+    {
+      "file": "Sources/PersonalSitePublisherMac/Views/Knowledge/KnowledgeNoteTransferSheet.swift",
+      "category": "auxiliaryPersistence",
+      "contains": "try? KnowledgeNoteSnapshotBackupService.contentSignature(for: package.notes)",
+      "rationale": "The content signature only lets the next automatic snapshot skip unchanged notes; without it the next automatic snapshot simply runs again."
+    },
+    {
+      "file": "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift",
+      "category": "auxiliaryPersistence",
+      "contains": "try? await store.knowledge.createAutomaticNoteSnapshotIfDue()",
+      "rationale": "The automatic note snapshot records its own failure in knowledgeNoteICloudSnapshotLastError before rethrowing, and the note settings surface that error; the trigger must not block reload, launch, or import."
+    },
+    {
+      "file": "Sources/PublishingKnowledgeCore/Stores/KnowledgeStore.swift",
+      "category": "auxiliaryPersistence",
+      "contains": "try? await createAutomaticNoteSnapshotIfDue()",
+      "rationale": "The automatic note snapshot records its own failure in knowledgeNoteICloudSnapshotLastError before rethrowing, and the note settings surface that error; the trigger must not block reload, launch, or import."
+    },
+    {
+      "file": "Sources/PublishingKnowledgeCore/Services/KnowledgeLibraryService+Notes.swift",
+      "category": "auxiliaryPersistence",
+      "contains": "KnowledgeNoteAutomaticSnapshotBackup.shared.createSnapshotIfDue(",
+      "rationale": "The automatic note snapshot records its own failure in knowledgeNoteICloudSnapshotLastError before rethrowing, and the note settings surface that error; the trigger must not block reload, launch, or import."
+    },
+    {
+      "file": "Sources/PublishingKnowledgeCore/Services/KnowledgeLibraryService+Notes.swift",
+      "category": "temporaryCleanup",
+      "contains": "try? notePostCommitCleanup(staleReferences)",
+      "rationale": "The database commit has succeeded; stale-artifact cleanup is best effort and a failure leaves unreferenced files for the next cleanup pass rather than undoing the committed import."
+    },
+    {
+      "file": "Sources/PublishingKnowledgeCore/Services/KnowledgeLibraryService+Notes.swift",
+      "category": "temporaryCleanup",
+      "contains": "try? removeUnreferencedNoteArtifacts(staleReferences)",
+      "rationale": "The database commit has succeeded; stale-artifact cleanup is best effort and a failure leaves unreferenced files for the next cleanup pass rather than undoing the committed import."
+    },
+    {
+      "file": "Sources/PublishingKnowledgeCore/Services/KnowledgeNoteCloudSyncAdapter.swift",
+      "category": "serializationFallback",
+      "contains": "(try? Self.revision(for: note)) ?? Self.fallbackRevision(for: note)",
+      "rationale": "The payload encoder rejects notes above its hard limit; the incremental fallback revision still changes with the note so one oversized note cannot block the sync queue."
+    },
+    {
+      "file": "Sources/PublishingKnowledgeCore/Services/RPNoteCloudSyncEngine.swift",
+      "category": "mainOperation",
+      "contains": "try? await self.start(",
+      "rationale": "A queued restart runs after the previous start finishes; start() assigns .failed(...) to the visible sync status before rethrowing, so the error is not lost."
+    },
+    {
+      "file": "Sources/PublishingKnowledgeCore/Services/RPNoteCloudSyncEngine.swift",
+      "category": "auxiliaryPersistence",
+      "contains": "try? await adapter.savePersistentState(persistentState)",
+      "rationale": "Only the zoneEstablished hint is persisted here; if saving fails the next launch re-saves the zone, which CloudKit treats as idempotent."
+    },
+    {
+      "file": "Sources/PublishingKnowledgeCore/Services/RPNoteCloudSyncEngine.swift",
+      "category": "networkDiscovery",
+      "contains": "try? await syncEngine.fetchChanges(CKSyncEngine.FetchChangesOptions(scope: .all))",
+      "rationale": "This is an extra fetch nudge; CKSyncEngine also fetches automatically and reports fetch failures through its own events."
+    },
+    {
+      "file": "Sources/PublishingKnowledgeCore/Services/RPNoteCloudSyncEngine.swift",
+      "category": "serializationFallback",
+      "contains": "try? Self.archiveSystemFields(serverRecord)",
+      "rationale": "If the server record's system fields cannot be archived, no attachment baseline is adopted and the note's next save re-uploads the attachment."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/WorkspaceExchangeTransferService.swift",
+      "category": "externalRollbackCleanup",
+      "contains": "try? attachmentStore.discardStoredFile(at: url)",
+      "rationale": "Rollback after a failed import discards promoted attachments on a best-effort basis; the original import error is rethrown and remains the reported outcome."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+WorkspaceExchange.swift",
+      "category": "externalRollbackCleanup",
+      "contains": "try? attachmentStore.discardStoredFile(at: url)",
+      "rationale": "Rollback after a failed import discards promoted attachments on a best-effort basis; the original error is rethrown and remains the reported outcome."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkspaceBackupScheduler.swift",
+      "category": "probeFallback",
+      "contains": "resourceValues(forKeys: [.isUbiquitousItemKey]).isUbiquitousItem",
+      "rationale": "iCloud detection is a probe after the Mobile Documents path check; an unreadable resource value is treated as a local destination."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkspaceBackupScheduler.swift",
+      "category": "parsing",
+      "contains": "try? decoder.decode(WorkspaceBackupManifest.self, from: data)",
+      "rationale": "A missing or malformed manifest yields no content fingerprint, so an automatic backup is kept rather than deduplicated; the upload probe reports it as manifestCorrupt, never as uploaded."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkspaceBackupScheduler.swift",
+      "category": "parsing",
+      "contains": "try? WorkbenchOperationLedgerPersistence.decodedDocument(from: data)",
+      "rationale": "Operation history is only normalized for backup deduplication; if it cannot be decoded the fingerprint falls back to the recorded raw size and hash, which at worst keeps an extra backup."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkspaceBackupScheduler.swift",
+      "category": "parsing",
+      "contains": "try? decoder.decode(KnowledgeLibraryBackupManifest.self, from: data)",
+      "rationale": "The knowledge manifest is only normalized for backup deduplication; if it cannot be decoded the fingerprint falls back to the recorded raw size and hash, which at worst keeps an extra backup."
     }
   ],
   "optionalOperationRules": [

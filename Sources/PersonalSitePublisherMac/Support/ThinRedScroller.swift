@@ -239,6 +239,12 @@ private final class SettingsThinRedScrollerConfiguratorView: NSView {
 
 private extension ThinRedScroller {
   static func install(on scrollView: NSScrollView) {
+    // "Always show scroll bars" is an accessibility choice: honor it with the
+    // native, full-width scroller instead of the thin overlay knob.
+    guard NSScroller.preferredScrollerStyle == .overlay else {
+      restoreNativeScrollers(on: scrollView)
+      return
+    }
     if scrollView.hasVerticalScroller,
        !(scrollView.verticalScroller is ThinRedScroller) {
       let scroller = ThinRedScroller()
@@ -260,6 +266,16 @@ private extension ThinRedScroller {
     for subview in view.subviews {
       install(in: subview)
     }
+  }
+
+  static func restoreNativeScrollers(on scrollView: NSScrollView) {
+    if scrollView.verticalScroller is ThinRedScroller {
+      scrollView.verticalScroller = NSScroller()
+    }
+    if scrollView.horizontalScroller is ThinRedScroller {
+      scrollView.horizontalScroller = NSScroller()
+    }
+    scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
   }
 }
 
@@ -438,6 +454,18 @@ private final class ThinRedScrollbarsConfiguratorView: NSView {
         }
       }
     }
+    // Re-apply when the user flips System Settings > Appearance > Show scroll bars.
+    windowObservers.append(
+      center.addObserver(
+        forName: NSScroller.preferredScrollerStyleDidChangeNotification,
+        object: nil,
+        queue: .main
+      ) { [weak self] _ in
+        Task { @MainActor [weak self] in
+          self?.scheduleConfiguration()
+        }
+      }
+    )
   }
 
   private func removeWindowObservers() {

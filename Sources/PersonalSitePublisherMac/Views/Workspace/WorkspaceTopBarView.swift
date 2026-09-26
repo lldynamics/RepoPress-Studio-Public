@@ -13,93 +13,6 @@ enum WorkspaceTopBarPresentation {
     case minimal
   }
 
-  struct ContextStatistics: Equatable {
-    let wordCount: Int?
-    let readingMinutes: Int?
-    let locale: Locale
-    let bundle: Bundle
-
-    init(
-      wordCount: Int? = nil,
-      readingMinutes: Int? = nil,
-      locale: Locale = .current,
-      bundle: Bundle = .main
-    ) {
-      self.wordCount = wordCount.map { max(0, $0) }
-      self.readingMinutes = readingMinutes.map { max(1, $0) }
-      self.locale = locale
-      self.bundle = bundle
-    }
-
-    var displayText: String? {
-      switch (wordCount, readingMinutes) {
-      case (.some(let words), .some(let minutes)):
-        return String(
-          format: String(
-            localized: "%lld 字 · %lld 分钟阅读",
-            bundle: bundle,
-            locale: locale
-          ),
-          locale: locale,
-          words,
-          minutes
-        )
-      case (.some(let words), .none):
-        return String(
-          format: String(localized: "%lld 字", bundle: bundle, locale: locale),
-          locale: locale,
-          words
-        )
-      case (.none, .some(let minutes)):
-        return String(
-          format: String(localized: "%lld 分钟阅读", bundle: bundle, locale: locale),
-          locale: locale,
-          minutes
-        )
-      case (.none, .none):
-        return nil
-      }
-    }
-
-    var accessibilityValue: String? {
-      switch (wordCount, readingMinutes) {
-      case (.some(let words), .some(let minutes)):
-        return String(
-          format: String(
-            localized: "字数 %lld，预计阅读 %lld 分钟",
-            bundle: bundle,
-            locale: locale
-          ),
-          locale: locale,
-          words,
-          minutes
-        )
-      case (.some(let words), .none):
-        return String(
-          format: String(localized: "字数 %lld", bundle: bundle, locale: locale),
-          locale: locale,
-          words
-        )
-      case (.none, .some(let minutes)):
-        return String(
-          format: String(localized: "预计阅读 %lld 分钟", bundle: bundle, locale: locale),
-          locale: locale,
-          minutes
-        )
-      case (.none, .none):
-        return nil
-      }
-    }
-
-    static func == (lhs: Self, rhs: Self) -> Bool {
-      lhs.wordCount == rhs.wordCount
-        && lhs.readingMinutes == rhs.readingMinutes
-        && lhs.locale == rhs.locale
-        && lhs.bundle.bundleURL == rhs.bundle.bundleURL
-    }
-
-  }
-
   struct PreviewAvailability: Equatable {
     enum DefaultAction: Equatable {
       case browser
@@ -165,6 +78,29 @@ enum WorkspaceTopBarPresentation {
     case .compact: 216
     case .minimal: 32
     }
+  }
+
+  /// The toolbar may only report a healthy repository after every blocking
+  /// condition in the scan has been ruled out. Order matters: a missing Git
+  /// directory makes change counts meaningless, and blocking issues outrank
+  /// pending local or remote changes.
+  enum RepositoryScanStatus: Equatable {
+    case missingGitDirectory
+    case blockingIssues(count: Int)
+    case remoteChanges(count: Int)
+    case localChanges(count: Int)
+    case ready
+  }
+
+  static func repositoryScanStatus(for report: RepositoryScanReport) -> RepositoryScanStatus {
+    guard report.hasGitDirectory else { return .missingGitDirectory }
+    let blockingCount = report.preflightIssues.filter { $0.severity == .error }.count
+    if blockingCount > 0 { return .blockingIssues(count: blockingCount) }
+    if !report.remoteChangedFiles.isEmpty {
+      return .remoteChanges(count: report.remoteChangedFiles.count)
+    }
+    if !report.changedFiles.isEmpty { return .localChanges(count: report.changedFiles.count) }
+    return .ready
   }
 }
 
@@ -273,32 +209,11 @@ struct WorkspaceTaskCenterToolbarButton: View {
   }
 }
 
+/// Search only searches: live article statistics belong to the editor's
+/// status bar, so the toolbar never duplicates them.
 struct OmniCommandSearchBar: View {
   let density: WorkspaceTopBarPresentation.Density
-  let statistics: WorkspaceTopBarPresentation.ContextStatistics
   let action: () -> Void
-
-  init(
-    isCompact: Bool,
-    statistics: WorkspaceTopBarPresentation.ContextStatistics = .init(),
-    action: @escaping () -> Void
-  ) {
-    self.init(
-      density: isCompact ? .compact : .expanded,
-      statistics: statistics,
-      action: action
-    )
-  }
-
-  init(
-    density: WorkspaceTopBarPresentation.Density,
-    statistics: WorkspaceTopBarPresentation.ContextStatistics = .init(),
-    action: @escaping () -> Void
-  ) {
-    self.density = density
-    self.statistics = statistics
-    self.action = action
-  }
 
   var body: some View {
     Button(action: action) {
@@ -307,19 +222,19 @@ struct OmniCommandSearchBar: View {
           .font(.caption.weight(.semibold))
           .foregroundStyle(.secondary)
 
-        if density == .expanded {
+        switch density {
+        case .expanded:
           Text("搜索草稿、标签与指令…")
             .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(1)
-        }
-
-        if density == .expanded, let statisticsText = statistics.displayText {
-          Text(statisticsText)
-            .font(.workbenchMetadata.weight(.medium).monospacedDigit())
-            .foregroundStyle(.tertiary)
+        case .compact:
+          Text("搜索…")
+            .font(.caption)
+            .foregroundStyle(.secondary)
             .lineLimit(1)
-            .accessibilityHidden(true)
+        case .minimal:
+          EmptyView()
         }
 
         if density != .minimal {
@@ -350,9 +265,8 @@ struct OmniCommandSearchBar: View {
       WorkbenchFocusRingButtonStyle(cornerRadius: WorkbenchCornerRadius.searchBar, lineWidth: 1.5)
     )
     .layoutPriority(1)
-    .help(String(localized: "唤起命令面板与全局搜索 (⌘P)"))
+    .help(String(localized: "唤起命令面板与全局搜索 (⇧⌘K)"))
     .accessibilityLabel("全局搜索")
-    .accessibilityValue(statistics.accessibilityValue ?? "")
     .accessibilityIdentifier("workspace-command-search")
   }
 }
@@ -368,6 +282,9 @@ struct WorkspaceToolbarIconButtonStyle: ButtonStyle {
   let prominence: WorkspaceToolbarButtonProminence
 
   @Environment(\.isFocused) private var isFocused
+  // Custom button styles do not inherit AppKit's disabled appearance, so the
+  // style must dim itself; otherwise disabled commands look actionable.
+  @Environment(\.isEnabled) private var isEnabled
 
   init(
     isActive: Bool,
@@ -392,7 +309,7 @@ struct WorkspaceToolbarIconButtonStyle: ButtonStyle {
         shape
           .fill(backgroundColor(isPressed: configuration.isPressed))
           .overlay {
-            if prominence == .primaryAction, configuration.isPressed {
+            if prominence == .primaryAction, isEnabled, configuration.isPressed {
               shape.fill(Color.black.opacity(0.12))
             }
           }
@@ -417,6 +334,7 @@ struct WorkspaceToolbarIconButtonStyle: ButtonStyle {
   }
 
   private var foregroundColor: Color {
+    guard isEnabled else { return Color(nsColor: .tertiaryLabelColor) }
     switch prominence {
     case .standard:
       return isActive ? WorkbenchTheme.navigationSelection : Color.secondary
@@ -427,9 +345,10 @@ struct WorkspaceToolbarIconButtonStyle: ButtonStyle {
 
   private func backgroundColor(isPressed: Bool) -> Color {
     if prominence == .primaryAction {
-      // The final publish CTA deliberately uses the system's semantic blue;
-      // it must remain distinct even when a user selects another app accent.
-      return .blue
+      guard isEnabled else { return Color.primary.opacity(0.08) }
+      // Every primary action shares the brand fill; selection keeps following
+      // the user's accent, so the CTA stays distinct from selected controls.
+      return WorkbenchTheme.primaryActionFill
     }
     if isPressed {
       return Color.primary.opacity(0.08)
@@ -608,11 +527,13 @@ struct WorkspaceToolbarLeadingContent: View {
   let store: WorkbenchStore
   @ObservedObject private var shell: WorkbenchShellFeatureFacade
   let isCompact: Bool
+  let openSiteSettings: () -> Void
 
-  init(store: WorkbenchStore, isCompact: Bool) {
+  init(store: WorkbenchStore, isCompact: Bool, openSiteSettings: @escaping () -> Void = {}) {
     self.store = store
     _shell = ObservedObject(wrappedValue: store.shell)
     self.isCompact = isCompact
+    self.openSiteSettings = openSiteSettings
   }
 
   var body: some View {
@@ -628,6 +549,8 @@ struct WorkspaceToolbarLeadingContent: View {
           }
         }
       }
+      Divider()
+      Button(String(localized: "站点设置…"), action: openSiteSettings)
     } label: {
       WorkspaceToolbarMenuLabel(
         title: shell.activeProfile.name,
@@ -931,36 +854,53 @@ struct PublishingStatusToolbarControl: View {
       )
     }
 
-    if !report.remoteChangedFiles.isEmpty {
+    switch WorkspaceTopBarPresentation.repositoryScanStatus(for: report) {
+    case .missingGitDirectory:
       return PublishingStatusPopoverItem(
         area: area,
-        value: String(localized: "远端有 \(report.remoteChangedFiles.count) 项变化"),
+        value: String(localized: "未发现 Git 仓库"),
+        detail: String(localized: "当前目录不是 Git 工作树，diff 和提交入口暂不可用。"),
+        statusImage: "exclamationmark.triangle",
+        color: WorkbenchTheme.warning,
+        severity: .warning
+      )
+    case .blockingIssues(let count):
+      return PublishingStatusPopoverItem(
+        area: area,
+        value: String(localized: "仓库有 \(count) 个阻断项"),
+        detail: String(localized: "请在站点概览中处理仓库问题。"),
+        statusImage: "xmark.octagon",
+        color: WorkbenchTheme.risk,
+        severity: .error
+      )
+    case .remoteChanges(let count):
+      return PublishingStatusPopoverItem(
+        area: area,
+        value: String(localized: "远端有 \(count) 项变化"),
         detail: String(localized: "同步前请审阅远端变更队列。"),
         statusImage: "arrow.down.doc",
         color: WorkbenchTheme.risk,
         severity: .error
       )
-    }
-
-    if !report.changedFiles.isEmpty {
+    case .localChanges(let count):
       return PublishingStatusPopoverItem(
         area: area,
-        value: String(localized: "本地有 \(report.changedFiles.count) 项变化"),
+        value: String(localized: "本地有 \(count) 项变化"),
         detail: String(localized: "发布前请审阅本地差异。"),
         statusImage: "arrow.triangle.2.circlepath",
         color: WorkbenchTheme.warning,
         severity: .warning
       )
+    case .ready:
+      return PublishingStatusPopoverItem(
+        area: area,
+        value: report.syncStatusTitle,
+        detail: report.rootPath,
+        statusImage: "checkmark.circle",
+        color: WorkbenchTheme.success,
+        severity: .ready
+      )
     }
-
-    return PublishingStatusPopoverItem(
-      area: area,
-      value: report.syncStatusTitle,
-      detail: report.rootPath,
-      statusImage: "checkmark.circle",
-      color: WorkbenchTheme.success,
-      severity: .ready
-    )
   }
 
   private var draftStatus: PublishingStatusPopoverItem {

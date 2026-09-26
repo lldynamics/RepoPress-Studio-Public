@@ -2,13 +2,14 @@ import Foundation
 import PublishingDomainContracts
 
 public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
-  public static let defaultProfileID = UUID(uuid: (
-    0xF4, 0x4F, 0x7D, 0xB7,
-    0x8D, 0x6F,
-    0x44, 0xA3,
-    0xA4, 0xF3,
-    0x1D, 0x0C, 0x05, 0x93, 0x1F, 0x31
-  ))
+  public static let defaultProfileID = UUID(
+    uuid: (
+      0xF4, 0x4F, 0x7D, 0xB7,
+      0x8D, 0x6F,
+      0x44, 0xA3,
+      0xA4, 0xF3,
+      0x1D, 0x0C, 0x05, 0x93, 0x1F, 0x31
+    ))
   public static let privateContentRoot = "private"
 
   public var id: UUID
@@ -40,6 +41,8 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
   /// snapshots backward compatible; `nil` preserves the historical enabled
   /// behavior.
   public var automaticallyImportsNewRepositoryArticles: Bool?
+  /// Optional for snapshots created before external Markdown source mapping.
+  public var externalDraftFolder: ExternalDraftFolderMapping?
   /// The reusable AI connection selected by this site. The legacy config is
   /// retained for decoding older workbench files and non-store clients.
   public var aiConnectionProfileID: UUID?
@@ -81,6 +84,7 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     includeCoverInFrontMatter: Bool = true,
     slugValidationRule: SiteSlugValidationRule = .lowercaseKebab,
     automaticallyImportsNewRepositoryArticles: Bool? = true,
+    externalDraftFolder: ExternalDraftFolderMapping? = nil,
     aiConnectionProfileID: UUID? = nil,
     aiProviderConfig: AIProviderConfig = AIProviderConfig(
       advancedSettings: AIProviderAdvancedSettings(
@@ -121,6 +125,7 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     self.includeCoverInFrontMatter = includeCoverInFrontMatter
     self.slugValidationRule = slugValidationRule
     self.automaticallyImportsNewRepositoryArticles = automaticallyImportsNewRepositoryArticles
+    self.externalDraftFolder = externalDraftFolder
     self.aiConnectionProfileID = aiConnectionProfileID
     self.aiProviderConfig = aiProviderConfig
     self.aiWritingStyle = aiWritingStyle
@@ -288,11 +293,60 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
         includeCoverInFrontMatter: true,
         slugValidationRule: .lowercaseKebab
       )
+    case .docusaurus:
+      return SitePublishingDefaults(
+        siteKind: .docusaurus,
+        frontMatterStyle: .yaml,
+        contentRoot: "docs",
+        assetRoot: "static",
+        markdownPathPattern: "docs/{slug}.md",
+        imagePathPattern: "static/images/{year}/{filename}",
+        publicImagePathPattern: "/images/{year}/{filename}",
+        dateFormat: "yyyy-MM-dd",
+        includeDraftFlagInFrontMatter: true,
+        includeCoverInFrontMatter: true,
+        slugValidationRule: .lowercaseKebab
+      )
+    case .mkDocs:
+      return SitePublishingDefaults(
+        siteKind: .mkDocs,
+        frontMatterStyle: .yaml,
+        contentRoot: "docs",
+        assetRoot: "docs",
+        markdownPathPattern: "docs/{slug}.md",
+        imagePathPattern: "docs/images/{year}/{filename}",
+        publicImagePathPattern: "/images/{year}/{filename}",
+        dateFormat: "yyyy-MM-dd",
+        includeDraftFlagInFrontMatter: false,
+        includeCoverInFrontMatter: false,
+        slugValidationRule: .lowercaseKebab
+      )
     }
   }
 
+  /// Starlight is an Astro integration, so it keeps `.astro` as its persisted
+  /// kind while using the integration's documented `src/content/docs` layout.
+  public static var starlightPublishingDefaults: SitePublishingDefaults {
+    SitePublishingDefaults(
+      siteKind: .astro,
+      frontMatterStyle: .yaml,
+      contentRoot: "src/content/docs",
+      assetRoot: "public",
+      markdownPathPattern: "src/content/docs/{slug}.md",
+      imagePathPattern: "public/images/{year}/{filename}",
+      publicImagePathPattern: "/images/{year}/{filename}",
+      dateFormat: "yyyy-MM-dd",
+      includeDraftFlagInFrontMatter: true,
+      includeCoverInFrontMatter: false,
+      slugValidationRule: .lowercaseKebab
+    )
+  }
+
   public mutating func applyPublishingDefaults(for siteKind: SiteKind) {
-    let defaults = Self.defaultPublishingDefaults(for: siteKind)
+    applyPublishingDefaults(Self.defaultPublishingDefaults(for: siteKind))
+  }
+
+  public mutating func applyPublishingDefaults(_ defaults: SitePublishingDefaults) {
     self.siteKind = defaults.siteKind
     frontMatterStyle = defaults.frontMatterStyle
     contentRoot = defaults.contentRoot
@@ -345,16 +399,19 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     }
 
     if let repositoryPath = draft.repositoryPath?.normalizedRelativePath().nilIfEmpty,
-       isPrivateContentPath(repositoryPath) {
+      isPrivateContentPath(repositoryPath)
+    {
       return repositoryPath
     }
 
     let normalizedContentRoot = contentRoot.normalizedRelativePath()
     guard !normalizedContentRoot.isEmpty,
-          publicPath.hasPrefix(normalizedContentRoot + "/") else {
+      publicPath.hasPrefix(normalizedContentRoot + "/")
+    else {
       return Self.privateContentRoot + "/" + publicPath
     }
-    return Self.privateContentRoot + "/" + String(publicPath.dropFirst(normalizedContentRoot.count + 1))
+    return Self.privateContentRoot + "/"
+      + String(publicPath.dropFirst(normalizedContentRoot.count + 1))
   }
 
   public func isPrivateContentPath(_ repositoryPath: String) -> Bool {
@@ -386,12 +443,15 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
   }
 
   private func replacingImageDirectoryWithVideos(in path: String) -> String {
-    var components = path
+    var components =
+      path
       .split(separator: "/", omittingEmptySubsequences: false)
       .map(String.init)
-    guard let imageDirectoryIndex = components.firstIndex(where: {
-      $0.caseInsensitiveCompare("images") == .orderedSame
-    }) else {
+    guard
+      let imageDirectoryIndex = components.firstIndex(where: {
+        $0.caseInsensitiveCompare("images") == .orderedSame
+      })
+    else {
       return path
     }
     components[imageDirectoryIndex] = "videos"
@@ -407,7 +467,8 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     let slug = draft?.slug.nilIfEmpty ?? SlugService.fallbackSlug(date: date)
     let titleSlug = SlugService.slug(from: draft?.title ?? "")
 
-    return pattern
+    return
+      pattern
       .replacingOccurrences(of: "{year}", with: year)
       .replacingOccurrences(of: "{month}", with: month)
       .replacingOccurrences(of: "{day}", with: day)

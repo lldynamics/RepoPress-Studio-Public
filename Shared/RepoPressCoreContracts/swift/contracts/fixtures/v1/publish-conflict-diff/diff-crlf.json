@@ -1,0 +1,36 @@
+{
+  "capability": "publish-conflict-diff",
+  "description": "Freezes CharacterSet.newlines CRLF splitting semantics.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "lines": [
+        {
+          "id": 0,
+          "kind": "same",
+          "marker": " ",
+          "text": "a"
+        },
+        {
+          "id": 1,
+          "kind": "remote",
+          "marker": "-",
+          "text": ""
+        },
+        {
+          "id": 2,
+          "kind": "same",
+          "marker": " ",
+          "text": "b"
+        }
+      ],
+      "strategy": "lcs"
+    }
+  },
+  "id": "diff-crlf",
+  "input": {
+    "local": "a\nb",
+    "remote": "a\r\nb"
+  },
+  "validity": "valid"
+}

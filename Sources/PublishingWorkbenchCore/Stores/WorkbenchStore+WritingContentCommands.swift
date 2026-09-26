@@ -1,4 +1,5 @@
 import Foundation
+import PublishingPreviewCore
 import PublishingDomainContracts
 
 extension WorkbenchStore {
@@ -686,6 +687,13 @@ extension WorkbenchStore {
     }
   }
 
+  @discardableResult
+  public func moveGeneralDrafts(_ draftIDs: [UUID], toFolder name: String?) -> Int {
+    guard canUseProtectedWorkbench else { return 0 }
+    flushDraftBodyEditorBuffers()
+    return publishingStore.moveGeneralDrafts(draftIDs, toFolder: name, store: self)
+  }
+
   /// Applies a draft value originating from a live editor binding.
   ///
   /// Independent windows can retain an older value while another window edits
@@ -713,6 +721,11 @@ extension WorkbenchStore {
     }
     var contentUpdate = draft
     contentUpdate.preserveRepositoryState(from: current)
+    if current.externalDraftSource != nil {
+      // External scans may refresh the body after this editor captured its
+      // metadata value. Body edits travel through the revisioned buffer.
+      contentUpdate.bodyMarkdown = current.bodyMarkdown
+    }
     updateDraft(contentUpdate)
     return true
   }
@@ -720,6 +733,7 @@ extension WorkbenchStore {
   public func deleteSelectedDraft() {
     if let selectedDraftID {
       flushDraftBodyEditorBuffer(for: selectedDraftID)
+      cancelExternalDraftWrite(for: selectedDraftID)
     }
     publishingStore.deleteSelectedDraft(store: self)
     invalidateDraftDerivedCaches()
@@ -727,6 +741,7 @@ extension WorkbenchStore {
 
   public func deleteDraft(id draftID: UUID) {
     flushDraftBodyEditorBuffer(for: draftID)
+    cancelExternalDraftWrite(for: draftID)
     cancelSiteDraftFileAutosave(for: draftID)
     publishingStore.deleteDraft(id: draftID, store: self)
     invalidateDraftDerivedCaches()

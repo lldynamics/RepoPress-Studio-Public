@@ -9,15 +9,10 @@ extension MacMarkdownComposerView {
   ) {
     // The AppKit coordinator can finish a delayed statistics delivery while a
     // different draft is being installed. The representable is draft-keyed,
-    // and this second check keeps that delivery out of both local and toolbar
-    // presentation state if it no longer belongs to the visible draft.
+    // and this second check keeps that delivery out of the status bar state
+    // if it no longer belongs to the visible draft.
     guard draft.id == draftID else { return }
     editorStatisticsState.update(statistics)
-    sceneCommandRouter.updateToolbarEditorContext(
-      owner: sceneCommandOwnerID,
-      draftID: draftID,
-      statistics: statistics
-    )
   }
 
   var commandActions: MarkdownEditorCommandActions {
@@ -46,6 +41,9 @@ extension MacMarkdownComposerView {
       copyAIPrompt: pasteAIPromptToClipboard,
       openExternalBrowserPreview: {
         externalBrowserPreviewCoordinator.openCurrentArticle(for: draft.id)
+      },
+      printDocument: {
+        performMarkdownDocumentExport(.print)
       }
     )
   }

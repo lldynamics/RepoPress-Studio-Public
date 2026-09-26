@@ -56,6 +56,10 @@ struct MacMarkdownExternalBrowserPreviewControl: View {
     .popover(isPresented: $isManagementPopoverPresented, arrowEdge: .top) {
       MacMarkdownLocalPreviewPopover(
         draftID: draftID,
+        currentArticlePath: store.draft(for: draftID).map { draft in
+          draft.repositoryPath?.normalizedRelativePath().nilIfEmpty
+            ?? store.profile(for: draft).markdownPath(for: draft)
+        },
         coordinator: coordinator
       )
     }

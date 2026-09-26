@@ -19,17 +19,17 @@ enum WorkbenchAccentPalette: String, CaseIterable, Identifiable {
     case .system:
       return String(localized: "跟随 macOS")
     case .emerald:
-      return String(localized: "薄荷绿 Emerald")
+      return String(localized: "薄荷绿")
     case .blue:
-      return String(localized: "海湾蓝 Blue")
+      return String(localized: "海湾蓝")
     case .violet:
-      return String(localized: "紫罗兰 Violet")
+      return String(localized: "紫罗兰")
     case .amber:
-      return String(localized: "琥珀黄 Amber")
+      return String(localized: "琥珀黄")
     case .rose:
-      return String(localized: "玫瑰红 Rose")
+      return String(localized: "玫瑰红")
     case .graphite:
-      return String(localized: "石墨灰 Graphite")
+      return String(localized: "石墨灰")
     }
   }
 

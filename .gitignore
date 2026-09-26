@@ -7,6 +7,7 @@
 .swiftpm/
 dist/
 DerivedData/
+.DerivedData/
 node_modules/
 # Local UI audit screenshots and generated evidence.
 audit/

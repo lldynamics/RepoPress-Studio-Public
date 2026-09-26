@@ -1,13 +1,24 @@
 import Foundation
 
 extension WorkbenchStore {
+  private func hasCurrentSiteLinkAuditInputs(
+    drafts: [ArticleDraft],
+    profile: SiteProfile
+  ) -> Bool {
+    guard profiles.contains(profile) else { return false }
+    let currentByID = Dictionary(uniqueKeysWithValues: self.drafts.map { ($0.id, $0) })
+    return drafts.allSatisfy { snapshot in
+      currentByID[snapshot.id]?.hasSamePreflightInput(as: snapshot) == true
+    }
+  }
+
   func siteLinkAuditKey(
     drafts: [ArticleDraft],
     profile: SiteProfile
   ) -> SiteLinkAuditSnapshotKey {
     SiteLinkAuditSnapshotKey(
       profile: profile,
-      draftMutationRevision: draftMutationRevision,
+      inputGeneration: siteLinkAuditSnapshotStore.inputGeneration,
       drafts: drafts,
       bodyRevisions: drafts.map { draft in
         DraftExecutionContext(
@@ -35,6 +46,9 @@ extension WorkbenchStore {
     drafts: [ArticleDraft],
     profile: SiteProfile
   ) -> SiteLinkAuditReport {
+    guard hasCurrentSiteLinkAuditInputs(drafts: drafts, profile: profile) else {
+      return SiteLinkAuditService().report(drafts: drafts, profile: profile)
+    }
     let key = siteLinkAuditKey(drafts: drafts, profile: profile)
     if let cached = siteLinkAuditSnapshotStore.report(for: key) {
       return cached
@@ -55,6 +69,7 @@ extension WorkbenchStore {
     profile: SiteProfile,
     key: SiteLinkAuditSnapshotKey? = nil
   ) {
+    guard hasCurrentSiteLinkAuditInputs(drafts: drafts, profile: profile) else { return }
     let key = key ?? siteLinkAuditKey(drafts: drafts, profile: profile)
     guard siteLinkAuditSnapshotStore.report(for: key) == nil else { return }
     guard siteLinkAuditRefreshKey != key || siteLinkAuditRefreshTask == nil else { return }
@@ -69,7 +84,8 @@ extension WorkbenchStore {
       guard let self,
         !Task.isCancelled,
         self.siteLinkAuditRefreshKey == key,
-        self.siteLinkAuditKey(drafts: drafts, profile: profile) == key
+        self.siteLinkAuditKey(drafts: drafts, profile: profile) == key,
+        self.hasCurrentSiteLinkAuditInputs(drafts: drafts, profile: profile)
       else {
         return report
       }
@@ -88,6 +104,9 @@ extension WorkbenchStore {
     drafts: [ArticleDraft],
     profile: SiteProfile
   ) async throws -> SiteLinkAuditReport {
+    guard hasCurrentSiteLinkAuditInputs(drafts: drafts, profile: profile) else {
+      throw CancellationError()
+    }
     let key = siteLinkAuditKey(drafts: drafts, profile: profile)
     if let cached = siteLinkAuditSnapshotStore.report(for: key) {
       return cached
@@ -108,6 +127,9 @@ extension WorkbenchStore {
     // consumer is still awaiting.
     let report = await task.value
     try Task.checkCancellation()
+    guard hasCurrentSiteLinkAuditInputs(drafts: drafts, profile: profile) else {
+      throw CancellationError()
+    }
     if let cached = siteLinkAuditSnapshotStore.report(for: key) {
       return cached
     }
@@ -120,7 +142,9 @@ extension WorkbenchStore {
     drafts: [ArticleDraft],
     profile: SiteProfile
   ) {
-    guard siteLinkAuditKey(drafts: drafts, profile: profile) == key else { return }
+    guard siteLinkAuditKey(drafts: drafts, profile: profile) == key,
+      hasCurrentSiteLinkAuditInputs(drafts: drafts, profile: profile)
+    else { return }
     siteLinkAuditSnapshotStore.replace(report, for: key)
   }
 

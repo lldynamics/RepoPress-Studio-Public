@@ -1,0 +1,39 @@
+{
+  "capability": "front-matter-document",
+  "description": "Renders TOML inline taxonomies and a direct cover field.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "text": "+++\ntitle = \"TOML inline\"\ndate = 2026-03-04\nslug = \"toml-inline\"\ndraft = true\nsummary = \"Inline\"\nauthors = [\"author\"]\ncover = \"/images/cover.jpg\"\ntaxonomies = { tags = [\"swift\", \"ios\"], categories = [\"guide\"] }\n+++"
+    }
+  },
+  "id": "front-toml-inline-render",
+  "input": {
+    "document": {
+      "authors": [
+        "author"
+      ],
+      "bodyMarkdown": "Body",
+      "categories": [
+        "guide"
+      ],
+      "coverField": "cover",
+      "coverPath": "/images/cover.jpg",
+      "draftFlag": true,
+      "formattedDate": "2026-03-04",
+      "slug": "toml-inline",
+      "summary": "Inline",
+      "summaryField": "summary",
+      "syntax": "toml",
+      "tags": [
+        "swift",
+        "ios"
+      ],
+      "taxonomyLayout": "inlineTable",
+      "title": "TOML inline",
+      "writesCoverInExtraTable": false
+    },
+    "operation": "render"
+  },
+  "validity": "valid"
+}

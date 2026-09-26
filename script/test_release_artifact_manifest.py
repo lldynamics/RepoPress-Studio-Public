@@ -22,12 +22,20 @@ class ReleaseArtifactManifestTests(unittest.TestCase):
 
         (self.root / "Sources" / "App").mkdir(parents=True)
         (self.root / "Packaging").mkdir()
+        (self.root / "ShareExtension").mkdir()
+        (self.root / "ShortcutExtension").mkdir()
+        self.shared_package = self.root / "Shared" / "RepoPressCoreContracts" / "swift"
+        (self.shared_package / "Sources" / "RepoPressCore").mkdir(parents=True)
+        (self.shared_package / "Package.swift").write_text("// shared package\n")
+        (self.shared_package / "Sources" / "RepoPressCore" / "Contract.swift").write_text("// shared source\n")
         (self.root / "script").mkdir()
         (self.bundle / "Contents" / "MacOS").mkdir(parents=True)
         (self.root / "Package.swift").write_text("// swift-tools-version: 6.0\n")
         (self.root / "Package.resolved").write_text("{}\n")
         (self.root / "Sources" / "App" / "main.swift").write_text("print(\"ok\")\n")
         (self.root / "Packaging" / "BuildVersion.xcconfig").write_text("MARKETING_VERSION = 1\n")
+        (self.root / "ShareExtension" / "Info.plist").write_text("share\n")
+        (self.root / "ShortcutExtension" / "Info.plist").write_text("shortcuts\n")
         (self.root / "script" / "build_and_run.sh").write_text("#!/usr/bin/env bash\n")
         (self.bundle / "Contents" / "Info.plist").write_text("plist\n")
         self.executable.write_text("binary\n")
@@ -86,6 +94,30 @@ class ReleaseArtifactManifestTests(unittest.TestCase):
 
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("artifact content digest changed", completed.stderr)
+
+    def test_shared_package_changes_invalidate_manifest(self) -> None:
+        for relative in ("Package.swift", "Sources/RepoPressCore/Contract.swift"):
+            with self.subTest(relative=relative):
+                path = self.shared_package / relative
+                original = path.read_text()
+                path.write_text(original + "// changed shared input\n")
+                completed = self.run_manifest("validate")
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertIn("build inputs changed", completed.stderr)
+                path.write_text(original)
+
+    def test_missing_shared_package_manifest_rejects_artifact(self) -> None:
+        (self.shared_package / "Package.swift").unlink()
+        completed = self.run_manifest("validate")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("build input is missing: Shared/RepoPressCoreContracts/swift/Package.swift", completed.stderr)
+
+    def test_shared_package_build_cache_does_not_invalidate_manifest(self) -> None:
+        cache = self.shared_package / ".build"
+        cache.mkdir()
+        (cache / "generated-object.o").write_text("generated cache\n")
+        completed = self.run_manifest("validate")
+        self.assertEqual(completed.returncode, 0, completed.stderr)
 
 
 if __name__ == "__main__":

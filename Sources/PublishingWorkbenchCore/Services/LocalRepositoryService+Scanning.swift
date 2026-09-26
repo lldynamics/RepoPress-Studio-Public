@@ -229,6 +229,21 @@ extension LocalRepositoryService {
     }
 
     if [
+      "docusaurus.config.js", "docusaurus.config.ts", "docusaurus.config.mjs",
+      "docusaurus.config.cjs",
+    ].contains(where: { fileExists(rootURL.appendingPathComponent($0)) })
+      || isDocusaurusPackage(rootURL: rootURL)
+    {
+      return (.docusaurus, ["docusaurus.config.* / @docusaurus/*"])
+    }
+
+    if fileExists(rootURL.appendingPathComponent("mkdocs.yml"))
+      || fileExists(rootURL.appendingPathComponent("mkdocs.yaml"))
+    {
+      return (.mkDocs, ["mkdocs.yml / mkdocs.yaml"])
+    }
+
+    if [
       "contentlayer.config.ts",
       "contentlayer.config.js",
       "contentlayer.config.mjs",
@@ -323,7 +338,9 @@ extension LocalRepositoryService {
     let candidates: [String]
     switch siteKind {
     case .astro:
-      candidates = ["src/content/blog", "src/content/posts", "src/content"]
+      candidates = ["src/content/blog", "src/content/docs", "src/content/posts", "src/content"]
+    case .docusaurus, .mkDocs:
+      candidates = ["docs"]
     case .hugo, .zola:
       candidates = ["content/posts", "content/post", "content/blog", "content/articles", "content"]
     case .hexo:
@@ -353,6 +370,10 @@ extension LocalRepositoryService {
       candidates = ["source", "source/images"]
     case .jekyll:
       candidates = ["assets", "images"]
+    case .docusaurus:
+      candidates = ["static", "assets"]
+    case .mkDocs:
+      candidates = ["docs", "assets"]
     default:
       candidates = [defaultAssetRoot]
     }
@@ -465,6 +486,25 @@ extension LocalRepositoryService {
     }
   }
 
+  func isDocusaurusPackage(rootURL: URL) -> Bool {
+    guard
+      let contents = boundedTextContents(
+        of: rootURL.appendingPathComponent("package.json", isDirectory: false)
+      ), let data = contents.data(using: .utf8),
+      let manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else {
+      return false
+    }
+
+    for sectionName in ["dependencies", "devDependencies"] {
+      guard let dependencies = manifest[sectionName] as? [String: Any] else { continue }
+      if dependencies.keys.contains(where: { $0.lowercased().hasPrefix("@docusaurus/") }) {
+        return true
+      }
+    }
+    return false
+  }
+
   func markdownFiles(in rootURL: URL, maximumFiles: Int = 3, maximumEntries: Int = 96) -> [URL] {
     guard directoryExists(rootURL), maximumFiles > 0, maximumEntries > 0 else {
       return []
@@ -545,7 +585,7 @@ extension LocalRepositoryService {
         return defaultPattern
       }
       return "\(normalizedRoot)/{year}/{slug}.\(extensionName)"
-    case .hugo, .astro, .hexo:
+    case .hugo, .astro, .hexo, .docusaurus, .mkDocs:
       return "\(normalizedRoot)/{slug}.\(extensionName)"
     case .jekyll:
       return "\(normalizedRoot)/{year}-{month}-{day}-{slug}.\(extensionName)"

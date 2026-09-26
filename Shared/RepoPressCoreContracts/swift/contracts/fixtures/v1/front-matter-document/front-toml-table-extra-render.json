@@ -1,0 +1,32 @@
+{
+  "capability": "front-matter-document",
+  "description": "Renders table taxonomies and moves the cover into TOML extra.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "text": "+++\ntitle = \"TOML table\"\ndate = 2026-03-05\n[taxonomies]\ntags = [\"one\"]\ncategories = [\"two\"]\n[extra]\nog_preview_img = \"/images/cover.jpg\"\n+++"
+    }
+  },
+  "id": "front-toml-table-extra-render",
+  "input": {
+    "document": {
+      "authors": [],
+      "bodyMarkdown": "Body",
+      "categories": [
+        "two"
+      ],
+      "coverField": "cover",
+      "coverPath": "/images/cover.jpg",
+      "formattedDate": "2026-03-05",
+      "syntax": "toml",
+      "tags": [
+        "one"
+      ],
+      "taxonomyLayout": "table",
+      "title": "TOML table",
+      "writesCoverInExtraTable": true
+    },
+    "operation": "render"
+  },
+  "validity": "valid"
+}

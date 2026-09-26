@@ -27,6 +27,9 @@ DEFAULT_TARGETS = (
     "PublishingGitCore",
     "PublishingAICore",
     "PublishingKnowledgeCore",
+    "PublishingPreviewCore",
+    "PublishingBackupCore",
+    "PublishingSyncCore",
     "PublishingWorkbenchCore",
 )
 DEFAULT_SCENARIOS = ("cold", "warm")

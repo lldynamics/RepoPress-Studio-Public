@@ -5,6 +5,7 @@ import PublishingMarkdownCore
 struct MarkdownTextViewSyntaxPalette {
   let fontSize: Double
   let lineSpacing: Double
+  let bodyFontStyle: MarkdownEditorBodyFontStyle
   let baseFont: NSFont
   let defaultAttributes: [NSAttributedString.Key: Any]
   let styleAttributes: [MarkdownSyntaxHighlightStyle: [NSAttributedString.Key: Any]]
@@ -15,17 +16,14 @@ struct MarkdownTextViewSyntaxPalette {
   init(configuration: MarkdownEditorComfortConfiguration) {
     fontSize = configuration.fontSize
     lineSpacing = configuration.lineSpacing
-    let baseFont = NSFont.monospacedSystemFont(
-      ofSize: CGFloat(configuration.fontSize),
-      weight: .regular
+    bodyFontStyle = configuration.bodyFontStyle
+    let size = CGFloat(configuration.fontSize)
+    let baseFont = Self.bodyFont(
+      style: configuration.bodyFontStyle, size: size, weight: .regular
     )
-    let codeFont = NSFont.monospacedSystemFont(
-      ofSize: CGFloat(configuration.fontSize),
-      weight: .medium
-    )
-    let emphasizedFont = NSFont.monospacedSystemFont(
-      ofSize: CGFloat(configuration.fontSize),
-      weight: .semibold
+    let codeFont = NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+    let emphasizedFont = Self.bodyFont(
+      style: configuration.bodyFontStyle, size: size, weight: .semibold
     )
     let paragraphStyle = NSMutableParagraphStyle()
     paragraphStyle.lineSpacing = CGFloat(configuration.lineSpacing)
@@ -87,19 +85,22 @@ struct MarkdownTextViewSyntaxPalette {
       .codeBlock: [
         .font: codeFont,
         .foregroundColor: NSColor.labelColor,
-        .backgroundColor: NSColor.textBackgroundColor.withAlphaComponent(0.18),
+        // A translucent label tint stays visible on both the white and the
+        // warm-paper surfaces; textBackgroundColor matched the editor itself.
+        .backgroundColor: NSColor.labelColor.withAlphaComponent(0.06),
       ],
       .link: [
         .foregroundColor: NSColor.linkColor,
         .underlineStyle: NSUnderlineStyle.single.rawValue,
         .underlineColor: NSColor.linkColor,
       ],
-      .list: [
-        .foregroundColor: WorkbenchThemeNSColor.success
-      ],
+      // List item text keeps the body color; only the drawn bullet/ordinal is
+      // tinted. Status colors (success/warning) are reserved for status.
+      .list: [:],
       .quote: [
+        // The drawn leading bar identifies quotes; a text-background fill was
+        // indistinguishable from the editor surface.
         .foregroundColor: NSColor.secondaryLabelColor,
-        .backgroundColor: NSColor.textBackgroundColor.withAlphaComponent(0.08),
       ],
       // Font traits are composed by MarkdownTextViewSemanticAttributeApplier
       // so nested emphasis preserves heading and code font sizes.
@@ -111,7 +112,8 @@ struct MarkdownTextViewSyntaxPalette {
       ],
       .inlineCode: [
         .font: codeFont,
-        .foregroundColor: WorkbenchThemeNSColor.warning,
+        .foregroundColor: NSColor.labelColor,
+        .backgroundColor: NSColor.labelColor.withAlphaComponent(0.07),
       ],
       .html: [
         .font: codeFont,
@@ -122,5 +124,30 @@ struct MarkdownTextViewSyntaxPalette {
 
   func matches(_ configuration: MarkdownEditorComfortConfiguration) -> Bool {
     fontSize == configuration.fontSize && lineSpacing == configuration.lineSpacing
+      && bodyFontStyle == configuration.bodyFontStyle
+  }
+
+  static func bodyFont(
+    style: MarkdownEditorBodyFontStyle,
+    size: CGFloat,
+    weight: NSFont.Weight
+  ) -> NSFont {
+    switch style {
+    case .monospaced:
+      return NSFont.monospacedSystemFont(ofSize: size, weight: weight)
+    case .proportional:
+      return NSFont.systemFont(ofSize: size, weight: weight)
+    case .serif:
+      let system = NSFont.systemFont(ofSize: size, weight: weight)
+      guard let serifDescriptor = system.fontDescriptor.withDesign(.serif) else {
+        return system
+      }
+      // New York has no CJK glyphs; cascade to Songti so Chinese prose keeps a
+      // matching serif instead of falling back to the sans-serif PingFang.
+      let cascaded = serifDescriptor.addingAttributes([
+        .cascadeList: [NSFontDescriptor(name: "Songti SC", size: size)]
+      ])
+      return NSFont(descriptor: cascaded, size: size) ?? system
+    }
   }
 }

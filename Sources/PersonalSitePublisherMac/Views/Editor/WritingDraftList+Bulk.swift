@@ -22,6 +22,16 @@ extension WritingDraftColumn {
       .controlSize(.small)
       .help(String(localized: "批量移动、复制或转为通用草稿"))
 
+      if store.draftListContentScope == .general {
+        Menu {
+          generalDraftFolderMenu(for: Array(selectedDraftIDs))
+        } label: {
+          Label("移动到文件夹", systemImage: "folder")
+        }
+        .controlSize(.small)
+        .disabled(!store.canUseProtectedWorkbench)
+      }
+
       Button {
         isMetadataBatchMaintenancePresented = true
       } label: {

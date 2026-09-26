@@ -7,6 +7,8 @@ import SwiftUI
 /// persisted values; it does not introduce a second editor configuration
 /// source.
 struct EditorSettingsView: View {
+  @AppStorage(MarkdownEditorComfortPreferences.bodyFontStyleKey)
+  private var bodyFontStyleRawValue = MarkdownEditorBodyFontStyle.defaultStyle.rawValue
   @AppStorage(MarkdownEditorComfortPreferences.fontSizeKey)
   private var fontSize = MarkdownEditorComfortConfiguration.defaultFontSize
   @AppStorage(MarkdownEditorComfortPreferences.lineSpacingKey)
@@ -62,6 +64,15 @@ struct EditorSettingsView: View {
 
   private var typographySection: some View {
     Section {
+      Picker("正文字体", selection: $bodyFontStyleRawValue) {
+        ForEach(MarkdownEditorBodyFontStyle.allCases) { style in
+          Text(style.title).tag(style.rawValue)
+        }
+      }
+      .pickerStyle(.segmented)
+      .help("代码与代码块始终使用等宽字体。")
+      .accessibilityIdentifier("editor-body-font-style")
+
       preferenceSlider(
         title: "字号",
         value: $fontSize,
@@ -242,6 +253,7 @@ struct EditorSettingsView: View {
 
       Text("清晰的排版如同清晨微风，使阅读与创作自然流淌。当字号与行距恰到好处时，文字便拥有了呼吸的节奏。")
         .font(previewBodyFont)
+        .fontDesign(previewBodyFontDesign)
         .lineSpacing(CGFloat(lineSpacing))
         .foregroundStyle(.primary)
         .opacity(isParagraphSpotlightEnabled ? 0.45 : 1.0)
@@ -256,6 +268,7 @@ struct EditorSettingsView: View {
 
         Text("段落聚光灯与当前段落高亮能够帮助创作者排除视觉杂音，将心流完全凝聚在当下的字里行间。")
           .font(previewBodyFont)
+          .fontDesign(previewBodyFontDesign)
           .lineSpacing(CGFloat(lineSpacing))
           .foregroundStyle(.primary)
       }
@@ -300,6 +313,10 @@ struct EditorSettingsView: View {
     }
   }
 
+  private var previewBodyFontDesign: Font.Design {
+    MarkdownEditorBodyFontStyle.resolved(rawValue: bodyFontStyleRawValue).previewDesign
+  }
+
   private var previewBodyFont: Font {
     switch boundedPreviewFontSize {
     case ..<14:
@@ -342,6 +359,7 @@ struct EditorSettingsView: View {
   }
 
   private func resetDefaults() {
+    bodyFontStyleRawValue = MarkdownEditorBodyFontStyle.defaultStyle.rawValue
     fontSize = MarkdownEditorComfortConfiguration.defaultFontSize
     lineSpacing = MarkdownEditorComfortConfiguration.defaultLineSpacing
     bodyWidth = MarkdownEditorComfortConfiguration.defaultBodyWidth

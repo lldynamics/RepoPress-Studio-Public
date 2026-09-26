@@ -1,4 +1,5 @@
 import Foundation
+import PublishingSyncCore
 
 extension RepositoryStore {
   public func prepareRepositoryRebaseSync(

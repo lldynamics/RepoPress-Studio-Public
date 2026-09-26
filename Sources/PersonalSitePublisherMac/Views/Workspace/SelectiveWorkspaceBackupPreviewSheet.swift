@@ -1,4 +1,5 @@
 import AppKit
+import PublishingBackupCore
 import PublishingWorkbenchCore
 import SwiftUI
 

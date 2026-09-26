@@ -1,6 +1,5 @@
 import Foundation
 import PublishingKnowledgeCore
-import PublishingWorkbenchCore
 
 /// UserDefaults keys shared by the RSS settings page, reader workspace, and
 /// launch coordinator. Article-level switches remain transient view state;

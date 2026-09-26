@@ -35,6 +35,11 @@ public enum WorkbenchLayoutMode {
     return width >= minimumCompactInspectorWorkspaceWidth
   }
 
+  /// Without the Inspector, the sidebar may claim at most this share of the
+  /// workspace, so a narrow window gives its width to the editor instead of
+  /// keeping a fixed 300 pt.
+  public static let sidebarMaximumWorkspaceFraction: CGFloat = 0.26
+
   public static func sidebarWidth(
     storedWidth: CGFloat,
     workspaceWidth: CGFloat,
@@ -44,10 +49,12 @@ public enum WorkbenchLayoutMode {
     maximumWidth: CGFloat = 380,
     inspectorMinimumWidth: CGFloat = 320
   ) -> CGFloat {
+    // With the Inspector open, the center and Inspector minimums already bound
+    // the sidebar; the proportional cap only applies to the two-column layout.
     let availableMaximum =
       inspectorPresented
       ? workspaceWidth - centerMinimumWidth - inspectorMinimumWidth
-      : maximumWidth
+      : min(maximumWidth, workspaceWidth * sidebarMaximumWorkspaceFraction)
     let responsiveMaximum = max(minimumWidth, min(maximumWidth, availableMaximum))
     return min(max(storedWidth, minimumWidth), responsiveMaximum)
   }

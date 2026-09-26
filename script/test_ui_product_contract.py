@@ -104,9 +104,9 @@ class UIProductContractTests(unittest.TestCase):
         self.assertIn("public enum WorkspaceSection", core_models)
         self.assertIn(
             "static let primaryRows: [[WorkspaceSection]] = [\n"
-            "    [.rss, .library],\n"
-            "    [.sync, .contentHealth],\n"
-            "    [.writing],\n"
+            "    [.writing, .library],\n"
+            "    [.rss, .sync],\n"
+            "    [.contentHealth],\n"
             "  ]",
             descriptor,
         )
@@ -181,8 +181,36 @@ class UIProductContractTests(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
             overview.write_text(original)
             history = views / "Publishing/ReleaseHistoryDetailView.swift"
-            history.write_text(history.read_text() + '\n// DisclosureGroup regression fixture\n')
-            self.assertNotEqual(run_gate().returncode, 0, "Release history visibility must remain enforced")
+            original_history = history.read_text()
+            self.assertIn("releaseActionCommandDisclosure(item)", original_history)
+            self.assertIn("DisclosureGroup(", original_history)
+            self.assertIn('@State private var expandedCommandActionIDs: Set<String> = []', original_history)
+            self.assertIn('.accessibilityIdentifier("release-action-\\(item.id)-advanced-commands")', original_history)
+            for label, mutation in {
+                "missing command disclosure": original_history.replace("DisclosureGroup(", "VStack(", 1),
+                "missing command accessibility identity": original_history.replace(
+                    '.accessibilityIdentifier("release-action-\\(item.id)-advanced-commands")', "", 1
+                ),
+                "hidden main record actions": original_history.replace("releaseActionButtons(item, entry: entry)", "", 1),
+                "folded main record row": original_history.replace(
+                    "private func releaseActionRow(_ item: ReleaseLedgerActionItem) -> some View {\n    VStack(",
+                    "private func releaseActionRow(_ item: ReleaseLedgerActionItem) -> some View {\n    DisclosureGroup {\n      VStack(",
+                    1,
+                ),
+            }.items():
+                with self.subTest(label=label):
+                    history.write_text(mutation)
+                    self.assertNotEqual(run_gate().returncode, 0, label)
+            history.write_text(original_history)
+
+            state = views / "Shared/WorkbenchStateView.swift"
+            original_state = state.read_text()
+            self.assertIn(".frame(minHeight: 120)", original_state)
+            compact = original_state.split("case .compactPane:", 1)[1].split("case .inline:", 1)[0]
+            self.assertNotIn("maxHeight:", compact)
+            state.write_text(original_state.replace(".frame(minHeight: 120)", ".frame(minHeight: 120, maxHeight: 140)", 1))
+            self.assertNotEqual(run_gate().returncode, 0, "compact pane maximum height must be rejected")
+            state.write_text(original_state)
 
 
 if __name__ == "__main__":

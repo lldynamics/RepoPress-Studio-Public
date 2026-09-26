@@ -1,12 +1,16 @@
 import Foundation
 import XCTest
+
 @testable import PublishingKnowledgeCore
 
 final class RPNoteCloudSyncEngineTests: XCTestCase {
   func testAccountSwitchIsDetectedAndDoesNotReuseBoundState() {
-    let old = RPNoteCloudPersistentState(engineState: Data([1, 2]), boundAccountID: "old-account", initialFetchComplete: true)
+    let old = RPNoteCloudPersistentState(
+      engineState: Data([1, 2]), boundAccountID: "old-account", initialFetchComplete: true)
     XCTAssertTrue(RPNoteCloudBootstrapPolicy.accountChanged("new-account", saved: old))
-    XCTAssertFalse(RPNoteCloudBootstrapPolicy.maySeedLocalChanges(RPNoteCloudBootstrapPolicy.lockSeedUntilFetch(old)))
+    XCTAssertFalse(
+      RPNoteCloudBootstrapPolicy.maySeedLocalChanges(
+        RPNoteCloudBootstrapPolicy.lockSeedUntilFetch(old)))
 
     let confirmed = RPNoteCloudBootstrapPolicy.stateForConfirmedAccountChange("new-account")
     XCTAssertEqual(confirmed.boundAccountID, "new-account")
@@ -22,7 +26,8 @@ final class RPNoteCloudSyncEngineTests: XCTestCase {
   }
 
   func testInvalidSerializationResetsTokenAndFetchGate() {
-    let invalid = RPNoteCloudPersistentState(engineState: Data([0xff]), boundAccountID: "account", initialFetchComplete: true)
+    let invalid = RPNoteCloudPersistentState(
+      engineState: Data([0xff]), boundAccountID: "account", initialFetchComplete: true)
     let reset = RPNoteCloudBootstrapPolicy.resetAfterInvalidEngineState(invalid)
     XCTAssertNil(reset.engineState)
     XCTAssertFalse(reset.initialFetchComplete)
@@ -39,7 +44,8 @@ final class RPNoteCloudSyncEngineTests: XCTestCase {
   }
 
   func testDeletedRemoteZoneRequiresExplicitRecoveryBeforeRebinding() {
-    let state = RPNoteCloudPersistentState(engineState: Data([1]), boundAccountID: "account", initialFetchComplete: true)
+    let state = RPNoteCloudPersistentState(
+      engineState: Data([1]), boundAccountID: "account", initialFetchComplete: true)
     let blocked = RPNoteCloudBootstrapPolicy.requireZoneRecovery(state)
     XCTAssertTrue(blocked.zoneRecoveryRequired)
     XCTAssertFalse(blocked.initialFetchComplete)
@@ -52,20 +58,34 @@ final class RPNoteCloudSyncEngineTests: XCTestCase {
 
   func testSeedWaitsForSuccessfulCompleteZoneFetchAndAppliedRecords() {
     let pending = RPNoteCloudBootstrapPolicy.lockSeedUntilFetch(
-      RPNoteCloudPersistentState(engineState: Data([9]), boundAccountID: "account", initialFetchComplete: true)
+      RPNoteCloudPersistentState(
+        engineState: Data([9]), boundAccountID: "account", initialFetchComplete: true)
     )
     XCTAssertFalse(RPNoteCloudBootstrapPolicy.maySeedLocalChanges(pending))
-    XCTAssertFalse(RPNoteCloudBootstrapPolicy.mayCommitFetch(completed: false, zoneFetchSucceeded: true, allRemoteChangesApplied: true))
-    XCTAssertFalse(RPNoteCloudBootstrapPolicy.mayCommitFetch(completed: true, zoneFetchSucceeded: false, allRemoteChangesApplied: true))
-    XCTAssertFalse(RPNoteCloudBootstrapPolicy.mayCommitFetch(completed: true, zoneFetchSucceeded: true, allRemoteChangesApplied: false))
-    XCTAssertTrue(RPNoteCloudBootstrapPolicy.mayCommitFetch(completed: true, zoneFetchSucceeded: true, allRemoteChangesApplied: true))
-    let completed = RPNoteCloudPersistentState(engineState: Data([9]), boundAccountID: "account", initialFetchComplete: true)
+    XCTAssertFalse(
+      RPNoteCloudBootstrapPolicy.mayCommitFetch(
+        completed: false, zoneFetchSucceeded: true, allRemoteChangesApplied: true))
+    XCTAssertFalse(
+      RPNoteCloudBootstrapPolicy.mayCommitFetch(
+        completed: true, zoneFetchSucceeded: false, allRemoteChangesApplied: true))
+    XCTAssertFalse(
+      RPNoteCloudBootstrapPolicy.mayCommitFetch(
+        completed: true, zoneFetchSucceeded: true, allRemoteChangesApplied: false))
+    XCTAssertTrue(
+      RPNoteCloudBootstrapPolicy.mayCommitFetch(
+        completed: true, zoneFetchSucceeded: true, allRemoteChangesApplied: true))
+    let completed = RPNoteCloudPersistentState(
+      engineState: Data([9]), boundAccountID: "account", initialFetchComplete: true)
     XCTAssertTrue(RPNoteCloudBootstrapPolicy.maySeedLocalChanges(completed))
   }
 
   func testZoneNotFoundBeforeZoneWasEstablishedRetriesZoneCreation() {
-    XCTAssertFalse(RPNoteCloudBootstrapPolicy.missingZoneRequiresRecovery(RPNoteCloudPersistentState(boundAccountID: "account")))
-    XCTAssertTrue(RPNoteCloudBootstrapPolicy.missingZoneRequiresRecovery(RPNoteCloudPersistentState(boundAccountID: "account", zoneEstablished: true)))
+    XCTAssertFalse(
+      RPNoteCloudBootstrapPolicy.missingZoneRequiresRecovery(
+        RPNoteCloudPersistentState(boundAccountID: "account")))
+    XCTAssertTrue(
+      RPNoteCloudBootstrapPolicy.missingZoneRequiresRecovery(
+        RPNoteCloudPersistentState(boundAccountID: "account", zoneEstablished: true)))
   }
 
   func testMissingCloudKitEntitlementFailsStartWithoutConstructingContainer() async {
@@ -79,33 +99,39 @@ final class RPNoteCloudSyncEngineTests: XCTestCase {
       try await engine.start()
       XCTFail("Expected missing CloudKit entitlement to fail before container creation.")
     } catch {
-      guard case let .failed(message) = await engine.currentStatus() else {
+      guard case .failed(let message) = await engine.currentStatus() else {
         return XCTFail("Expected a visible failed status.")
       }
       XCTAssertTrue(message.contains("签名未包含"))
     }
 
     var constructed = false
-    XCTAssertThrowsError(try RPNoteCloudSyncEngine.makeCloudContainerIfAuthorized(false, create: {
-      constructed = true
-      return 1
-    }))
+    XCTAssertThrowsError(
+      try RPNoteCloudSyncEngine.makeCloudContainerIfAuthorized(
+        false,
+        create: {
+          constructed = true
+          return 1
+        }))
     XCTAssertFalse(constructed)
   }
 
   func testCloudKitEntitlementPreflightRequiresContainerAndCloudKitService() {
-    XCTAssertTrue(RPNoteCloudSyncEngine.hasRequiredCloudKitEntitlements(
-      containerIdentifiers: [RPNoteCloudSyncEngine.containerIdentifier],
-      services: ["CloudKit"]
-    ))
-    XCTAssertFalse(RPNoteCloudSyncEngine.hasRequiredCloudKitEntitlements(
-      containerIdentifiers: ["iCloud.example.other"],
-      services: ["CloudKit"]
-    ))
-    XCTAssertFalse(RPNoteCloudSyncEngine.hasRequiredCloudKitEntitlements(
-      containerIdentifiers: [RPNoteCloudSyncEngine.containerIdentifier],
-      services: ["CloudDocuments"]
-    ))
+    XCTAssertTrue(
+      RPNoteCloudSyncEngine.hasRequiredCloudKitEntitlements(
+        containerIdentifiers: [RPNoteCloudSyncEngine.containerIdentifier],
+        services: ["CloudKit"]
+      ))
+    XCTAssertFalse(
+      RPNoteCloudSyncEngine.hasRequiredCloudKitEntitlements(
+        containerIdentifiers: ["iCloud.example.other"],
+        services: ["CloudKit"]
+      ))
+    XCTAssertFalse(
+      RPNoteCloudSyncEngine.hasRequiredCloudKitEntitlements(
+        containerIdentifiers: [RPNoteCloudSyncEngine.containerIdentifier],
+        services: ["CloudDocuments"]
+      ))
   }
 }
 
@@ -115,7 +141,11 @@ private actor EmptyCloudAdapter: RPNoteCloudSyncLocalAdapter {
   func loadPersistentState() async throws -> RPNoteCloudPersistentState { state }
   func savePersistentState(_ state: RPNoteCloudPersistentState) async throws { self.state = state }
   func localChanges() async throws -> [RPNoteCloudLocalChange] { [] }
-  func applyRemote(_ change: RPNoteCloudRemoteChange) async throws -> RPNoteCloudApplyResult { .applied }
+  func applyRemote(_ change: RPNoteCloudRemoteChange) async throws -> RPNoteCloudApplyResult {
+    .applied
+  }
+  func prepareForSend(_ change: RPNoteCloudLocalChange) async {}
+  func abandonPreparedSend(id: UUID, revision: String) async {}
   func markSent(id: UUID, revision: String, systemFields: Data) async throws {}
   func clearSystemFields(id: UUID, revision: String?) async throws {}
   func prepareAccountChange() async throws {}

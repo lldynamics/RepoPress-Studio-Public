@@ -8,6 +8,7 @@
 | --- | --- |
 | 实际 target、产品、内部依赖和外部 package | [Package.swift](../Package.swift)；外部版本由 [Package.resolved](../Package.resolved) 锁定 |
 | 允许的生产/测试依赖、外部产品与模块映射、兼容导出 | [边界检查器](../script/check_swift_module_boundaries.py)中的策略常量；与实际声明精确比较 |
+| 跨端共享 Swift 包的唯一源码、测试和固定样例 | [Shared/RepoPressCoreContracts/swift](../Shared/RepoPressCoreContracts/swift)；[source-lock.json](../Shared/RepoPressCoreContracts/swift/source-lock.json)与[verify-source.py](../Shared/RepoPressCoreContracts/swift/verify-source.py)核对摘要 |
 | Workbench 兼容导入数量上限 | [quality_baselines.json](../script/quality_baselines.json)的 `swiftModuleBoundaryMaximums`；不得为了通过检查而抬高 |
 | 检查调用、输入和证据 | [release_checks.json](../script/release_checks.json)中的 `swift-module-boundaries` 与 `swift-module-boundaries-tests` |
 
@@ -17,20 +18,26 @@
 python3 script/check_swift_module_boundaries.py --describe-policy
 ```
 
-输出中的 `productionDependencies` / `testDependencies` 是精确内部依赖集合；未列出的边不允许引入，删除已列出的边也要同步审查策略。`externalProductDependencies` 指定每个 target 允许依赖的产品及 package，`externalProductModules` 说明产品提供的导入模块。产品名不一定等于模块名，例如同一个 Markdown parser 产品还提供 inline parser 模块。
+输出中的 `productionDependencies` / `testDependencies` 是精确内部依赖集合；未列出的边不允许引入，删除已列出的边也要同步审查策略。`externalProductDependencies` 指定每个 target 允许依赖的产品及 package，`externalProductModules` 说明产品提供的导入模块。产品名不一定等于模块名，例如同一个 Markdown parser 产品还提供 inline parser 模块。当前 macOS 包通过本地 `RepoPressShared` 依赖引入 `RepoPressCore`（给 `PublishingCoreSupport` 的凭据安全重定向策略）和 `RepoPressAppleSupport`（给 `PublishingKnowledgeCore` 的笔记交换与同步格式）；这两条边必须保持直接、精确的声明。
 
 ## 模块职责与方向
 
 | 层次 | 职责和方向 |
 | --- | --- |
+| `RepoPressCore`、`RepoPressAppleSupport` | 共享快照中的纯值逻辑与 Apple 格式支持；前者保持 Foundation-only，后者承载 CryptoKit 笔记格式，不拥有任一 app 的持久化、UI 或网络会话 |
 | `PublishingCoreSupport`、`PublishingDomainContracts` | 通用基础设施、跨域值契约；不依赖业务或工作台 target |
 | `PublishingMarkdownCore`、`PublishingGitCore`、`PublishingAICore` | 各自领域能力；仅使用策略列出的底层依赖，不反向依赖 Workbench 或 App |
 | `PublishingKnowledgeCore`、`PublishingAgentContracts` | 组合所需的领域能力或契约；新增跨域边须说明必要性 |
+| `PublishingPreviewCore` | 本地预览计划、页面就绪探测、文件观察与信任校验；站点配置和草稿参与的规划仍由上层适配 |
+| `PublishingBackupCore` | 工作区交换格式与有界编解码；站点配置映射和工作区恢复仍由上层组合 |
+| `PublishingSyncCore` | 仓库同步审阅值、受保护的快进与变基服务；通过窄协议读取站点仓库身份 |
 | `PublishingWorkbenchCore` | 跨域编排、Store 与兼容适配；兼容导出集中于指定 umbrella 文件 |
 | `PersonalSitePublisherMac` | macOS UI 与应用装配；直接使用领域模块时明确声明直接依赖 |
 | `Tests/<target>` | 测试目标同样受精确依赖策略约束；不能用测试工程绕过生产边界 |
 
 公共值类型优先放在合适的契约模块，领域实现留在所属 Core，跨域工作流由上层组合。不要为了复用一个类型让底层反向依赖工作台。不要通过新增 re-export 隐藏消费者的真实依赖。
+
+工作区交换编解码和仓库同步服务的底层实现已按单向依赖迁出。`ArticleVisibility` 位于值契约模块，`SiteProfile` 通过同步核心的窄协议提供仓库身份。Workbench 中仍保留需要完整草稿、快照或 Store 状态的适配与编排；兼容导入尚未归零，不能将本阶段视为 umbrella 退役验收。
 
 ## 已执行的阻断检查
 
@@ -40,6 +47,7 @@ python3 script/check_swift_module_boundaries.py --describe-policy
 - `@_exported import` 只能存在于 [PublishingCoreModuleExports.swift](../Sources/PublishingWorkbenchCore/Support/PublishingCoreModuleExports.swift)，且与精确兼容导出集合一致。其他文件导出系统模块也会失败。
 - 只接受标准 target 目录（默认路径或显式标准路径），拒绝自定义路径及非空 `sources` / `exclude`，避免 SwiftPM 编译范围与扫描范围偏离。扫描采取保守范围；若未来需要自定义布局，先统一导入、源码摘要和导出校验使用的文件集合，再修改此策略。
 - 执行兼容导入数量上限；`--enforce-umbrella-retirement` 可进一步要求源码和测试的 Workbench 导入全部归零。
+- 快速门先运行共享包的 `verify-source.py`；公开快照导出同一 `swift/` 子树并复用该验证器。摘要匹配只能证明本机快照没有漂移，iOS 与 macOS adapter 的编译和行为验收仍分别执行。
 
 这是导入与声明审计，不是 Swift 类型检查器。它不解析符号使用，不能证明不存在通过兼容导出、动态查找、通知或共享存储形成的运行时耦合；编译和行为测试仍由现有质量流程执行。系统模块没有被第三方产品白名单穷举。
 
@@ -50,6 +58,7 @@ python3 script/check_swift_module_boundaries.py --describe-policy
 ```bash
 ./script/check_release_gate.sh --check swift-module-boundaries
 ./script/check_release_gate.sh --check swift-module-boundaries-tests
+./script/check_release_gate.sh --check shared-repopress-source-lock
 ```
 
 快速门已包含真实模块检查；脚本自测属于 tooling 集合，以运行器 `--quick --list` / `--tooling --list` 为准。开发仓现有 [质量工作流](../.github/workflows/quality.yml)在 PR、主分支推送和定期任务中调用该门禁；公开快照使用其安装的工作流。这里描述配置，不证明远端任务已经启用或执行成功。
@@ -64,6 +73,6 @@ python3 script/check_swift_module_boundaries.py --describe-policy
 ## 修改依赖时
 
 1. 先检查是否可以通过现有契约或上层组合解决，说明新增边的责任归属及替代方案。
-2. 在同次变更更新 `Package.swift`、检查器的对应精确策略和 [回归 fixture](../script/test_swift_module_boundaries.py)。外部产品同时维护 package 身份与导入模块映射，不能只把新名称加入放行列表。
+2. 在同次变更更新 `Package.swift`、检查器的对应精确策略和 [回归 fixture](../script/test_swift_module_boundaries.py)。外部产品同时维护 package 身份与导入模块映射，不能只把新名称加入放行列表；共享包变更还要重新生成 `source-lock.json`，并验证开发仓和公开快照中的同一子树。
 3. 运行真实模块门及其自测；涉及源代码时，再运行对应 Swift 测试与快速门。检查失败是待修复事实，不能把基线上调或修改文档当作修复。
 4. 审阅新增可达路径和无直接导入的候选；删除依赖前通过编译与行为测试确认。架构职责发生变化时更新本文，精确边仍由检查器输出。

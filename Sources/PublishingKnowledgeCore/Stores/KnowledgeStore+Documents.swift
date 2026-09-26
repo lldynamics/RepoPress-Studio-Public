@@ -639,10 +639,12 @@ extension KnowledgeStore {
 
   private func moveToRecycleBinAsync(_ documentIDs: Set<UUID>) async -> Bool {
     do {
-      try await noteCloudSyncAdapter.prepareLocalDeletion(ids: documentIDs)
       let now = Date()
       let movingDocuments = documents.filter { documentIDs.contains($0.id) }
-      try await service.moveToRecycleBinAsync(documentIDs: documentIDs)
+      let service = self.service
+      try await noteCloudSyncAdapter.performLocalDeletion(ids: documentIDs) {
+        try await service.moveToRecycleBinAsync(documentIDs: documentIDs)
+      }
       documents.removeAll { documentIDs.contains($0.id) }
       searchResults.removeAll { documentIDs.contains($0.document.id) }
       recycledDocuments.insert(
@@ -712,8 +714,10 @@ extension KnowledgeStore {
 
   private func deleteDocumentAsync(_ documentID: UUID) async -> Bool {
     do {
-      try await noteCloudSyncAdapter.prepareLocalDeletion(ids: [documentID])
-      let report = try await service.deleteDocumentAsync(id: documentID)
+      let service = self.service
+      let report = try await noteCloudSyncAdapter.performLocalDeletion(ids: [documentID]) {
+        try await service.deleteDocumentAsync(id: documentID)
+      }
       documents.removeAll { $0.id == documentID }
       recycledDocuments.removeAll { $0.id == documentID }
       searchResults.removeAll { $0.document.id == documentID }
@@ -778,8 +782,10 @@ extension KnowledgeStore {
   ) async -> KnowledgeRecycleBinCleanupSummary {
     let result: KnowledgeRecycleBinDeletionResult
     do {
-      try await noteCloudSyncAdapter.prepareLocalDeletion(ids: Set(documentIDs))
-      result = try await service.deleteDocumentsAsync(ids: documentIDs)
+      let service = self.service
+      result = try await noteCloudSyncAdapter.performLocalDeletion(ids: Set(documentIDs)) {
+        try await service.deleteDocumentsAsync(ids: documentIDs)
+      }
     } catch is CancellationError {
       return KnowledgeRecycleBinCleanupSummary(
         requestedDocumentCount: documentIDs.count,

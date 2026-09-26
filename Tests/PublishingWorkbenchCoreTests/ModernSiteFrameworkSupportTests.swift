@@ -70,6 +70,39 @@ final class ModernSiteFrameworkSupportTests: XCTestCase {
     }
   }
 
+  func testRepositoryScanDetectsDocusaurusAndMkDocsMarkers() throws {
+    let fixtures: [(SiteKind, String, String)] = [
+      (.docusaurus, "docusaurus.config.ts", "docs"),
+      (.mkDocs, "mkdocs.yml", "docs"),
+    ]
+
+    for (siteKind, marker, contentRoot) in fixtures {
+      let rootURL = try temporaryDirectory()
+      defer { try? FileManager.default.removeItem(at: rootURL) }
+      var profile = SiteProfile.defaultProfile
+      profile.applyPublishingDefaults(for: siteKind)
+      profile.rememberLocalRepositoryRoot(rootURL)
+
+      try FileManager.default.createDirectory(
+        at: rootURL.appendingPathComponent(contentRoot, isDirectory: true),
+        withIntermediateDirectories: true
+      )
+      try FileManager.default.createDirectory(
+        at: rootURL.appendingPathComponent(profile.assetRoot, isDirectory: true),
+        withIntermediateDirectories: true
+      )
+      let markerContents = siteKind == .mkDocs ? "site_name: Docs\n" : "export default {}\n"
+      try markerContents.write(
+        to: rootURL.appendingPathComponent(marker), atomically: true, encoding: .utf8
+      )
+
+      let report = LocalRepositoryService().scan(profile: profile)
+      XCTAssertEqual(report.detectedKind, siteKind)
+      XCTAssertTrue(report.contentRootExists)
+      XCTAssertTrue(report.assetRootExists)
+    }
+  }
+
   func testModernFrameworkRoutesUseProfileRootsIndexesAndPermalinks() {
     let resolver = SiteArticleURLResolver()
 

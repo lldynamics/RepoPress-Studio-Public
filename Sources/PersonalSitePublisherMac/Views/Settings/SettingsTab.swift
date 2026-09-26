@@ -164,16 +164,18 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
     switch self {
     case .appearance, .editor, .rss, .privacy:
       return WorkbenchSettingsMetrics.focusedContentWidth
-    case .configurationStatus, .defaultRules, .token, .ai, .siteAI, .dataManagement:
+    case .ai, .dataManagement:
       return WorkbenchSettingsMetrics.detailedContentWidth
+    case .configurationStatus, .defaultRules, .token, .siteAI:
+      return .infinity
     }
   }
 
   var scrollOwnership: SettingsScrollOwnership {
     switch self {
-    case .dataManagement:
+    case .configurationStatus, .dataManagement:
       return .nativeScrollView
-    case .configurationStatus, .defaultRules, .token, .ai, .siteAI, .appearance, .editor, .rss,
+    case .defaultRules, .token, .ai, .siteAI, .appearance, .editor, .rss,
       .privacy:
       return .nativeForm
     }

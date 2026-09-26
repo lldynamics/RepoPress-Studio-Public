@@ -1,4 +1,5 @@
 import AppKit
+import PublishingBackupCore
 import Dispatch
 import PublishingKnowledgeCore
 import PublishingWorkbenchCore
@@ -896,7 +897,7 @@ struct StorageManagementView: View {
           .foregroundStyle(cloudUploadStatusColor(backupScheduler.cloudUploadStatus))
           .fixedSize(horizontal: false, vertical: true)
       }
-      Button(String(localized: "刷新 iCloud 上传状态"), systemImage: "arrow.clockwise") {
+      Button(String(localized: "刷新备份状态"), systemImage: "arrow.clockwise") {
         backupScheduler.refreshCloudUploadStatus()
       }
 
@@ -1045,18 +1046,24 @@ struct StorageManagementView: View {
 
   private func cloudUploadStatusText(_ status: WorkspaceBackupCloudUploadStatus) -> String {
     switch status {
-    case .localCopyComplete: return String(localized: "本机副本已完成；未确认 iCloud 上传")
+    case .noBackup: return String(localized: "尚无已完成的备份")
+    case .backupUnavailable: return String(localized: "备份暂不可访问；无法确认副本状态")
+    case .localCopyComplete: return String(localized: "本地副本已完成")
+    case .iCloudFileUnrecognized: return String(localized: "本机副本已完成；尚未识别为 iCloud 云端文件")
     case .waitingForUpload: return String(localized: "本机副本已完成；等待 iCloud 上传确认")
     case .uploadConfirmed: return String(localized: "本机副本已完成；iCloud 已确认上传")
     case .uploadFailed(let message): return String(localized: "本机副本已完成；iCloud 上传失败：\(message)")
+    case .manifestCorrupt: return String(localized: "备份清单损坏；请重新创建备份")
     }
   }
 
   private func cloudUploadStatusColor(_ status: WorkspaceBackupCloudUploadStatus) -> Color {
     switch status {
-    case .uploadConfirmed: return WorkbenchTheme.success
-    case .uploadFailed: return WorkbenchTheme.risk
-    case .localCopyComplete, .waitingForUpload: return WorkbenchTheme.warning
+    case .noBackup: return .secondary
+    case .backupUnavailable: return WorkbenchTheme.warning
+    case .localCopyComplete, .uploadConfirmed: return WorkbenchTheme.success
+    case .uploadFailed, .manifestCorrupt: return WorkbenchTheme.risk
+    case .iCloudFileUnrecognized, .waitingForUpload: return WorkbenchTheme.warning
     }
   }
 

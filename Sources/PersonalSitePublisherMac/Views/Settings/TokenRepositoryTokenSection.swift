@@ -1,4 +1,5 @@
-import PublishingWorkbenchCore
+import PublishingCoreSupport
+import PublishingGitCore
 import SwiftUI
 
 struct TokenRepositoryTokenSection: View {

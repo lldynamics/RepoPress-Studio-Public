@@ -1617,10 +1617,13 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     )
 
     settingsButton.click()
-    assertIdentifierDisappears("workspace-publish-drawer-overlay")
     XCTAssertTrue(
       element(identifier: "settings-content").waitForExistence(timeout: 10),
-      "The Settings toolbar action must replace the publish drawer in the main window."
+      "The Settings toolbar action must open the standard Settings window."
+    )
+    XCTAssertFalse(
+      identifierExists("settings-return-to-workbench", in: application),
+      "App preferences must not replace the main workspace."
     )
   }
 
@@ -1694,27 +1697,49 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
   func testSettingsSidebarVisitsEveryPageWithOneContentRoot() throws {
     openSettings()
-    let settingsWindow = currentSettingsWindow()
-
-    let pages = [
-      (tab: "configurationStatus", content: "configuration-status-settings"),
-      (tab: "defaultRules", content: "default-rule-settings"),
-      (tab: "token", content: "token-settings"),
+    let applicationPages = [
       (tab: "ai", content: "ai-settings"),
-      (tab: "siteAI", content: "site-ai-settings"),
       (tab: "dataManagement", content: "data-management-settings"),
       (tab: "appearance", content: "appearance-settings"),
       (tab: "editor", content: "editor-settings"),
       (tab: "rss", content: "rss-maintenance-settings"),
       (tab: "privacy", content: "privacy-settings"),
     ]
-    let contentIdentifiers = pages.map { $0.content }
+    let sitePages = [
+      (tab: "configurationStatus", content: "configuration-status-settings"),
+      (tab: "defaultRules", content: "default-rule-settings"),
+      (tab: "token", content: "token-settings"),
+      (tab: "siteAI", content: "site-ai-settings"),
+    ]
 
-    for page in pages {
+    // The standard Settings window owns app preferences only.
+    for page in applicationPages {
       assertUniqueIdentifier("settings-tab-\(page.tab)")
     }
+    for page in sitePages {
+      XCTAssertFalse(
+        identifierExists("settings-tab-\(page.tab)", in: currentSettingsWindow()),
+        "Site settings must not appear in the Settings window."
+      )
+    }
     assertSettingsWindowBaseline()
+    visitSettingsPages(applicationPages, in: currentSettingsWindow())
 
+    // Site configuration opens in the main window's settings workspace.
+    element(identifier: "settings-open-other-scope").click()
+    assertIdentifierExists("settings-return-to-workbench")
+    let workspaceWindow = currentSettingsWindow()
+    for page in sitePages {
+      assertUniqueIdentifier("settings-tab-\(page.tab)")
+    }
+    visitSettingsPages(sitePages, in: workspaceWindow)
+  }
+
+  private func visitSettingsPages(
+    _ pages: [(tab: String, content: String)],
+    in settingsWindow: XCUIElement
+  ) {
+    let contentIdentifiers = pages.map { $0.content }
     for page in pages {
       select(
         "settings-tab-\(page.tab)",
@@ -1747,7 +1772,10 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
   func testSettingsSharedConnectionAndMovedSearchKeepTheirScopes() throws {
     openSettings()
-    let settingsWindow = currentSettingsWindow()
+    // Site AI lives in the main window; the shared connection it edits lives
+    // in the Settings window, and each hop must land on the right page.
+    element(identifier: "settings-open-other-scope").click()
+    assertIdentifierExists("settings-return-to-workbench")
     select("settings-tab-siteAI", revealing: "site-ai-settings")
     let picker = element(identifier: "settings-site-ai-connection-picker")
     XCTAssertTrue(picker.waitForExistence(timeout: 10))
@@ -1755,11 +1783,13 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertNotNil(originalSelection)
 
     element(identifier: "settings-site-ai-edit-shared-connection").click()
-    assertIdentifierExists("ai-settings", in: settingsWindow)
-    XCTAssertFalse(identifierExists("settings-site-ai-connection-picker", in: settingsWindow))
+    assertIdentifierExists("ai-settings", in: currentSettingsWindow())
     element(identifier: "settings-ai-open-site-connection").click()
-    assertIdentifierExists("site-ai-settings", in: settingsWindow)
+    assertIdentifierExists("site-ai-settings")
     XCTAssertEqual(picker.value as? String, originalSelection)
+
+    showSettingsWindow()
+    let settingsWindow = currentSettingsWindow()
 
     let search = element(identifier: "settings-search-field")
     search.click()
@@ -1845,8 +1875,8 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
   func testSettingsRestoresLastTopLevelPageAfterWindowReopens() throws {
     openSettings()
     select(
-      "settings-tab-configurationStatus",
-      revealing: "configuration-status-settings"
+      "settings-tab-appearance",
+      revealing: "appearance-settings"
     )
     select(
       "settings-tab-privacy",
@@ -1874,7 +1904,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     assertUniqueIdentifier("settings-tab-privacy")
     assertIdentifierExists("privacy-settings", in: reopenedSettingsWindow)
     XCTAssertFalse(
-      identifierExists("configuration-status-settings", in: reopenedSettingsWindow),
+      identifierExists("appearance-settings", in: reopenedSettingsWindow),
       "Reopening Settings must not replace the restored top-level page."
     )
     assertSettingsWindowBaseline()

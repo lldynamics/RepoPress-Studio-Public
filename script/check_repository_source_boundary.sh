@@ -30,10 +30,15 @@ done
 
 critical_paths=(
   Package.swift
+  Package.resolved
   Packaging
   Config
+  ShareExtension
+  ShortcutExtension
   Sources
+  Shared
   Tests
+  UITests
   script
   .github
 )
@@ -66,4 +71,4 @@ if [[ "$RELEASE_MODE" == "1" ]]; then
   exit 0
 fi
 
-echo "repository source boundary: clean checkout contains every build/release input"
+echo "repository source boundary: no untracked build/release inputs under the checked paths; release mode additionally requires a clean committed HEAD"

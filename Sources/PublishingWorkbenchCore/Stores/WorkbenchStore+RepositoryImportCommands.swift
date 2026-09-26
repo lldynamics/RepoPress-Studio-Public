@@ -1,4 +1,5 @@
 import Foundation
+import PublishingSyncCore
 
 extension WorkbenchStore {
   /// Prepares the first writing session without changing any window's article
@@ -39,6 +40,12 @@ extension WorkbenchStore {
   public func scanRepositoryAsync() async {
     await repositoryStore.scanRepositoryAsync(store: self)
     _ = await importMissingDraftsFromLocalRepository()
+  }
+
+  /// Refreshes the status display without importing repository articles into
+  /// the writing library. Menu bar inspection must remain read-only.
+  public func refreshRepositoryReportAsync() async {
+    await repositoryStore.scanRepositoryAsync(store: self)
   }
 
   public func requestRepositoryScan() {

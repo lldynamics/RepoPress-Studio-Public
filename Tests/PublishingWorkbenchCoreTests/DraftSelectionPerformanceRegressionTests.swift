@@ -124,6 +124,9 @@ final class DraftSelectionPerformanceRegressionTests: XCTestCase {
     )
     let draft = try XCTUnwrap(store.selectedDraft ?? store.writingDrafts.first)
     store.setSelectedDraftID(draft.id)
+    // Startup preflight legitimately refreshes global task state. Settle it
+    // before measuring the independent per-draft image refresh.
+    await store.preflightRefreshTask?.value
     let initialVersion = store.draftTaskQueueStateVersion
 
     await store.refreshImageWorkbenchReportInBackground(for: draft, force: true)

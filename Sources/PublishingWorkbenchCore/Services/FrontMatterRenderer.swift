@@ -18,9 +18,19 @@ public struct FrontMatterRenderer: Sendable {
   }
 
   private func renderYAML(draft: ArticleDraft, profile: SiteProfile) -> String {
+    if profile.siteKind == .quartz {
+      return renderQuartzYAML(draft: draft, profile: profile)
+    }
+    if profile.siteKind == .docusaurus || profile.siteKind == .mkDocs
+      || (profile.siteKind == .astro && profile.contentRoot == "src/content/docs")
+    {
+      return renderDocumentationYAML(draft: draft, profile: profile)
+    }
     var lines: [String] = ["---"]
     lines.append("title: \(yamlString(draft.title))")
-    lines.append("\(dateFieldName(for: profile.siteKind)): \(yamlString(formattedDate(draft.date, profile: profile)))")
+    lines.append(
+      "\(dateFieldName(for: profile.siteKind)): \(yamlString(formattedDate(draft.date, profile: profile)))"
+    )
     lines.append("slug: \(yamlString(draft.slug))")
 
     if !draft.summary.trimmedForPublishing.isEmpty {
@@ -61,7 +71,7 @@ public struct FrontMatterRenderer: Sendable {
       case .zola:
         lines.append("extra:")
         lines.append("  \(profile.siteKind.coverFrontMatterFieldName): \(yamlString(coverPath))")
-      case .astro, .hugo, .vitePress, .nextJS, .quartz, .foam, .hexo:
+      case .astro, .hugo, .vitePress, .nextJS, .quartz, .foam, .hexo, .docusaurus, .mkDocs:
         lines.append("\(profile.siteKind.coverFrontMatterFieldName): \(yamlString(coverPath))")
       case .jekyll:
         lines.append("\(profile.siteKind.coverFrontMatterFieldName): \(yamlString(coverPath))")
@@ -72,10 +82,60 @@ public struct FrontMatterRenderer: Sendable {
     return lines.joined(separator: "\n")
   }
 
+  private func renderQuartzYAML(draft: ArticleDraft, profile: SiteProfile) -> String {
+    var lines = ["---", "title: \(yamlString(draft.title))"]
+    if !draft.summary.trimmedForPublishing.isEmpty {
+      lines.append("description: \(yamlString(draft.summary))")
+    }
+    lines.append("date: \(yamlString(formattedDate(draft.date, profile: profile)))")
+    if !draft.tags.isEmpty {
+      lines.append("tags: \(yamlArray(draft.tags))")
+    }
+    if !draft.aliases.isEmpty {
+      lines.append("aliases: \(yamlArray(draft.aliases))")
+    }
+    if let permalink = draft.permalink?.nilIfEmpty {
+      lines.append("permalink: \(yamlString(permalink))")
+    }
+    if profile.includeDraftFlagInFrontMatter {
+      lines.append("draft: \(draft.draft ? "true" : "false")")
+    }
+    if let coverPath = frontMatterCoverPath(draft: draft, profile: profile) {
+      lines.append("socialImage: \(yamlString(coverPath))")
+    }
+    lines.append("---")
+    return lines.joined(separator: "\n")
+  }
+
+  private func renderDocumentationYAML(draft: ArticleDraft, profile: SiteProfile) -> String {
+    var lines = ["---", "title: \(yamlString(draft.title))"]
+    if !draft.summary.trimmedForPublishing.isEmpty {
+      lines.append("description: \(yamlString(draft.summary))")
+    }
+    if profile.siteKind != .mkDocs {
+      lines.append("slug: \(yamlString(draft.slug))")
+    }
+    if !draft.tags.isEmpty, profile.siteKind != .astro {
+      lines.append("tags: \(yamlArray(draft.tags))")
+    }
+    if profile.includeDraftFlagInFrontMatter {
+      lines.append("draft: \(draft.draft ? "true" : "false")")
+    }
+    if profile.siteKind == .docusaurus,
+      let coverPath = frontMatterCoverPath(draft: draft, profile: profile)
+    {
+      lines.append("image: \(yamlString(coverPath))")
+    }
+    lines.append("---")
+    return lines.joined(separator: "\n")
+  }
+
   private func renderTOML(draft: ArticleDraft, profile: SiteProfile) -> String {
     var lines: [String] = ["+++"]
     lines.append("title = \(tomlString(draft.title))")
-    lines.append("\(dateFieldName(for: profile.siteKind)) = \(tomlString(formattedDate(draft.date, profile: profile)))")
+    lines.append(
+      "\(dateFieldName(for: profile.siteKind)) = \(tomlString(formattedDate(draft.date, profile: profile)))"
+    )
     lines.append("slug = \(tomlString(draft.slug))")
 
     if !draft.summary.trimmedForPublishing.isEmpty {
@@ -117,7 +177,7 @@ public struct FrontMatterRenderer: Sendable {
         lines.append("")
         lines.append("[extra]")
         lines.append("\(profile.siteKind.coverFrontMatterFieldName) = \(tomlString(coverPath))")
-      case .astro, .hugo, .vitePress, .nextJS, .quartz, .foam, .hexo:
+      case .astro, .hugo, .vitePress, .nextJS, .quartz, .foam, .hexo, .docusaurus, .mkDocs:
         lines.append("\(profile.siteKind.coverFrontMatterFieldName) = \(tomlString(coverPath))")
       case .jekyll:
         lines.append("\(profile.siteKind.coverFrontMatterFieldName) = \(tomlString(coverPath))")
@@ -146,7 +206,8 @@ public struct FrontMatterRenderer: Sendable {
     guard let coverAttachmentID = draft.coverAttachmentID else {
       return nil
     }
-    return draft.attachments.first(where: { $0.id == coverAttachmentID })?.relativePublishPath.nilIfEmpty
+    return draft.attachments.first(where: { $0.id == coverAttachmentID })?.relativePublishPath
+      .nilIfEmpty
   }
 
   private func formattedDate(_ date: Date, profile: SiteProfile) -> String {

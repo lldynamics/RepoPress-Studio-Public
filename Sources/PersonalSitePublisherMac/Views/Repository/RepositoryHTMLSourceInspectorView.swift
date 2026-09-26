@@ -19,7 +19,7 @@ struct RepositoryHTMLSourceInspectorView: View {
         Image(systemName: "chevron.left.forwardslash.chevron.right")
           .foregroundStyle(.secondary)
         VStack(alignment: .leading, spacing: 2) {
-          Text("HTML 源码 Inspector")
+          Text("HTML 源码详情栏")
             .font(.headline)
           Text("文件格式、诊断与 Git 差异")
             .font(.caption)
@@ -54,7 +54,7 @@ struct RepositoryHTMLSourceInspectorView: View {
     }
     .background(.bar)
     .accessibilityIdentifier("html-source-inspector")
-    .accessibilityLabel("HTML 源码 Inspector")
+    .accessibilityLabel("HTML 源码详情栏")
   }
 
   private func identityCard(_ document: RepositoryTextDocument) -> some View {

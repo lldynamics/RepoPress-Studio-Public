@@ -12,42 +12,40 @@ struct TaxonomySuggestionField: View {
         .accessibilityValue(values.isEmpty ? "未填写" : values.joined(separator: "，"))
 
       if !suggestions.isEmpty {
-        ScrollView(.horizontal, showsIndicators: true) {
-          HStack(spacing: 6) {
-            ForEach(suggestions.prefix(12), id: \.self) { suggestion in
-              let selected = isSelected(suggestion)
-              Button {
-                if selected {
-                  remove(suggestion)
-                } else {
-                  append(suggestion)
-                }
-              } label: {
-                HStack(spacing: 4) {
-                  Image(systemName: selected ? "checkmark.circle.fill" : "tag")
-                    .font(.workbenchMetadata)
-                  Text(suggestion)
-                    .font(.caption.weight(.medium))
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                  selected ? Color.accentColor.opacity(0.18) : Color.primary.opacity(0.06),
-                  in: Capsule()
-                )
-                .foregroundStyle(selected ? Color.accentColor : Color.primary)
-                .overlay(
-                  Capsule()
-                    .stroke(
-                      selected ? Color.accentColor.opacity(0.4) : Color.primary.opacity(0.12),
-                      lineWidth: 1)
-                )
+        WorkbenchFlowLayout(horizontalSpacing: 6, verticalSpacing: 6) {
+          ForEach(suggestions.prefix(12), id: \.self) { suggestion in
+            let selected = isSelected(suggestion)
+            Button {
+              if selected {
+                remove(suggestion)
+              } else {
+                append(suggestion)
               }
-              .buttonStyle(.plain)
+            } label: {
+              HStack(spacing: 4) {
+                Image(systemName: selected ? "checkmark.circle.fill" : "tag")
+                  .font(.workbenchMetadata)
+                Text(suggestion)
+                  .font(.caption.weight(.medium))
+              }
+              .padding(.horizontal, 8)
+              .padding(.vertical, 4)
+              .background(
+                selected ? Color.accentColor.opacity(0.18) : Color.primary.opacity(0.06),
+                in: Capsule()
+              )
+              .foregroundStyle(selected ? Color.accentColor : Color.primary)
+              .overlay(
+                Capsule()
+                  .stroke(
+                    selected ? Color.accentColor.opacity(0.4) : Color.primary.opacity(0.12),
+                    lineWidth: 1)
+              )
             }
+            .buttonStyle(.plain)
           }
-          .padding(.vertical, 2)
         }
+        .padding(.vertical, 2)
       }
     }
   }

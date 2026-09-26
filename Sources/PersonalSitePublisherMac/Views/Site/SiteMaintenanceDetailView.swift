@@ -59,6 +59,11 @@ struct SiteMaintenanceDetailView: View {
         errorMessage: maintenanceState.errorMessage,
         generate: refreshMaintenanceSnapshot
       )
+      // Inside a ScrollView the full-page state has no height to center in;
+      // size it to the visible viewport (minus page padding) instead.
+      .containerRelativeFrame(.vertical) { length, _ in
+        max(length - WorkbenchPageMetrics.verticalPadding * 2, 240)
+      }
     }
   }
 

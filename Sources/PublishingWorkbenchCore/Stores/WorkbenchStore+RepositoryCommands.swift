@@ -1,4 +1,5 @@
 import Foundation
+import PublishingSyncCore
 import PublishingGitCore
 
 extension WorkbenchStore {

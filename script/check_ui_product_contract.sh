@@ -12,7 +12,9 @@ for file in \
   Settings/SettingsView.swift; do
   [[ -f "$VIEWS/$file" ]] || fail "expected UI source is missing: $file"
 done
-grep -Fq '.frame(minHeight: 120, idealHeight: 132, maxHeight: 140)' "$VIEWS/Shared/WorkbenchStateView.swift" || fail "compact empty-state height contract changed"
+compact_state="$(sed -n '/case \.compactPane:/,/case \.inline:/p' "$VIEWS/Shared/WorkbenchStateView.swift")"
+grep -Fq '.frame(minHeight: 120)' <<<"$compact_state" || fail "compact empty-state minimum height contract changed"
+if grep -Fq 'maxHeight:' <<<"$compact_state"; then fail "compact empty-state must grow with content instead of using a maximum height"; fi
 grep -Fq 'ForEach(ImageWorkbenchBatchAction.allActions)' "$VIEWS/Images/ImageWorkbenchView.swift" || fail "image workbench operations are hidden"
 grep -Fq 'RepositoryImageBrowserView(' "$VIEWS/Images/ImageWorkbenchView.swift" || fail "image browser is missing"
 grep -Fq '.accessibilityIdentifier("image-workbench-refresh")' "$VIEWS/Images/ImageWorkbenchView.swift" || fail "image rescan identifier is missing"
@@ -72,8 +74,25 @@ for direct_primary in repositoryScanProgress onlinePublishCenterSection; do
     fail "repository primary action is folded into more tools: $direct_primary"
   fi
 done
-for folded in Repository/RepositoryWorkspacePublishingSections.swift Repository/RepositoryWorkspaceLocalPreviewSection.swift Publishing/ReleaseHistoryDetailView.swift Publishing/ReleaseHistoryRecordCardSection.swift; do
+for folded in Repository/RepositoryWorkspacePublishingSections.swift Repository/RepositoryWorkspaceLocalPreviewSection.swift; do
   if grep -Fq 'DisclosureGroup' "$VIEWS/$folded"; then fail "repository/release history must remain visible: $folded"; fi
 done
+history="$VIEWS/Publishing/ReleaseHistoryDetailView.swift"
+grep -Fq 'releaseActionCommandDisclosure(item)' "$history" || fail "release history advanced commands are missing from the record row"
+grep -Fq 'releaseActionButtons(item, entry: entry)' "$history" || fail "release history record actions are missing from the record row"
+grep -Fq 'DisclosureGroup(' "$history" || fail "release history advanced commands must remain collapsible"
+grep -Fq '@State private var expandedCommandActionIDs: Set<String> = []' "$history" || fail "release history commands must default collapsed"
+grep -Fq '.accessibilityIdentifier("release-action-\(item.id)-advanced-commands")' "$history" || fail "release history advanced command accessibility identifier is missing"
+record_card="$VIEWS/Publishing/ReleaseHistoryRecordCardSection.swift"
+grep -Fq 'if !rollbackDraft.commandLines.isEmpty' "$record_card" || fail "rollback Git commands are missing from release records"
+grep -Fq 'release-record-' "$record_card" || fail "rollback Git command accessibility identifier is missing"
+grep -Fq 'advanced-commands' "$record_card" || fail "rollback Git command accessibility identifier is missing"
+python3 - "$history" <<'PY'
+import pathlib
+import sys
+source = pathlib.Path(sys.argv[1]).read_text()
+row = source.split("private func releaseActionRow", 1)[1].split("private func releaseActionPriorityBadge", 1)[0]
+assert "DisclosureGroup" not in row, "the main release record row must not be folded"
+PY
 if grep -Fq 'repositoryActionsMenu' "$VIEWS/Repository/RepositoryWorkspaceOverviewSections.swift" || grep -Fq 'Menu {' "$VIEWS/Repository/RepositoryWorkspaceOverviewSections.swift"; then fail "repository primary actions returned to a hidden menu"; fi
 echo "ui product-contract gate: source UI contracts passed (not a real UI smoke test)"

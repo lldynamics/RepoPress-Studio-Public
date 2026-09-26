@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 
 public enum MarkdownFrontMatterEditingIssue: Error, Equatable, Sendable {
   case invalidDelimiter

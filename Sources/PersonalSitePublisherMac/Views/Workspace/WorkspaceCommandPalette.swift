@@ -81,7 +81,7 @@ struct WorkspaceCommandPalette: View {
           String(localized: "搜索文章、资料库、RSS、AI 功能、工作区或命令…")
         )
         .onSubmit(performSelectedResult)
-        Text("⌘P")
+        Text("⇧⌘K")
           .font(.caption.monospaced())
           .foregroundStyle(.tertiary)
         Button {
@@ -454,8 +454,8 @@ struct WorkspaceCommandPalette: View {
       },
       PaletteCommand(
         id: "workspace:focus-mode",
-        title: String(localized: "切换专注写作"),
-        detail: String(localized: "使用顶部专注按钮或 ⇧⌘F"),
+        title: String(localized: "禅意专注写作"),
+        detail: "⇧⌘F",
         systemImage: "scope",
         shortcut: "⇧⌘F"
       ) {
@@ -557,7 +557,7 @@ struct WorkspaceCommandPalette: View {
         id: "ai:open-chat",
         title: String(localized: "打开 AI 对话"),
         detail: String(localized: "在右侧继续当前文章的 AI 对话"),
-        systemImage: "sparkles",
+        systemImage: "bubble.left",
         shortcut: "⌥⌘A"
       ) {
         guard let draftID = contextDraftID else { return }

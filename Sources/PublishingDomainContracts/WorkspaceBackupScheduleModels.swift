@@ -78,22 +78,31 @@ public struct WorkspaceBackupScheduleSettings: Codable, Hashable, Sendable {
 
   private enum CodingKeys: String, CodingKey {
     case frequency, destinationPath, lastBackupAt, lastValidationAt, lastBackupPath, lastError
-    case selectedCategoryIDs, lastContentFingerprint, preserveAutomaticBackupHistoryOnSelectedDisk, destinationIsICloud, destinationVolumeUUID, deferAutomaticBackupPruningUntilNextBackup
+    case selectedCategoryIDs, lastContentFingerprint, preserveAutomaticBackupHistoryOnSelectedDisk,
+      destinationIsICloud, destinationVolumeUUID, deferAutomaticBackupPruningUntilNextBackup
   }
 
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    frequency = try container.decodeIfPresent(WorkspaceBackupFrequency.self, forKey: .frequency) ?? .off
+    frequency =
+      try container.decodeIfPresent(WorkspaceBackupFrequency.self, forKey: .frequency) ?? .off
     destinationPath = try container.decodeIfPresent(String.self, forKey: .destinationPath)
     lastBackupAt = try container.decodeIfPresent(Date.self, forKey: .lastBackupAt)
     lastValidationAt = try container.decodeIfPresent(Date.self, forKey: .lastValidationAt)
     lastBackupPath = try container.decodeIfPresent(String.self, forKey: .lastBackupPath)
     lastError = try container.decodeIfPresent(String.self, forKey: .lastError)
     selectedCategoryIDs = try container.decodeIfPresent([String].self, forKey: .selectedCategoryIDs)
-    lastContentFingerprint = try container.decodeIfPresent(String.self, forKey: .lastContentFingerprint)
-    preserveAutomaticBackupHistoryOnSelectedDisk = try container.decodeIfPresent(Bool.self, forKey: .preserveAutomaticBackupHistoryOnSelectedDisk) ?? false
-    destinationIsICloud = try container.decodeIfPresent(Bool.self, forKey: .destinationIsICloud) ?? false
-    destinationVolumeUUID = try container.decodeIfPresent(String.self, forKey: .destinationVolumeUUID)
-    deferAutomaticBackupPruningUntilNextBackup = try container.decodeIfPresent(Bool.self, forKey: .deferAutomaticBackupPruningUntilNextBackup) ?? false
+    lastContentFingerprint = try container.decodeIfPresent(
+      String.self, forKey: .lastContentFingerprint)
+    preserveAutomaticBackupHistoryOnSelectedDisk =
+      try container.decodeIfPresent(
+        Bool.self, forKey: .preserveAutomaticBackupHistoryOnSelectedDisk) ?? false
+    destinationIsICloud =
+      try container.decodeIfPresent(Bool.self, forKey: .destinationIsICloud) ?? false
+    destinationVolumeUUID = try container.decodeIfPresent(
+      String.self, forKey: .destinationVolumeUUID)
+    deferAutomaticBackupPruningUntilNextBackup =
+      try container.decodeIfPresent(Bool.self, forKey: .deferAutomaticBackupPruningUntilNextBackup)
+      ?? false
   }
 }

@@ -35,7 +35,6 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
   let objectWillChange = ObservableObjectPublisher()
   /// Kept separate from this router's presentation publisher so typing only
   /// invalidates the small toolbar statistic observer.
-  let toolbarEditorContext = WorkspaceToolbarEditorContextStore()
 
   private(set) var publishDrawerCommandAction: PublishDrawerCommandAction?
   private(set) var localSitePreviewCommandAction: LocalSitePreviewCommandAction?
@@ -107,7 +106,6 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
       repositorySourceEditorCommandActions = nil
       rssReaderCommandActions = nil
     }
-    toolbarEditorContext.clear()
   }
 
   func registerMarkdownEditor(_ actions: MarkdownEditorCommandActions, owner: UUID) {
@@ -115,7 +113,6 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
       markdownOwner = owner
       markdownEditorCommandActions = actions
     }
-    toolbarEditorContext.activate(ownerID: owner, draftID: actions.draftID)
   }
 
   func unregisterMarkdownEditor(owner: UUID) {
@@ -124,20 +121,6 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
       markdownOwner = nil
       markdownEditorCommandActions = nil
     }
-    toolbarEditorContext.clear(ownerID: owner)
-  }
-
-  func updateToolbarEditorContext(
-    owner: UUID,
-    draftID: UUID,
-    statistics: MarkdownEditorStatistics
-  ) {
-    toolbarEditorContext.update(
-      ownerID: owner,
-      draftID: draftID,
-      writingUnitCount: statistics.writingUnitCount,
-      readingMinutes: statistics.readingMinutes
-    )
   }
 
   func registerWritingDrafts(_ actions: WritingDraftCommandActions, owner: UUID) {

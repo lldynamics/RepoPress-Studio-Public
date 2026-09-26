@@ -5,8 +5,8 @@ import Foundation
 /// Nodes intentionally contain draft IDs rather than `ArticleDraft` values.
 /// The writing view can resolve those IDs through its existing store/cache,
 /// while a protected node never carries a path-bearing value that could be
-/// rendered accidentally.  A general draft is placed in the unfiled virtual
-/// node because it has no publishing directory of its own.
+/// rendered accidentally. General draft folders are library labels, never
+/// repository directories.
 public enum DraftFolderNodeKind: String, Hashable, Sendable {
   case directory
   case root
@@ -29,14 +29,15 @@ public struct DraftFolderNode: Identifiable, Hashable, Sendable {
   public let id: String
   public let kind: DraftFolderNodeKind
   public let name: String
-  /// The path shown in the public tree, after stripping the profile's
-  /// content root.  Virtual nodes deliberately do not expose a path.
+  /// The path shown in the tree: a repository-relative directory for site
+  /// drafts or a library folder label for general drafts. Virtual nodes
+  /// deliberately do not expose a path.
   public let visiblePath: String?
-  /// The visible directory path used by the tree.  It is relative to the
-  /// profile content root for ordinary directories and nil for virtual nodes.
+  /// The visible directory path used by the tree. It is relative to the
+  /// profile content root for site folders and nil for virtual nodes.
   public var directoryPath: String? { visiblePath }
-  /// The complete repository directory used to derive this node's stable ID.
-  /// Virtual nodes have no repository directory.
+  /// The complete site repository directory or general library folder label
+  /// used to derive this node's stable ID. Virtual nodes have neither.
   public let canonicalDirectory: String?
   public let draftIDs: [UUID]
   public let children: [DraftFolderNode]
@@ -124,6 +125,11 @@ public struct DraftFolderNode: Identifiable, Hashable, Sendable {
 /// state.  The caller supplies the current privacy mask and sort order.
 public struct DraftFolderProjection: Sendable {
   public typealias Node = DraftFolderNode
+  /// A reserved identity for the shared general-draft library. It keeps its
+  /// expansion IDs stable when the active editing site changes.
+  public static let generalLibraryID = UUID(
+    uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1)
+  )
 
   public let profileID: UUID
   public let root: DraftFolderNode
@@ -133,10 +139,12 @@ public struct DraftFolderProjection: Sendable {
   public init(
     profile: SiteProfile,
     drafts: [ArticleDraft],
+    contentScope: DraftListContentScope = .currentSite,
     sortOrder: DraftListSortOrder = .updatedNewest,
     maskedDraftIDs: Set<UUID> = []
   ) {
-    profileID = profile.id
+    let projectionID = contentScope == .general ? Self.generalLibraryID : profile.id
+    profileID = projectionID
 
     let draftsByID = Dictionary(drafts.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
     let contentRootComponents = Self.safeComponents(profile.contentRoot) ?? []
@@ -153,6 +161,7 @@ public struct DraftFolderProjection: Sendable {
       let assignment = Self.assignment(
         for: draft,
         profile: profile,
+        contentScope: contentScope,
         contentRootComponents: contentRootComponents,
         isMasked: maskedDraftIDs.contains(draft.id)
       )
@@ -161,18 +170,18 @@ public struct DraftFolderProjection: Sendable {
       case .protected:
         mutableRoot.protectedDraftIDs.append(draft.id)
         ancestorIDs[draft.id] = [
-          DraftFolderNode.stableVirtualID(profileID: profile.id, kind: .protectedContent)
+          DraftFolderNode.stableVirtualID(profileID: projectionID, kind: .protectedContent)
         ]
 
       case .unfiled:
         mutableRoot.unfiledDraftIDs.append(draft.id)
         ancestorIDs[draft.id] = [
-          DraftFolderNode.stableVirtualID(profileID: profile.id, kind: .unfiled)
+          DraftFolderNode.stableVirtualID(profileID: projectionID, kind: .unfiled)
         ]
 
       case .folder(let canonicalDirectoryComponents, let visibleDirectoryComponents):
         let folderIDs = Self.folderIDs(
-          profileID: profile.id,
+          profileID: projectionID,
           canonicalDirectoryComponents: canonicalDirectoryComponents,
           visibleDirectoryComponents: visibleDirectoryComponents
         )
@@ -189,7 +198,7 @@ public struct DraftFolderProjection: Sendable {
 
     root = Self.materialize(
       mutableRoot,
-      profileID: profile.id,
+      profileID: projectionID,
       sortOrder: sortOrder,
       draftsByID: draftsByID
     )
@@ -249,12 +258,14 @@ public struct DraftFolderProjection: Sendable {
   public static func assignmentCacheKey(
     for draft: ArticleDraft,
     profile: SiteProfile,
+    contentScope: DraftListContentScope = .currentSite,
     isMasked: Bool
   ) -> DraftFolderAssignmentCacheKey {
     let contentRootComponents = safeComponents(profile.contentRoot) ?? []
     switch assignment(
       for: draft,
       profile: profile,
+      contentScope: contentScope,
       contentRootComponents: contentRootComponents,
       isMasked: isMasked
     ) {
@@ -293,6 +304,7 @@ public struct DraftFolderProjection: Sendable {
   private static func assignment(
     for draft: ArticleDraft,
     profile: SiteProfile,
+    contentScope: DraftListContentScope,
     contentRootComponents: [String],
     isMasked: Bool
   ) -> Assignment {
@@ -300,10 +312,16 @@ public struct DraftFolderProjection: Sendable {
       return .protected
     }
 
-    // General drafts intentionally do not get a fabricated repository folder.
-    if draft.isGeneralDraft {
-      return .unfiled
+    if contentScope == .general {
+      guard draft.isGeneralDraft,
+        let folderName = draft.generalDraftFolderName
+      else { return .unfiled }
+      return .folder(
+        canonicalDirectoryComponents: [folderName],
+        visibleDirectoryComponents: [folderName]
+      )
     }
+    if draft.isGeneralDraft { return .unfiled }
 
     let targetPath = profile.markdownPath(for: draft)
     var rawPathCandidates = [targetPath]

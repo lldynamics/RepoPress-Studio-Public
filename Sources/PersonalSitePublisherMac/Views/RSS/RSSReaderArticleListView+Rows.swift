@@ -84,8 +84,9 @@ struct RSSArticleRow: View {
   @State private var isHovering = false
 
   var body: some View {
-    let relativeDate = (article.publishedAt ?? article.fetchedAt).formatted(
-      .relative(presentation: .named, unitsStyle: .abbreviated)
+    let relativeDate = RSSArticleDatePresentation.string(
+      for: article.publishedAt ?? article.fetchedAt,
+      now: Date()
     )
     VStack(alignment: .leading, spacing: 0) {
       HStack(alignment: .top, spacing: 8) {
@@ -270,4 +271,13 @@ struct RSSArticleRow: View {
     Int((normalizedReadingProgress * 100).rounded())
   }
 
+}
+
+enum RSSArticleDatePresentation {
+  static func string(for date: Date, now: Date) -> String {
+    if date > now {
+      return date.formatted(date: .abbreviated, time: .shortened)
+    }
+    return date.formatted(.relative(presentation: .named, unitsStyle: .abbreviated))
+  }
 }

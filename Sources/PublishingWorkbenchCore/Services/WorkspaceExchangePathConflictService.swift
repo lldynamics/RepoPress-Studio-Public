@@ -1,4 +1,5 @@
 import Foundation
+import PublishingBackupCore
 import PublishingDomainContracts
 
 /// Checks the destination publish paths after the user has mapped source sites.

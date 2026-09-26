@@ -7,6 +7,10 @@ APP_DISPLAY_NAME="RepoPress Studio"
 APP_BUNDLE_NAME="${PERSONAL_SITE_PUBLISHER_BUNDLE_NAME:-$APP_DISPLAY_NAME}"
 BUNDLE_ID="${PERSONAL_SITE_PUBLISHER_BUNDLE_ID:-com.jinfang.PersonalSitePublisherMac}"
 DIRECT_ENTITLEMENTS="$ROOT_DIR/Packaging/DirectDistribution.entitlements"
+SHARE_EXTENSION_ENTITLEMENTS="$ROOT_DIR/ShareExtension/Distribution.entitlements"
+SHARE_EXTENSION_BUNDLE_ID="$BUNDLE_ID.ShareExtension"
+SHORTCUT_EXTENSION_ENTITLEMENTS="$ROOT_DIR/ShortcutExtension/Distribution.entitlements"
+SHORTCUT_EXTENSION_BUNDLE_ID="$BUNDLE_ID.ShortcutExtension"
 OUTPUT_DIR="${DIRECT_DISTRIBUTION_OUTPUT_DIR:-$ROOT_DIR/dist/direct}"
 APPLICATION_IDENTITY="${DIRECT_DISTRIBUTION_APPLICATION_IDENTITY:-}"
 NOTARY_PROFILE="${DIRECT_DISTRIBUTION_NOTARY_PROFILE:-}"
@@ -218,6 +222,12 @@ validate_bundle_structure() {
   local info_plist="$app_bundle/Contents/Info.plist"
   local app_binary="$app_bundle/Contents/MacOS/$APP_NAME"
   local sparkle_framework="$app_bundle/Contents/Frameworks/Sparkle.framework"
+  local share_extension="$app_bundle/Contents/PlugIns/RepoPressShareExtension.appex"
+  local share_info="$share_extension/Contents/Info.plist"
+  local share_binary="$share_extension/Contents/MacOS/RepoPressShareExtension"
+  local shortcut_extension="$app_bundle/Contents/Extensions/RepoPressShortcutExtension.appex"
+  local shortcut_info="$shortcut_extension/Contents/Info.plist"
+  local shortcut_binary="$shortcut_extension/Contents/MacOS/RepoPressShortcutExtension"
   local sparkle_license="$app_bundle/Contents/Resources/ThirdPartyNotices/Sparkle-LICENSE.txt"
   local update_feed_url=""
   local update_public_key=""
@@ -227,6 +237,30 @@ validate_bundle_structure() {
   [[ -f "$info_plist" ]] || fail "app Info.plist is missing: $info_plist"
   [[ -x "$app_binary" ]] || fail "app executable is missing: $app_binary"
   [[ -d "$sparkle_framework" ]] || fail "Sparkle.framework is missing"
+  [[ -f "$share_info" && -x "$share_binary" ]] \
+    || fail "RepoPress Share extension is missing or incomplete"
+  "$PLUTIL_TOOL" -lint "$share_info" >/dev/null \
+    || fail "RepoPress Share extension Info.plist is invalid"
+  [[ "$(plist_value "$share_info" CFBundleIdentifier)" == "$SHARE_EXTENSION_BUNDLE_ID" ]] \
+    || fail "RepoPress Share extension bundle identifier does not match the host"
+  [[ "$(plist_value "$share_info" CFBundleVersion)" == "$BUILD_NUMBER" ]] \
+    || fail "RepoPress Share extension build number does not match the host"
+  [[ "$(plist_value "$share_info" NSExtension:NSExtensionPointIdentifier)" == "com.apple.share-services" ]] \
+    || fail "RepoPress Share extension point is invalid"
+  [[ "$(plist_value "$share_info" NSExtension:NSExtensionPrincipalClass)" == "RepoPressShareExtension.ShareViewController" ]] \
+    || fail "RepoPress Share extension principal class is invalid"
+  [[ -f "$shortcut_info" && -x "$shortcut_binary" ]] \
+    || fail "RepoPress Shortcuts extension is missing or incomplete"
+  [[ -s "$shortcut_extension/Contents/Resources/Metadata.appintents/extract.actionsdata" ]] \
+    || fail "RepoPress Shortcuts actions metadata is missing"
+  "$PLUTIL_TOOL" -lint "$shortcut_info" >/dev/null \
+    || fail "RepoPress Shortcuts extension Info.plist is invalid"
+  [[ "$(plist_value "$shortcut_info" CFBundleIdentifier)" == "$SHORTCUT_EXTENSION_BUNDLE_ID" ]] \
+    || fail "RepoPress Shortcuts extension bundle identifier does not match the host"
+  [[ "$(plist_value "$shortcut_info" CFBundleVersion)" == "$BUILD_NUMBER" ]] \
+    || fail "RepoPress Shortcuts extension build number does not match the host"
+  [[ "$(plist_value "$shortcut_info" EXAppExtensionAttributes:EXExtensionPointIdentifier)" == "com.apple.appintents-extension" ]] \
+    || fail "RepoPress Shortcuts extension point is invalid"
   [[ -L "$sparkle_framework/Versions/Current" && -L "$sparkle_framework/Sparkle" ]] \
     || fail "Sparkle.framework symlinks were not preserved"
   validate_authoritative_third_party_notices
@@ -289,12 +323,20 @@ validate_signed_app() {
   local validation_dir=""
   local app_report=""
   local actual_entitlements=""
+  local share_entitlements=""
+  local share_report=""
+  local shortcut_entitlements=""
+  local shortcut_report=""
   local app_team=""
 
   validate_bundle_structure "$app_bundle" 1
   validation_dir="$(mktemp -d "$TMP_DIR/signature.XXXXXX")"
   app_report="$validation_dir/app-signature.txt"
   actual_entitlements="$validation_dir/app-entitlements.plist"
+  share_report="$validation_dir/share-signature.txt"
+  share_entitlements="$validation_dir/share-entitlements.plist"
+  shortcut_report="$validation_dir/shortcut-signature.txt"
+  shortcut_entitlements="$validation_dir/shortcut-entitlements.plist"
 
   "$CODESIGN_TOOL" --verify --deep --strict --verbose=2 "$app_bundle" \
     || fail "app signature verification failed"
@@ -308,6 +350,56 @@ validate_signed_app() {
   app_team="$(signature_team "$app_report")"
   [[ -n "$app_team" && "$app_team" != "not set" ]] \
     || fail "app signature does not expose a TeamIdentifier"
+  local share_extension="$app_bundle/Contents/PlugIns/RepoPressShareExtension.appex"
+  "$CODESIGN_TOOL" --verify --strict --verbose=2 "$share_extension" >/dev/null 2>&1 \
+    || fail "RepoPress Share extension signature verification failed"
+  signature_report "$share_extension" "$share_report"
+  [[ "$(signature_team "$share_report")" == "$app_team" ]] \
+    || fail "RepoPress Share extension signer differs from the app"
+  grep -Eq '^CodeDirectory .*flags=.*runtime' "$share_report" \
+    || fail "RepoPress Share extension is not hardened"
+  "$CODESIGN_TOOL" -d --entitlements :- "$share_extension" >"$share_entitlements" 2>/dev/null \
+    || fail "could not extract Share extension entitlements"
+  "$PYTHON_TOOL" - "$SHARE_EXTENSION_ENTITLEMENTS" "$share_entitlements" <<'PY'
+import plistlib
+from pathlib import Path
+import sys
+
+with Path(sys.argv[1]).open("rb") as source:
+    expected = plistlib.load(source)
+with Path(sys.argv[2]).open("rb") as source:
+    actual = plistlib.load(source)
+for key, value in expected.items():
+    if actual.get(key) != value:
+        raise SystemExit(f"direct release: Share extension entitlement mismatch: {key}")
+if actual.get("com.apple.security.get-task-allow") is True:
+    raise SystemExit("direct release: Share extension unexpectedly allows debugging")
+PY
+  local shortcut_extension="$app_bundle/Contents/Extensions/RepoPressShortcutExtension.appex"
+  "$CODESIGN_TOOL" --verify --strict --verbose=2 "$shortcut_extension" >/dev/null 2>&1 \
+    || fail "RepoPress Shortcuts extension signature verification failed"
+  signature_report "$shortcut_extension" "$shortcut_report"
+  [[ "$(signature_team "$shortcut_report")" == "$app_team" ]] \
+    || fail "RepoPress Shortcuts extension signer differs from the app"
+  grep -Eq '^CodeDirectory .*flags=.*runtime' "$shortcut_report" \
+    || fail "RepoPress Shortcuts extension is not hardened"
+  "$CODESIGN_TOOL" -d --entitlements :- "$shortcut_extension" >"$shortcut_entitlements" 2>/dev/null \
+    || fail "could not extract Shortcuts extension entitlements"
+  "$PYTHON_TOOL" - "$SHORTCUT_EXTENSION_ENTITLEMENTS" "$shortcut_entitlements" <<'PY'
+import plistlib
+from pathlib import Path
+import sys
+
+with Path(sys.argv[1]).open("rb") as source:
+    expected = plistlib.load(source)
+with Path(sys.argv[2]).open("rb") as source:
+    actual = plistlib.load(source)
+for key, value in expected.items():
+    if actual.get(key) != value:
+        raise SystemExit(f"direct release: Shortcuts extension entitlement mismatch: {key}")
+if actual.get("com.apple.security.get-task-allow") is True:
+    raise SystemExit("direct release: Shortcuts extension unexpectedly allows debugging")
+PY
   bash "$ROOT_DIR/script/sign_sparkle_framework.sh" \
     --framework "$app_bundle/Contents/Frameworks/Sparkle.framework" \
     --validate-only \
@@ -883,6 +975,12 @@ validate_authoritative_third_party_notices
 [[ -f "$DIRECT_ENTITLEMENTS" ]] || fail "missing Packaging/DirectDistribution.entitlements"
 "$PLUTIL_TOOL" -lint "$DIRECT_ENTITLEMENTS" >/dev/null \
   || fail "DirectDistribution.entitlements is invalid"
+[[ -f "$SHARE_EXTENSION_ENTITLEMENTS" ]] || fail "missing Share extension distribution entitlements"
+"$PLUTIL_TOOL" -lint "$SHARE_EXTENSION_ENTITLEMENTS" >/dev/null \
+  || fail "Share extension distribution entitlements are invalid"
+[[ -f "$SHORTCUT_EXTENSION_ENTITLEMENTS" ]] || fail "missing Shortcuts extension distribution entitlements"
+"$PLUTIL_TOOL" -lint "$SHORTCUT_EXTENSION_ENTITLEMENTS" >/dev/null \
+  || fail "Shortcuts extension distribution entitlements are invalid"
 "$XCRUN_TOOL" -f notarytool >/dev/null \
   || fail "Xcode does not provide notarytool"
 "$XCRUN_TOOL" -f stapler >/dev/null \
@@ -1015,6 +1113,14 @@ bash "$ROOT_DIR/script/sign_sparkle_framework.sh" \
   --framework "$signed_app/Contents/Frameworks/Sparkle.framework" \
   --identity "$APPLICATION_IDENTITY" \
   --timestamp >/dev/null
+"$CODESIGN_TOOL" --force --options runtime --timestamp \
+  --entitlements "$SHARE_EXTENSION_ENTITLEMENTS" \
+  --sign "$APPLICATION_IDENTITY" \
+  "$signed_app/Contents/PlugIns/RepoPressShareExtension.appex"
+"$CODESIGN_TOOL" --force --options runtime --timestamp \
+  --entitlements "$SHORTCUT_EXTENSION_ENTITLEMENTS" \
+  --sign "$APPLICATION_IDENTITY" \
+  "$signed_app/Contents/Extensions/RepoPressShortcutExtension.appex"
 "$CODESIGN_TOOL" --force --options runtime --timestamp \
   --entitlements "$DIRECT_ENTITLEMENTS" \
   --sign "$APPLICATION_IDENTITY" "$signed_app"

@@ -22,7 +22,7 @@ struct KnowledgeLibraryInspectorPanel: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 14) {
         HStack(spacing: 8) {
-          Label("资料检查器", systemImage: "sidebar.trailing")
+          Label("资料详情栏", systemImage: "sidebar.trailing")
             .font(.headline)
           Spacer()
           Button(action: onEditMetadata) {

@@ -1,0 +1,30 @@
+{
+  "capability": "publish-conflict-diff",
+  "description": "Preserves the trailing empty remote line.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "lines": [
+        {
+          "id": 0,
+          "kind": "same",
+          "marker": " ",
+          "text": "a"
+        },
+        {
+          "id": 1,
+          "kind": "remote",
+          "marker": "-",
+          "text": ""
+        }
+      ],
+      "strategy": "lcs"
+    }
+  },
+  "id": "diff-trailing-newline",
+  "input": {
+    "local": "a",
+    "remote": "a\n"
+  },
+  "validity": "valid"
+}

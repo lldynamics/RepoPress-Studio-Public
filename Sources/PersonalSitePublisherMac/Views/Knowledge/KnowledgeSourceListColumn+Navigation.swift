@@ -69,6 +69,10 @@ extension KnowledgeSourceListColumn {
   var emptyFolderState: some View {
     let showsImportAction = !knowledge.documents.isEmpty
     switch knowledge.folderScope {
+    case .all where knowledge.documents.isEmpty:
+      // An empty library is already explained by the centered detail state
+      // with its import action; a second empty state here only repeats it.
+      EmptyView()
     case .all:
       EmptyStateView(
         title: "还没有资料",

@@ -23,10 +23,10 @@ final class WorkspaceModelsTests: XCTestCase {
     )
     XCTAssertEqual(
       WorkspaceSection.allCases.map { String($0.keyboardShortcutKey) },
-      ["1", "2", "9", "3", "6", "4"])
+      ["1", "2", "3", "4", "6", "5"])
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.keyboardShortcutLabel),
-      ["⌘1", "⌘2", "⌘9", "⌘3", "⌘6", "⌘4"])
+      ["⌘1", "⌘2", "⌘3", "⌘4", "⌘6", "⌘5"])
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.localizationKey),
       [
@@ -66,7 +66,7 @@ final class WorkspaceModelsTests: XCTestCase {
     )
     XCTAssertEqual(
       WorkspaceNavigationPresentation.commandMenuItems.map(\.keyboardShortcutLabel),
-      ["⌘1", "⌘2", "⌘9", "⌘3", "⌘4"]
+      ["⌘1", "⌘2", "⌘3", "⌘4", "⌘5"]
     )
     XCTAssertEqual(WorkspaceVisibilityPolicy.siteResourceSections, [.images])
     XCTAssertEqual(

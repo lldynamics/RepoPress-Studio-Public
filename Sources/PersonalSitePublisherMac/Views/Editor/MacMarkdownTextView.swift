@@ -1,6 +1,7 @@
 import AppKit
 import OSLog
 import PublishingDomainContracts
+import PublishingMarkdownCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -218,6 +219,12 @@ struct MacMarkdownTextView: NSViewRepresentable {
     textView.isEditable = true
     textView.isSelectable = true
     textView.isRichText = true
+    if #available(macOS 15.0, *) {
+      textView.writingToolsBehavior = .complete
+      // Markdown is persisted as source text; rich text suggestions would
+      // otherwise leave formatting attributes that the document cannot save.
+      textView.allowedWritingToolsResultOptions = .plainText
+    }
     textView.importsGraphics = false
     textView.isAutomaticQuoteSubstitutionEnabled = false
     textView.isAutomaticDashSubstitutionEnabled = false
@@ -568,6 +575,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     var lastAppliedFocusRequestID: UUID?
     var focusRequestTask: Task<Void, Never>?
     var ghostText = ""
+    var isWritingToolsSessionActive = false
     var inlineAIReviewPresentation: MarkdownEditorInlineAIReviewPresentation?
     var ssgSnippets: [MarkdownSnippet]
     weak var ghostTextOverlayView: MarkdownGhostTextOverlayView?
@@ -823,7 +831,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       if didChange { overlay.ghostText = text }
       // Restoring from a read-only presentation may supply the same value;
       // visibility is state in its own right and must be resumed explicitly.
-      overlay.isHidden = text.isEmpty
+      overlay.isHidden = text.isEmpty || textView.hasMarkedText()
       overlay.setAccessibilityValue(text)
     }
 
@@ -1194,7 +1202,20 @@ struct MacMarkdownTextView: NSViewRepresentable {
     }
 
     func refreshCachedTypingAttributes(in textView: NSTextView) {
-      let desiredAttributes = syntaxHighlightPalette.defaultAttributes
+      var desiredAttributes = syntaxHighlightPalette.defaultAttributes
+      // Keep typing inside a styled line (e.g. a heading) at that line's
+      // layout font, but never inherit a collapsed marker's compact font or
+      // carry a heading's metrics across a line break.
+      let caret = textView.selectedRange().location
+      if let textStorage = textView.textStorage,
+        caret > 0, caret <= textStorage.length,
+        (textStorage.string as NSString).character(at: caret - 1) != 0x0A,
+        !collapsedSyntaxMarkerRanges.contains(where: { NSLocationInRange(caret - 1, $0) })
+      {
+        if let font = textStorage.attribute(.font, at: caret - 1, effectiveRange: nil) as? NSFont {
+          desiredAttributes[.font] = font
+        }
+      }
       guard !(textView.typingAttributes as NSDictionary).isEqual(to: desiredAttributes) else {
         return
       }
@@ -1239,6 +1260,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
         return false
       }
       if !isApplyingAutomaticPairing,
+        !isWritingToolsActive(in: textView),
         comfortConfiguration.automaticPairingEnabled,
         !textView.hasMarkedText(),
         let replacementString,
@@ -1274,6 +1296,42 @@ struct MacMarkdownTextView: NSViewRepresentable {
         )
       }
       return true
+    }
+
+    @available(macOS 15.0, *)
+    func textViewWritingToolsWillBegin(_ textView: NSTextView) {
+      isWritingToolsSessionActive = true
+      if !ghostText.isEmpty {
+        updateGhostText("", in: textView)
+        onGhostTextDismissed()
+      }
+    }
+
+    @available(macOS 15.0, *)
+    func textViewWritingToolsDidEnd(_ textView: NSTextView) {
+      isWritingToolsSessionActive = false
+    }
+
+    @available(macOS 15.0, *)
+    func textView(
+      _ textView: NSTextView,
+      writingToolsIgnoredRangesInEnclosingRange enclosingRange: NSRange
+    ) -> [NSValue] {
+      guard hasValidDocumentBodyMapping || !requiresFrontMatterEnvelope else {
+        return [NSValue(range: enclosingRange)]
+      }
+      return MarkdownWritingToolsRangePolicy.ignoredRanges(
+        in: textView.string,
+        bodyUTF16Offset: bodyUTF16Offset,
+        enclosingRange: enclosingRange
+      ).map(NSValue.init(range:))
+    }
+
+    private func isWritingToolsActive(in textView: NSTextView) -> Bool {
+      if #available(macOS 15.0, *) {
+        return isWritingToolsSessionActive || textView.isWritingToolsActive
+      }
+      return false
     }
 
     func textView(
@@ -1673,6 +1731,14 @@ struct MacMarkdownTextView: NSViewRepresentable {
           self.publishContextualAnchor(in: textView)
         }
       )
+      // A new text inset moves every glyph horizontally; cached marker,
+      // attachment-card and highlight frames must be derived again.
+      (scrollView as? MarkdownEditorScrollView)?.onTextContainerInsetChange = {
+        [weak self] in
+        guard let self, let textView = self.textView else { return }
+        self.repaintVisibleSyntaxViewport(in: textView, reason: .appearance)
+        _ = self.updateCurrentParagraphHighlight(in: textView, force: true)
+      }
     }
 
     func setReportsScrollSourceLine(_ reportsSourceLine: Bool) {
@@ -1892,8 +1958,12 @@ struct MacMarkdownTextView: NSViewRepresentable {
       guard let textView = notification.object as? NSTextView else { return }
       guard !isApplyingRepresentedText else { return }
       guard !isShowingReadOnlyPresentation else { return }
+      let isComposing = textView.hasMarkedText()
+      // Keep the previous TextKit 2 document extent through a burst of IME
+      // preedit replacements. The existing delayed invalidation measures the
+      // final geometry after the burst; a committed candidate updates it now.
       (textView.enclosingScrollView as? MarkdownEditorScrollView)?.invalidateDocumentHeight(
-        immediately: true, revealingSelection: true)
+        immediately: !isComposing, revealingSelection: true)
       let updatedText = textView.string
       invalidateDocumentEnvelopeCache()
       let previousBodyMarkdown = bodyMarkdown
@@ -1951,7 +2021,6 @@ struct MacMarkdownTextView: NSViewRepresentable {
       )
       pendingSyntaxHighlightPlan = syntaxHighlightPlan
       syntaxCodeBlockRanges = syntaxHighlightPlan.codeBlockRanges
-      let updatedSource = updatedText as NSString
       let editIsBodyOnly =
         !requiresFrontMatterEnvelope
         || syntaxHighlightEdit.map {
@@ -1967,7 +2036,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
           byApplying: syntaxHighlightEdit,
           to: previousBodyMarkdown,
           bodyUTF16Offset: previousBodyUTF16Offset,
-          updatedDocument: updatedSource
+          updatedDocument: updatedText
         )
       {
         bodyMarkdown = incrementallyUpdatedBody
@@ -2004,6 +2073,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       updateSelectionBinding(from: documentSelection)
       if documentSelection.location >= bodyUTF16Offset,
         documentSelection.length == 0,
+        !isComposing,
         let shortcutCandidate = MarkdownCursorCompletionService().automaticShortcutCandidate(
           in: bodyMarkdown,
           selectedRange: bodyRange(from: documentSelection),
@@ -2017,13 +2087,15 @@ struct MacMarkdownTextView: NSViewRepresentable {
       // same explicit edit value for statistics instead of looking it up from
       // the now-cleared coordinator slot; otherwise every ordinary keystroke
       // falls back to the delayed full-document scanner.
-      updateStatistics(
-        afterEditing: bodyMarkdown,
-        edit: syntaxHighlightEdit,
-        previousDocumentRevision:
-          hasExplicitStatisticsEdit && canPublishBodyChange && editIsBodyOnly
-          && previousBodyUTF16Offset == bodyUTF16Offset ? previousSyntaxRevision : nil
-      )
+      if !isComposing {
+        updateStatistics(
+          afterEditing: bodyMarkdown,
+          edit: syntaxHighlightEdit,
+          previousDocumentRevision:
+            hasExplicitStatisticsEdit && canPublishBodyChange && editIsBodyOnly
+            && previousBodyUTF16Offset == bodyUTF16Offset ? previousSyntaxRevision : nil
+        )
+      }
       if canPublishBodyChange,
         editIsBodyOnly,
         allowsLiveBodyChanges,
@@ -2032,25 +2104,30 @@ struct MacMarkdownTextView: NSViewRepresentable {
       {
         onLiveBodyChange(previousBodyMarkdown, bodyMarkdown)
       }
-      scheduleMarkdownSyntaxHighlighting(
-        for: textView,
-        text: updatedText,
-        plan: syntaxHighlightPlan
-      )
-      updateCurrentParagraphHighlight(in: textView)
+      if isComposing {
+        suspendSyntaxHighlightingForMarkedText(in: textView)
+      } else {
+        scheduleMarkdownSyntaxHighlighting(
+          for: textView,
+          text: updatedText,
+          plan: syntaxHighlightPlan
+        )
+        updateCurrentParagraphHighlight(in: textView)
+      }
     }
 
     static func bodyMarkdown(
       byApplying edit: MarkdownTextEdit,
       to previousBodyMarkdown: String,
       bodyUTF16Offset: Int,
-      updatedDocument: NSString
+      updatedDocument: String
     ) -> String? {
       guard edit.replacedRange.location >= bodyUTF16Offset else { return nil }
       let previousDocument = edit.previousText as NSString
+      let updatedSource = updatedDocument as NSString
       let previousDocumentLength = previousDocument.length
       let replacementLength =
-        updatedDocument.length - previousDocumentLength + edit.replacedRange.length
+        updatedSource.length - previousDocumentLength + edit.replacedRange.length
       guard replacementLength >= 0 else { return nil }
 
       let bodyRange = NSRange(
@@ -2067,7 +2144,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
         previousBody.length == previousDocumentLength - bodyUTF16Offset,
         NSMaxRange(bodyRange) <= previousBody.length,
         NSMaxRange(edit.replacedRange) <= previousDocumentLength,
-        NSMaxRange(currentReplacementRange) <= updatedDocument.length,
+        NSMaxRange(currentReplacementRange) <= updatedSource.length,
         previousBody.substring(with: bodyRange)
           == previousDocument.substring(with: edit.replacedRange)
       else {
@@ -2078,10 +2155,13 @@ struct MacMarkdownTextView: NSViewRepresentable {
         return nil
       }
 
+      // Without Front Matter, the live NSTextView string is exactly the body.
+      // Reuse it instead of copying the entire previous body for each preedit.
+      if bodyUTF16Offset == 0 { return updatedDocument }
       let updatedBody = NSMutableString(string: previousBodyMarkdown)
       updatedBody.replaceCharacters(
         in: bodyRange,
-        with: updatedDocument.substring(with: currentReplacementRange)
+        with: updatedSource.substring(with: currentReplacementRange)
       )
       return updatedBody as String
     }
@@ -2097,6 +2177,15 @@ struct MacMarkdownTextView: NSViewRepresentable {
         readOnlyPresentationSourceSelection = sourceRange
         updateSelectionBinding(from: sourceRange)
         enqueueContextualAnchorPublication(nil)
+        return
+      }
+      if textView.hasMarkedText() {
+        // NSTextInputClient supplies the composition caret and candidate
+        // geometry. Avoid synchronous offscreen TextKit layout and syntax
+        // repaint for each change to the temporary selection.
+        updateSelectionBinding(from: textView.selectedRange())
+        enqueueContextualAnchorPublication(nil)
+        ghostTextOverlayView?.isHidden = true
         return
       }
       (textView.enclosingScrollView as? MarkdownEditorScrollView)?.requestSelectionReveal()

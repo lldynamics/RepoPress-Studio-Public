@@ -289,6 +289,18 @@ enum MarkdownEditorStatisticsDelayPolicy {
 }
 
 extension MacMarkdownTextView.Coordinator {
+  /// Preserve the accumulated edit and range plan while an input method owns
+  /// marked text. Parsing and layout-attribute writes resume on commit.
+  func suspendSyntaxHighlightingForMarkedText(in textView: NSTextView) {
+    syntaxHighlightDebouncer.cancel()
+    syntaxTreeSynchronizationDebouncer.cancel()
+    cancelPendingSyntaxAttributeApplication()
+    cancelPendingInlineAttachmentDrawingApplication()
+    (textView as? DroppableMarkdownTextView)?.markdownParagraphHighlightRect = nil
+    appliedParagraphHighlightRange = nil
+    appliedParagraphHighlightGeometryRange = nil
+  }
+
   /// Stops source-only rendering work while the text storage temporarily hosts
   /// the derived read-only presentation, without discarding the parser snapshot
   /// that still belongs to the unchanged Markdown source.
@@ -953,6 +965,24 @@ extension MacMarkdownTextView.Coordinator {
     )
     let textStorage = textView.textStorage
     textStorage?.beginEditing()
+    if let textStorage {
+      let collapsedMarkerRanges = markersToApply.compactMap { marker -> NSRange? in
+        switch marker.presentation {
+        case .hidden, .taskList: marker.range
+        case .unorderedList, .orderedList, .quote: nil
+        }
+      }
+      for applicationSnapshot in renderPlan.applicationSnapshots {
+        MarkdownTextViewSemanticAttributeApplier.synchronizeLayoutAttributes(
+          applicationSnapshot,
+          in: textStorage,
+          within: applicationSnapshot.range,
+          excluding: collapsedMarkerRanges,
+          defaultAttributes: syntaxHighlightPalette.defaultAttributes,
+          styleAttributes: syntaxHighlightPalette.styleAttributes
+        )
+      }
+    }
     for marker in markersToApply {
       if let applicationRangeResolver {
         MarkdownTextKit2RangeAdapter.addRenderingAttributes(

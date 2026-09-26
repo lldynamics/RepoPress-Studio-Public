@@ -26,10 +26,8 @@ extension RepositoryWorkspaceView {
   }
 
   var repositoryPrimaryActions: some View {
-    WorkbenchSectionGroup(
-      "常用操作",
-      detail: "仓库管理入口集中在这里；实际写入和线上发布在下一步或统一发布流程中确认。"
-    ) {
+    // The page subtitle already explains where writes are confirmed.
+    WorkbenchSectionGroup("常用操作") {
       LazyVGrid(
         columns: [GridItem(.adaptive(minimum: 150, maximum: 230), spacing: 10)],
         alignment: .leading,
@@ -245,9 +243,14 @@ extension RepositoryWorkspaceView {
     } else if let lifecycle = store.repositoryOperationLifecycle,
       lifecycle.isOperationInProgress
     {
+      // When the lifecycle card is on screen it names the exact Git state and
+      // offers its actions; the banner then points there instead of repeating it.
+      let lifecycleCardIsVisible =
+        store.repositoryMergeConflictSession?.operationLifecycle?.isOperationInProgress == true
       workflowBanner(
-        title: lifecycleBannerTitle(lifecycle),
-        detail: lifecycleBannerDetail(lifecycle),
+        title: lifecycleCardIsVisible ? "有未完成的 Git 操作" : lifecycleBannerTitle(lifecycle),
+        detail: lifecycleCardIsVisible
+          ? "处理完成前，软件不会自动写入仓库。" : lifecycleBannerDetail(lifecycle),
         systemImage: "arrow.left.arrow.right.square",
         tint: WorkbenchTheme.risk,
         isExceptional: true,
@@ -380,7 +383,7 @@ extension RepositoryWorkspaceView {
       )
     case .history:
       content = (
-        String(localized: "扫描后关联发布台账"),
+        String(localized: "扫描后关联发布记录"),
         String(localized: "扫描当前仓库后，可将发布记录与分支、远端和部署状态对应起来。"),
         "clock.arrow.circlepath"
       )
@@ -542,6 +545,9 @@ extension RepositoryWorkspaceView {
   @ViewBuilder
   var repositorySummary: some View {
     if let report = store.repositoryReport {
+      // Count every listed item so this tile always matches the "需要处理"
+      // list below; the icon still escalates only for blocking errors.
+      let attentionIssueCount = report.preflightIssues.count
       let blockingIssueCount = report.preflightIssues.filter { $0.severity == .error }.count
 
       VStack(alignment: .leading, spacing: 12) {
@@ -549,6 +555,7 @@ extension RepositoryWorkspaceView {
           Text("同步概况")
             .font(.workbenchSectionTitle)
             .accessibilityAddTraits(.isHeader)
+            .help("同步状态只描述本地与网站仓库的差异；公开检查单独显示在下方。")
           Spacer()
           Label(report.syncStatusTitle, systemImage: "arrow.up.arrow.down")
             .font(.callout.weight(.medium))
@@ -557,11 +564,6 @@ extension RepositoryWorkspaceView {
 
         Divider()
 
-        Text("同步状态只描述本地与网站仓库的差异；公开检查单独显示在下方。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-
         LazyVGrid(columns: repositoryMetricGridColumns, spacing: 10) {
           MetricTile(
             title: "本地变化", value: "\(report.changedFiles.count)", systemImage: "desktopcomputer")
@@ -569,8 +571,10 @@ extension RepositoryWorkspaceView {
             title: "网站更新", value: "\(report.remoteChangedFiles.count)",
             systemImage: "arrow.down.doc")
           MetricTile(
-            title: "需要处理", value: "\(blockingIssueCount)",
-            systemImage: blockingIssueCount == 0 ? "checkmark.circle" : "exclamationmark.triangle")
+            title: "需要处理", value: "\(attentionIssueCount)",
+            systemImage: attentionIssueCount == 0
+              ? "checkmark.circle"
+              : blockingIssueCount == 0 ? "exclamationmark.triangle" : "xmark.octagon")
         }
       }
       .accessibilityElement(children: .contain)
@@ -602,6 +606,7 @@ extension RepositoryWorkspaceView {
         Label("公开检查", systemImage: summary.preflightSystemImage)
           .font(.workbenchSectionTitle)
           .accessibilityAddTraits(.isHeader)
+          .help("公开检查只说明当前发布包是否可继续审阅；推送完成不等于网站已经上线。")
         Spacer()
         Text(summary.targetTitle)
           .font(.caption.monospaced())
@@ -609,11 +614,6 @@ extension RepositoryWorkspaceView {
       }
 
       Divider()
-
-      Text("公开检查只说明当前发布包是否可继续审阅；推送完成不等于网站已经上线。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
 
       Label(summary.preflightTitle, systemImage: summary.preflightSystemImage)
         .font(.callout)

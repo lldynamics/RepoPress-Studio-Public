@@ -1,5 +1,7 @@
+import CryptoKit
 import Foundation
 import Testing
+import XCTest
 
 @testable import PublishingWorkbenchCore
 
@@ -271,5 +273,136 @@ struct SiteDraftFileStoreTests {
       at: rootURL.appendingPathComponent(".git", isDirectory: true),
       withIntermediateDirectories: true
     )
+  }
+}
+
+final class ExternalDraftFileWriterTests: XCTestCase {
+  func testWritesNestedMarkdownAndReturnsWrittenFingerprint() throws {
+    let root = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let drafts = root.appendingPathComponent("drafts", isDirectory: true)
+    try FileManager.default.createDirectory(at: drafts, withIntermediateDirectories: true)
+    let source = drafts.appendingPathComponent("article.md")
+    try write("# Before\n", to: source)
+    let expected = try fingerprint(of: source)
+
+    let written = try ExternalDraftFileWriter().write(
+      rootURL: root,
+      relativePath: "drafts/article.md",
+      expectedFingerprint: expected,
+      markdown: "# After\n"
+    )
+
+    XCTAssertEqual(try String(contentsOf: source, encoding: .utf8), "# After\n")
+    XCTAssertEqual(written, try fingerprint(of: source))
+  }
+
+  func testConflictLeavesOriginalSourceUntouched() throws {
+    let root = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("article.md")
+    try write("original", to: source)
+
+    XCTAssertThrowsError(
+      try ExternalDraftFileWriter().write(
+        rootURL: root,
+        relativePath: "article.md",
+        expectedFingerprint: fingerprint(of: Data("different".utf8)),
+        markdown: "replacement"
+      )
+    ) { error in
+      guard case .conflict = error as? ExternalDraftFileWriterError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+    }
+    XCTAssertEqual(try String(contentsOf: source, encoding: .utf8), "original")
+  }
+
+  func testRejectsTraversalAndSymlinkEscape() throws {
+    let root = try makeTemporaryDirectory()
+    let outside = try makeTemporaryDirectory()
+    defer {
+      try? FileManager.default.removeItem(at: root)
+      try? FileManager.default.removeItem(at: outside)
+    }
+    let outsideSource = outside.appendingPathComponent("outside.md")
+    try write("outside", to: outsideSource)
+    try FileManager.default.createSymbolicLink(
+      at: root.appendingPathComponent("escape", isDirectory: true),
+      withDestinationURL: outside
+    )
+
+    for path in ["../outside.md", "escape/outside.md"] {
+      XCTAssertThrowsError(
+        try ExternalDraftFileWriter().write(
+          rootURL: root,
+          relativePath: path,
+          expectedFingerprint: "unused",
+          markdown: "replacement"
+        )
+      ) { error in
+        guard case .invalidRelativePath = error as? ExternalDraftFileWriterError else {
+          return XCTFail("Unexpected error for \(path): \(error)")
+        }
+      }
+    }
+    XCTAssertEqual(try String(contentsOf: outsideSource, encoding: .utf8), "outside")
+  }
+
+  func testMissingSourceIsNeverCreated() throws {
+    let root = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let missing = root.appendingPathComponent("missing.md")
+
+    XCTAssertThrowsError(
+      try ExternalDraftFileWriter().write(
+        rootURL: root,
+        relativePath: "missing.md",
+        expectedFingerprint: "unused",
+        markdown: "replacement"
+      )
+    ) { error in
+      XCTAssertEqual(error as? ExternalDraftFileWriterError, .sourceMissing("missing.md"))
+    }
+    XCTAssertFalse(FileManager.default.fileExists(atPath: missing.path))
+  }
+
+  func testMatchingContentIsIdempotent() throws {
+    let root = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("article.mdx")
+    try write("same content", to: source)
+    let expected = try fingerprint(of: source)
+
+    let written = try ExternalDraftFileWriter().write(
+      rootURL: root,
+      relativePath: "article.mdx",
+      expectedFingerprint: expected,
+      markdown: "same content"
+    )
+
+    XCTAssertEqual(written, expected)
+    XCTAssertEqual(try String(contentsOf: source, encoding: .utf8), "same content")
+  }
+
+  private func makeTemporaryDirectory() throws -> URL {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "external-draft-file-writer-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    return directory
+  }
+
+  private func write(_ value: String, to url: URL) throws {
+    try value.write(to: url, atomically: true, encoding: .utf8)
+  }
+
+  private func fingerprint(of url: URL) throws -> String {
+    try fingerprint(of: Data(contentsOf: url))
+  }
+
+  private func fingerprint(of data: Data) -> String {
+    SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
   }
 }

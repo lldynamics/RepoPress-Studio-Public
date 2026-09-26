@@ -5,6 +5,30 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class RSSReaderPresentationSupportTests: XCTestCase {
+  func testArticleDatePresentationUsesAbsoluteDateForFutureItems() {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let future = now.addingTimeInterval(4 * 365 * 86_400)
+
+    let presentation = RSSArticleDatePresentation.string(for: future, now: now)
+
+    XCTAssertEqual(presentation, future.formatted(date: .abbreviated, time: .shortened))
+    XCTAssertFalse(presentation.contains("后"))
+  }
+
+  func testArticleDatePresentationKeepsRelativeFormatAtNowBoundaryAndInThePast() {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    XCTAssertEqual(
+      RSSArticleDatePresentation.string(for: now, now: now),
+      now.formatted(.relative(presentation: .named, unitsStyle: .abbreviated))
+    )
+    let past = now.addingTimeInterval(-300)
+    XCTAssertEqual(
+      RSSArticleDatePresentation.string(for: past, now: now),
+      past.formatted(.relative(presentation: .named, unitsStyle: .abbreviated))
+    )
+  }
+
   func testArticleCoverThumbnailPresentationUsesCompactRoundedSize() {
     XCTAssertEqual(RSSArticleCoverThumbnailPresentation.dimension, 64)
     XCTAssertEqual(RSSArticleCoverThumbnailPresentation.cornerRadius, 10)

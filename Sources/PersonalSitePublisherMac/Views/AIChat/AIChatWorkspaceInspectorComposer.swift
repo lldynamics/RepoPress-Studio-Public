@@ -483,6 +483,9 @@ extension AIChatContextInspectorView {
   }
 
   var isComposerInputUnavailable: Bool {
+    if isAIKeyMissing {
+      return true
+    }
     if ai.chatContextMode == .general {
       return ai.generalChatConversation(withID: inspectorSurfaceConversationID)?.isArchived == true
         || isChatBusy

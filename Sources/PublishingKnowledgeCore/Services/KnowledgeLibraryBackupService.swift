@@ -253,6 +253,7 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
     _ = try lifecycle.inspectBackup(
       at: stagingURL.appendingPathComponent(Self.databaseFileName)
     )
+    try KnowledgeNoteCloudRestoreBoundary.markRestoredLibrary(at: stagingURL)
 
     var transaction = RestoreTransaction(
       phase: .prepared,

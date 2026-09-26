@@ -333,7 +333,7 @@ public enum WorkbenchAutomationExecutor {
 
     case .showInspector:
       store.setInspectorPresented(true)
-      return success(step, CoreL10n.text("已打开 Inspector。"))
+      return success(step, CoreL10n.text("已打开详情栏。"))
 
     case .runPreflight:
       let draft = try targetDraft(for: step, in: store, checksVersion: false)

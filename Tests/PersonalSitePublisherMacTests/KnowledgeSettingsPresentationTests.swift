@@ -111,17 +111,20 @@ final class KnowledgeSettingsPresentationTests: XCTestCase {
   }
 
   func testSettingsLayoutMetricsKeepCompactWindowUsable() {
-    XCTAssertEqual(WorkbenchSettingsMetrics.minimumWidth, 820)
-    XCTAssertEqual(WorkbenchSettingsMetrics.minimumHeight, 560)
-    XCTAssertEqual(WorkbenchSettingsMetrics.sidebarWidth, 204)
+    XCTAssertEqual(WorkbenchSettingsMetrics.minimumWidth, 960)
+    XCTAssertEqual(WorkbenchSettingsMetrics.minimumHeight, 640)
+    XCTAssertEqual(WorkbenchSettingsMetrics.sidebarWidth, 300)
     XCTAssertEqual(
       SettingsTab.appearance.contentMaxWidth,
       WorkbenchSettingsMetrics.focusedContentWidth
     )
     XCTAssertEqual(
-      SettingsTab.token.contentMaxWidth,
+      SettingsTab.ai.contentMaxWidth,
       WorkbenchSettingsMetrics.detailedContentWidth
     )
+    for tab in SettingsTab.siteSettings {
+      XCTAssertEqual(tab.contentMaxWidth, .infinity, "Site settings should fill the workspace")
+    }
     XCTAssertGreaterThan(
       WorkbenchSettingsMetrics.minimumWidth - WorkbenchSettingsMetrics.sidebarWidth,
       600

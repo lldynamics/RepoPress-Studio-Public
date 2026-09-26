@@ -9,6 +9,7 @@ struct PersonalSitePublisherMacApp: App {
   @NSApplicationDelegateAdaptor(PersonalSitePublisherMacAppDelegate.self) private var appDelegate
   @StateObject private var launchCoordinator: WorkbenchLaunchCoordinator
   @StateObject private var appUpdateController = AppUpdateController()
+  @StateObject private var menuBarCapture = MenuBarQuickCaptureState()
   @AppStorage(WorkbenchAccentPalette.storageKey)
   private var accentPaletteRawValue = WorkbenchAccentPalette.system.rawValue
   @AppStorage(WorkbenchAppearanceMode.storageKey)
@@ -97,6 +98,7 @@ struct PersonalSitePublisherMacApp: App {
       coordinator: launchCoordinator,
       onReady: { store in
         appDelegate.workbenchStore = store
+        ExternalKnowledgeImportCoordinator.shared.install(store: store)
       }
     )
     .environmentObject(launchCoordinator)
@@ -133,6 +135,60 @@ struct PersonalSitePublisherMacApp: App {
         PublishingConsoleCommands(store: store)
       }
     }
+
+    MenuBarExtra("RepoPress Studio", systemImage: "square.and.pencil") {
+      MenuBarQuickCaptureView(
+        coordinator: launchCoordinator,
+        capture: menuBarCapture,
+        openWorkbench: { appDelegate.openWorkbenchFromMenuBar() }
+      )
+      .tint(selectedAccentPalette.color)
+      .preferredColorScheme(selectedAppearanceMode.colorScheme)
+    }
+    .menuBarExtraStyle(.window)
+
+    WindowGroup("独立内容", id: "content-popout", for: PopOutWindowTarget.self) { target in
+      Group {
+        if let store = launchCoordinator.store, let target = target.wrappedValue {
+          switch target {
+          case .draft(let draftID):
+            DraftPopOutWindowView(store: store, draftID: draftID)
+          case .reference(let documentID):
+            KnowledgePopOutWindowView(
+              store: store,
+              knowledge: store.knowledge,
+              documentID: documentID
+            )
+          }
+        } else {
+          ContentUnavailableView(
+            "内容暂不可用",
+            systemImage: "doc.questionmark",
+            description: Text("请先在主窗口完成工作区设置。")
+          )
+        }
+      }
+      .tint(selectedAccentPalette.color)
+      .preferredColorScheme(selectedAppearanceMode.colorScheme)
+      .controlSize(selectedInterfaceDensity.controlSize)
+      .task {
+        await launchCoordinator.start()
+      }
+      .task(id: launchCoordinator.phase) {
+        guard case .ready = launchCoordinator.phase,
+          let store = launchCoordinator.store,
+          let rssStore = launchCoordinator.rssStore
+        else { return }
+        appDelegate.workbenchStore = store
+        ExternalKnowledgeImportCoordinator.shared.install(store: store)
+        guard launchCoordinator.beginReadyServicesIfNeeded() else { return }
+        if !launchCoordinator.isSafeMode {
+          store.workspaceBackupScheduler.start()
+          launchCoordinator.startBackgroundRefreshIfNeeded(for: rssStore)
+        }
+      }
+    }
+    .defaultSize(width: 900, height: 680)
 
     Window("活动记录", id: "operation-log") {
       Group {
@@ -178,6 +234,10 @@ struct PersonalSitePublisherMacApp: App {
       .preferredColorScheme(selectedAppearanceMode.colorScheme)
       .controlSize(selectedInterfaceDensity.controlSize)
     }
+    .defaultSize(
+      width: WorkbenchSettingsMetrics.idealWidth,
+      height: WorkbenchSettingsMetrics.idealHeight
+    )
     .commands {
       PublishingConsoleSettingsCommands()
     }
@@ -397,6 +457,7 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
   func applicationDidBecomeActive(_ notification: Notification) {
     requestPersistentWindowCommandReconciliation()
     scheduleMainWindowRecoveryIfNeeded()
+    ExternalKnowledgeImportCoordinator.shared.scheduleInboxDrain()
   }
 
   func applicationDidUpdate(_ notification: Notification) {
@@ -426,6 +487,11 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
   @objc
   private func showMainWindow(_ sender: Any?) {
     requestMainWindowRestore()
+  }
+
+  func openWorkbenchFromMenuBar() {
+    requestMainWindowRestore()
+    NSApp.activate(ignoringOtherApps: true)
   }
 
   @objc
@@ -710,14 +776,22 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
       case .savedLocally(let count):
         let alert = NSAlert()
         alert.messageText = String(localized: "草稿已保存在本地")
-        alert.informativeText = String(
-          format: String(localized: "%lld 篇草稿尚未同步到项目。退出后会保留待同步记录，项目文件不会被覆盖。"), count)
+        let hasExternalDraftPendingWrites = workbenchStore.pendingExternalDraftWriteCount > 0
+        alert.informativeText =
+          hasExternalDraftPendingWrites
+          ? String(
+            format: String(localized: "%lld 篇草稿尚未写回外部文件或同步到项目。退出后两边内容都会保留，原文件不会被覆盖。"),
+            count)
+          : String(
+            format: String(localized: "%lld 篇草稿尚未同步到项目。退出后会保留待同步记录，项目文件不会被覆盖。"), count)
         alert.alertStyle = .informational
         alert.addButton(withTitle: String(localized: "保留草稿并退出"))
-        alert.addButton(withTitle: String(localized: "查看冲突"))
+        if !hasExternalDraftPendingWrites {
+          alert.addButton(withTitle: String(localized: "查看冲突"))
+        }
         alert.addButton(withTitle: String(localized: "继续编辑")).keyEquivalent = "\u{1b}"
         let choice = alert.runModal()
-        if choice == .alertSecondButtonReturn {
+        if !hasExternalDraftPendingWrites && choice == .alertSecondButtonReturn {
           isWaitingForTerminationLedgerFlush = false
           sender.reply(toApplicationShouldTerminate: false)
           if let failure = workbenchStore.siteDraftFileSaveFailureGroups
@@ -810,7 +884,14 @@ private struct ProtectedSettingsView: View {
       SettingsView(
         store: store,
         rssStore: rssStore,
-        launchCoordinator: launchCoordinator
+        launchCoordinator: launchCoordinator,
+        groups: [.application],
+        openOutOfScopeDestination: { destination in
+          // Hand the site destination to the main window, then close this
+          // window so the workspace that shows it comes to the front.
+          SettingsNavigation.requestSiteSettings(destination)
+          NSApp.keyWindow?.performClose(nil)
+        }
       )
       .disabled(!store.canUseProtectedWorkbench)
       .disabled(launchCoordinator.phase != .ready)

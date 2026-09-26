@@ -53,7 +53,14 @@ required_paths=(
   SECURITY.md
   TRADEMARKS.md
   Packaging/ThirdPartyNotices
+  ShareExtension/RepoPressShareExtension.xcodeproj/project.pbxproj
+  ShareExtension/Distribution.entitlements
+  ShortcutExtension/RepoPressShortcutExtension.xcodeproj/project.pbxproj
+  ShortcutExtension/Distribution.entitlements
   Sources
+  Shared/RepoPressCoreContracts/swift/Package.swift
+  Shared/RepoPressCoreContracts/swift/source-lock.json
+  Shared/RepoPressCoreContracts/swift/verify-source.py
   Tests
   script/check_public_snapshot.sh
   script/public-scan-fixture-allowlist.txt
@@ -62,6 +69,9 @@ required_paths=(
 for path in "${required_paths[@]}"; do
   [[ -e "$ROOT_DIR/$path" ]] || fail "required public file is missing: $path"
 done
+
+python3 "$ROOT_DIR/Shared/RepoPressCoreContracts/swift/verify-source.py" \
+  || fail "shared RepoPress Swift source snapshot digest does not verify"
 
 expected_license_sha256="3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04"
 actual_license_sha256="$(shasum -a 256 "$ROOT_DIR/LICENSE" | awk '{print $1}')"
@@ -239,7 +249,7 @@ while IFS= read -r hit; do
 done < <(
   LC_ALL=C rg -n \
     -e 'https?://[^/@[:space:]]+:[^/@[:space:]]+@' \
-    "$ROOT_DIR/Sources" "$ROOT_DIR/Packaging" || true
+    "$ROOT_DIR/Sources" "$ROOT_DIR/Packaging" "$ROOT_DIR/ShareExtension" "$ROOT_DIR/ShortcutExtension" || true
 )
 if [[ "${#credential_url_hits[@]}" -gt 0 ]]; then
   printf 'public snapshot gate: credential-bearing URL found in product source:\n' >&2

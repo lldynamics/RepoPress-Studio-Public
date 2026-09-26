@@ -3,6 +3,12 @@ import OSLog
 import PublishingWorkbenchCore
 
 final class MarkdownEditorScrollView: NSScrollView {
+  /// Paint-only geometry (block markers, attachment cards, paragraph
+  /// highlight) is cached in view coordinates. Centering the column changes
+  /// the text container inset during layout, so the owner must recompute it.
+  var onTextContainerInsetChange: (() -> Void)?
+  private var textContainerInsetNotificationScheduled = false
+
   var foldedFrontMatterBodyOffset = 0 {
     didSet {
       guard oldValue != foldedFrontMatterBodyOffset else { return }
@@ -232,6 +238,20 @@ final class MarkdownEditorScrollView: NSScrollView {
     cachedTextHeight
   }
 
+  /// Coalesced to the next main-queue turn so the owner repaints against the
+  /// settled layout instead of re-entering this layout pass.
+  private func scheduleTextContainerInsetNotification() {
+    guard onTextContainerInsetChange != nil, !textContainerInsetNotificationScheduled else {
+      return
+    }
+    textContainerInsetNotificationScheduled = true
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      self.textContainerInsetNotificationScheduled = false
+      self.onTextContainerInsetChange?()
+    }
+  }
+
   func cancelPendingSelectionReveal() {
     selectionToKeepVisible = nil
     selectionRevealUsesCachedLayout = false
@@ -337,9 +357,15 @@ final class MarkdownEditorScrollView: NSScrollView {
       cachedLayoutWidth = layoutWidth
       requiresImmediateReflow = false
     }
-    let textContainerInset = NSSize(width: horizontalInset, height: 16)
+    // Center the readable column: the document view spans the full pane (so
+    // the scroller stays at the window edge) and the leftover width becomes
+    // symmetric insets around the current text container.
+    let containerWidth = textView.textContainer?.containerSize.width ?? layoutWidth
+    let centeredInset = max(horizontalInset, ((contentWidth - containerWidth) / 2).rounded(.down))
+    let textContainerInset = NSSize(width: centeredInset, height: 16)
     if textView.textContainerInset != textContainerInset {
       textView.textContainerInset = textContainerInset
+      scheduleTextContainerInsetNotification()
     }
     // Resolving the visible text after reflow refreshes TextKit's lazy height
     // estimate before the document frame can clamp the viewport back to zero.

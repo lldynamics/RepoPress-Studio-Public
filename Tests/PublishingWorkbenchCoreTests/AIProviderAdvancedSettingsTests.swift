@@ -5,6 +5,50 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class AIProviderAdvancedSettingsTests: XCTestCase {
+  func testDetectedLocalEngineDropsRemoteProxyAndFallback() throws {
+    let config = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://remote.example/v1",
+      model: "remote-model",
+      advancedSettings: AIProviderAdvancedSettings(
+        systemPrompt: "Keep this preference",
+        proxyURL: "http://proxy.example:8080",
+        fallbackProfileID: UUID()
+      )
+    )
+
+    let local = try XCTUnwrap(
+      config.applyingDetectedLocalEngine(
+        baseURL: "http://127.0.0.1:1234/v1",
+        model: " local-model "
+      ))
+
+    XCTAssertEqual(local.preset, .local)
+    XCTAssertEqual(local.model, "local-model")
+    XCTAssertFalse(local.requiresAPIKey)
+    XCTAssertNil(local.resolvedAdvancedSettings.proxyURL)
+    XCTAssertNil(local.resolvedAdvancedSettings.fallbackProfileID)
+    XCTAssertEqual(local.resolvedAdvancedSettings.systemPrompt, "Keep this preference")
+    XCTAssertNil(
+      config.applyingDetectedLocalEngine(
+        baseURL: "https://remote.example/v1", model: "model"
+      ))
+  }
+
+  func testLocalChatTransportRejectsProxyEvenOnPreviouslySavedProfile() {
+    let config = AIProviderConfig(
+      preset: .local,
+      baseURL: "http://127.0.0.1:11434/v1",
+      model: "local-model",
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(proxyURL: "http://proxy.example:8080")
+    )
+
+    XCTAssertThrowsError(try AIChatCompletionClient().transport(for: config)) { error in
+      XCTAssertEqual(error as? AIChatCompletionClientError, .invalidProxyURL)
+    }
+  }
+
   func testLegacyConfigDecodesWithDefaultAdvancedSettings() throws {
     let data = Data(
       #"{"preset":"custom","baseURL":"","model":"","requiresAPIKey":true}"#.utf8

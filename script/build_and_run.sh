@@ -27,6 +27,8 @@ APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_FRAMEWORKS="$APP_CONTENTS/Frameworks"
+APP_PLUGINS="$APP_CONTENTS/PlugIns"
+APP_EXTENSIONS="$APP_CONTENTS/Extensions"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 APP_ICON_SOURCE="$ROOT_DIR/Sources/PersonalSitePublisherMac/Resources/AppIcon.icns"
@@ -38,6 +40,16 @@ CLOUD_DEVELOPMENT_ENTITLEMENTS="$ROOT_DIR/Packaging/CloudDevelopment.entitlement
 CLOUD_DIRECT_ENTITLEMENTS="$ROOT_DIR/Packaging/CloudDirectDistribution.entitlements"
 CLOUD_PROVISIONING_PROFILE="${PERSONAL_SITE_PUBLISHER_CLOUD_PROVISIONING_PROFILE:-}"
 SPARKLE_FRAMEWORK_BUNDLE="$APP_FRAMEWORKS/Sparkle.framework"
+SHARE_EXTENSION_PROJECT="$ROOT_DIR/ShareExtension/RepoPressShareExtension.xcodeproj"
+SHARE_EXTENSION_BUNDLE="$APP_PLUGINS/RepoPressShareExtension.appex"
+SHARE_EXTENSION_BUNDLE_ID="$BUNDLE_ID.ShareExtension"
+SHARE_EXTENSION_DEVELOPMENT_ENTITLEMENTS="$ROOT_DIR/ShareExtension/Development.entitlements"
+SHARE_EXTENSION_DISTRIBUTION_ENTITLEMENTS="$ROOT_DIR/ShareExtension/Distribution.entitlements"
+SHORTCUT_EXTENSION_PROJECT="$ROOT_DIR/ShortcutExtension/RepoPressShortcutExtension.xcodeproj"
+SHORTCUT_EXTENSION_BUNDLE="$APP_EXTENSIONS/RepoPressShortcutExtension.appex"
+SHORTCUT_EXTENSION_BUNDLE_ID="$BUNDLE_ID.ShortcutExtension"
+SHORTCUT_EXTENSION_DEVELOPMENT_ENTITLEMENTS="$ROOT_DIR/ShortcutExtension/Development.entitlements"
+SHORTCUT_EXTENSION_DISTRIBUTION_ENTITLEMENTS="$ROOT_DIR/ShortcutExtension/Distribution.entitlements"
 SPARKLE_LICENSE_SOURCE="$ROOT_DIR/Packaging/ThirdPartyNotices/Sparkle-LICENSE.txt"
 SPARKLE_LICENSE_BUNDLE="$APP_RESOURCES/ThirdPartyNotices/Sparkle-LICENSE.txt"
 THIRD_PARTY_NOTICES_SOURCE_DIR="$ROOT_DIR/Packaging/ThirdPartyNotices"
@@ -330,6 +342,53 @@ BUILD_BINARY="$BUILD_BIN_DIR/$APP_NAME"
   exit 1
 }
 
+[[ -d "$SHARE_EXTENSION_PROJECT" ]] || {
+  echo "Share extension Xcode project is missing: $SHARE_EXTENSION_PROJECT" >&2
+  exit 1
+}
+share_extension_configuration="Debug"
+if [[ "$BUILD_CONFIGURATION" == "release" ]]; then
+  share_extension_configuration="Release"
+fi
+share_extension_derived_data="$ROOT_DIR/.build/share-extension-$BUILD_CONFIGURATION"
+xcodebuild -quiet \
+  -project "$SHARE_EXTENSION_PROJECT" \
+  -scheme RepoPressShareExtension \
+  -configuration "$share_extension_configuration" \
+  -destination 'generic/platform=macOS' \
+  -derivedDataPath "$share_extension_derived_data" \
+  CODE_SIGNING_ALLOWED=NO \
+  ENABLE_DEBUG_DYLIB=NO \
+  build
+share_extension_build_product="$share_extension_derived_data/Build/Products/$share_extension_configuration/RepoPressShareExtension.appex"
+[[ -d "$share_extension_build_product" ]] || {
+  echo "Share extension build product is missing: $share_extension_build_product" >&2
+  exit 1
+}
+[[ -d "$SHORTCUT_EXTENSION_PROJECT" ]] || {
+  echo "Shortcuts extension Xcode project is missing: $SHORTCUT_EXTENSION_PROJECT" >&2
+  exit 1
+}
+shortcut_extension_derived_data="$ROOT_DIR/.build/shortcut-extension-$BUILD_CONFIGURATION"
+xcodebuild -quiet \
+  -project "$SHORTCUT_EXTENSION_PROJECT" \
+  -scheme RepoPressShortcutExtension \
+  -configuration "$share_extension_configuration" \
+  -destination 'generic/platform=macOS' \
+  -derivedDataPath "$shortcut_extension_derived_data" \
+  CODE_SIGNING_ALLOWED=NO \
+  ENABLE_DEBUG_DYLIB=NO \
+  build
+shortcut_extension_build_product="$shortcut_extension_derived_data/Build/Products/$share_extension_configuration/RepoPressShortcutExtension.appex"
+[[ -d "$shortcut_extension_build_product" ]] || {
+  echo "Shortcuts extension build product is missing: $shortcut_extension_build_product" >&2
+  exit 1
+}
+[[ -s "$shortcut_extension_build_product/Contents/Resources/Metadata.appintents/extract.actionsdata" ]] || {
+  echo "Shortcuts extension App Intents metadata is missing" >&2
+  exit 1
+}
+
 # Only the assembled bundle replacement is serialized. SwiftPM compilation
 # can still run in parallel, while two builders targeting the same explicit
 # bundle cannot remove/copy into it at the same time. A different
@@ -340,9 +399,35 @@ rm -rf "$APP_BUNDLE"
 mkdir -p \
   "$APP_MACOS" \
   "$APP_RESOURCES/ThirdPartyNotices" \
-  "$APP_FRAMEWORKS"
+  "$APP_FRAMEWORKS" \
+  "$APP_PLUGINS" \
+  "$APP_EXTENSIONS"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
+ditto "$share_extension_build_product" "$SHARE_EXTENSION_BUNDLE"
+ditto "$shortcut_extension_build_product" "$SHORTCUT_EXTENSION_BUNDLE"
+share_extension_info="$SHARE_EXTENSION_BUNDLE/Contents/Info.plist"
+[[ -f "$share_extension_info" ]] || {
+  echo "Share extension Info.plist is missing: $share_extension_info" >&2
+  exit 1
+}
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $MARKETING_VERSION" "$share_extension_info"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$share_extension_info"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$share_extension_info")" == "$SHARE_EXTENSION_BUNDLE_ID" ]] || {
+  echo "Share extension bundle identifier does not match the host app" >&2
+  exit 1
+}
+shortcut_extension_info="$SHORTCUT_EXTENSION_BUNDLE/Contents/Info.plist"
+[[ -f "$shortcut_extension_info" ]] || {
+  echo "Shortcuts extension Info.plist is missing: $shortcut_extension_info" >&2
+  exit 1
+}
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $MARKETING_VERSION" "$shortcut_extension_info"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$shortcut_extension_info"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$shortcut_extension_info")" == "$SHORTCUT_EXTENSION_BUNDLE_ID" ]] || {
+  echo "Shortcuts extension bundle identifier does not match the host app" >&2
+  exit 1
+}
 [[ -f "$SPARKLE_LICENSE_SOURCE" ]] || {
   echo "Sparkle third-party notice is missing: $SPARKLE_LICENSE_SOURCE" >&2
   exit 1
@@ -704,6 +789,42 @@ fi
 bash "$ROOT_DIR/script/sign_sparkle_framework.sh" \
   --framework "$SPARKLE_FRAMEWORK_BUNDLE" \
   --identity "$resolved_code_sign_identity" >/dev/null
+share_extension_entitlements="$SHARE_EXTENSION_DEVELOPMENT_ENTITLEMENTS"
+share_extension_sign_arguments=(
+  --force
+  --sign "$resolved_code_sign_identity"
+  --identifier "$SHARE_EXTENSION_BUNDLE_ID"
+)
+if [[ "$BUILD_CONFIGURATION" == "release" ]]; then
+  share_extension_entitlements="$SHARE_EXTENSION_DISTRIBUTION_ENTITLEMENTS"
+  if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
+    share_extension_sign_arguments+=(--options runtime)
+  fi
+fi
+[[ -f "$share_extension_entitlements" ]] || {
+  echo "Share extension entitlements are missing: $share_extension_entitlements" >&2
+  exit 1
+}
+share_extension_sign_arguments+=(--entitlements "$share_extension_entitlements")
+"$CODESIGN_TOOL" "${share_extension_sign_arguments[@]}" "$SHARE_EXTENSION_BUNDLE"
+shortcut_extension_entitlements="$SHORTCUT_EXTENSION_DEVELOPMENT_ENTITLEMENTS"
+shortcut_extension_sign_arguments=(
+  --force
+  --sign "$resolved_code_sign_identity"
+  --identifier "$SHORTCUT_EXTENSION_BUNDLE_ID"
+)
+if [[ "$BUILD_CONFIGURATION" == "release" ]]; then
+  shortcut_extension_entitlements="$SHORTCUT_EXTENSION_DISTRIBUTION_ENTITLEMENTS"
+  if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
+    shortcut_extension_sign_arguments+=(--options runtime)
+  fi
+fi
+[[ -f "$shortcut_extension_entitlements" ]] || {
+  echo "Shortcuts extension entitlements are missing: $shortcut_extension_entitlements" >&2
+  exit 1
+}
+shortcut_extension_sign_arguments+=(--entitlements "$shortcut_extension_entitlements")
+"$CODESIGN_TOOL" "${shortcut_extension_sign_arguments[@]}" "$SHORTCUT_EXTENSION_BUNDLE"
 "$CODESIGN_TOOL" "${code_sign_arguments[@]}" "$APP_BUNDLE"
 "$CODESIGN_TOOL" --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 if [[ -n "$CLOUD_PROVISIONING_PROFILE" && "$resolved_code_sign_identity" != "-" ]]; then

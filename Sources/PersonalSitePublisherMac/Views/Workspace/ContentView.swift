@@ -28,6 +28,9 @@ struct ContentView: View {
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.controlActiveState) private var controlActiveState
   @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+  @Environment(\.openSettings) private var openSettingsWindow
+  @AppStorage(SettingsNavigation.requestedSiteDestinationStorageKey)
+  private var requestedSiteSettingsDestinationID = ""
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
   @AppStorage(RSSReaderUserPreferences.backgroundRefreshEnabledKey)
@@ -143,7 +146,13 @@ struct ContentView: View {
             launchCoordinator: launchCoordinator,
             closeWorkspace: closeSettingsWorkspace,
             workspaceDestination: settingsWorkspaceDestination,
-            workspaceNavigationRequestID: settingsWorkspaceNavigationRequestID
+            workspaceNavigationRequestID: settingsWorkspaceNavigationRequestID,
+            groups: [.currentSite],
+            openOutOfScopeDestination: { destination in
+              SettingsNavigation.open(destination: destination) {
+                openSettingsWindow()
+              }
+            }
           )
           .disabled(shellState.isQuickHideActive)
           .accessibilityHidden(shellState.isQuickHideActive)
@@ -235,7 +244,7 @@ struct ContentView: View {
             && canRequestInspectorInCurrentLayout,
           unavailableReason: canRequestInspectorInCurrentLayout
             ? nil
-            : String(localized: "扩大窗口后可使用 Inspector"),
+            : String(localized: "扩大窗口后可使用详情栏"),
           open: { draftID, quickPrompt in
             openAIAssistantWorkspace(for: draftID, quickPrompt: quickPrompt)
           }
@@ -250,7 +259,7 @@ struct ContentView: View {
 
         if isSettingsWorkspacePresented {
           ToolbarItem(placement: .principal) {
-            Text("设置")
+            Text("站点设置")
               .font(.headline)
               .accessibilityAddTraits(.isHeader)
           }
@@ -298,6 +307,9 @@ struct ContentView: View {
         await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
         guard !Task.isCancelled else { return }
         handleContentViewAppear()
+      }
+      .onChange(of: requestedSiteSettingsDestinationID) { _, _ in
+        consumeRequestedSiteSettings()
       }
       .onChange(of: autoRunPreflight) { _, newValue in
         store.setAutomaticallyRefreshPreflightOnEdit(
@@ -467,6 +479,7 @@ struct ContentView: View {
         aiChatOperationSession: aiChatInspectorOperationSession,
         prioritizesChecks: compactLayout,
         articlePresentation: articleInspectorPresentation,
+        defaultWidth: inspectorColumnWidthState.preferredWidth,
         onResetWidth: resetInspectorWidth
       )
       .id(inspectorWidthResetGeneration)
@@ -524,7 +537,18 @@ struct ContentView: View {
     }
   }
 
+  /// Opens site settings handed over by the Settings window. The key is read
+  /// and cleared at handling time, so only one main window acts on it.
+  private func consumeRequestedSiteSettings() {
+    guard !requestedSiteSettingsDestinationID.isEmpty,
+      shellState.canUseProtectedWorkbench,
+      let destination = SettingsNavigation.consumeRequestedSiteSettings()
+    else { return }
+    openSettingsWorkspace(destination: destination)
+  }
+
   private func handleContentViewAppear() {
+    consumeRequestedSiteSettings()
     updateInspectorWidthState(
       isAIAssistantPresented: presentationState.isAssistantPresented
     )
@@ -647,6 +671,14 @@ struct ContentView: View {
 
   private func openSettingsWorkspace(destination: SettingsDestination?) {
     guard shellState.canUseProtectedWorkbench else { return }
+    // App preferences (and the plain gear/⌘, request) use the standard
+    // Settings window; only site configuration replaces the workspace.
+    if SettingsNavigation.opensInSettingsWindow(destination) {
+      SettingsNavigation.open(destination: destination) {
+        openSettingsWindow()
+      }
+      return
+    }
     if isSettingsWorkspacePresented, destination == nil {
       return
     }
@@ -996,8 +1028,6 @@ struct ContentView: View {
 
   private var commandSearchToolbarButton: some View {
     WorkspaceCommandSearchToolbarControl(
-      contextStore: sceneCommandRouter.toolbarEditorContext,
-      selectedDraftID: windowSession.selectedDraftID,
       density: toolbarDensity,
       isEnabled: shellState.canUseProtectedWorkbench
     ) {
@@ -1019,14 +1049,21 @@ struct ContentView: View {
         )
         .accessibilityHidden(shellState.isQuickHideActive)
 
+        // Quick hide collapses the site switcher to its icon so the masked
+        // window does not reveal the active site's name.
         WorkspaceToolbarLeadingContent(
           store: store,
-          isCompact: isCompactLayout
+          isCompact: isCompactLayout || shellState.isQuickHideActive,
+          openSiteSettings: {
+            openSettingsWorkspace(destination: .tab(.configurationStatus))
+          }
         )
         .disabled(!shellState.canUseProtectedWorkbench)
         .accessibilityHidden(shellState.isQuickHideActive)
 
-        if windowSession.selectedSection.showsPublishingStatusToolbar {
+        if windowSession.selectedSection.showsPublishingStatusToolbar,
+          !shellState.isQuickHideActive
+        {
           PublishingStatusToolbarControl(
             store: store,
             canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
@@ -1132,7 +1169,7 @@ struct ContentView: View {
 
   private var aiAssistantToolbarButton: some View {
     Button(action: toggleAIAssistantWorkspace) {
-      Label(String(localized: "AI 助手"), systemImage: "sparkles")
+      Label(String(localized: "AI 助手"), systemImage: "bubble.left")
     }
     .buttonStyle(
       WorkspaceToolbarIconButtonStyle(isActive: isAIAssistantWorkspaceVisible)
@@ -1157,7 +1194,7 @@ struct ContentView: View {
 
   private var inspectorToolbarButton: some View {
     Button(action: toggleWorkspaceInspector) {
-      Label(String(localized: "Inspector"), systemImage: "sidebar.right")
+      Label(String(localized: "详情栏"), systemImage: "sidebar.right")
     }
     .buttonStyle(
       WorkspaceToolbarIconButtonStyle(
@@ -1167,7 +1204,7 @@ struct ContentView: View {
     )
     .disabled(!shellState.canUseProtectedWorkbench || !canRequestInspectorInCurrentLayout)
     .help(inspectorToolbarHelp)
-    .accessibilityLabel(String(localized: "工作区 Inspector"))
+    .accessibilityLabel(String(localized: "工作区详情栏"))
     .accessibilityValue(inspectorAccessibilityValue)
     .accessibilityIdentifier("workspace-inspector-toggle")
   }
@@ -1261,20 +1298,20 @@ struct ContentView: View {
 
   private var inspectorToolbarHelp: String {
     if effectiveFocusMode && canRequestInspectorInCurrentLayout {
-      return String(localized: "显示 Inspector 并退出专注")
+      return String(localized: "显示详情栏并退出专注")
     }
     if canOverrideInspectorInCurrentLayout && !allowsInspectorInCurrentLayout {
-      return String(localized: "窗口较窄；点击后会收起左侧栏并显示 Inspector")
+      return String(localized: "窗口较窄；点击后会收起左侧栏并显示详情栏")
     }
     guard allowsInspectorInCurrentLayout else {
-      return String(localized: "扩大窗口后可使用 Inspector")
+      return String(localized: "扩大窗口后可使用详情栏")
     }
     if presentationState.isAssistantPresented {
-      return String(localized: "切换到文章 Inspector")
+      return String(localized: "切换到文章详情栏")
     }
     return inspectorPresentation.wrappedValue
-      ? String(localized: "隐藏 Inspector")
-      : String(localized: "显示 Inspector")
+      ? String(localized: "隐藏详情栏")
+      : String(localized: "显示详情栏")
   }
 
   private var inspectorAccessibilityValue: String {

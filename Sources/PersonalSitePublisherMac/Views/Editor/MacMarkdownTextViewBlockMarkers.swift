@@ -245,13 +245,13 @@ extension DroppableMarkdownTextView {
         drawMarkdownBlockMarkerLabel(
           "•",
           in: drawing.frame,
-          color: WorkbenchThemeNSColor.success
+          color: WorkbenchThemeNSColor.primary
         )
       case .orderedList(let ordinal):
         drawMarkdownBlockMarkerLabel(
           ordinal,
           in: drawing.frame,
-          color: WorkbenchThemeNSColor.success
+          color: WorkbenchThemeNSColor.primary
         )
       case .taskList(let isChecked):
         drawMarkdownTaskCheckbox(in: drawing.frame, isChecked: isChecked)
@@ -320,9 +320,13 @@ extension DroppableMarkdownTextView {
       NSColor.white.setStroke()
       let check = NSBezierPath()
       check.lineWidth = 1.5
+      // NSTextView draws in flipped coordinates: the tick's low point sits
+      // near maxY and its tip near minY. Unflipped hosts mirror the points.
+      let bottomY = isFlipped ? checkboxFrame.maxY - 3.5 : checkboxFrame.minY + 3.5
+      let topY = isFlipped ? checkboxFrame.minY + 3 : checkboxFrame.maxY - 3
       check.move(to: NSPoint(x: checkboxFrame.minX + 3, y: checkboxFrame.midY))
-      check.line(to: NSPoint(x: checkboxFrame.midX - 1, y: checkboxFrame.minY + 3.5))
-      check.line(to: NSPoint(x: checkboxFrame.maxX - 2.5, y: checkboxFrame.maxY - 3))
+      check.line(to: NSPoint(x: checkboxFrame.midX - 1, y: bottomY))
+      check.line(to: NSPoint(x: checkboxFrame.maxX - 2.5, y: topY))
       check.stroke()
     } else {
       NSColor.controlAccentColor.withAlphaComponent(0.78).setStroke()

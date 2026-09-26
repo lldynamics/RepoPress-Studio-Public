@@ -1,4 +1,5 @@
 import Combine
+import PublishingBackupCore
 import PublishingDomainContracts
 import XCTest
 

@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Synchronize app UI localization and validate Core presentation resources.
 
-This extracts app-target SwiftUI literals, literal localization API calls,
-workspace navigation keys, semantic display-name keys, and explicit CoreL10n
-calls used by PublishingWorkbenchCore services.
+This extracts compiler-checked app-target localization keys, supplements them
+with literal and semantic keys, and validates explicit CoreL10n calls used by
+PublishingWorkbenchCore services.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -183,6 +184,7 @@ def normalized_swiftui_literal(raw_value: str) -> str:
 
 
 def extract_swiftui_strings() -> dict[str, str]:
+    """Keep genstrings coverage for source patterns outside compiler inference."""
     swift_files = sorted(
         str(path)
         for source_root in UI_SOURCE_ROOTS
@@ -209,6 +211,76 @@ def extract_swiftui_strings() -> dict[str, str]:
             check=True,
         )
         return json.loads(json_path.read_text(encoding="utf-8"))
+
+
+def parse_compiler_localizations(export_directory: Path, source_root: Path) -> dict[str, str]:
+    """Read Swift's per-source stringsdata and require every app source to be present."""
+    expected_sources = {path.resolve() for path in source_root.rglob("*.swift")}
+    seen_sources: set[Path] = set()
+    extracted: dict[str, str] = {}
+    for export_path in sorted(export_directory.glob("*.stringsdata")):
+        payload = json.loads(export_path.read_text(encoding="utf-8"))
+        raw_source = payload.get("source")
+        if not isinstance(raw_source, str):
+            raise RuntimeError(f"compiler localization export lacks source: {export_path}")
+        source = Path(raw_source)
+        if not source.is_absolute():
+            source = ROOT / source
+        source = source.resolve()
+        if source not in expected_sources:
+            continue
+        if source in seen_sources:
+            raise RuntimeError(f"duplicate compiler localization export: {source}")
+        seen_sources.add(source)
+        tables = payload.get("tables")
+        if not isinstance(tables, dict):
+            raise RuntimeError(f"compiler localization export lacks tables: {export_path}")
+        entries = tables.get("Localizable", [])
+        if not isinstance(entries, list):
+            raise RuntimeError(f"invalid Localizable compiler export: {export_path}")
+        for entry in entries:
+            key = entry.get("key") if isinstance(entry, dict) else None
+            if not isinstance(key, str):
+                raise RuntimeError(f"invalid localization key in {export_path}")
+            if key:
+                extracted[key] = key
+
+    missing_sources = sorted(expected_sources.difference(seen_sources))
+    if missing_sources:
+        examples = ", ".join(str(path) for path in missing_sources[:5])
+        raise RuntimeError(
+            f"compiler localization export missing {len(missing_sources)} app source(s): {examples}"
+        )
+    return extracted
+
+
+def extract_compiler_localizations() -> dict[str, str]:
+    """Compile the app target so Swift determines interpolation placeholder types."""
+    temporary_root = ROOT / ".build" / "tmp"
+    temporary_root.mkdir(parents=True, exist_ok=True)
+    cache_root = temporary_root / "ui-localization-compiler-cache"
+    cache_root.mkdir(parents=True, exist_ok=True)
+    environment = os.environ.copy()
+    environment.setdefault("CLANG_MODULE_CACHE_PATH", str(cache_root / "clang"))
+    environment.setdefault("SWIFT_MODULE_CACHE_PATH", str(cache_root / "swift"))
+    environment.setdefault("XDG_CACHE_HOME", str(cache_root / "xdg"))
+    with tempfile.TemporaryDirectory(
+        prefix="ui-localization-export-", dir=temporary_root
+    ) as temporary_directory:
+        export_directory = Path(temporary_directory) / "stringsdata"
+        command = [
+            "swift", "build", "--disable-sandbox", "--target", "PersonalSitePublisherMac",
+            "-Xswiftc", "-emit-localized-strings",
+            "-Xswiftc", "-emit-localized-strings-path",
+            "-Xswiftc", str(export_directory),
+        ]
+        result = subprocess.run(
+            command, cwd=ROOT, env=environment, capture_output=True, text=True, check=False
+        )
+        if result.returncode != 0:
+            details = "\n".join((result.stdout + result.stderr).splitlines()[-40:])
+            raise RuntimeError(f"Swift compiler localization export failed:\n{details}")
+        return parse_compiler_localizations(export_directory, SOURCE_ROOT)
 
 
 def extract_workspace_navigation_keys() -> dict[str, str]:
@@ -737,7 +809,9 @@ def main() -> int:
         for gap in display_name_gaps[:20]:
             print(f"- {gap}")
         return 1
-    statically_extracted = extract_swiftui_strings()
+    compiler_extracted = extract_compiler_localizations()
+    statically_extracted = dict(compiler_extracted)
+    statically_extracted.update(extract_swiftui_strings())
     statically_extracted.update(extract_literal_localization_calls())
     statically_extracted.update(extract_component_localization_keys())
     workspace_navigation_keys = extract_workspace_navigation_keys()
@@ -795,7 +869,8 @@ def main() -> int:
                 print(f"- ... {len(failures) - 100} more issue(s)")
             return 1
         print(
-            f"ui-scoped localization catalog: {len(statically_extracted)} statically extracted keys, "
+            f"ui-scoped localization catalog: {len(compiler_extracted)} compiler-extracted keys, "
+            f"{len(statically_extracted)} combined static keys, "
             f"{len(dynamic_keys)} reviewed dynamic keys, "
             f"and {len(core_extracted)} migrated Core presentation keys have valid zh-Hans/en values; "
             "no extracted CJK UI key or stale managed entry remains"
@@ -824,7 +899,8 @@ def main() -> int:
             encoding="utf-8",
         )
     print(
-        f"localization catalog: synchronized {len(statically_extracted)} statically extracted keys "
+        f"localization catalog: synchronized {len(compiler_extracted)} compiler-extracted keys "
+        f"and {len(statically_extracted)} combined static keys "
         f"and {len(dynamic_keys)} reviewed dynamic keys; "
         f"validated {len(core_extracted)} migrated Core presentation keys"
     )

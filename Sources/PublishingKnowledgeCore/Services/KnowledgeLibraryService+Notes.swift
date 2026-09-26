@@ -79,7 +79,8 @@ extension KnowledgeLibraryService {
     }
   }
 
-  public func noteSignatures(includeArchived: Bool = true) throws -> [UUID: KnowledgeNoteSignature] {
+  public func noteSignatures(includeArchived: Bool = true) throws -> [UUID: KnowledgeNoteSignature]
+  {
     Dictionary(
       uniqueKeysWithValues: try notes(includeArchived: includeArchived).map { note in
         (note.id, noteSignature(note))
@@ -125,7 +126,9 @@ extension KnowledgeLibraryService {
     var updated = note
     updated.createdAt = existing.importedAt
     updated.updatedAt = Date()
-    return try writeNotes([updated], mode: .localEdit(expectedContentRevision: expectedContentRevision)).first ?? updated
+    return try writeNotes(
+      [updated], mode: .localEdit(expectedContentRevision: expectedContentRevision)
+    ).first ?? updated
   }
 
   public func updateNoteAsync(_ note: KnowledgeNote) async throws -> KnowledgeNote {
@@ -224,7 +227,8 @@ extension KnowledgeLibraryService {
       }
       switch mode {
       case .rejectConflict:
-        throw KnowledgeLibraryError.invalidMetadata("笔记“\(note.title.nilIfEmpty ?? note.id.uuidString)”与本机内容冲突。")
+        throw KnowledgeLibraryError.invalidMetadata(
+          "笔记“\(note.title.nilIfEmpty ?? note.id.uuidString)”与本机内容冲突。")
       case .copyWithNewID:
         var copy = note
         copy.id = UUID()
@@ -261,11 +265,12 @@ extension KnowledgeLibraryService {
     guard !notes.isEmpty else { return [] }
     storageMutationLock.lock()
     defer { storageMutationLock.unlock() }
-    if case let .localEdit(expectedContentRevision?) = mode {
+    if case .localEdit(let expectedContentRevision?) = mode {
       guard notes.count == 1,
-            let current = try self.note(documentID: notes[0].id),
-            noteSignature(current).contentHash == expectedContentRevision else {
-      throw KnowledgeLibraryError.staleNoteRevision
+        let current = try self.note(documentID: notes[0].id),
+        noteSignature(current).contentHash == expectedContentRevision
+      else {
+        throw KnowledgeLibraryError.staleNoteRevision
       }
     }
     try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
@@ -306,7 +311,8 @@ extension KnowledgeLibraryService {
     }
     let service = self
     Task.detached(priority: .utility) {
-      _ = try? await KnowledgeNoteAutomaticSnapshotBackup.shared.createSnapshotIfDue(service: service)
+      _ = try? await KnowledgeNoteAutomaticSnapshotBackup.shared.createSnapshotIfDue(
+        service: service)
     }
     return plans.map(\.note)
   }
@@ -538,7 +544,8 @@ extension KnowledgeLibraryService {
   private func removeUnreferencedNoteArtifacts(_ references: Set<String>) throws {
     let unreferenced = try database().unreferencedStorageReferences(references)
     for reference in unreferenced {
-      guard let url = safeStorageFileURL(for: reference), fileManager.fileExists(atPath: url.path) else {
+      guard let url = safeStorageFileURL(for: reference), fileManager.fileExists(atPath: url.path)
+      else {
         continue
       }
       let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])

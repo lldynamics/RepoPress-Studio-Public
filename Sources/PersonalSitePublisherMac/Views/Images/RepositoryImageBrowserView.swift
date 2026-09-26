@@ -380,7 +380,10 @@ struct RepositoryImageBrowserView: View {
           onAttachToSelectedDraft(asset)
         } label: {
           Label(attachButtonTitle(asset), systemImage: "plus.circle")
-            .frame(maxWidth: .infinity)
+            .lineLimit(2)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, minHeight: 32)
         }
         .workbenchProminentActionStyle()
         .disabled(!canAttach(asset))

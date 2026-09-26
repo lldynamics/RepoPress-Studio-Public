@@ -11,6 +11,8 @@ public enum SiteKind: String, Codable, CaseIterable, Identifiable, Sendable {
   case foam
   case hexo
   case jekyll
+  case docusaurus
+  case mkDocs
 
   public var id: String { rawValue }
 }

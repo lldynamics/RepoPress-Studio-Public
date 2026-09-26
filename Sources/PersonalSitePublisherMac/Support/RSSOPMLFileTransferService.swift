@@ -1,6 +1,5 @@
 import AppKit
 import PublishingKnowledgeCore
-import PublishingWorkbenchCore
 import UniformTypeIdentifiers
 
 @MainActor

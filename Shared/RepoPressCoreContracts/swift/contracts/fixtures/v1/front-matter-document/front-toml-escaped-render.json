@@ -1,0 +1,35 @@
+{
+  "capability": "front-matter-document",
+  "description": "Escapes backslashes, quotes, tabs, carriage returns, and newlines in TOML.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "text": "+++\ntitle = \"Back\\\\slash and \\\"quote\\\"\"\ndate = 2026-03-07\nslug = \"escaped\"\ndescription = \"a\\tb\\r\\nc\"\nauthors = [\"a\\\"b\"]\ntaxonomies = { tags = [\"x\\\\y\"], categories = [\"z\"] }\n+++"
+    }
+  },
+  "id": "front-toml-escaped-render",
+  "input": {
+    "document": {
+      "authors": [
+        "a\"b"
+      ],
+      "bodyMarkdown": "Body",
+      "categories": [
+        "z"
+      ],
+      "formattedDate": "2026-03-07",
+      "slug": "escaped",
+      "summary": "a\tb\r\nc",
+      "summaryField": "description",
+      "syntax": "toml",
+      "tags": [
+        "x\\y"
+      ],
+      "taxonomyLayout": "inlineTable",
+      "title": "Back\\slash and \"quote\"",
+      "writesCoverInExtraTable": false
+    },
+    "operation": "render"
+  },
+  "validity": "valid"
+}

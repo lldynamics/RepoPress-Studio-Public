@@ -255,7 +255,15 @@ public struct MarkdownCursorCompletionService: Sendable {
     guard selectedRange.length == 0,
       selectedRange.location >= 0,
       selectedRange.location <= source.length,
-      hasSlashCommandPrefix(source: source, cursor: selectedRange.location),
+      let query = automaticSlashCommandQuery(
+        in: source,
+        cursor: selectedRange.location
+      ),
+      let normalizedQuery = MarkdownSnippetLibraryService.normalizedShortcut(query),
+      !query.hasPrefix("/"),
+      let snippet = snippets.first(where: {
+        MarkdownSnippetLibraryService.normalizedShortcut($0.shortcut) == normalizedQuery
+      }),
       !isInsideCode(in: markdown, cursor: selectedRange.location),
       let context = slashCommandCompletion(
         in: markdown,
@@ -265,19 +273,16 @@ public struct MarkdownCursorCompletionService: Sendable {
     else {
       return nil
     }
-    guard
-      let snippet = snippets.first(where: {
-        MarkdownSnippetLibraryService.normalizedShortcut($0.shortcut)
-          == MarkdownSnippetLibraryService.normalizedShortcut(context.query)
-      }),
-      MarkdownSnippetLibraryService.normalizedShortcut(snippet.shortcut) != nil
-    else {
-      return nil
-    }
     return context.candidates.first(where: { $0.id == "snippet-\(snippet.id)" })
   }
 
-  private func hasSlashCommandPrefix(source: NSString, cursor: Int) -> Bool {
+  /// Extracts the current slash command from its line without scanning the
+  /// document for fenced or inline code. The automatic path needs a whole
+  /// document code check only after it has found an exact custom shortcut.
+  private func automaticSlashCommandQuery(
+    in source: NSString,
+    cursor: Int
+  ) -> String? {
     let lineRange = source.lineRange(for: NSRange(location: cursor, length: 0))
     var location = lineRange.location
     while location < cursor {
@@ -285,7 +290,12 @@ public struct MarkdownCursorCompletionService: Sendable {
       guard character == 32 || character == 9 else { break }
       location += 1
     }
-    return location < cursor && source.character(at: location) == 47
+    guard location < cursor, source.character(at: location) == 47 else { return nil }
+    let range = NSRange(location: location, length: cursor - location)
+    let expectedText = source.substring(with: range)
+    let query = String(expectedText.dropFirst())
+    guard !query.contains(where: \.isWhitespace) else { return nil }
+    return query
   }
 
   private func slashCommandCompletion(

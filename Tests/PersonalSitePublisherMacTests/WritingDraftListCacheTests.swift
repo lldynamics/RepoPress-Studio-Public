@@ -4,6 +4,51 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class WritingDraftListCacheTests: XCTestCase {
+  func testDraftListDateUsesTimeForTodayAndShortDateForOtherDays() {
+    var calendar = Calendar(identifier: .gregorian)
+    guard let utc = TimeZone(secondsFromGMT: 0) else {
+      XCTFail("UTC time zone unavailable")
+      return
+    }
+    calendar.timeZone = utc
+    let now = Date(timeIntervalSince1970: 1_758_780_000)
+    let today = now.addingTimeInterval(-2 * 60 * 60)
+    let previousDay = now.addingTimeInterval(-26 * 60 * 60)
+
+    XCTAssertEqual(
+      writingDraftListDateText(today, now: now, calendar: calendar),
+      today.formatted(date: .omitted, time: .shortened)
+    )
+    XCTAssertEqual(
+      writingDraftListDateText(previousDay, now: now, calendar: calendar),
+      previousDay.formatted(date: .numeric, time: .omitted)
+    )
+  }
+
+  func testGeneralFolderMoveInvalidatesCachedTree() {
+    let profile = SiteProfile.defaultProfile
+    var draft = ArticleDraft(
+      siteProfileID: profile.id, scope: .general, title: "General"
+    )
+    var cache = WritingDraftListCache()
+    cache.updateFolderProjectionCache(
+      profile: profile, contentScope: .general,
+      universeDrafts: [draft], filteredDrafts: [draft],
+      sortOrder: .updatedNewest, maskedDraftIDs: []
+    )
+    XCTAssertEqual(cache.filteredFolderProjection?.root.children.map(\.kind), [.unfiled])
+    let initialBuildCount = cache.folderProjectionBuildCount
+
+    XCTAssertTrue(draft.setGeneralDraftFolderName("Research"))
+    cache.updateFolderProjectionCache(
+      profile: profile, contentScope: .general,
+      universeDrafts: [draft], filteredDrafts: [draft],
+      sortOrder: .updatedNewest, maskedDraftIDs: []
+    )
+    XCTAssertEqual(cache.folderProjectionBuildCount, initialBuildCount + 2)
+    XCTAssertEqual(cache.filteredFolderProjection?.root.children.map(\.name), ["Research"])
+  }
+
   func testRowPresentationKeyIgnoresBodyTextUntilPersistedCountChanges() {
     let profile = SiteProfile.defaultProfile
     var draft = ArticleDraft(

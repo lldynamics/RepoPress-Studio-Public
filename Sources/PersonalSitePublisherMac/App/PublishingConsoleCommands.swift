@@ -53,7 +53,13 @@ struct PublishingConsoleCommands: Commands {
       }
     }
 
-    CommandGroup(replacing: .printItem) {}
+    CommandGroup(replacing: .printItem) {
+      Button(String(localized: "打印…")) {
+        markdownEditorCommands?.printDocument()
+      }
+      .keyboardShortcut("p")
+      .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
+    }
 
     CommandGroup(after: .importExport) {
       if knowledgeLibraryCommands != nil {
@@ -117,8 +123,8 @@ struct PublishingConsoleCommands: Commands {
       } else if supportsInspector {
         Button(
           presentation.isInspectorPresented
-            ? String(localized: "隐藏 Inspector")
-            : String(localized: "显示 Inspector")
+            ? String(localized: "隐藏详情栏")
+            : String(localized: "显示详情栏")
         ) {
           store.setInspectorPresented(!presentation.isInspectorPresented)
         }
@@ -168,7 +174,7 @@ struct PublishingConsoleCommands: Commands {
       Button(String(localized: "命令面板与快速打开")) {
         workspaceCommandPaletteAction?.open()
       }
-      .keyboardShortcut("p")
+      .keyboardShortcut("k", modifiers: [.command, .shift])
       .disabled(!canUseProtectedWorkbench || workspaceCommandPaletteAction == nil)
 
       Menu(String(localized: "切换工作区")) {
@@ -802,18 +808,15 @@ struct PublishingConsoleCommands: Commands {
 }
 
 struct PublishingConsoleSettingsCommands: Commands {
-  @FocusedObject private var commandRouter: WorkspaceSceneCommandRouter?
   @Environment(\.openSettings) private var openSettings
 
   var body: some Commands {
+    // ⌘, follows the macOS convention and always opens the Settings window;
+    // site configuration is reached from the site menu in the main window.
     CommandGroup(replacing: .appSettings) {
       Button(String(localized: "设置…")) {
-        if let action = commandRouter?.settingsWorkspaceCommandAction {
-          action.open(nil)
-        } else {
-          SettingsNavigation.open(destination: nil) {
-            openSettings()
-          }
+        SettingsNavigation.open(destination: nil) {
+          openSettings()
         }
       }
       .keyboardShortcut(",", modifiers: [.command])

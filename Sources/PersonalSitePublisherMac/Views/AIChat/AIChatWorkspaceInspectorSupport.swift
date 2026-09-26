@@ -4,12 +4,22 @@ import SwiftUI
 struct AIChatContextInspectorContent: View {
   let state: AIChatContextInspectorState
   let actions: AIChatContextInspectorActions
+  let isAIKeyMissing: Bool
+  let configureAIConnection: () -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       if let conversation = state.conversation {
-        AIChatConversationInspectorSection(context: conversation, actions: actions)
+        AIChatConversationInspectorSection(
+          context: conversation,
+          actions: actions,
+          isAIKeyMissing: isAIKeyMissing,
+          configureAIConnection: configureAIConnection
+        )
         AIChatRelatedSuggestionsInspectorSection(context: conversation, actions: actions)
+      } else if isAIKeyMissing {
+        AIChatMissingKeyEmptyState(configureAIConnection: configureAIConnection)
+          .frame(minHeight: 130)
       } else {
         EmptyStateView(
           title: "没有上下文",

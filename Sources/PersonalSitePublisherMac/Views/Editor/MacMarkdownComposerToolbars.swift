@@ -76,6 +76,8 @@ struct MacMarkdownEditorToolbar: View {
   let writingToolDensity: MarkdownWritingToolDensity
   let availableWritingContextPanels: [MarkdownWritingContextPanel]
   let actions: MarkdownEditorToolbarActions
+  let articleInformationToggle: MacMarkdownArticleInformationToggle?
+  let formattingToolbar: MacMarkdownFormattingToolbar
   @EnvironmentObject private var zenModeController: ZenModeController
   @State private var selectedPublishAssets = AIPublishingAssetKind.defaultSelection
   @AppStorage("workspace.customToolbarConfig") private var customToolbarConfigRawValue = ""
@@ -111,7 +113,9 @@ struct MacMarkdownEditorToolbar: View {
     externalBrowserPreviewCoordinator: ExternalBrowserPreviewCoordinator,
     writingToolDensity: MarkdownWritingToolDensity,
     availableWritingContextPanels: [MarkdownWritingContextPanel],
-    actions: MarkdownEditorToolbarActions
+    actions: MarkdownEditorToolbarActions,
+    articleInformationToggle: MacMarkdownArticleInformationToggle? = nil,
+    formattingToolbar: MacMarkdownFormattingToolbar
   ) {
     _title = title
     self.store = store
@@ -126,18 +130,20 @@ struct MacMarkdownEditorToolbar: View {
     self.writingToolDensity = writingToolDensity
     self.availableWritingContextPanels = availableWritingContextPanels
     self.actions = actions
+    self.articleInformationToggle = articleInformationToggle
+    self.formattingToolbar = formattingToolbar
   }
 
   var body: some View {
     HStack(spacing: 8) {
       titleArea
-
-      Spacer(minLength: 8)
-
+      formattingToolbar
+        .frame(minWidth: 80, idealWidth: 220, maxWidth: 280)
       configuredIconToolbarControls
     }
     .padding(.horizontal, WorkbenchSpacing.section)
     .padding(.vertical, 9)
+    .background(.bar)
     .contextMenu {
       Button {
         isCustomizationSheetPresented = true
@@ -184,7 +190,8 @@ struct MacMarkdownEditorToolbar: View {
       title: $title,
       store: store,
       draftID: draftID,
-      markdownPath: markdownPath
+      markdownPath: markdownPath,
+      articleInformationToggle: articleInformationToggle
     )
   }
 
@@ -226,7 +233,8 @@ struct MacMarkdownEditorToolbar: View {
           toolbarItemRow(
             ids: compactHeaderItemIDs,
             showsOverflow: true,
-            reservedIDs: compactHeaderItemIDs
+            reservedIDs: compactHeaderItemIDs,
+            compactSaveStatus: true
           )
         }
       }
@@ -236,7 +244,7 @@ struct MacMarkdownEditorToolbar: View {
         alignment: .trailing
       )
     }
-    .frame(maxWidth: .infinity, alignment: .trailing)
+    .frame(minWidth: 70, maxWidth: .infinity, alignment: .trailing)
     .frame(minHeight: 34, idealHeight: 34, maxHeight: 34)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("写作工具栏")
@@ -248,7 +256,8 @@ struct MacMarkdownEditorToolbar: View {
   private func toolbarItemRow(
     ids: [MarkdownToolbarItemID],
     showsOverflow: Bool,
-    reservedIDs: [MarkdownToolbarItemID] = []
+    reservedIDs: [MarkdownToolbarItemID] = [],
+    compactSaveStatus: Bool = false
   ) -> some View {
     HStack(spacing: 5) {
       ForEach(ids) { item in
@@ -256,7 +265,7 @@ struct MacMarkdownEditorToolbar: View {
         if item == ids.first(where: \.isAIGroupItem) {
           Divider().frame(height: 18)
         }
-        headerItem(item, showsTitle: false)
+        headerItem(item, showsTitle: false, compactSaveStatus: compactSaveStatus)
       }
       if showsOverflow {
         overflowMenu(reservedIDs: reservedIDs)
@@ -265,10 +274,15 @@ struct MacMarkdownEditorToolbar: View {
   }
 
   @ViewBuilder
-  private func headerItem(_ item: MarkdownToolbarItemID, showsTitle: Bool) -> some View {
+  private func headerItem(
+    _ item: MarkdownToolbarItemID,
+    showsTitle: Bool,
+    compactSaveStatus: Bool = false
+  ) -> some View {
     switch item {
     case .saveStatus:
-      MacMarkdownEditorSaveStatusIcon(store: store, draftID: draftID)
+      MacMarkdownEditorSaveStatusIcon(
+        store: store, draftID: draftID, isCompact: compactSaveStatus)
     case .writingToolDensity:
       writingToolDensityControl(showsTitle: showsTitle)
     case .findReplace:
@@ -746,18 +760,20 @@ private struct MacMarkdownEditorTitleArea: View {
   @Binding var title: String
   let draftID: UUID
   let markdownPath: String
+  let articleInformationToggle: MacMarkdownArticleInformationToggle?
   @StateObject private var saveStatus: WorkbenchMarkdownEditorSaveStatusFeatureFacade
-  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
   init(
     title: Binding<String>,
     store: WorkbenchStore,
     draftID: UUID,
-    markdownPath: String
+    markdownPath: String,
+    articleInformationToggle: MacMarkdownArticleInformationToggle?
   ) {
     _title = title
     self.draftID = draftID
     self.markdownPath = markdownPath
+    self.articleInformationToggle = articleInformationToggle
     _saveStatus = StateObject(
       wrappedValue: WorkbenchMarkdownEditorSaveStatusFeatureFacade(
         store: store,
@@ -776,23 +792,23 @@ private struct MacMarkdownEditorTitleArea: View {
       }
       .textFieldStyle(.plain)
       .font(.headline)
-      .foregroundStyle(saveStatus.hasUnsavedChanges ? WorkbenchTheme.warning : Color.primary)
+      // Unsaved state is shown by the save-status control; recoloring the
+      // title duplicated it and made the heading flicker while typing.
       .accessibilityLabel("文章标题")
       .accessibilityValue(title.nilIfEmpty ?? String(localized: "未命名文章"))
-      .animation(
-        WorkbenchMotion.animation(
-          for: .statusChange,
-          reduceMotion: accessibilityReduceMotion
-        ),
-        value: saveStatus.hasUnsavedChanges
-      )
       .lineLimit(1)
       .help(title.nilIfEmpty ?? String(localized: "未命名文章"))
 
-      InteractiveBreadcrumbView(
-        markdownPath: markdownPath,
-        fileURL: nil
-      )
+      HStack(spacing: 10) {
+        InteractiveBreadcrumbView(
+          markdownPath: markdownPath,
+          fileURL: nil
+        )
+        if let articleInformationToggle {
+          articleInformationToggle
+            .fixedSize()
+        }
+      }
 
       if let failure = saveStatus.saveFailure {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -820,7 +836,7 @@ private struct MacMarkdownEditorTitleArea: View {
         .accessibilityIdentifier("markdown-editor-save-failure")
       }
     }
-    .frame(minWidth: 220, idealWidth: 320, maxWidth: 460, alignment: .leading)
+    .frame(minWidth: 155, idealWidth: 250, maxWidth: 300, alignment: .leading)
     .onChange(of: draftID) { _, updatedDraftID in
       saveStatus.trackDraft(updatedDraftID)
     }
@@ -832,12 +848,14 @@ private struct MacMarkdownEditorTitleArea: View {
 private struct MacMarkdownEditorSaveStatusIcon: View {
   let store: WorkbenchStore
   let draftID: UUID
+  let isCompact: Bool
   @StateObject private var saveStatus: WorkbenchMarkdownEditorSaveStatusFeatureFacade
   @State private var isDetailPresented = false
 
-  init(store: WorkbenchStore, draftID: UUID) {
+  init(store: WorkbenchStore, draftID: UUID, isCompact: Bool) {
     self.store = store
     self.draftID = draftID
+    self.isCompact = isCompact
     _saveStatus = StateObject(
       wrappedValue: WorkbenchMarkdownEditorSaveStatusFeatureFacade(store: store, draftID: draftID)
     )
@@ -852,17 +870,24 @@ private struct MacMarkdownEditorSaveStatusIcon: View {
     Button {
       isDetailPresented.toggle()
     } label: {
-      Label(saveStatus.shortSaveStatus, systemImage: statusImage)
-        .font(.caption)
-        .lineLimit(1)
-        .frame(width: 130, alignment: .leading)
-        .foregroundStyle(
-          saveStatus.saveFailure != nil || saveStatus.hasUnsavedChanges
-            ? WorkbenchTheme.warning : WorkbenchTheme.success
-        )
+      Group {
+        if isCompact {
+          Image(systemName: statusImage)
+            .frame(width: 28, height: 28)
+        } else {
+          Label(saveStatus.shortSaveStatus, systemImage: statusImage)
+            .lineLimit(1)
+            .frame(width: 130, alignment: .leading)
+        }
+      }
+      .font(.caption)
+      .foregroundStyle(
+        saveStatus.saveFailure != nil || saveStatus.hasUnsavedChanges
+          ? WorkbenchTheme.warning : WorkbenchTheme.success
+      )
     }
     .buttonStyle(.borderless)
-    .frame(width: 138, height: 30)
+    .frame(width: isCompact ? 30 : 138, height: 30)
     .help(saveStatus.lastSaveStatus)
     .accessibilityLabel("保存状态")
     .accessibilityValue(saveStatus.shortSaveStatus)

@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import PublishingGitCore
+import PublishingSyncCore
 
 private struct RepositoryScanSnapshot: Sendable {
   var report: RepositoryScanReport

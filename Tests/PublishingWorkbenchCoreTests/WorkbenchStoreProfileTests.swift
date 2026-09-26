@@ -1,6 +1,7 @@
 import PublishingDomainContracts
 import XCTest
 
+@testable import PublishingPreviewCore
 @testable import PublishingWorkbenchCore
 
 @MainActor
@@ -437,6 +438,177 @@ final class WorkbenchStoreProfileTests: XCTestCase {
 
     XCTAssertEqual(store.profiles.count, 1)
     XCTAssertEqual(store.publishActionMessage, "至少需要保留一个站点配置。")
+  }
+
+  func testDeleteProfileDetachesExternalDraftsAndReconnectingSameFolderReusesThem() async throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let originalProfile = store.activeProfile
+    let folder = try temporaryDirectoryURL()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let file = folder.appendingPathComponent("idea.md")
+    try Data("# 外部草稿\n\n保留来源\n".utf8).write(to: file)
+
+    XCTAssertTrue(store.connectExternalDraftFolder(folder))
+    let scan = await store.scanExternalDraftFolder()
+    XCTAssertEqual(scan.addedCount, 1)
+    let imported = try XCTUnwrap(store.drafts.first { $0.externalDraftSource != nil })
+    let originalSource = try XCTUnwrap(imported.externalDraftSource)
+
+    var pendingWrite = imported
+    pendingWrite.bodyMarkdown += "\n删除前仅保留在本地的修改。\n"
+    store.updateDraft(pendingWrite)
+    XCTAssertNotNil(store.externalDraftWriteTasks[imported.id])
+
+    _ = store.createProfile(named: "保留的站点")
+    store.selectProfile(originalProfile.id)
+    let deleted = try XCTUnwrap(store.deleteActiveProfile())
+    let detached = try XCTUnwrap(store.draft(for: imported.id)?.externalDraftSource)
+
+    XCTAssertEqual(deleted.profile.externalDraftFolder?.id, originalSource.mappingID)
+    XCTAssertTrue(detached.isDetached)
+    XCTAssertEqual(detached.detachedFolderPath, folder.standardizedFileURL.path)
+    XCTAssertEqual(detached.mappingID, originalSource.mappingID)
+    XCTAssertEqual(store.pendingExternalDraftWriteCount, 0)
+    XCTAssertNil(store.externalDraftWriteTasks[imported.id])
+    XCTAssertEqual(store.draft(for: imported.id)?.bodyMarkdown, pendingWrite.bodyMarkdown)
+
+    try Data("# 外部变更\n\n删除期间在文件夹中修改。\n".utf8).write(to: file)
+    XCTAssertTrue(store.connectExternalDraftFolder(folder))
+    let reconnected = await store.scanExternalDraftFolder()
+    let rebound = try XCTUnwrap(store.draft(for: imported.id)?.externalDraftSource)
+
+    XCTAssertEqual(reconnected.addedCount, 0)
+    XCTAssertEqual(reconnected.conflictCount, 1)
+    XCTAssertTrue(store.externalDraftConflicts.contains(imported.id))
+    XCTAssertFalse(rebound.isDetached)
+    XCTAssertEqual(rebound.relativePath, originalSource.relativePath)
+    XCTAssertNotEqual(rebound.mappingID, originalSource.mappingID)
+    XCTAssertEqual(rebound.importedFingerprint, originalSource.importedFingerprint)
+    XCTAssertEqual(rebound.importedTitle, originalSource.importedTitle)
+    XCTAssertEqual(store.draft(for: imported.id)?.bodyMarkdown, pendingWrite.bodyMarkdown)
+    XCTAssertEqual(store.drafts.filter { $0.externalDraftSource != nil }.map(\.id), [imported.id])
+    XCTAssertFalse(store.flushPendingExternalDraftWrites())
+    XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), "# 外部变更\n\n删除期间在文件夹中修改。\n")
+
+    let resolvedConflict = await store.keepLocalCopyAndAcceptExternal(draftID: imported.id)
+    XCTAssertTrue(resolvedConflict)
+    XCTAssertEqual(store.draft(for: imported.id)?.bodyMarkdown, "# 外部变更\n\n删除期间在文件夹中修改。\n")
+    XCTAssertFalse(store.externalDraftConflicts.contains(imported.id))
+    XCTAssertTrue(
+      store.drafts.contains {
+        $0.externalDraftSource == nil && $0.bodyMarkdown == pendingWrite.bodyMarkdown
+      })
+  }
+
+  func testReconnectsDetachedLocalEditWhenExternalFileHasNotChanged() async throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let originalProfile = store.activeProfile
+    let folder = try temporaryDirectoryURL()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let file = folder.appendingPathComponent("idea.md")
+    try Data("# 外部草稿\n\n初始正文\n".utf8).write(to: file)
+
+    XCTAssertTrue(store.connectExternalDraftFolder(folder))
+    let initialScan = await store.scanExternalDraftFolder()
+    XCTAssertEqual(initialScan.addedCount, 1)
+    let imported = try XCTUnwrap(store.drafts.first { $0.externalDraftSource != nil })
+    let originalSource = try XCTUnwrap(imported.externalDraftSource)
+    var locallyEdited = imported
+    locallyEdited.bodyMarkdown = "# 外部草稿\n\n仅本地编辑\n"
+    store.updateDraft(locallyEdited)
+
+    _ = store.createProfile(named: "保留的站点")
+    store.selectProfile(originalProfile.id)
+    _ = try XCTUnwrap(store.deleteActiveProfile())
+
+    XCTAssertTrue(store.connectExternalDraftFolder(folder))
+    let reconnected = await store.scanExternalDraftFolder()
+    let rebound = try XCTUnwrap(store.draft(for: imported.id)?.externalDraftSource)
+
+    XCTAssertEqual(reconnected.addedCount, 0)
+    XCTAssertEqual(reconnected.conflictCount, 0)
+    XCTAssertFalse(store.externalDraftConflicts.contains(imported.id))
+    XCTAssertEqual(rebound.importedFingerprint, originalSource.importedFingerprint)
+    XCTAssertNotEqual(rebound.mappingID, originalSource.mappingID)
+    XCTAssertTrue(store.flushPendingExternalDraftWrites())
+    XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), locallyEdited.bodyMarkdown)
+  }
+
+  func testDeleteProfileRejectsInProgressExternalWriteAndUndoRestoresOriginalMapping() async throws
+  {
+    let store = try TestWorkbenchFactory.makeStore()
+    let originalProfile = store.activeProfile
+    let folder = try temporaryDirectoryURL()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let file = folder.appendingPathComponent("idea.md")
+    try Data("# 外部草稿\n\n保留来源\n".utf8).write(to: file)
+
+    XCTAssertTrue(store.connectExternalDraftFolder(folder))
+    let scan = await store.scanExternalDraftFolder()
+    XCTAssertEqual(scan.addedCount, 1)
+    let imported = try XCTUnwrap(store.drafts.first { $0.externalDraftSource != nil })
+    let source = try XCTUnwrap(imported.externalDraftSource)
+    store.publishingStore.draftVersions = [
+      DraftVersionSnapshot(draft: imported, reason: .automatic)
+    ]
+    let recycled = ArticleDraft(
+      siteProfileID: originalProfile.id,
+      scope: .general,
+      title: "回收站外部草稿",
+      bodyMarkdown: "# 回收站\n",
+      externalDraftSource: ExternalDraftSource(
+        mappingID: source.mappingID,
+        relativePath: "recycled.md",
+        importedTitle: "回收站外部草稿",
+        importedFingerprint: "recycled-fingerprint"
+      )
+    )
+    store.publishingStore.recycledDrafts = [RecycledDraft(draft: recycled)]
+    _ = store.createProfile(named: "保留的站点")
+    store.selectProfile(originalProfile.id)
+
+    store.externalDraftWritesInProgress.insert(imported.id)
+    XCTAssertNil(store.deleteActiveProfile())
+    XCTAssertTrue(store.profiles.contains { $0.id == originalProfile.id })
+    XCTAssertEqual(store.publishActionMessage, "外部草稿正在写回；完成后请重新删除此站点 Profile。")
+
+    store.externalDraftWritesInProgress.remove(imported.id)
+    _ = try XCTUnwrap(store.deleteActiveProfile())
+    XCTAssertTrue(store.draft(for: imported.id)?.externalDraftSource?.isDetached == true)
+    XCTAssertTrue(store.draftVersions.first?.draft.externalDraftSource?.isDetached == true)
+    XCTAssertTrue(store.recycledDrafts.first?.draft.externalDraftSource?.isDetached == true)
+
+    XCTAssertTrue(store.restoreRecentlyDeletedProfile())
+    let restored = try XCTUnwrap(store.draft(for: imported.id)?.externalDraftSource)
+    XCTAssertFalse(restored.isDetached)
+    XCTAssertEqual(restored.mappingID, source.mappingID)
+    XCTAssertFalse(store.draftVersions.first?.draft.externalDraftSource?.isDetached == true)
+    XCTAssertFalse(store.recycledDrafts.first?.draft.externalDraftSource?.isDetached == true)
+    XCTAssertEqual(store.activeProfile.externalDraftFolder?.id, source.mappingID)
+  }
+
+  func testUndoProfileDeletionReattachesRestoredSiteDraftsAndVersions() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let profileID = store.activeProfileID
+    let folder = try temporaryDirectoryURL()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    XCTAssertTrue(store.connectExternalDraftFolder(folder))
+    let mapping = try XCTUnwrap(store.activeProfile.externalDraftFolder)
+    var draft = try XCTUnwrap(store.selectedDraft)
+    draft.externalDraftSource = ExternalDraftSource(
+      mappingID: mapping.id, relativePath: "site.md", importedTitle: draft.title,
+      importedFingerprint: "baseline")
+    store.publishingStore.drafts = [draft]
+    store.publishingStore.draftVersions = [DraftVersionSnapshot(draft: draft, reason: .automatic)]
+    store.publishingStore.recycledDrafts = [RecycledDraft(draft: draft)]
+    _ = store.createProfile(named: "Remaining")
+    store.selectProfile(profileID)
+    let removed = try XCTUnwrap(store.deleteActiveProfile())
+    XCTAssertTrue(removed.drafts.first?.externalDraftSource?.isDetached == true)
+    XCTAssertTrue(store.restoreRecentlyDeletedProfile())
+    XCTAssertEqual(store.draft(for: draft.id)?.externalDraftSource?.isDetached, false)
+    XCTAssertEqual(store.draftVersions.first?.draft.externalDraftSource?.isDetached, false)
+    XCTAssertEqual(store.recycledDrafts.first?.draft.externalDraftSource?.isDetached, false)
   }
 
   func testCanDeferPreflightRefreshWhileEditing() async throws {

@@ -30,6 +30,7 @@ EXCLUDED_QUICK_IDS = {
 
 REQUIRED_QUICK_PRODUCT_IDS = {
     "repository-source-boundary",
+    "shared-repopress-source-lock",
     "localization",
     "typography",
     "build-version",
@@ -157,6 +158,8 @@ def main() -> int:
         fail("common profile must use swift-tests instead of a duplicate strict build")
     if "swift-tests" not in profiles.get("common", []):
         fail("common profile must retain the authoritative strict test inventory build")
+    if "shared-repopress-source-lock" not in profiles.get("common", []):
+        fail("common profile must retain the shared Swift source-lock check")
     if "swift-strict-build-tests" not in profiles.get("common", []):
         fail("strict-build contract test must remain in the common tooling profile")
 

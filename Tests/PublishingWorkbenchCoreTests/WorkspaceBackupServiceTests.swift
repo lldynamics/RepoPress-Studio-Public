@@ -1,4 +1,5 @@
 import Foundation
+import PublishingBackupCore
 import PublishingDomainContracts
 import XCTest
 
@@ -6,6 +7,87 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class WorkspaceBackupServiceTests: XCTestCase {
+  func testKnowledgeRestoreResetsSyncBaselineBeforeRemoteFetch() async throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "WorkspaceKnowledgeRestoreSync")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let knowledgeRootURL = rootURL.appendingPathComponent("KnowledgeLibrary", isDirectory: true)
+    let sidecarURL = rootURL.appendingPathComponent("KnowledgeSync", isDirectory: true)
+    let service = KnowledgeLibraryService(rootURL: knowledgeRootURL)
+    let oldNote = try service.createNote(KnowledgeNote(title: "Old", markdown: "old"))
+    let adapter = KnowledgeNoteCloudSyncAdapter(
+      service: service, stateDirectoryURL: sidecarURL)
+    try await adapter.savePersistentState(
+      .init(
+        engineState: Data([1]), boundAccountID: "account", initialFetchComplete: true,
+        zoneEstablished: true))
+
+    let backupURL = rootURL.appendingPathComponent("old-workspace.psworkspacebackup")
+    _ = try WorkspaceBackupService().createBackup(
+      at: backupURL,
+      snapshot: WorkbenchSnapshot(
+        profiles: [], activeProfileID: UUID(), drafts: [], releaseRecords: []),
+      knowledgeRootURL: knowledgeRootURL,
+      applicationVersion: "test",
+      selectedCategories: [.knowledgeLibrary]
+    )
+
+    let oldChanges = try await adapter.localChanges()
+    XCTAssertEqual(oldChanges.count, 1)
+    await adapter.prepareForSend(oldChanges[0])
+    try await adapter.markSent(
+      id: oldNote.id, revision: oldChanges[0].revision, systemFields: Data([1]))
+
+    let laterNote = try service.createNote(KnowledgeNote(title: "Later", markdown: "later"))
+    let allChanges = try await adapter.localChanges()
+    XCTAssertEqual(allChanges.count, 1)
+    await adapter.prepareForSend(allChanges[0])
+    try await adapter.markSent(
+      id: laterNote.id, revision: allChanges[0].revision, systemFields: Data([2]))
+    let remoteChanges = oldChanges + allChanges
+
+    let persistenceURL = rootURL.appendingPathComponent("workbench.json")
+    _ = try WorkspaceBackupService().stageRestore(
+      from: backupURL, persistenceFileURL: persistenceURL)
+    _ = try WorkspaceBackupService().applyPendingRestore(
+      persistenceFileURL: persistenceURL,
+      knowledgeRootURL: knowledgeRootURL,
+      rssDatabaseURL: rootURL.appendingPathComponent("RSS/reader.sqlite"),
+      attachmentRootURL: rootURL.appendingPathComponent("Attachments"),
+      currentApplicationVersion: "test"
+    )
+
+    let restoredService = KnowledgeLibraryService(rootURL: knowledgeRootURL)
+    let restoredAdapter = KnowledgeNoteCloudSyncAdapter(
+      service: restoredService, stateDirectoryURL: sidecarURL)
+    let restoredState = try await restoredAdapter.loadPersistentState()
+    XCTAssertNil(restoredState.engineState)
+    XCTAssertFalse(restoredState.initialFetchComplete)
+    XCTAssertEqual(restoredState.boundAccountID, "account")
+    XCTAssertTrue(restoredState.zoneEstablished)
+    let beforeFetchChanges = try await restoredAdapter.localChanges()
+    XCTAssertTrue(beforeFetchChanges.isEmpty)
+
+    for change in remoteChanges {
+      guard case .upsert(let remoteNote, let revision, _) = change else {
+        return XCTFail("Expected note fixture")
+      }
+      _ = try await restoredAdapter.applyRemote(
+        .note(remoteNote, sha256: revision, systemFields: Data([9])))
+    }
+    try await restoredAdapter.savePersistentState(
+      .init(
+        boundAccountID: restoredState.boundAccountID, initialFetchComplete: true,
+        zoneEstablished: restoredState.zoneEstablished))
+    XCTAssertEqual(try restoredService.note(documentID: laterNote.id)?.markdown, "later")
+    let afterFetch = try await restoredAdapter.localChanges()
+    XCTAssertFalse(
+      afterFetch.contains { change in
+        if case .tombstone(let id, _, _, _) = change { return id == laterNote.id }
+        return false
+      })
+  }
+
   func testV4CategoryBackupStagesOnlySelectedCategoryAndRejectsFullRestore() throws {
     let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: "WorkspaceBackupCategory")
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -995,6 +1077,9 @@ final class WorkspaceBackupServiceTests: XCTestCase {
       prefix: "WorkspaceBackupInterruptedAfterInstall"
     )
     defer { try? FileManager.default.removeItem(at: fixture.rootURL) }
+    try KnowledgeNoteCloudRestoreBoundary.markRestoredLibrary(at: fixture.knowledgeURL)
+    let previousRestoreID = try KnowledgeNoteCloudRestoreBoundary.restoreID(
+      at: fixture.knowledgeURL)
     let service = WorkspaceBackupService { checkpoint in
       guard checkpoint == .newDataInstalled else { return }
       throw WorkspaceRestoreProcessInterruption()
@@ -1016,6 +1101,10 @@ final class WorkspaceBackupServiceTests: XCTestCase {
     )
     XCTAssertEqual(installedSnapshot.drafts.first?.title, "transaction-restored")
     XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.journalURL.path))
+    let installedRestoreID = try KnowledgeNoteCloudRestoreBoundary.restoreID(
+      at: fixture.knowledgeURL)
+    XCTAssertNotNil(installedRestoreID)
+    XCTAssertNotEqual(installedRestoreID, previousRestoreID)
 
     XCTAssertEqual(
       WorkspaceBackupService.recoverInterruptedRestoreIfNeeded(
@@ -1027,6 +1116,8 @@ final class WorkspaceBackupServiceTests: XCTestCase {
       .rolledBack
     )
     try assertOriginalRestoreFixtureWasRecovered(fixture)
+    XCTAssertEqual(
+      try KnowledgeNoteCloudRestoreBoundary.restoreID(at: fixture.knowledgeURL), previousRestoreID)
   }
 
   private func populatedRSSDatabase(
@@ -1273,6 +1364,39 @@ final class WorkspaceBackupServiceTests: XCTestCase {
     try FileManager.default.moveItem(at: prepared.stagingURL, to: prepared.destinationURL)
     let destinationURL = URL(fileURLWithPath: try XCTUnwrap(firstAttachment.sourceFilePath))
     XCTAssertEqual(try Data(contentsOf: destinationURL), attachmentBytes)
+  }
+
+  func testPrepareArticleRestoreKeepsGeneralDraftLibraryFolder() throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "WorkspaceArticleRestoreGeneralFolder")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let profile = SiteProfile.defaultProfile
+    let source = ArticleDraft(
+      siteProfileID: profile.id,
+      scope: .general,
+      generalDraftFolderName: "Research",
+      title: "Foldered general draft"
+    )
+    let archiveURL = try createArticleRestoreBackup(
+      at: rootURL.appendingPathComponent("source.psworkspacebackup"),
+      profile: profile,
+      drafts: [source],
+      knowledgeRootURL: rootURL.appendingPathComponent("KnowledgeLibrary")
+    )
+    let service = WorkspaceBackupService()
+    let prepared = try service.prepareArticleRestore(
+      preview: try service.inspectArticlesForRestore(at: archiveURL),
+      selectedDraftIDs: [source.id],
+      editingProfileID: UUID(),
+      attachmentRootURL: rootURL.appendingPathComponent("ManagedAttachments")
+    )
+    defer {
+      try? FileManager.default.removeItem(at: prepared.stagingURL)
+      try? FileManager.default.removeItem(at: prepared.destinationURL)
+    }
+
+    XCTAssertEqual(prepared.drafts.first?.generalDraftFolderName, "Research")
+    XCTAssertNil(prepared.drafts.first?.repositoryPath)
   }
 
   func testPrepareArticleRestoreRejectsEmptyUnknownAndChangedSelections() throws {

@@ -1,6 +1,8 @@
 import Combine
 import CryptoKit
+import Darwin
 import Foundation
+import PublishingBackupCore
 import PublishingKnowledgeCore
 
 public enum WorkspaceBackupSchedulerStatusLevel: Equatable, Sendable {
@@ -11,10 +13,14 @@ public enum WorkspaceBackupSchedulerStatusLevel: Equatable, Sendable {
 }
 
 public enum WorkspaceBackupCloudUploadStatus: Equatable, Sendable {
+  case noBackup
+  case backupUnavailable
   case localCopyComplete
+  case iCloudFileUnrecognized
   case waitingForUpload
   case uploadConfirmed
   case uploadFailed(String)
+  case manifestCorrupt
 }
 
 /// Owns a background scheduler independently of the main-actor scheduler.
@@ -58,7 +64,7 @@ public final class WorkspaceBackupScheduler: ObservableObject {
   @Published public private(set) var statusMessage: String?
   @Published public private(set) var statusLevel: WorkspaceBackupSchedulerStatusLevel?
   @Published public private(set) var cloudUploadStatus: WorkspaceBackupCloudUploadStatus =
-    .localCopyComplete
+    .noBackup
 
   private weak var store: WorkbenchStore?
   private let defaults: UserDefaults
@@ -179,7 +185,7 @@ public final class WorkspaceBackupScheduler: ObservableObject {
 
   public func refreshCloudUploadStatus() {
     guard let path = settings.lastBackupPath else {
-      cloudUploadStatus = .localCopyComplete
+      cloudUploadStatus = .noBackup
       return
     }
     cloudUploadStatus = cloudUploadStatus(for: URL(fileURLWithPath: path))
@@ -325,7 +331,7 @@ public final class WorkspaceBackupScheduler: ObservableObject {
   private var shouldRunNow: Bool {
     guard let interval = settings.frequency.interval else { return false }
     if let lastBackupPath = settings.lastBackupPath,
-      !fileManager.fileExists(atPath: lastBackupPath)
+      backupPathState(at: URL(fileURLWithPath: lastBackupPath)) == .missing
     {
       return true
     }
@@ -491,8 +497,7 @@ public final class WorkspaceBackupScheduler: ObservableObject {
     else { return nil }
     let existingURL = URL(fileURLWithPath: path).standardizedFileURL
     guard existingURL.deletingLastPathComponent().path == folderURL.standardizedFileURL.path,
-      fileManager.fileExists(atPath: existingURL.path),
-      !isICloudDestination || cloudUploadStatus(for: existingURL) == .uploadConfirmed
+      backupPathState(at: existingURL) == .available
     else {
       return nil
     }
@@ -824,31 +829,73 @@ public final class WorkspaceBackupScheduler: ObservableObject {
   }
 
   private func cloudUploadStatus(for packageURL: URL) -> WorkspaceBackupCloudUploadStatus {
-    if let cloudUploadStatusReader { return cloudUploadStatusReader(packageURL) }
-    guard
-      let packageValues = try? packageURL.resourceValues(forKeys: [
-        .isUbiquitousItemKey, .ubiquitousItemUploadingErrorKey,
-      ]),
-      packageValues.isUbiquitousItem == true
-    else {
-      return isICloudDestination ? .waitingForUpload : .localCopyComplete
+    switch backupPathState(at: packageURL) {
+    case .missing: return .noBackup
+    case .unavailable: return .backupUnavailable
+    case .available: break
     }
+    if let cloudUploadStatusReader { return cloudUploadStatusReader(packageURL) }
+    let isCurrentICloudTarget =
+      isICloudDestination
+      && packageURL.deletingLastPathComponent().standardizedFileURL.path
+        == resolvedDestinationFolderURL().standardizedFileURL.path
+    let packageValues: URLResourceValues
+    do {
+      packageValues = try packageURL.resourceValues(forKeys: [
+        .isUbiquitousItemKey, .ubiquitousItemUploadingErrorKey,
+      ])
+    } catch {
+      return .backupUnavailable
+    }
+    let isUbiquitousPackage = packageValues.isUbiquitousItem == true
     if let error = packageValues.ubiquitousItemUploadingError {
       return .uploadFailed(error.localizedDescription)
     }
+    let service = WorkspaceBackupService(fileManager: fileManager)
     let manifestURL = packageURL.appendingPathComponent(WorkspaceBackupService.manifestFileName)
-    guard let data = try? Data(contentsOf: manifestURL) else { return .waitingForUpload }
+    let data: Data
+    do {
+      data = try service.boundedData(
+        at: manifestURL,
+        maximumByteCount: service.limits.maximumManifestByteCount,
+        relativePath: WorkspaceBackupService.manifestFileName
+      )
+    } catch WorkspaceBackupError.fileTooLarge {
+      return .manifestCorrupt
+    } catch {
+      var metadata = stat()
+      let result = manifestURL.path.withCString { lstat($0, &metadata) }
+      if result == 0 {
+        guard (metadata.st_mode & S_IFMT) == S_IFREG else { return .manifestCorrupt }
+        return isUbiquitousPackage || isCurrentICloudTarget ? .waitingForUpload : .backupUnavailable
+      }
+      if isUbiquitousPackage || isCurrentICloudTarget { return .waitingForUpload }
+      return errno == ENOENT ? .manifestCorrupt : .backupUnavailable
+    }
+    guard data.count <= service.limits.maximumManifestByteCount else { return .manifestCorrupt }
     let decoder = JSONDecoder()
     decoder.dateDecodingStrategy = .iso8601
     guard let manifest = try? decoder.decode(WorkspaceBackupManifest.self, from: data) else {
-      return .waitingForUpload
+      return .manifestCorrupt
     }
-    let declaredPaths = [WorkspaceBackupService.manifestFileName]
+    guard manifest.files.count <= service.limits.maximumFileCount else { return .manifestCorrupt }
+    let declaredPaths =
+      [WorkspaceBackupService.manifestFileName]
       + manifest.files.map(\.relativePath)
+    guard manifest.fileCount == manifest.files.count,
+      Set(declaredPaths).count == declaredPaths.count
+    else { return .manifestCorrupt }
+    do {
+      for path in declaredPaths {
+        try service.validateRelativePath(path)
+      }
+    } catch {
+      return .manifestCorrupt
+    }
+    guard isUbiquitousPackage || isCurrentICloudTarget else { return .localCopyComplete }
+    guard isUbiquitousPackage else { return .iCloudFileUnrecognized }
     var uploadErrors: [String] = []
     let uploadStates = declaredPaths.map { relativePath -> Bool? in
-      guard !relativePath.hasPrefix("/"),
-            !relativePath.split(separator: "/").contains("..") else { return nil }
       let fileURL = packageURL.appendingPathComponent(relativePath)
       guard
         let values = try? fileURL.resourceValues(forKeys: [
@@ -867,12 +914,32 @@ public final class WorkspaceBackupScheduler: ObservableObject {
     )
   }
 
+  private enum BackupPathState {
+    case available
+    case missing
+    case unavailable
+  }
+
+  private func backupPathState(at url: URL) -> BackupPathState {
+    var metadata = stat()
+    let result = url.path.withCString { lstat($0, &metadata) }
+    if result == 0 {
+      return (metadata.st_mode & S_IFMT) == S_IFDIR ? .available : .unavailable
+    }
+    guard errno == ENOENT else { return .unavailable }
+    var parentMetadata = stat()
+    let parent = url.deletingLastPathComponent()
+    let parentResult = parent.path.withCString { lstat($0, &parentMetadata) }
+    return parentResult == 0 && (parentMetadata.st_mode & S_IFMT) == S_IFDIR
+      ? .missing : .unavailable
+  }
+
   static func confirmedCloudUploadStatus(
     isUbiquitousPackage: Bool,
     declaredFileUploadStates: [Bool?],
     uploadErrorDescriptions: [String] = []
   ) -> WorkspaceBackupCloudUploadStatus {
-    guard isUbiquitousPackage else { return .localCopyComplete }
+    guard isUbiquitousPackage else { return .iCloudFileUnrecognized }
     if let error = uploadErrorDescriptions.first { return .uploadFailed(error) }
     guard !declaredFileUploadStates.isEmpty,
       declaredFileUploadStates.allSatisfy({ $0 == true })

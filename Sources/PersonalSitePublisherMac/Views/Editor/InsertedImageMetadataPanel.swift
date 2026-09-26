@@ -153,7 +153,7 @@ struct InsertedImageMetadataPanel: View {
         onOpenInspector()
       } label: {
         Label {
-          Text("前往图片 Inspector")
+          Text("前往图片详情栏")
         } icon: {
           Image(systemName: "sidebar.right")
         }

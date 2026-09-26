@@ -2,8 +2,80 @@ import Combine
 import Foundation
 import PublishingCoreSupport
 
+public struct KnowledgeReferenceDocumentSnapshot: Sendable {
+  public let document: KnowledgeDocument
+  public let normalizedText: String
+  public let originalFileURL: URL?
+}
+
 @MainActor
 extension KnowledgeStore {
+  /// Reads a stable document-ID projection for a separate, read-only window.
+  /// It performs no selection or reading-projection mutation. A revision that
+  /// changes while its files are read is retried once, preventing the window
+  /// from pairing old metadata with new text.
+  public func referenceDocumentSnapshot(documentID: UUID) async throws
+    -> KnowledgeReferenceDocumentSnapshot?
+  {
+    let service = self.service
+    return try await performKnowledgeLibraryIO {
+      for _ in 0..<2 {
+        guard let storedDocument = try service.document(id: documentID) else { return nil }
+        let noteIsArchived =
+          storedDocument.kind == .note
+          ? try service.note(documentID: documentID)?.isArchived ?? false
+          : false
+        let documentIsArchived = storedDocument.isArchived || noteIsArchived
+        guard !documentIsArchived else {
+          var archivedDocument = storedDocument
+          // Note archive state is portable note metadata, while the document
+          // archive bit remains the recycle-bin state for shared documents.
+          // Project the former only into this read-only reference snapshot.
+          archivedDocument.isArchived = true
+          return KnowledgeReferenceDocumentSnapshot(
+            document: archivedDocument,
+            normalizedText: "",
+            originalFileURL: nil
+          )
+        }
+
+        let rawText = try service.normalizedText(documentID: documentID)
+        let text =
+          storedDocument.kind == .webpage
+          ? KnowledgeWebContentSanitizer().sanitizeExtractedReadingText(rawText)
+          : rawText
+        let originalFileURL = try service.originalFileURL(documentID: documentID)
+
+        guard let currentStoredDocument = try service.document(id: documentID) else { continue }
+        let currentNoteIsArchived =
+          currentStoredDocument.kind == .note
+          ? try service.note(documentID: documentID)?.isArchived ?? false
+          : false
+        let currentDocumentIsArchived =
+          currentStoredDocument.isArchived || currentNoteIsArchived
+        guard !currentDocumentIsArchived else {
+          var archivedDocument = currentStoredDocument
+          archivedDocument.isArchived = true
+          return KnowledgeReferenceDocumentSnapshot(
+            document: archivedDocument,
+            normalizedText: "",
+            originalFileURL: nil
+          )
+        }
+        guard currentStoredDocument.currentRevisionID == storedDocument.currentRevisionID else {
+          continue
+        }
+        guard currentNoteIsArchived == noteIsArchived else { continue }
+        return KnowledgeReferenceDocumentSnapshot(
+          document: currentStoredDocument,
+          normalizedText: text,
+          originalFileURL: originalFileURL
+        )
+      }
+      throw KnowledgeLibraryError.missingRevision
+    }
+  }
+
   public func reload(selecting preferredDocumentID: UUID? = nil) async {
     if let startupReloadTask {
       await startupReloadTask.value

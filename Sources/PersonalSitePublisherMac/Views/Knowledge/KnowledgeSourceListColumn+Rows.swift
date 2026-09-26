@@ -123,7 +123,13 @@ extension KnowledgeSourceListColumn {
 
   @ViewBuilder
   private func documentActionItems(_ document: KnowledgeDocument) -> some View {
-      documentFolderMenu(document)
+    Button {
+      openWindow(id: "content-popout", value: PopOutWindowTarget.reference(document.id))
+    } label: {
+      Label("弹出为独立窗口", systemImage: "arrow.up.forward.app")
+    }
+    Divider()
+    documentFolderMenu(document)
     if document.kind == .note {
       Button("编辑笔记…") {
         beginEditingNote(document)
@@ -228,6 +234,15 @@ extension KnowledgeSourceListColumn {
               .listRowSeparator(.hidden)
               .tag(result.id)
               .contextMenu {
+                Button {
+                  openWindow(
+                    id: "content-popout",
+                    value: PopOutWindowTarget.reference(result.document.id)
+                  )
+                } label: {
+                  Label("弹出为独立窗口", systemImage: "arrow.up.forward.app")
+                }
+                Divider()
                 documentFolderMenu(
                   result.document,
                   usesDocumentListSelection: false

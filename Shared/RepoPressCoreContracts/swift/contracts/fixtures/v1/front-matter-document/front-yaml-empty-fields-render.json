@@ -1,0 +1,32 @@
+{
+  "capability": "front-matter-document",
+  "description": "Writes explicitly empty scalar fields while omitting empty collections.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "text": "---\ntitle: \"No metadata\"\ndate: \"2026-02-03\"\nslug: \"no-metadata\"\ndraft: false\nsummary: \"\"\ncover: \"\"\n---"
+    }
+  },
+  "id": "front-yaml-empty-fields-render",
+  "input": {
+    "document": {
+      "authors": [],
+      "bodyMarkdown": "",
+      "categories": [],
+      "coverField": "cover",
+      "coverPath": "",
+      "draftFlag": false,
+      "formattedDate": "2026-02-03",
+      "slug": "no-metadata",
+      "summary": "",
+      "summaryField": "summary",
+      "syntax": "yaml",
+      "tags": [],
+      "taxonomyLayout": "table",
+      "title": "No metadata",
+      "writesCoverInExtraTable": false
+    },
+    "operation": "render"
+  },
+  "validity": "valid"
+}

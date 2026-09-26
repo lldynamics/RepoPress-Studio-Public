@@ -21,4 +21,14 @@ final class WorkbenchMotionLayoutPolicyTests: XCTestCase {
     XCTAssertEqual(state.constraints.maximum, 620)
   }
 
+  func testInspectorWidthResetControlAppearsOnlyAfterResize() {
+    typealias Policy = WorkspaceInspectorWidthResetPolicy
+    XCTAssertFalse(Policy.showsResetControl(measuredWidth: nil, defaultWidth: 320))
+    XCTAssertFalse(Policy.showsResetControl(measuredWidth: 320, defaultWidth: nil))
+    XCTAssertFalse(Policy.showsResetControl(measuredWidth: 320, defaultWidth: 320))
+    XCTAssertFalse(Policy.showsResetControl(measuredWidth: 327.5, defaultWidth: 320))
+    XCTAssertTrue(Policy.showsResetControl(measuredWidth: 420, defaultWidth: 320))
+    XCTAssertTrue(Policy.showsResetControl(measuredWidth: 440, defaultWidth: 500))
+  }
+
 }

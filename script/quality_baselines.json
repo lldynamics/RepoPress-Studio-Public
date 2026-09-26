@@ -10,6 +10,9 @@
     "PublishingGitCore": 89.0,
     "PublishingKnowledgeCore": 83.0,
     "PublishingMarkdownCore": 92.0,
+    "PublishingPreviewCore": 82.0,
+    "PublishingBackupCore": 82.0,
+    "PublishingSyncCore": 82.0,
     "PublishingWorkbenchCore": 82.0
   },
   "changedExecutableSourceLineCoveragePercentMinimum": 100.0,
@@ -23,6 +26,9 @@
       "PublishingGitCore": 230,
       "PublishingKnowledgeCore": 440,
       "PublishingMarkdownCore": 762,
+      "PublishingPreviewCore": 0,
+      "PublishingBackupCore": 0,
+      "PublishingSyncCore": 0,
       "PublishingWorkbenchCore": 3594
     },
     "testsByTarget": {

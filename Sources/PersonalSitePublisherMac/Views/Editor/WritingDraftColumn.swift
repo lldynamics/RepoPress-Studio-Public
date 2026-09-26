@@ -3,6 +3,7 @@ import SwiftUI
 
 private struct WritingDraftFolderProjectionCacheKey: Equatable {
   let profileID: UUID
+  let contentScope: DraftListContentScope
   let contentRoot: String
   let markdownPathPattern: String
   let sortOrderRawValue: String
@@ -17,6 +18,7 @@ private struct WritingDraftFolderProjectionDraftSignature: Equatable {
   init(
     draft: ArticleDraft,
     profile: SiteProfile,
+    contentScope: DraftListContentScope,
     isMasked: Bool,
     sortOrder: DraftListSortOrder
   ) {
@@ -24,6 +26,7 @@ private struct WritingDraftFolderProjectionDraftSignature: Equatable {
     folderAssignment = DraftFolderProjection.assignmentCacheKey(
       for: draft,
       profile: profile,
+      contentScope: contentScope,
       isMasked: isMasked
     )
     ordering = WritingDraftFolderProjectionOrderingSignature(
@@ -63,6 +66,7 @@ private struct WritingDraftFolderProjectionOrderingSignature: Equatable {
 
 private struct WritingDraftFilteredFolderProjectionCacheKey: Equatable {
   let profileID: UUID
+  let contentScope: DraftListContentScope
   let contentRoot: String
   let markdownPathPattern: String
   let sortOrderRawValue: String
@@ -127,6 +131,7 @@ struct WritingDraftListCache {
   /// signatures so autosave cannot rebuild the tree.
   mutating func updateFolderProjectionCache(
     profile: SiteProfile,
+    contentScope: DraftListContentScope = .currentSite,
     universeDrafts: [ArticleDraft],
     filteredDrafts: [ArticleDraft],
     sortOrder: DraftListSortOrder,
@@ -138,18 +143,21 @@ struct WritingDraftListCache {
       || universeFolderProjection == nil
       || universeFolderProjectionSourceRevision != universeSourceRevision
       || universeFolderProjectionKey?.profileID != profile.id
+      || universeFolderProjectionKey?.contentScope != contentScope
       || universeFolderProjectionKey?.contentRoot != profile.contentRoot
       || universeFolderProjectionKey?.markdownPathPattern != profile.markdownPathPattern
       || universeFolderProjectionKey?.sortOrderRawValue != sortOrder.rawValue
     if shouldEvaluateUniverse {
       let universeKey = WritingDraftFolderProjectionCacheKey(
         profileID: profile.id,
+        contentScope: contentScope,
         contentRoot: profile.contentRoot,
         markdownPathPattern: profile.markdownPathPattern,
         sortOrderRawValue: sortOrder.rawValue,
         draftSignatures: Self.folderProjectionSignatures(
           for: universeDrafts,
           profile: profile,
+          contentScope: contentScope,
           sortOrder: sortOrder,
           maskedDraftIDs: maskedDraftIDs
         )
@@ -158,6 +166,7 @@ struct WritingDraftListCache {
         universeFolderProjection = DraftFolderProjection(
           profile: profile,
           drafts: universeDrafts,
+          contentScope: contentScope,
           sortOrder: sortOrder,
           maskedDraftIDs: maskedDraftIDs
         )
@@ -169,12 +178,14 @@ struct WritingDraftListCache {
 
     let filteredKey = WritingDraftFilteredFolderProjectionCacheKey(
       profileID: profile.id,
+      contentScope: contentScope,
       contentRoot: profile.contentRoot,
       markdownPathPattern: profile.markdownPathPattern,
       sortOrderRawValue: sortOrder.rawValue,
       draftSignatures: Self.folderProjectionSignatures(
         for: filteredDrafts,
         profile: profile,
+        contentScope: contentScope,
         sortOrder: sortOrder,
         maskedDraftIDs: maskedDraftIDs
       )
@@ -183,6 +194,7 @@ struct WritingDraftListCache {
       filteredFolderProjection = DraftFolderProjection(
         profile: profile,
         drafts: filteredDrafts,
+        contentScope: contentScope,
         sortOrder: sortOrder,
         maskedDraftIDs: maskedDraftIDs
       )
@@ -293,6 +305,7 @@ struct WritingDraftListCache {
   private static func folderProjectionSignatures(
     for drafts: [ArticleDraft],
     profile: SiteProfile,
+    contentScope: DraftListContentScope,
     sortOrder: DraftListSortOrder,
     maskedDraftIDs: Set<UUID>
   ) -> [WritingDraftFolderProjectionDraftSignature] {
@@ -301,6 +314,7 @@ struct WritingDraftListCache {
         WritingDraftFolderProjectionDraftSignature(
           draft: draft,
           profile: profile,
+          contentScope: contentScope,
           isMasked: maskedDraftIDs.contains(draft.id),
           sortOrder: sortOrder
         )
@@ -323,6 +337,7 @@ struct WritingDraftColumn: View {
   @ObservedObject var writingListState: WritingListWindowPresentationState
   @ObservedObject var draftListState: DraftListStore
   @Environment(\.openSettings) var openSettings
+  @Environment(\.openWindow) var openWindow
   @Environment(\.settingsWorkspaceCommandAction) var settingsWorkspaceCommandAction
   @AppStorage("dataManagementRequestedSection") var dataManagementRequestedSection =
     DataManagementSection.drafts.rawValue
@@ -344,6 +359,7 @@ struct WritingDraftColumn: View {
   @State var draftListCache = WritingDraftListCache()
   @State var folderExpansionState = WritingDraftFolderExpansionState()
   @State var folderExpansionSiteID: UUID?
+  @State var folderExpansionContentScope: DraftListContentScope?
   let draftLoadMorePrefetchThreshold = 15
   @FocusState var isSearchFieldFocused: Bool
   @State var draftPendingDeletion: ArticleDraft?
@@ -353,6 +369,10 @@ struct WritingDraftColumn: View {
   @State var isMetadataBatchMaintenancePresented = false
   @State var isAIBatchMaintenancePresented = false
   @State var isTemplatePickerPresented = false
+  @State var isGeneralFolderNamePresented = false
+  @State var generalFolderNameInput = ""
+  @State var generalFolderDraftIDs: [UUID] = []
+  @State var generalFolderRenameSource: String?
   @Environment(\.undoManager) var undoManager
   @EnvironmentObject var sceneCommandRouter: WorkspaceSceneCommandRouter
   @State private var sceneCommandOwnerID = UUID()
@@ -398,11 +418,9 @@ struct WritingDraftColumn: View {
   }
 
   var isFolderDisplayMode: Bool {
-    store.draftListContentScope == .currentSite && displayMode == .folders
+    displayMode == .folders
   }
 
-  /// General drafts retain the user's site preference for the next visit but
-  /// always render as a flat list because they have no publishing folders.
   var effectiveDisplayMode: WritingDraftListDisplayMode {
     isFolderDisplayMode ? .folders : .flat
   }
@@ -527,6 +545,24 @@ struct WritingDraftColumn: View {
     } message: { draft in
       Text("「\(draft.title.nilIfEmpty ?? "未命名文章")」将保留在回收站中，不会立即删除本地仓库文件。")
     }
+    .alert(
+      generalFolderRenameSource == nil
+        ? String(localized: "新建通用草稿文件夹")
+        : String(localized: "重命名通用草稿文件夹"),
+      isPresented: $isGeneralFolderNamePresented
+    ) {
+      TextField("文件夹名称", text: $generalFolderNameInput)
+        .accessibilityLabel("文件夹名称")
+      Button("取消", role: .cancel) {
+        generalFolderRenameSource = nil
+      }
+      Button("保存") {
+        commitGeneralFolderName()
+      }
+      .disabled(ArticleDraft.validGeneralDraftFolderName(generalFolderNameInput) == nil)
+    } message: {
+      Text("文件夹只整理通用草稿，不会更改站点仓库中的文章路径。")
+    }
     .sheet(item: $draftOwnershipTransferPlan) { plan in
       DraftOwnershipTransferConfirmationView(plan: plan) { confirmedPlan in
         applyDraftOwnershipTransfer(confirmedPlan)
@@ -561,7 +597,10 @@ struct WritingDraftColumn: View {
     if writingListState.hasPersistedFolderExpansion {
       // The cache's first-projection policy would otherwise replace restored
       // choices with defaults before it has a chance to reconcile old IDs.
-      folderExpansionSiteID = store.activeProfile.id
+      folderExpansionSiteID =
+        store.draftListContentScope == .general
+        ? DraftFolderProjection.generalLibraryID : store.activeProfile.id
+      folderExpansionContentScope = store.draftListContentScope
       synchronizeFolderExpansionState()
     }
   }

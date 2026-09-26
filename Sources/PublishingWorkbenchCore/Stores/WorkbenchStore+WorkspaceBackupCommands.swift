@@ -1,4 +1,5 @@
 import Foundation
+import PublishingBackupCore
 import PublishingKnowledgeCore
 
 extension WorkbenchStore {

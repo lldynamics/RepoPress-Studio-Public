@@ -16,6 +16,8 @@ struct MetadataColumn: View {
   private let aiChatOperationSession: AIChatSurfaceOperationSession
   let prioritizesChecks: Bool
   let onResetWidth: (() -> Void)?
+  let defaultWidth: CGFloat?
+  @State private var measuredWidth: CGFloat?
   @ObservedObject private var articlePresentation: ArticleInspectorPresentationState
 
   init(
@@ -31,6 +33,7 @@ struct MetadataColumn: View {
     aiChatOperationSession: AIChatSurfaceOperationSession,
     prioritizesChecks: Bool = false,
     articlePresentation: ArticleInspectorPresentationState,
+    defaultWidth: CGFloat? = nil,
     onResetWidth: (() -> Void)? = nil
   ) {
     self.store = store
@@ -47,6 +50,7 @@ struct MetadataColumn: View {
     _articlePresentation = ObservedObject(wrappedValue: articlePresentation)
     self.prioritizesChecks = prioritizesChecks
     self.onResetWidth = onResetWidth
+    self.defaultWidth = defaultWidth
   }
 
   var body: some View {
@@ -91,7 +95,7 @@ struct MetadataColumn: View {
         EmptyView()
       case .unavailable:
         EmptyStateView(
-          title: "当前页面没有 Inspector",
+          title: "当前页面没有详情栏",
           message: "此页面的操作已集中在主内容区。",
           systemImage: "sidebar.right",
           density: .compactPane
@@ -111,10 +115,20 @@ struct MetadataColumn: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("workspace-inspector")
-    .accessibilityLabel("工作区 Inspector")
+    .accessibilityLabel("工作区详情栏")
+    .onGeometryChange(for: CGFloat.self) { geometry in
+      geometry.size.width
+    } action: { width in
+      measuredWidth = width
+    }
     .overlay(alignment: .topTrailing) {
-      InspectorWidthResetControl(onResetWidth: onResetWidth)
-        .padding(8)
+      if WorkspaceInspectorWidthResetPolicy.showsResetControl(
+        measuredWidth: measuredWidth,
+        defaultWidth: defaultWidth
+      ) {
+        InspectorWidthResetControl(onResetWidth: onResetWidth)
+          .padding(8)
+      }
     }
   }
 
@@ -222,10 +236,14 @@ private struct InspectorWidthResetControl: View {
     Button {
       onResetWidth?()
     } label: {
-      Label(String(localized: "恢复默认检查器宽度"), systemImage: "arrow.counterclockwise")
+      Label(String(localized: "恢复默认详情栏宽度"), systemImage: "arrow.counterclockwise")
+        .labelStyle(.iconOnly)
+        .frame(width: 22, height: 22)
+        .background(.bar, in: Circle())
     }
     .buttonStyle(.borderless)
-    .help(String(localized: "恢复默认检查器宽度（Option-Command-0）"))
+    .accessibilityLabel(String(localized: "恢复默认详情栏宽度"))
+    .help(String(localized: "恢复默认详情栏宽度（Option-Command-0）"))
     .accessibilityHint(String(localized: "恢复默认宽度；也可按 Option-Command-0。"))
     .keyboardShortcut("0", modifiers: [.option, .command])
     .disabled(onResetWidth == nil)

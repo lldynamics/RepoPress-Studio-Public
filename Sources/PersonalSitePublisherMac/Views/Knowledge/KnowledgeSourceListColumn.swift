@@ -3,10 +3,12 @@ import SwiftUI
 
 struct KnowledgeSourceListColumn: View {
   @EnvironmentObject private var sceneCommandRouter: WorkspaceSceneCommandRouter
+  @ObservedObject private var externalImport = ExternalKnowledgeImportCoordinator.shared
   @State private var sceneCommandOwnerID = UUID()
   let store: WorkbenchStore
   @ObservedObject var knowledge: KnowledgeStore
   @Environment(\.openSettings) var openSettings
+  @Environment(\.openWindow) var openWindow
   @Environment(\.settingsWorkspaceCommandAction) var settingsWorkspaceCommandAction
   @AppStorage("dataManagementRequestedSection") var dataManagementRequestedSection =
     DataManagementSection.backup.rawValue
@@ -48,6 +50,20 @@ struct KnowledgeSourceListColumn: View {
       knowledgeHeader
         .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
         .padding(.vertical, WorkspaceSidebarMetrics.headerVerticalPadding)
+
+      if let inboxError = externalImport.inboxError {
+        VStack(alignment: .leading, spacing: 6) {
+          Text(inboxError)
+            .font(.caption)
+            .foregroundStyle(.orange)
+          Button("重试系统共享导入") {
+            externalImport.scheduleInboxDrain()
+          }
+          .font(.caption)
+        }
+        .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
+        .padding(.bottom, 8)
+      }
 
       knowledgeInsertionActions
         .padding(.bottom, 4)

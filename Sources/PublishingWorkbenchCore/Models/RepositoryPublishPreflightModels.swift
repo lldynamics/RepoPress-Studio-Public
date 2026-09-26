@@ -1,7 +1,7 @@
 import Foundation
 
 /// A single, non-interactive command used by the repository-wide publication gate.
-/// The service only creates commands for an absolute, trusted Zola executable.
+/// The service only launches absolute executables from trusted tool directories.
 public struct RepositoryPublishPreflightCommand: Hashable, Sendable {
   public enum Stage: String, Codable, Hashable, Sendable {
     case check
@@ -14,6 +14,7 @@ public struct RepositoryPublishPreflightCommand: Hashable, Sendable {
   public let workingDirectoryPath: String
   public let timeout: TimeInterval
   public let maximumOutputBytes: Int
+  public let environmentOverrides: [String: String]
 
   public init(
     stage: Stage,
@@ -21,7 +22,8 @@ public struct RepositoryPublishPreflightCommand: Hashable, Sendable {
     arguments: [String],
     workingDirectoryPath: String,
     timeout: TimeInterval,
-    maximumOutputBytes: Int
+    maximumOutputBytes: Int,
+    environmentOverrides: [String: String] = [:]
   ) {
     self.stage = stage
     self.executablePath = executablePath
@@ -29,6 +31,7 @@ public struct RepositoryPublishPreflightCommand: Hashable, Sendable {
     self.workingDirectoryPath = workingDirectoryPath
     self.timeout = max(1, timeout)
     self.maximumOutputBytes = max(1_024, maximumOutputBytes)
+    self.environmentOverrides = environmentOverrides
   }
 }
 
@@ -60,7 +63,7 @@ public struct RepositoryPublishPreflightCommandResult: Hashable, Sendable {
 }
 
 /// Injectable command boundary. Tests can provide deterministic results without
-/// relying on a locally installed Zola binary.
+/// relying on locally installed site-generator binaries.
 public struct RepositoryPublishPreflightCommandRunner: Sendable {
   public typealias Operation =
     @Sendable (RepositoryPublishPreflightCommand) -> RepositoryPublishPreflightCommandResult
@@ -81,6 +84,7 @@ public struct RepositoryPublishPreflightCommandRunner: Sendable {
 public enum RepositoryPublishPreflightSkipReason: String, Codable, Hashable, Sendable {
   case nonZolaProfile
   case zolaConfigurationNotFound
+  case unsupportedSiteKind
 }
 
 public enum RepositoryPublishPreflightFailure: String, Codable, Hashable, Sendable {
@@ -92,6 +96,10 @@ public enum RepositoryPublishPreflightFailure: String, Codable, Hashable, Sendab
   case outputTruncated
   case launchFailed
   case temporaryOutputUnavailable
+  case configurationUnavailable
+  case toolUnavailable
+  case dependencyUnavailable
+  case unsafeRepositoryLink
 }
 
 public enum RepositoryPublishPreflightOutcome: Hashable, Sendable {

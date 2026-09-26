@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 
 public struct DraftRecoveryRecord: Codable, Hashable, Identifiable, Sendable {
   public let draftID: UUID

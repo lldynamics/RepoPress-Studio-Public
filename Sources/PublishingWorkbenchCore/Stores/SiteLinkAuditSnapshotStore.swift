@@ -1,22 +1,23 @@
 import Foundation
 
-/// Stable identity for one site-wide link projection. The monotonic draft
-/// revision avoids hashing every Markdown body merely to discover that an
-/// existing report is still current.
+/// Stable identity for one site-wide link projection. The generation advances
+/// synchronously when link-audit inputs invalidate, so unrelated derived draft
+/// mutations such as an asynchronous word-count backfill do not discard a
+/// report that was calculated from the still-current Markdown and metadata.
 struct SiteLinkAuditSnapshotKey: Hashable, Sendable {
   let profile: SiteProfile
-  let draftMutationRevision: UInt64
+  let inputGeneration: UInt64
   let draftIDs: [UUID]
   let bodyRevisions: [DraftExecutionContext]
 
   init(
     profile: SiteProfile,
-    draftMutationRevision: UInt64,
+    inputGeneration: UInt64,
     drafts: [ArticleDraft],
     bodyRevisions: [DraftExecutionContext]
   ) {
     self.profile = profile
-    self.draftMutationRevision = draftMutationRevision
+    self.inputGeneration = inputGeneration
     draftIDs = drafts.map(\.id).sorted { $0.uuidString < $1.uuidString }
     self.bodyRevisions = bodyRevisions.sorted {
       $0.draftID.uuidString < $1.draftID.uuidString
@@ -32,6 +33,7 @@ struct SiteLinkAuditSnapshotKey: Hashable, Sendable {
 final class SiteLinkAuditSnapshotStore {
   private var key: SiteLinkAuditSnapshotKey?
   private var report: SiteLinkAuditReport?
+  private(set) var inputGeneration: UInt64 = 0
   private(set) var replacementCount = 0
 
   func report(for key: SiteLinkAuditSnapshotKey) -> SiteLinkAuditReport? {
@@ -46,6 +48,7 @@ final class SiteLinkAuditSnapshotStore {
   }
 
   func invalidate() {
+    inputGeneration &+= 1
     key = nil
     report = nil
   }

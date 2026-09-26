@@ -71,11 +71,18 @@ def valid_payload() -> dict[str, Any]:
                 "PublishingAgentContracts", "library", ["PublishingAgentContracts"]
             ),
             package_product("PublishingKnowledgeCore", "library", ["PublishingKnowledgeCore"]),
+            package_product("PublishingPreviewCore", "library", ["PublishingPreviewCore"]),
+            package_product("PublishingBackupCore", "library", ["PublishingBackupCore"]),
+            package_product("PublishingSyncCore", "library", ["PublishingSyncCore"]),
             package_product("PublishingWorkbenchCore", "library", ["PublishingWorkbenchCore"]),
             package_product("PersonalSitePublisherMac", "executable", ["PersonalSitePublisherMac"]),
         ],
         "targets": [
-            target("PublishingCoreSupport", "regular", []),
+            target(
+                "PublishingCoreSupport",
+                "regular",
+                [product("RepoPressCore", "RepoPressShared")],
+            ),
             target("PublishingDomainContracts", "regular", []),
             target(
                 "PublishingMarkdownCore",
@@ -108,7 +115,26 @@ def valid_payload() -> dict[str, Any]:
             target(
                 "PublishingKnowledgeCore",
                 "regular",
-                [dependency("PublishingCoreSupport"), dependency("PublishingMarkdownCore")],
+                [
+                    dependency("PublishingCoreSupport"),
+                    dependency("PublishingMarkdownCore"),
+                    product("RepoPressAppleSupport", "RepoPressShared"),
+                ],
+            ),
+            target(
+                "PublishingPreviewCore",
+                "regular",
+                [dependency("PublishingCoreSupport"), dependency("PublishingDomainContracts")],
+            ),
+            target(
+                "PublishingBackupCore",
+                "regular",
+                [dependency("PublishingCoreSupport"), dependency("PublishingDomainContracts")],
+            ),
+            target(
+                "PublishingSyncCore",
+                "regular",
+                [dependency("PublishingCoreSupport"), dependency("PublishingGitCore")],
             ),
             target(
                 "PublishingWorkbenchCore",
@@ -121,6 +147,9 @@ def valid_payload() -> dict[str, Any]:
                     dependency("PublishingAICore"),
                     dependency("PublishingAgentContracts"),
                     dependency("PublishingKnowledgeCore"),
+                    dependency("PublishingPreviewCore"),
+                    dependency("PublishingBackupCore"),
+                    dependency("PublishingSyncCore"),
                 ],
             ),
             target(
@@ -134,6 +163,9 @@ def valid_payload() -> dict[str, Any]:
                     dependency("PublishingKnowledgeCore"),
                     dependency("PublishingMarkdownCore"),
                     dependency("PublishingWorkbenchCore"),
+                    dependency("PublishingPreviewCore"),
+                    dependency("PublishingBackupCore"),
+                    dependency("PublishingSyncCore"),
                     product("Sparkle", "Sparkle"),
                 ],
             ),
@@ -187,6 +219,9 @@ def valid_payload() -> dict[str, Any]:
                     dependency("PublishingKnowledgeCore"),
                     dependency("PublishingMarkdownCore"),
                     dependency("PublishingWorkbenchCore"),
+                    dependency("PublishingPreviewCore"),
+                    dependency("PublishingBackupCore"),
+                    dependency("PublishingSyncCore"),
                 ],
             ),
             target(
@@ -201,6 +236,9 @@ def valid_payload() -> dict[str, Any]:
                     dependency("PublishingKnowledgeCore"),
                     dependency("PublishingMarkdownCore"),
                     dependency("PublishingWorkbenchCore"),
+                    dependency("PublishingPreviewCore"),
+                    dependency("PublishingBackupCore"),
+                    dependency("PublishingSyncCore"),
                 ],
             ),
         ],
@@ -220,6 +258,9 @@ def prepare_fixture(root: Path, payload: dict[str, Any]) -> Path:
         "PublishingAICore",
         "PublishingAgentContracts",
         "PublishingKnowledgeCore",
+        "PublishingPreviewCore",
+        "PublishingBackupCore",
+        "PublishingSyncCore",
         "PublishingWorkbenchCore",
     ):
         directory = sources / target_name
@@ -344,16 +385,19 @@ def main() -> int:
         decoded = json.loads(first_report)
         assert decoded["status"] == "passed"
         assert decoded["schemaVersion"] == "2"
-        assert decoded["policyVersion"] == "swift-module-boundaries-v3"
-        assert decoded["tool"]["version"] == "3"
-        assert decoded["targetTypeCounts"] == {"executable": 1, "regular": 8, "test": 9}
+        assert decoded["policyVersion"] == "swift-module-boundaries-v4"
+        assert decoded["tool"]["version"] == "4"
+        assert decoded["targetTypeCounts"] == {"executable": 1, "regular": 11, "test": 9}
         assert [product["name"] for product in decoded["products"]] == [
             "PersonalSitePublisherMac",
             "PublishingAICore",
             "PublishingAgentContracts",
+            "PublishingBackupCore",
             "PublishingGitCore",
             "PublishingKnowledgeCore",
             "PublishingMarkdownCore",
+            "PublishingPreviewCore",
+            "PublishingSyncCore",
             "PublishingWorkbenchCore",
         ]
         assert decoded["internalEdges"] == sorted(
@@ -405,6 +449,9 @@ def main() -> int:
                 "PublishingGitCore",
                 "PublishingKnowledgeCore",
                 "PublishingMarkdownCore",
+                "PublishingPreviewCore",
+                "PublishingBackupCore",
+                "PublishingSyncCore",
             ]
         )
 
@@ -436,6 +483,12 @@ def main() -> int:
             "SwiftTreeSitterLayer": "swift-tree-sitter",
             "TreeSitterMarkdown": "tree-sitter-markdown",
         }
+        assert policy_json["externalProductDependencies"]["PublishingCoreSupport"] == {
+            "RepoPressCore": "RepoPressShared",
+        }
+        assert policy_json["externalProductDependencies"]["PublishingKnowledgeCore"] == {
+            "RepoPressAppleSupport": "RepoPressShared",
+        }
 
         bounded = run_fixture(
             root,
@@ -453,6 +506,45 @@ def main() -> int:
     git_target = next(item for item in missing_edge["targets"] if item["name"] == "PublishingGitCore")
     git_target["dependencies"] = [dependency("PublishingDomainContracts")]
     expect_rejected(missing_edge, message="PublishingGitCore dependencies differ")
+
+    missing_shared_core = valid_payload()
+    support_target = next(
+        item for item in missing_shared_core["targets"] if item["name"] == "PublishingCoreSupport"
+    )
+    support_target["dependencies"] = []
+    expect_rejected(missing_shared_core, message="external products differ from policy")
+
+    missing_shared_apple_support = valid_payload()
+    knowledge_target = next(
+        item
+        for item in missing_shared_apple_support["targets"]
+        if item["name"] == "PublishingKnowledgeCore"
+    )
+    knowledge_target["dependencies"] = [
+        dependency("PublishingCoreSupport"),
+        dependency("PublishingMarkdownCore"),
+    ]
+    expect_rejected(missing_shared_apple_support, message="external products differ from policy")
+
+    with tempfile.TemporaryDirectory(prefix="swift-module-boundaries-fixture.") as shared_import_temporary:
+        shared_import_result = run_fixture(
+            Path(shared_import_temporary),
+            valid_payload(),
+            extra_sources={
+                "Sources/PublishingCoreSupport/SharedImport.swift": "import RepoPressCore\\n",
+                "Sources/PublishingKnowledgeCore/SharedImport.swift": "import RepoPressAppleSupport\\n",
+            },
+        )
+        assert shared_import_result.returncode == 0, shared_import_result.stderr
+
+    invalid_shared_import = valid_payload()
+    expect_rejected(
+        invalid_shared_import,
+        extra_sources={
+            "Sources/PublishingCoreSupport/InvalidSharedImport.swift": "import RepoPressAppleSupport\\n",
+        },
+        message="without direct product dependency",
+    )
 
     extra_edge = valid_payload()
     git_target = next(item for item in extra_edge["targets"] if item["name"] == "PublishingGitCore")

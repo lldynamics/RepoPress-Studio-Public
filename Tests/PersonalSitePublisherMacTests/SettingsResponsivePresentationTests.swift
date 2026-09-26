@@ -6,7 +6,7 @@ final class SettingsResponsivePresentationTests: XCTestCase {
   func testSidebarWidthScalesWithinUsableBounds() {
     XCTAssertEqual(SettingsSidebarPresentation.clampedWidth(180), 232)
     XCTAssertEqual(SettingsSidebarPresentation.clampedWidth(248), 248)
-    XCTAssertEqual(SettingsSidebarPresentation.clampedWidth(280), 272)
+    XCTAssertEqual(SettingsSidebarPresentation.clampedWidth(340), 320)
   }
 
   func testSidebarAttentionBadgeKeepsVisibleAndSpokenMeanings() {
@@ -21,11 +21,11 @@ final class SettingsResponsivePresentationTests: XCTestCase {
     let presentation = SettingsWorkspaceLayout.presentation(
       width: 820,
       height: 560,
-      scaledSidebarWidth: 180
+      scaledSidebarWidth: WorkbenchSettingsMetrics.sidebarWidth
     )
 
     XCTAssertTrue(presentation.usesCompactVerticalMetrics)
-    XCTAssertEqual(presentation.primarySidebarWidth, 232)
+    XCTAssertEqual(presentation.primarySidebarWidth, 260)
     let detailWidth = SettingsWorkspaceLayout.availableDetailWidth(
       totalWidth: 820,
       presentation: presentation

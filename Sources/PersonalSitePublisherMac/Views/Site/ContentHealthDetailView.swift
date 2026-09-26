@@ -718,7 +718,7 @@ struct ContentHealthDetailView: View {
             }
             store.setInspectorPresented(true)
           } label: {
-            Label("检查器", systemImage: "sidebar.right")
+            Label("详情栏", systemImage: "sidebar.right")
           }
           .buttonStyle(.bordered)
         }

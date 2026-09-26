@@ -1,8 +1,30 @@
 import Foundation
 import Network
+import PublishingPreviewCore
 import XCTest
 
-@testable import PublishingWorkbenchCore
+private actor IgnoringCancellationProbe {
+  private var continuation: CheckedContinuation<LocalSitePreviewPageProbeResult, Never>?
+  private var didStart = false
+
+  func probe(_ request: URLRequest) async -> LocalSitePreviewPageProbeResult {
+    didStart = true
+    return await withCheckedContinuation { continuation in
+      self.continuation = continuation
+    }
+  }
+
+  func waitUntilStarted() async {
+    while !didStart {
+      await Task.yield()
+    }
+  }
+
+  func finish(_ url: URL?) {
+    continuation?.resume(returning: .init(statusCode: 200, responseURL: url))
+    continuation = nil
+  }
+}
 
 final class LocalSitePreviewPageReadinessServiceTests: XCTestCase {
   func testRejectsNonNumericLoopbackURLWithoutProbing() async {
@@ -36,6 +58,62 @@ final class LocalSitePreviewPageReadinessServiceTests: XCTestCase {
 
     XCTAssertTrue(result)
     XCTAssertEqual(counter.value, 3)
+  }
+
+  func testQuartzBudgetWaitsBeyondTheNormalServerBudgetWithoutRealDelay() async {
+    let counter = LockedProbeCounter()
+    let service = LocalSitePreviewPageReadinessService(
+      probe: { request in
+        let attempt = counter.increment()
+        return LocalSitePreviewPageProbeResult(
+          statusCode: attempt < 20 ? 404 : 200,
+          responseURL: request.url
+        )
+      },
+      pause: { _ in }
+    )
+
+    let result = await service.waitUntilReady(
+      URL(string: "http://127.0.0.1:4321/article")!,
+      maxAttempts: LocalSitePreviewStartupBudget.maximumReadinessAttempts(for: .quartz)
+    )
+
+    XCTAssertTrue(result)
+    XCTAssertEqual(counter.value, 20)
+    XCTAssertGreaterThan(
+      LocalSitePreviewStartupBudget.maximumReadinessAttempts(for: .quartz),
+      LocalSitePreviewStartupBudget.normalMaximumReadinessAttempts
+    )
+  }
+
+  func testCancellationAfterAnIgnoringProbeDoesNotReportReadiness() async {
+    let probe = IgnoringCancellationProbe()
+    let url = URL(string: "http://127.0.0.1:4321/article")!
+    let service = LocalSitePreviewPageReadinessService(
+      probe: { request in await probe.probe(request) },
+      pause: { _ in }
+    )
+    let readiness = Task { await service.waitUntilReady(url, maxAttempts: 1) }
+
+    await probe.waitUntilStarted()
+    readiness.cancel()
+    await probe.finish(url)
+
+    let result = await readiness.value
+    XCTAssertFalse(result)
+  }
+
+  func testDeadlineRejectsLateSuccessfulProbe() async {
+    let service = LocalSitePreviewPageReadinessService { request in
+      try await Task.sleep(for: .milliseconds(40))
+      return LocalSitePreviewPageProbeResult(statusCode: 200, responseURL: request.url)
+    }
+    let result = await service.waitUntilReady(
+      URL(string: "http://127.0.0.1:4321/article")!,
+      maxAttempts: 2,
+      maximumWait: .milliseconds(10)
+    )
+    XCTAssertFalse(result)
   }
 
   func testDoesNotAcceptASuccessfulResponseFromRedirectedURL() async {
@@ -124,6 +202,20 @@ final class LocalSitePreviewPageReadinessServiceTests: XCTestCase {
     )
 
     XCTAssertTrue(result)
+  }
+
+  func testRealProbeReturnsQuartzIdentityHeader() async throws {
+    let server = try await makeStreamingServerOrSkip(
+      responseHeaders: [
+        "Content-Length: 0", "X-RepoPress-Quartz-Preview: fixture-token",
+      ]
+    )
+    defer { server.cancel() }
+    var request = URLRequest(url: server.url)
+    request.httpMethod = "GET"
+    let result = try await LocalSitePreviewHTTPMetadataProbe.perform(request)
+    XCTAssertEqual(result.statusCode, 200)
+    XCTAssertEqual(result.responseHeaders["x-repopress-quartz-preview"], "fixture-token")
   }
 
   func testRealProbeSkipsEarlyHintsBeforeFinalSuccess() async throws {

@@ -1,0 +1,206 @@
+{
+  "cases": [
+    {
+      "id": "diff-boundary-250000",
+      "path": "publish-conflict-diff/diff-boundary-250000.json",
+      "sha256": "546a159303711b4844427c4269a2a81b1eabb619df345e69f40126dc0845ea76"
+    },
+    {
+      "id": "diff-coarse-over-threshold",
+      "path": "publish-conflict-diff/diff-coarse-over-threshold.json",
+      "sha256": "634f9949b9963b572b0efc0fc7ab023d7ec4c71fbc543c8440904916ddbc9844"
+    },
+    {
+      "id": "diff-crlf",
+      "path": "publish-conflict-diff/diff-crlf.json",
+      "sha256": "1954d590824dbb97f2c93b74fe1b1bbd33c2dea952bcf3d14b3d1352699b9c41"
+    },
+    {
+      "id": "diff-delete",
+      "path": "publish-conflict-diff/diff-delete.json",
+      "sha256": "1ab38c31e498c62a5a09a68ddf0a54782d87b329c893040eed2ebdb0723e7cce"
+    },
+    {
+      "id": "diff-duplicate-tie-break",
+      "path": "publish-conflict-diff/diff-duplicate-tie-break.json",
+      "sha256": "34b230d1379d38949131be035c7ce9b306b1c447c602920c23e402e25e8d493a"
+    },
+    {
+      "id": "diff-empty-both",
+      "path": "publish-conflict-diff/diff-empty-both.json",
+      "sha256": "1597922cbdd73d1bfcf98b1842c88169751f05e7953783907c0194cbdd66e3a4"
+    },
+    {
+      "id": "diff-empty-local",
+      "path": "publish-conflict-diff/diff-empty-local.json",
+      "sha256": "e73fa823d7577db3b0e09adfe7a2bc4bdf816140ba9dfbeb3b51cda721bb6609"
+    },
+    {
+      "id": "diff-insert",
+      "path": "publish-conflict-diff/diff-insert.json",
+      "sha256": "a56c84d5d110c8ff156fb91026249256c4e64fd78faf38745031c8a37d485228"
+    },
+    {
+      "id": "diff-replace",
+      "path": "publish-conflict-diff/diff-replace.json",
+      "sha256": "fa85bcceb567dcfdfb9cb45f3d0bc62362dee105d2d841c4bb93bb0d7f73bbbe"
+    },
+    {
+      "id": "diff-same",
+      "path": "publish-conflict-diff/diff-same.json",
+      "sha256": "ac9c24fb6c0fa6c58d219f9b8a33d37d8f8b7a16b604014d324fa04eb2b6240d"
+    },
+    {
+      "id": "diff-trailing-newline",
+      "path": "publish-conflict-diff/diff-trailing-newline.json",
+      "sha256": "2559b189855176b3c3a5537817dd9780bb0754e84cf9979c03364ffe235d4cb4"
+    },
+    {
+      "id": "diff-unicode",
+      "path": "publish-conflict-diff/diff-unicode.json",
+      "sha256": "3f91a9311d4cd87b2dc82eec646b74b8efd2d48383e8b7c11cf7c2f29d2ece04"
+    },
+    {
+      "id": "endpoint-default-build-url",
+      "path": "repository-endpoint/endpoint-default-build-url.json",
+      "sha256": "8d9ef83226e894ce52f44788a481dbb62fc10b4ac73bdf637f882a7aa96873a1"
+    },
+    {
+      "id": "endpoint-default-validate",
+      "path": "repository-endpoint/endpoint-default-validate.json",
+      "sha256": "281280e08fe47630bb2c8caaaba3e43b37954cbaea1241676b3b6557c130b4a5"
+    },
+    {
+      "id": "endpoint-empty-request-path",
+      "path": "repository-endpoint/endpoint-empty-request-path.json",
+      "sha256": "d7a15ab8da82f68b3d4225ac9b8be39d00edbe9429d95cf02fa5a24481f92626"
+    },
+    {
+      "id": "endpoint-encoded-request-path",
+      "path": "repository-endpoint/endpoint-encoded-request-path.json",
+      "sha256": "e80db20c67da3da5273a321ec702e8a256365c0fff875cdf8566637d2534dd5a"
+    },
+    {
+      "id": "endpoint-enterprise-base-path",
+      "path": "repository-endpoint/endpoint-enterprise-base-path.json",
+      "sha256": "e29a6559b143566d27439c634a8adcc89a7b9b532a25565618ebd569d28971fd"
+    },
+    {
+      "id": "endpoint-enterprise-encoded-query",
+      "path": "repository-endpoint/endpoint-enterprise-encoded-query.json",
+      "sha256": "6ebdd7c274c524753072729411a6a38388a490390ed02e8de08406ba2245b9aa"
+    },
+    {
+      "id": "endpoint-invalid-fragment",
+      "path": "repository-endpoint/endpoint-invalid-fragment.json",
+      "sha256": "681d009358a543d28cb3058f702dd3ed721f4409a24debff86a182686f54f0a9"
+    },
+    {
+      "id": "endpoint-invalid-http",
+      "path": "repository-endpoint/endpoint-invalid-http.json",
+      "sha256": "e33eb1722eea704221e8979c88018ab264b8e878bdaf42528fa8b02205500d41"
+    },
+    {
+      "id": "endpoint-invalid-input-missing-operation",
+      "path": "repository-endpoint/endpoint-invalid-input-missing-operation.json",
+      "sha256": "1167f4da9ebdc4e894e78c78435c97c1745da078d21ac087535e6c347dd94be7"
+    },
+    {
+      "id": "endpoint-invalid-no-host",
+      "path": "repository-endpoint/endpoint-invalid-no-host.json",
+      "sha256": "e7283947b27d98147fa8cf7f5e2cca48e4b3f067a6780f27e7b680466aa7fa8b"
+    },
+    {
+      "id": "endpoint-invalid-query",
+      "path": "repository-endpoint/endpoint-invalid-query.json",
+      "sha256": "498c402363a49b8f2fbf7f5c4a679d2535f175a29c4b5c606e0a5ddb018504b1"
+    },
+    {
+      "id": "endpoint-invalid-userinfo",
+      "path": "repository-endpoint/endpoint-invalid-userinfo.json",
+      "sha256": "525c9f90a167d560f9c74d5c2e08ab8a4c732eb99efd4d2c5f453e0acfa8221b"
+    },
+    {
+      "id": "endpoint-query-items",
+      "path": "repository-endpoint/endpoint-query-items.json",
+      "sha256": "e91048d4c356d33ace3387a0b92718ac852073b0f2ee2808973dffb152110efd"
+    },
+    {
+      "id": "endpoint-query-null-value",
+      "path": "repository-endpoint/endpoint-query-null-value.json",
+      "sha256": "faa6bb5550bd75fab50fda47fc97460b0467f852c5c07b76fefe601124862d1f"
+    },
+    {
+      "id": "endpoint-trailing-slash",
+      "path": "repository-endpoint/endpoint-trailing-slash.json",
+      "sha256": "67b8825623455bc94258208501737f7462ee494bdb88d31268380e118ac67979"
+    },
+    {
+      "id": "endpoint-whitespace-trim",
+      "path": "repository-endpoint/endpoint-whitespace-trim.json",
+      "sha256": "be0eaa41757422926f65365103d32bed6fc4b7a6f2fe43a1cdaa28a5bf696df6"
+    },
+    {
+      "id": "front-invalid-null-optional",
+      "path": "front-matter-document/front-invalid-null-optional.json",
+      "sha256": "3feee45dd60309096e2b294c00386179ce05f52599585c779c267dc8277697d6"
+    },
+    {
+      "id": "front-toml-authors-only-render",
+      "path": "front-matter-document/front-toml-authors-only-render.json",
+      "sha256": "29da9ed5579806e0fa921c92c9fbfab6bca29421c429191f20301510b42797d0"
+    },
+    {
+      "id": "front-toml-direct-cover-render",
+      "path": "front-matter-document/front-toml-direct-cover-render.json",
+      "sha256": "28e29635b7815a860a2f095332a58f70295374003e1cc5d90849c89ad64ae9c2"
+    },
+    {
+      "id": "front-toml-escaped-render",
+      "path": "front-matter-document/front-toml-escaped-render.json",
+      "sha256": "f58892075be0e57edd307d33bded535743a91d5cc66b0d0e3e335bc3a7e57596"
+    },
+    {
+      "id": "front-toml-inline-render",
+      "path": "front-matter-document/front-toml-inline-render.json",
+      "sha256": "b3955c90dfee8b77841bb3fe1998606d4bd44aeacd34ac138b7f7fd730647c57"
+    },
+    {
+      "id": "front-toml-markdown-trim",
+      "path": "front-matter-document/front-toml-markdown-trim.json",
+      "sha256": "2b011a5aae063eb59b870c57866c23977c52ef326d62469c9481807eb1d8d94b"
+    },
+    {
+      "id": "front-toml-table-extra-render",
+      "path": "front-matter-document/front-toml-table-extra-render.json",
+      "sha256": "41b375017d0f175df6051e25330afadf842df09b874c7e5ea586ed5e21cb6ef7"
+    },
+    {
+      "id": "front-yaml-empty-fields-render",
+      "path": "front-matter-document/front-yaml-empty-fields-render.json",
+      "sha256": "59a2eaeeaa21e1f48f792f0f01eaf464b461e611e39f750aa18ddb61c5f7b398"
+    },
+    {
+      "id": "front-yaml-full-render",
+      "path": "front-matter-document/front-yaml-full-render.json",
+      "sha256": "490cd2059ece14b4c011eb0f148683c187439eef747c5b92cb413b30bbf547cd"
+    },
+    {
+      "id": "front-yaml-markdown-trim",
+      "path": "front-matter-document/front-yaml-markdown-trim.json",
+      "sha256": "762a0a38cb936867922eb80d9c32602bc2ecd81a33b82e1c6f1fa067d6306a6b"
+    },
+    {
+      "id": "front-yaml-minimal-render",
+      "path": "front-matter-document/front-yaml-minimal-render.json",
+      "sha256": "0171217c0da399ad5c5136a29943ef38f16992439f31d85a2b55d4c0a90842d8"
+    },
+    {
+      "id": "front-yaml-unicode-render",
+      "path": "front-matter-document/front-yaml-unicode-render.json",
+      "sha256": "8e34d46c1d0e922ed95fcb14f7e1baa9a22b5dad2556d7485a4a04083056d2ae"
+    }
+  ],
+  "formatVersion": 1,
+  "minimumReaderVersion": 1
+}

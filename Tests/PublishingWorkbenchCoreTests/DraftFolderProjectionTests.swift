@@ -1,3 +1,4 @@
+import PublishingDomainContracts
 import XCTest
 
 @testable import PublishingWorkbenchCore
@@ -122,6 +123,47 @@ final class DraftFolderProjectionTests: XCTestCase {
       XCTAssertEqual(root.children.map(\.kind), [.unfiled], pattern)
       XCTAssertEqual(root.children[0].directoryPath, nil, pattern)
     }
+  }
+
+  func testGeneralLibraryFoldersAreStableAcrossEditingSitesAndRespectPrivacyMask() {
+    let profile = makeProfile(pattern: "content/posts/{slug}.md")
+    let otherProfile = SiteProfile(
+      id: UUID(), name: "Other", contentRoot: "articles",
+      markdownPathPattern: "articles/{slug}.md"
+    )
+    var foldered = makeDraft(
+      id: "00000000-0000-4000-8000-000000000070", slug: "unrelated/slug", scope: .general
+    )
+    XCTAssertTrue(foldered.setGeneralDraftFolderName("Research"))
+    let unfiled = makeDraft(
+      id: "00000000-0000-4000-8000-000000000071", slug: "plain", scope: .general
+    )
+    var masked = makeDraft(
+      id: "00000000-0000-4000-8000-000000000072", slug: "secret", scope: .general
+    )
+    XCTAssertTrue(masked.setGeneralDraftFolderName("Hidden"))
+    let drafts = [foldered, unfiled, masked]
+
+    let first = DraftFolderProjection(
+      profile: profile, drafts: drafts, contentScope: .general,
+      maskedDraftIDs: [masked.id]
+    )
+    let second = DraftFolderProjection(
+      profile: otherProfile, drafts: drafts, contentScope: .general,
+      maskedDraftIDs: [masked.id]
+    )
+
+    XCTAssertEqual(first.profileID, DraftFolderProjection.generalLibraryID)
+    XCTAssertEqual(first.root.children.map(\.id), second.root.children.map(\.id))
+    let folder = tryUnwrap(first.root.children.first { $0.name == "Research" })
+    XCTAssertEqual(folder.draftIDs, [foldered.id])
+    XCTAssertEqual(folder.visiblePath, "Research")
+    XCTAssertFalse(folder.id.contains("unrelated"))
+    XCTAssertEqual(first.ancestorFolderIDs(for: foldered.id), [folder.id])
+    XCTAssertEqual(first.root.children.first { $0.kind == .unfiled }?.draftIDs, [unfiled.id])
+    let protected = tryUnwrap(first.root.children.first { $0.kind == .protectedContent })
+    XCTAssertEqual(protected.draftIDs, [masked.id])
+    XCTAssertFalse(first.root.children.contains { $0.name == "Hidden" })
   }
 
   func testDraftsAreSortedWithinEachFolderAndFolderOrderIsDeterministic() {

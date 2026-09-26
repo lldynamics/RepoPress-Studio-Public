@@ -1,0 +1,24 @@
+{
+  "capability": "publish-conflict-diff",
+  "description": "Keeps the single empty line produced by splitting an empty string.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "lines": [
+        {
+          "id": 0,
+          "kind": "same",
+          "marker": " ",
+          "text": ""
+        }
+      ],
+      "strategy": "lcs"
+    }
+  },
+  "id": "diff-empty-both",
+  "input": {
+    "local": "",
+    "remote": ""
+  },
+  "validity": "valid"
+}

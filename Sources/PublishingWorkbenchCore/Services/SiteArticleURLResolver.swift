@@ -56,6 +56,11 @@ public struct SiteArticleURLResolver: Sendable {
       path = removingFirstMatchingPrefix(from: path, prefixes: ["content/"])
     case .foam:
       break
+    case .docusaurus:
+      path = removingFirstMatchingPrefix(from: path, prefixes: ["docs/"])
+      path = "docs/" + path
+    case .mkDocs:
+      path = removingFirstMatchingPrefix(from: path, prefixes: ["docs/"])
     case .zola, .astro, .vitePress:
       for prefix in ["content/posts/", "content/", "src/content/blog/", "docs/posts/", "source/_posts/", "_posts/"] where path.hasPrefix(prefix) {
         path = String(path.dropFirst(prefix.count))
@@ -124,6 +129,10 @@ public struct SiteArticleURLResolver: Sendable {
       path = removingFirstMatchingPrefix(from: path, prefixes: ["content/"])
     case .hugo, .foam:
       break
+    case .docusaurus:
+      path = "docs/" + removingFirstMatchingPrefix(from: path, prefixes: ["docs/"])
+    case .mkDocs:
+      path = removingFirstMatchingPrefix(from: path, prefixes: ["docs/"])
     }
 
     return webPath(fromExtensionlessPath: removingMarkdownExtension(from: path))

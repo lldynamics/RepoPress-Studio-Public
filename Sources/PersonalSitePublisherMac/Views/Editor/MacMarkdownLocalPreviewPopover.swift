@@ -1,9 +1,11 @@
+import PublishingPreviewCore
 import PublishingWorkbenchCore
 import SwiftUI
 
 struct MacMarkdownLocalPreviewPopover: View {
   @EnvironmentObject private var state: WorkbenchLocalSitePreviewFeatureFacade
   let draftID: UUID
+  let currentArticlePath: String?
   @ObservedObject var coordinator: ExternalBrowserPreviewCoordinator
 
   @State private var isCheckingReachability = false
@@ -19,6 +21,14 @@ struct MacMarkdownLocalPreviewPopover: View {
     .task(id: state.activeProfileID) {
       pendingAuthorizationRequest = nil
       state.refreshStatus()
+      while !Task.isCancelled {
+        do {
+          try await Task.sleep(for: .seconds(2))
+        } catch {
+          break
+        }
+        state.refreshStatus()
+      }
     }
     .onChange(of: state.activeProfileID) {
       coordinator.cancelPendingOpen()
@@ -96,7 +106,12 @@ struct MacMarkdownLocalPreviewPopover: View {
           .accessibilityIdentifier("markdown-local-preview-check-port")
 
           Button {
-            state.reload()
+            if let disposition = state.reload() {
+              pendingAuthorizationRequest = LocalSitePreviewTrustConfirmationPolicy.request(
+                from: disposition,
+                entryPoint: .markdownPopover
+              )
+            }
           } label: {
             Label("刷新预览", systemImage: "arrow.triangle.2.circlepath")
           }
@@ -119,6 +134,8 @@ struct MacMarkdownLocalPreviewPopover: View {
         if !plan.diagnostics.isReadyToStart {
           diagnosticsHint(plan: plan)
         }
+
+        runtimeDiagnostics
       }
       .padding(16)
     } else {
@@ -232,4 +249,51 @@ struct MacMarkdownLocalPreviewPopover: View {
     .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 8))
     .accessibilityIdentifier("markdown-local-preview-diagnostics")
   }
+
+  @ViewBuilder
+  private var runtimeDiagnostics: some View {
+    let matchingDiagnostics = state.runtimeStatus.diagnostics.filter { diagnostic in
+      diagnostic.targets(relativeArticlePath: currentArticlePath)
+    }
+    if !matchingDiagnostics.isEmpty {
+      VStack(alignment: .leading, spacing: 6) {
+        Label("当前文章的预览错误", systemImage: "exclamationmark.triangle.fill")
+          .font(.caption.weight(.medium))
+          .foregroundStyle(WorkbenchTheme.warning)
+
+        ForEach(matchingDiagnostics) { diagnostic in
+          Button {
+            coordinator.cancelPendingOpen()
+            NotificationCenter.default.post(
+              name: .markdownLocalPreviewDiagnosticJumpRequested,
+              object: MarkdownLocalPreviewDiagnosticJumpRequest(
+                draftID: draftID,
+                line: diagnostic.line
+              )
+            )
+          } label: {
+            Label("跳转到第 \(diagnostic.line) 行", systemImage: "arrow.turn.down.right")
+          }
+          .buttonStyle(.bordered)
+          .help(diagnostic.message)
+          .accessibilityIdentifier("markdown-local-preview-jump-to-error-line")
+        }
+      }
+      .font(.caption)
+      .padding(9)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 8))
+    }
+  }
+}
+
+extension Notification.Name {
+  static let markdownLocalPreviewDiagnosticJumpRequested = Notification.Name(
+    "markdownLocalPreviewDiagnosticJumpRequested"
+  )
+}
+
+struct MarkdownLocalPreviewDiagnosticJumpRequest {
+  let draftID: UUID
+  let line: Int
 }

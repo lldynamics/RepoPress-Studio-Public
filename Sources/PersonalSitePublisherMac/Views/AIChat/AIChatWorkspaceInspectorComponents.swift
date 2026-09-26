@@ -151,7 +151,12 @@ struct AIChatContextInspectorView: View {
       ScrollViewReader { proxy in
         ZStack(alignment: .bottomTrailing) {
           ScrollView {
-            AIChatContextInspectorContent(state: state, actions: actions)
+            AIChatContextInspectorContent(
+              state: state,
+              actions: actions,
+              isAIKeyMissing: isAIKeyMissing,
+              configureAIConnection: openAISettings
+            )
               .padding(16)
           }
           .defaultScrollAnchor(.bottom)

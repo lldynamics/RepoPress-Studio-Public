@@ -149,6 +149,9 @@ struct DraftFullTextSearchPanel: View {
         }
       }
       .pickerStyle(.segmented)
+      // The fixed width only fits the segments; a visible label was squeezed
+      // into a one-character column. The accessibility label keeps the name.
+      .labelsHidden()
       .frame(width: 250)
       .accessibilityLabel("全文搜索范围")
 

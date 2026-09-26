@@ -16,7 +16,7 @@ and release lifecycle.
   GitHub and GitLab imports, direct commits, and pull/merge request workflows.
 - Preflight checks, front matter and path validation, publish diffs, SEO and
   social previews, deployment status, release history, and rollback tools.
-- A local knowledge library, PDF and web imports, semantic search, RSS reading,
+- A local knowledge library, PDF and web imports, macOS Share Sheet and Shortcuts intake, semantic search, RSS reading,
   image tools, and complete workspace backup and restore. Backups exclude
   Keychain credentials.
 - Optional bring-your-own-key AI workflows for article-aware chat, editing,
@@ -109,6 +109,9 @@ are separate release evidence; a successful unit-test run does not prove them.
   compatibility adapters, and the temporary umbrella export surface.
 - `Sources/PersonalSitePublisherMac/`: the macOS app, SwiftUI views, and narrow
   AppKit adapters.
+- `Shared/RepoPressCoreContracts/swift/`: the checked-in RepoPress shared Swift
+  package; `source-lock.json` and `verify-source.py` keep its exported snapshot
+  reviewable.
 - `Tests/` and `UITests/`: unit, integration, UI, and accessibility coverage.
 - `Packaging/` and `script/`: versioning, entitlements, quality gates, and
   release tooling.

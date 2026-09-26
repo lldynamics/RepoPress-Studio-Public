@@ -49,6 +49,56 @@ fi
 git -C "$TMP_DIR" add Sources/App/Missing.swift
 REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" >/dev/null \
   || fail "staged source file should be present in the clean-checkout boundary"
+
+printf '{"pins": []}\n' >"$TMP_DIR/Package.resolved"
+if REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" >/dev/null 2>&1; then
+  fail "untracked Package.resolved should fail"
+fi
+git -C "$TMP_DIR" add Package.resolved
+REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" >/dev/null \
+  || fail "staged Package.resolved should be present in the clean-checkout boundary"
+
+for extension in ShareExtension ShortcutExtension; do
+  mkdir -p "$TMP_DIR/$extension/$extension.xcodeproj"
+  for relative in "$extension/App.swift" \
+    "$extension/$extension.xcodeproj/project.pbxproj" \
+    "$extension/Development.entitlements"; do
+    case "$relative" in
+      *.swift) printf '// extension source\n' >"$TMP_DIR/$relative" ;;
+      *.pbxproj) printf '// project\n' >"$TMP_DIR/$relative" ;;
+      *.entitlements) printf '// configuration\n' >"$TMP_DIR/$relative" ;;
+    esac
+    if output=$(REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" 2>&1); then
+      fail "untracked $relative should fail"
+    fi
+    [[ "$output" == *"$relative"* ]] \
+      || fail "untracked $relative failure should identify the relative path"
+    git -C "$TMP_DIR" add "$relative"
+    REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" >/dev/null \
+      || fail "staged $relative should be present in the clean-checkout boundary"
+    if REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" --release >/dev/null 2>&1; then
+      fail "release mode should reject staged $relative"
+    fi
+  done
+done
+
+mkdir -p "$TMP_DIR/UITests"
+printf '// UI test input\n' >"$TMP_DIR/UITests/WorkspaceUITests.swift"
+if REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" >/dev/null 2>&1; then
+  fail "untracked UI test input should fail"
+fi
+git -C "$TMP_DIR" add UITests/WorkspaceUITests.swift
+REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" >/dev/null \
+  || fail "staged UI test input should be present in the clean-checkout boundary"
+
+mkdir -p "$TMP_DIR/Shared/RepoPressCoreContracts/swift"
+printf '// shared source\n' >"$TMP_DIR/Shared/RepoPressCoreContracts/swift/Package.swift"
+if REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" >/dev/null 2>&1; then
+  fail "untracked shared package source should fail"
+fi
+git -C "$TMP_DIR" add Shared/RepoPressCoreContracts/swift/Package.swift
+REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" >/dev/null \
+  || fail "staged shared package source should be present in the clean-checkout boundary"
 if REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" --release >/dev/null 2>&1; then
   fail "release mode should reject staged changes"
 fi

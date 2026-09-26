@@ -1,0 +1,16 @@
+{
+  "capability": "repository-endpoint",
+  "description": "Trims surrounding whitespace before validating a base URL.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "baseURL": "https://api.example.test/api/v4"
+    }
+  },
+  "id": "endpoint-whitespace-trim",
+  "input": {
+    "baseURL": "  https://api.example.test/api/v4  ",
+    "operation": "validate"
+  },
+  "validity": "valid"
+}

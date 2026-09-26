@@ -470,7 +470,11 @@ extension AIChatContextInspectorView {
   }
 
   func focusComposerIfAvailable() {
-    guard ai.chatContextMode == .general || inspectorDraft != nil, !isChatBusy else {
+    guard
+      ai.chatContextMode == .general || inspectorDraft != nil,
+      !isChatBusy,
+      !isAIKeyMissing
+    else {
       return
     }
     DispatchQueue.main.async {

@@ -1,4 +1,5 @@
 import PublishingGitCore
+import PublishingSyncCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -237,10 +238,11 @@ struct RepositoryOperationLifecycleView: View {
 
   private var statusBadge: some View {
     Text(statusBadgeTitle)
-    .font(.caption.weight(.semibold).monospacedDigit())
-    .foregroundStyle(
-      lifecycle.unresolvedConflictCount == 0 ? WorkbenchTheme.success : WorkbenchTheme.warning
-    )
+      .font(.caption.weight(.semibold).monospacedDigit())
+      .foregroundStyle(
+        lifecycle.unresolvedConflictCount == 0 && lifecycle.kind != .ambiguous
+          ? WorkbenchTheme.success : WorkbenchTheme.warning
+      )
   }
 
   private var completeButtonTitle: LocalizedStringKey {
@@ -270,6 +272,11 @@ struct RepositoryOperationLifecycleView: View {
   private var statusBadgeTitle: String {
     if lifecycle.kind == .none, recovery != nil || diagnostic != nil {
       return String(localized: "恢复记录待处理")
+    }
+    // An ambiguous state has no trustworthy conflict count; claiming every
+    // conflict is staged would contradict the "unclear" title.
+    if lifecycle.kind == .ambiguous {
+      return String(localized: "需人工检查")
     }
     return lifecycle.unresolvedConflictCount == 0
       ? String(localized: "已暂存全部冲突")

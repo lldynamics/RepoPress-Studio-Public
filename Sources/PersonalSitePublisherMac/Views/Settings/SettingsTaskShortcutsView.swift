@@ -69,6 +69,10 @@ enum SettingsTaskShortcut: CaseIterable, Hashable, Identifiable {
   var scopePresentation: SettingsScopePresentation {
     destination.tab.scopePresentation
   }
+
+  var opensApplicationSettingsWindow: Bool {
+    !destination.tab.isSiteScoped
+  }
 }
 
 @MainActor
@@ -80,7 +84,7 @@ struct SettingsTaskShortcutsView: View {
       VStack(alignment: .leading, spacing: 3) {
         Text("常用任务")
           .font(.workbenchSectionTitle)
-        Text("从这里直接打开最常用的设置")
+        Text("应用偏好会在单独的设置窗口打开")
           .font(.callout)
           .foregroundStyle(.secondary)
       }
@@ -106,6 +110,7 @@ struct SettingsTaskShortcutsView: View {
         }
       }
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
     .padding(WorkbenchSpacing.content)
     .background(
       Color(nsColor: .controlBackgroundColor),
@@ -152,7 +157,10 @@ struct SettingsTaskShortcutsView: View {
 
           Spacer(minLength: 4)
 
-          Image(systemName: "chevron.right")
+          Image(
+            systemName: shortcut.opensApplicationSettingsWindow
+              ? "arrow.up.right.square" : "chevron.right"
+          )
             .font(.caption.weight(.semibold))
             .foregroundStyle(.tertiary)
             .accessibilityHidden(true)
@@ -166,9 +174,15 @@ struct SettingsTaskShortcutsView: View {
         )
       }
       .buttonStyle(.plain)
+      .help(
+        shortcut.opensApplicationSettingsWindow
+          ? String(localized: "在应用设置窗口打开") : shortcut.detail
+      )
       .accessibilityLabel(shortcut.title)
       .accessibilityHint(
         "\(shortcut.detail)。\(shortcut.scopePresentation.accessibilityDescription)"
+          + (shortcut.opensApplicationSettingsWindow
+            ? "。" + String(localized: "在应用设置窗口打开") : "")
       )
       .accessibilityIdentifier("settings-task-shortcut-\(shortcut.id)")
     }

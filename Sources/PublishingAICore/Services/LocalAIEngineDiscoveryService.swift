@@ -83,10 +83,37 @@ public struct LocalAIEngineDiscoveryService: Sendable {
   private func discover(
     _ endpoint: LocalAIEngineDiscoveryEndpoint
   ) async -> LocalAIEngineDiscoveryResult {
-    guard let modelsURL = URL(string: endpoint.modelsURL),
+    for (index, attempt) in endpoint.attempts.enumerated() {
+      switch await fetchModels(attempt) {
+      case .success(let models):
+        let message =
+          models.isEmpty
+          ? CoreL10n.text("本地服务可用，但未返回模型。")
+          : CoreL10n.format("已检测到 %d 个本地模型。", models.count)
+        return LocalAIEngineDiscoveryResult(
+          kind: endpoint.kind,
+          baseURL: endpoint.baseURL,
+          isAvailable: true,
+          models: models,
+          message: message
+        )
+      case .failure(let reason):
+        if index + 1 < endpoint.attempts.count && reason.isRecoverableForFallback {
+          continue
+        }
+        return unavailableResult(endpoint, reason: reason)
+      }
+    }
+    return unavailableResult(endpoint, reason: .unreachable)
+  }
+
+  private func fetchModels(
+    _ attempt: LocalAIEngineDiscoveryEndpoint.Attempt
+  ) async -> FetchOutcome {
+    guard let modelsURL = URL(string: attempt.modelsURL),
       Self.isStrictLoopbackURL(modelsURL)
     else {
-      return unavailableResult(endpoint, reason: .unsafeEndpoint)
+      return .failure(.unsafeEndpoint)
     }
 
     var request = URLRequest(url: modelsURL)
@@ -106,40 +133,31 @@ public struct LocalAIEngineDiscoveryService: Sendable {
         Self.isStrictLoopbackURL(responseURL),
         Self.isSameOrigin(modelsURL, responseURL)
       else {
-        return unavailableResult(endpoint, reason: .unsafeResponse)
+        return .failure(.unsafeResponse)
       }
       guard let httpResponse = response as? HTTPURLResponse else {
-        return unavailableResult(endpoint, reason: .invalidResponse)
+        return .failure(.invalidResponse)
       }
       guard (200...299).contains(httpResponse.statusCode) else {
-        return unavailableResult(endpoint, reason: .httpStatus(httpResponse.statusCode))
+        return .failure(.httpStatus(httpResponse.statusCode))
       }
-
-      let models: [String]
       do {
-        models = try Self.models(from: data, parser: endpoint.parser)
+        return .success(try Self.models(from: data, parser: attempt.parser))
       } catch {
-        return unavailableResult(endpoint, reason: .invalidPayload)
+        return .failure(.invalidPayload)
       }
-
-      let message =
-        models.isEmpty
-        ? CoreL10n.text("本地服务可用，但未返回模型。")
-        : CoreL10n.format("已检测到 %d 个本地模型。", models.count)
-      return LocalAIEngineDiscoveryResult(
-        kind: endpoint.kind,
-        baseURL: endpoint.baseURL,
-        isAvailable: true,
-        models: models,
-        message: message
-      )
     } catch is CancellationError {
-      return unavailableResult(endpoint, reason: .cancelled)
+      return .failure(.cancelled)
     } catch is HTTPResponseLimitError {
-      return unavailableResult(endpoint, reason: .responseTooLarge)
+      return .failure(.responseTooLarge)
     } catch {
-      return unavailableResult(endpoint, reason: .unreachable)
+      return .failure(.unreachable)
     }
+  }
+
+  private enum FetchOutcome {
+    case success([String])
+    case failure(LocalAIEngineDiscoveryFailureReason)
   }
 
   private static func models(
@@ -158,6 +176,15 @@ public struct LocalAIEngineDiscoveryService: Sendable {
     case .openAICompatible:
       let payload = try JSONDecoder().decode(OpenAICompatibleModelsResponse.self, from: data)
       rawModels = payload.data.map(\.id)
+    case .lmStudioNative:
+      let payload = try JSONDecoder().decode(LMStudioNativeModelsResponse.self, from: data)
+      rawModels = payload.models.compactMap { model in
+        let type = model.type.lowercased()
+        guard type == "llm" || type == "vlm" else {
+          return nil
+        }
+        return model.key
+      }
     }
     return normalizedModels(rawModels)
   }
@@ -239,12 +266,28 @@ private struct LocalAIEngineDiscoveryEndpoint: Sendable {
   enum Parser: Sendable {
     case ollama
     case openAICompatible
+    case lmStudioNative
+  }
+
+  struct Attempt: Sendable {
+    var modelsURL: String
+    var parser: Parser
   }
 
   var kind: LocalAIEngineKind
   var baseURL: String
   var modelsURL: String
   var parser: Parser
+
+  var attempts: [Attempt] {
+    if kind == .lmStudio {
+      return [
+        Attempt(modelsURL: "http://127.0.0.1:1234/api/v1/models", parser: .lmStudioNative),
+        Attempt(modelsURL: modelsURL, parser: parser),
+      ]
+    }
+    return [Attempt(modelsURL: modelsURL, parser: parser)]
+  }
 
   static let all: [LocalAIEngineDiscoveryEndpoint] = [
     LocalAIEngineDiscoveryEndpoint(
@@ -284,6 +327,15 @@ private enum LocalAIEngineDiscoveryFailureReason {
   case unreachable
   case cancelled
 
+  var isRecoverableForFallback: Bool {
+    switch self {
+    case .unreachable, .httpStatus, .invalidPayload:
+      return true
+    case .unsafeEndpoint, .unsafeResponse, .invalidResponse, .responseTooLarge, .cancelled:
+      return false
+    }
+  }
+
   var message: String {
     switch self {
     case .unsafeEndpoint, .unsafeResponse:
@@ -319,6 +371,15 @@ private struct OpenAICompatibleModelsResponse: Decodable {
   }
 
   var data: [Model]
+}
+
+private struct LMStudioNativeModelsResponse: Decodable {
+  struct Model: Decodable {
+    var type: String
+    var key: String
+  }
+
+  var models: [Model]
 }
 
 private struct URLSessionLocalAIEngineDiscoveryTransport: LocalAIEngineDiscoveryTransport {

@@ -1,0 +1,7 @@
+{
+  "所选外部草稿路径不是文件夹。": "The selected external draft path is not a folder.",
+  "外部草稿文件过大：%@": "External draft file is too large: %@",
+  "外部草稿文件数量超过扫描上限。": "The external draft folder exceeds the scan file limit.",
+  "外部草稿文件无法读取：%@": "Cannot read external draft file: %@",
+  "外部草稿文件不是 UTF-8 文本：%@": "External draft file is not UTF-8 text: %@"
+}

@@ -1,100 +1,9 @@
 import Foundation
+import PublishingPreviewCore
 
 #if canImport(Darwin)
   import Darwin
 #endif
-
-public struct LocalSitePreviewPlan: Codable, Hashable, Sendable {
-  public var siteKind: SiteKind
-  public var rootPath: String
-  public var executablePath: String
-  public var arguments: [String]
-  public var command: String
-  public var previewURL: URL
-  public var notes: [String]
-  public var usesDynamicPort: Bool
-  public var diagnostics: LocalSitePreviewDiagnostics
-  public var executionIdentity: LocalSitePreviewExecutionIdentity?
-
-  public var port: Int? {
-    previewURL.port
-  }
-
-  public init(
-    siteKind: SiteKind,
-    rootPath: String,
-    executablePath: String,
-    arguments: [String],
-    command: String,
-    previewURL: URL,
-    notes: [String],
-    usesDynamicPort: Bool = false,
-    diagnostics: LocalSitePreviewDiagnostics? = nil,
-    executionIdentity: LocalSitePreviewExecutionIdentity? = nil
-  ) {
-    self.siteKind = siteKind
-    self.rootPath = rootPath
-    self.executablePath = executablePath
-    self.arguments = arguments
-    self.command = command
-    self.previewURL = previewURL
-    self.notes = notes
-    self.usesDynamicPort = usesDynamicPort
-    self.diagnostics =
-      diagnostics
-      ?? LocalSitePreviewDiagnostics(
-        siteKind: siteKind,
-        rootPath: rootPath
-      )
-    self.executionIdentity = executionIdentity
-  }
-
-  private enum CodingKeys: String, CodingKey {
-    case siteKind
-    case rootPath
-    case executablePath
-    case arguments
-    case command
-    case previewURL
-    case notes
-    case usesDynamicPort
-    case diagnostics
-    case executionIdentity
-  }
-
-  public init(from decoder: Decoder) throws {
-    let container = try decoder.container(keyedBy: CodingKeys.self)
-    siteKind = try container.decode(SiteKind.self, forKey: .siteKind)
-    rootPath = try container.decode(String.self, forKey: .rootPath)
-    executablePath = try container.decode(String.self, forKey: .executablePath)
-    arguments = try container.decode([String].self, forKey: .arguments)
-    command = try container.decode(String.self, forKey: .command)
-    previewURL = try container.decode(URL.self, forKey: .previewURL)
-    notes = try container.decode([String].self, forKey: .notes)
-    usesDynamicPort = try container.decodeIfPresent(Bool.self, forKey: .usesDynamicPort) ?? false
-    diagnostics =
-      try container.decodeIfPresent(LocalSitePreviewDiagnostics.self, forKey: .diagnostics)
-      ?? LocalSitePreviewDiagnostics(siteKind: siteKind, rootPath: rootPath)
-    executionIdentity = try container.decodeIfPresent(
-      LocalSitePreviewExecutionIdentity.self,
-      forKey: .executionIdentity
-    )
-  }
-
-  public func encode(to encoder: Encoder) throws {
-    var container = encoder.container(keyedBy: CodingKeys.self)
-    try container.encode(siteKind, forKey: .siteKind)
-    try container.encode(rootPath, forKey: .rootPath)
-    try container.encode(executablePath, forKey: .executablePath)
-    try container.encode(arguments, forKey: .arguments)
-    try container.encode(command, forKey: .command)
-    try container.encode(previewURL, forKey: .previewURL)
-    try container.encode(notes, forKey: .notes)
-    try container.encode(usesDynamicPort, forKey: .usesDynamicPort)
-    try container.encode(diagnostics, forKey: .diagnostics)
-    try container.encodeIfPresent(executionIdentity, forKey: .executionIdentity)
-  }
-}
 
 public struct LocalSitePreviewRuntimeStatus: Codable, Hashable, Sendable {
   public var isRunning: Bool
@@ -104,6 +13,7 @@ public struct LocalSitePreviewRuntimeStatus: Codable, Hashable, Sendable {
   public var message: String
   public var startedAt: Date?
   public var recentLogLines: [String]
+  public var diagnostics: [LocalSitePreviewRuntimeDiagnostic]
 
   public init(
     isRunning: Bool,
@@ -112,7 +22,8 @@ public struct LocalSitePreviewRuntimeStatus: Codable, Hashable, Sendable {
     previewURL: URL? = nil,
     message: String,
     startedAt: Date? = nil,
-    recentLogLines: [String] = []
+    recentLogLines: [String] = [],
+    diagnostics: [LocalSitePreviewRuntimeDiagnostic] = []
   ) {
     self.isRunning = isRunning
     self.isReachable = isReachable
@@ -121,6 +32,44 @@ public struct LocalSitePreviewRuntimeStatus: Codable, Hashable, Sendable {
     self.message = message
     self.startedAt = startedAt
     self.recentLogLines = recentLogLines
+    self.diagnostics = diagnostics
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case isRunning
+    case isReachable
+    case processIdentifier
+    case previewURL
+    case message
+    case startedAt
+    case recentLogLines
+    case diagnostics
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    isRunning = try container.decode(Bool.self, forKey: .isRunning)
+    isReachable = try container.decodeIfPresent(Bool.self, forKey: .isReachable) ?? false
+    processIdentifier = try container.decodeIfPresent(Int32.self, forKey: .processIdentifier)
+    previewURL = try container.decodeIfPresent(URL.self, forKey: .previewURL)
+    message = try container.decode(String.self, forKey: .message)
+    startedAt = try container.decodeIfPresent(Date.self, forKey: .startedAt)
+    recentLogLines = try container.decodeIfPresent([String].self, forKey: .recentLogLines) ?? []
+    diagnostics =
+      try container.decodeIfPresent([LocalSitePreviewRuntimeDiagnostic].self, forKey: .diagnostics)
+      ?? []
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(isRunning, forKey: .isRunning)
+    try container.encode(isReachable, forKey: .isReachable)
+    try container.encodeIfPresent(processIdentifier, forKey: .processIdentifier)
+    try container.encodeIfPresent(previewURL, forKey: .previewURL)
+    try container.encode(message, forKey: .message)
+    try container.encodeIfPresent(startedAt, forKey: .startedAt)
+    try container.encode(recentLogLines, forKey: .recentLogLines)
+    try container.encode(diagnostics, forKey: .diagnostics)
   }
 
   public static let stopped = LocalSitePreviewRuntimeStatus(
@@ -141,6 +90,7 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
   private let stopExecutor = LocalSitePreviewStopExecutor()
   private let trustStore: LocalSitePreviewTrustStore
   private let isPortAvailable: @Sendable (Int) -> Bool
+  private var quartzProbeToken: String?
 
   public convenience init() {
     self.init(trustStore: LocalSitePreviewTrustStore())
@@ -286,19 +236,35 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
     return statusLocked()
   }
 
+  func quartzReadinessProbe(for plan: LocalSitePreviewPlan) -> (url: URL, token: String)? {
+    processLock.lock()
+    defer { processLock.unlock() }
+    guard plan.siteKind == .quartz,
+      activePlan == plan,
+      process?.isRunning == true,
+      let quartzProbeToken
+    else { return nil }
+    return (
+      plan.previewURL.appendingPathComponent(".__repopress_quartz_probe"),
+      quartzProbeToken
+    )
+  }
+
   private func statusLocked() -> LocalSitePreviewRuntimeStatus {
     guard let activePlan else {
       return .stopped
     }
 
     let logLines = capturedLogLines()
+    let diagnostics = capturedDiagnostics(rootPath: activePlan.rootPath)
     guard let process, process.isRunning else {
       return LocalSitePreviewRuntimeStatus(
         isRunning: false,
         previewURL: activePlan.previewURL,
         message: "本地预览进程已退出。",
         startedAt: startedAt,
-        recentLogLines: logLines
+        recentLogLines: logLines,
+        diagnostics: diagnostics
       )
     }
 
@@ -306,9 +272,13 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
       isRunning: true,
       processIdentifier: process.processIdentifier,
       previewURL: activePlan.previewURL,
-      message: "本地预览运行中：\(activePlan.previewURL.absoluteString)",
+      message: activePlan.siteKind == .quartz
+        && !logLines.contains(QuartzStaticPreviewRunner.readyLogLine)
+        ? "Quartz 4 静态快照正在构建，尚未提供预览端口。"
+        : "本地预览运行中：\(activePlan.previewURL.absoluteString)",
       startedAt: startedAt,
-      recentLogLines: logLines
+      recentLogLines: logLines,
+      diagnostics: diagnostics
     )
   }
 
@@ -329,6 +299,13 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
       }
       return statusLocked()
     }
+    if process != nil {
+      clearProcessLocked()
+    }
+    if plan.siteKind == .quartz {
+      // Consume confirmation for this build attempt before any failure path.
+      try trustStore.consume(identity)
+    }
     if let port = plan.port, !isPortAvailable(port) {
       throw LocalSitePreviewError.portUnavailable(port)
     }
@@ -337,16 +314,21 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
     process.executableURL = URL(fileURLWithPath: plan.executablePath)
     process.arguments = plan.arguments
     process.currentDirectoryURL = URL(fileURLWithPath: plan.rootPath, isDirectory: true)
-    process.environment = Self.launchEnvironment()
+    var environment = Self.launchEnvironment()
+    let probeToken = plan.siteKind == .quartz ? UUID().uuidString : nil
+    if let probeToken {
+      environment["REPOPRESS_QUARTZ_PREVIEW_TOKEN"] = probeToken
+    }
+    process.environment = environment
 
     let outputPipe = Pipe()
     let errorPipe = Pipe()
     let logCollector = logCollector
     outputPipe.fileHandleForReading.readabilityHandler = { handle in
-      logCollector.append(handle.availableData)
+      logCollector.append(handle.availableData, stream: .standardOutput)
     }
     errorPipe.fileHandleForReading.readabilityHandler = { handle in
-      logCollector.append(handle.availableData)
+      logCollector.append(handle.availableData, stream: .standardError)
     }
     process.standardOutput = outputPipe
     process.standardError = errorPipe
@@ -371,6 +353,7 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
     self.outputPipe = outputPipe
     self.errorPipe = errorPipe
     activePlan = plan
+    quartzProbeToken = probeToken
     startedAt = Date()
 
     return statusLocked()
@@ -446,7 +429,8 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
       plan.executablePath == plannedIdentity.executablePath,
       plan.arguments == plannedIdentity.arguments,
       plan.command == plannedIdentity.command,
-      Self.isTrustedExecutable(atPath: plan.executablePath)
+      Self.isTrustedExecutable(atPath: plan.executablePath),
+      plan.siteKind != .quartz || QuartzStaticPreviewRunner.isValid(plan: plan)
     else {
       trustStore.invalidate(plannedIdentity)
       throw LocalSitePreviewError.executionPlanChanged
@@ -561,7 +545,9 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
       #else
         process.terminate()
       #endif
-      let gracefulExitDeadline = Date().addingTimeInterval(1)
+      let gracefulExitDeadline = Date().addingTimeInterval(
+        activePlan?.siteKind == .quartz ? 3 : 1
+      )
       while process.isRunning, Date() < gracefulExitDeadline {
         Thread.sleep(forTimeInterval: 0.02)
       }
@@ -584,6 +570,11 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
   }
 
   private func clearProcessLocked() {
+    if activePlan?.siteKind == .quartz, let process {
+      QuartzStaticPreviewRunner.removeTemporaryDirectories(
+        processIdentifier: process.processIdentifier
+      )
+    }
     outputPipe?.fileHandleForReading.readabilityHandler = nil
     errorPipe?.fileHandleForReading.readabilityHandler = nil
     outputPipe = nil
@@ -591,11 +582,19 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
     process = nil
     processGroupIdentifier = nil
     activePlan = nil
+    quartzProbeToken = nil
     startedAt = nil
   }
 
   private func capturedLogLines() -> [String] {
     logCollector.lines()
+  }
+
+  private func capturedDiagnostics(rootPath: String) -> [LocalSitePreviewRuntimeDiagnostic] {
+    LocalSitePreviewDiagnosticParser.diagnostics(
+      lines: logCollector.lines(includePendingLine: true),
+      rootPath: rootPath
+    )
   }
 }
 
@@ -608,45 +607,73 @@ private actor LocalSitePreviewStopExecutor {
   }
 }
 
-private final class LocalSitePreviewLogCollector: @unchecked Sendable {
+final class LocalSitePreviewLogCollector: @unchecked Sendable {
+  private static let maximumLineBytes = 4_096
+  enum Stream {
+    case standardOutput
+    case standardError
+  }
+
   private let lock = NSLock()
   private let maximumLineCount: Int
   private var recentLogLines: [String] = []
+  private var pendingOutputData = Data()
+  private var pendingErrorData = Data()
 
   init(maximumLineCount: Int) {
     self.maximumLineCount = maximumLineCount
   }
 
-  func append(_ data: Data) {
-    guard !data.isEmpty, let output = String(data: data, encoding: .utf8) else {
-      return
-    }
-
-    let lines =
-      output
-      .split(whereSeparator: \.isNewline)
-      .map(String.init)
-      .filter { !$0.isEmpty }
-    guard !lines.isEmpty else { return }
-
+  func append(_ data: Data, stream: Stream = .standardOutput) {
     lock.lock()
-    recentLogLines.append(contentsOf: lines)
-    if recentLogLines.count > maximumLineCount {
-      recentLogLines.removeFirst(recentLogLines.count - maximumLineCount)
+    defer { lock.unlock() }
+    var pendingData = stream == .standardOutput ? pendingOutputData : pendingErrorData
+    pendingData.append(data)
+
+    while let newlineIndex = pendingData.firstIndex(of: 0x0A) {
+      var lineData = pendingData.prefix(upTo: newlineIndex)
+      pendingData.removeSubrange(...newlineIndex)
+      if lineData.last == 0x0D {
+        lineData.removeLast()
+      }
+      appendLineLocked(String(decoding: lineData.prefix(Self.maximumLineBytes), as: UTF8.self))
     }
-    lock.unlock()
+    if pendingData.count > Self.maximumLineBytes {
+      pendingData.removeAll(keepingCapacity: true)
+    }
+    if stream == .standardOutput {
+      pendingOutputData = pendingData
+    } else {
+      pendingErrorData = pendingData
+    }
   }
 
   func reset() {
     lock.lock()
     recentLogLines = []
+    pendingOutputData = Data()
+    pendingErrorData = Data()
     lock.unlock()
   }
 
-  func lines() -> [String] {
+  func lines(includePendingLine: Bool = false) -> [String] {
     lock.lock()
     defer { lock.unlock() }
+    guard includePendingLine else { return recentLogLines }
     return recentLogLines
+      + [pendingOutputData, pendingErrorData].compactMap { data in
+        guard !data.isEmpty else { return nil }
+        let line = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .newlines)
+        return line.isEmpty ? nil : line
+      }
+  }
+
+  private func appendLineLocked(_ line: String) {
+    guard !line.isEmpty else { return }
+    recentLogLines.append(line)
+    if recentLogLines.count > maximumLineCount {
+      recentLogLines.removeFirst(recentLogLines.count - maximumLineCount)
+    }
   }
 }
 
@@ -720,6 +747,7 @@ public struct LocalSitePreviewService {
     var notes: [String] = []
     var packageManager: String?
     var scriptName: String?
+    var quartzNodePath: String?
     var dependencies: [LocalSitePreviewDependencyDiagnostic] = []
     var issues: [LocalSitePreviewIssue] = []
 
@@ -754,10 +782,15 @@ public struct LocalSitePreviewService {
         "本地预览会执行仓库脚本，请只启动可信仓库。",
       ]
     case .quartz:
-      // Quartz's serve command exposes both an HTTP listener and a separate
-      // live-reload WebSocket without a supported host-binding option. Until
-      // both can be constrained to loopback, do not create an executable plan.
-      return nil
+      executableName = "python3"
+      quartzNodePath = executableResolver("node")
+      baseArguments = [
+        "-I", "-c", QuartzStaticPreviewRunner.pythonSource, rootPath, quartzNodePath ?? "",
+      ]
+      notes = [
+        "Quartz 4 在临时副本中构建静态快照，再由本机回环 HTTP 服务提供预览。",
+        "源文件变化后停止快照；再次启动需确认。不会启动 Quartz 自带的 HTTP 或 WebSocket 服务。",
+      ]
     case .foam:
       return nil
     case .hexo:
@@ -772,6 +805,16 @@ public struct LocalSitePreviewService {
       executableName = "bundle"
       baseArguments = ["exec", "jekyll", "serve", "--drafts"]
       notes = ["Jekyll 常见本地端口为 4000。", "需要 Ruby bundle 环境可用。", "本地预览会执行仓库脚本，请只启动可信仓库。"]
+    case .docusaurus:
+      packageManager = Self.packageManagerName(in: rootPath)
+      executableName = packageManager ?? "npm"
+      scriptName = "start"
+      baseArguments = ["run", "start"]
+      notes = ["Docusaurus 默认 dev server 端口为 3000。", "需要项目已安装 npm 依赖。", "本地预览会执行仓库脚本，请只启动可信仓库。"]
+    case .mkDocs:
+      executableName = "mkdocs"
+      baseArguments = ["serve"]
+      notes = ["MkDocs 默认 dev server 端口为 8000。", "本地预览会绑定到本机回环地址。"]
     }
 
     if !rootExists {
@@ -815,6 +858,46 @@ public struct LocalSitePreviewService {
       )
     }
 
+    if siteKind == .quartz {
+      let trustedNode = quartzNodePath.flatMap { nodePath in
+        LocalSitePreviewProcessService.isTrustedExecutable(atPath: nodePath) ? nodePath : nil
+      }
+      dependencies.append(
+        LocalSitePreviewDependencyDiagnostic(
+          id: "quartz-node",
+          name: "node",
+          requirement: "Quartz 4 静态构建",
+          status: trustedNode == nil ? .missing : .available,
+          resolvedPath: trustedNode,
+          detail: trustedNode == nil ? "未找到受信任的 Node.js。" : "已找到受信任的 Node.js。"
+        )
+      )
+      let rootURL = URL(fileURLWithPath: rootPath, isDirectory: true)
+      if !fileManager.fileExists(
+        atPath: rootURL.appendingPathComponent("quartz/bootstrap-cli.mjs").path
+      ) {
+        issues.append(
+          LocalSitePreviewIssue(
+            id: "quartz-cli",
+            title: "未发现 Quartz 4 命令入口",
+            message: "仓库缺少 quartz/bootstrap-cli.mjs。",
+            severity: .error
+          )
+        )
+      }
+      if !fileManager.fileExists(atPath: rootURL.appendingPathComponent("node_modules").path) {
+        dependencies.append(
+          LocalSitePreviewDependencyDiagnostic(
+            id: "quartz-node-modules",
+            name: "node_modules",
+            requirement: "Quartz 4 已安装依赖",
+            status: .missing,
+            detail: "仓库缺少已安装的 Node 依赖。"
+          )
+        )
+      }
+    }
+
     let manifestSnapshot: LocalSitePreviewExecutionFingerprint.ManifestSnapshot?
     do {
       manifestSnapshot = try LocalSitePreviewExecutionFingerprint.captureManifest(
@@ -830,6 +913,18 @@ public struct LocalSitePreviewService {
             title: CoreL10n.text("无法安全读取 Jekyll 配置"),
             message: CoreL10n.format(
               "Gemfile 或 Gemfile.lock 无法在不跟随符号链接的情况下有界读取：%@",
+              error.localizedDescription
+            ),
+            severity: .error
+          )
+        )
+      } else if siteKind == .quartz {
+        issues.append(
+          LocalSitePreviewIssue(
+            id: "execution-manifest",
+            title: CoreL10n.text("无法安全读取预览配置"),
+            message: CoreL10n.format(
+              "站点配置无法在不跟随符号链接的情况下有界读取：%@",
               error.localizedDescription
             ),
             severity: .error
@@ -965,7 +1060,7 @@ public struct LocalSitePreviewService {
             id: "quartz-config",
             title: "未发现 Quartz 配置",
             message: "仓库根目录没有 quartz.config.ts。",
-            severity: .warning
+            severity: .error
           )
         )
       }
@@ -996,6 +1091,37 @@ public struct LocalSitePreviewService {
             id: "gemfile",
             title: "未发现 Gemfile",
             message: "没有找到 Gemfile；bundle exec 可能无法解析站点依赖。",
+            severity: .warning
+          )
+        )
+      }
+    case .docusaurus:
+      let rootURL = URL(fileURLWithPath: rootPath, isDirectory: true)
+      let hasConfig = [
+        "docusaurus.config.js", "docusaurus.config.ts", "docusaurus.config.mjs",
+        "docusaurus.config.cjs",
+      ].contains { fileManager.fileExists(atPath: rootURL.appendingPathComponent($0).path) }
+      if !hasConfig {
+        issues.append(
+          LocalSitePreviewIssue(
+            id: "docusaurus-config",
+            title: "未发现 Docusaurus 配置",
+            message: "仓库根目录没有常见的 docusaurus.config 配置文件。",
+            severity: .warning
+          )
+        )
+      }
+    case .mkDocs:
+      let rootURL = URL(fileURLWithPath: rootPath, isDirectory: true)
+      let hasConfig = ["mkdocs.yml", "mkdocs.yaml"].contains {
+        fileManager.fileExists(atPath: rootURL.appendingPathComponent($0).path)
+      }
+      if !hasConfig {
+        issues.append(
+          LocalSitePreviewIssue(
+            id: "mkdocs-config",
+            title: "未发现 MkDocs 配置",
+            message: "仓库根目录没有 mkdocs.yml 或 mkdocs.yaml。",
             severity: .warning
           )
         )
@@ -1040,11 +1166,14 @@ public struct LocalSitePreviewService {
       includesPortArgument: allocation?.usesDynamicPort == true
     )
     let previewURL = URL(string: "http://127.0.0.1:\(selectedPort)")!
-    let command = copyableCommand(
-      rootPath: rootPath,
-      executableName: executableName,
-      arguments: arguments
-    )
+    let command =
+      siteKind == .quartz
+      ? "cd \(posixShellQuote(rootPath)) && node quartz/bootstrap-cli.mjs build --output <temporary> && python3 <loopback-static-preview> \(selectedPort)"
+      : copyableCommand(
+        rootPath: rootPath,
+        executableName: executableName,
+        arguments: arguments
+      )
     let diagnostics = LocalSitePreviewDiagnostics(
       siteKind: siteKind,
       rootPath: rootPath,
@@ -1097,7 +1226,7 @@ public struct LocalSitePreviewService {
     case .hugo:
       return baseArguments + ["--bind", "127.0.0.1"]
         + portArguments(port, included: includesPortArgument)
-    case .astro, .vitePress:
+    case .astro, .vitePress, .docusaurus:
       return baseArguments
         + forwardedPackageScriptArguments(
           ["--host", "127.0.0.1"]
@@ -1121,7 +1250,13 @@ public struct LocalSitePreviewService {
     case .jekyll:
       return baseArguments + ["--host", "127.0.0.1"]
         + portArguments(port, included: includesPortArgument)
-    case .quartz, .foam:
+    case .mkDocs:
+      return baseArguments + ["--dev-addr", "127.0.0.1:\(port)"]
+    case .quartz:
+      return baseArguments + [
+        String(port), String(ProcessInfo.processInfo.processIdentifier),
+      ]
+    case .foam:
       return baseArguments
     }
   }
@@ -1147,12 +1282,14 @@ public struct LocalSitePreviewService {
       return 4321
     case .vitePress:
       return 5173
-    case .nextJS, .foam:
+    case .nextJS, .foam, .docusaurus:
       return 3000
     case .quartz:
       return 8080
     case .hexo, .jekyll:
       return 4000
+    case .mkDocs:
+      return 8000
     }
   }
 

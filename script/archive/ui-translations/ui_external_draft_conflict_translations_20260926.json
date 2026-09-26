@@ -1,0 +1,8 @@
+{
+  "（本地冲突副本）": " (local conflict copy)",
+  "两处均已修改：%@": "Changed in both places: %@",
+  "保留本地副本并采用外部文件": "Keep local copy and use external file",
+  "已保留本地冲突副本，并更新映射草稿。": "Kept a local conflict copy and updated the linked draft.",
+  "冲突处理未完成，请重新扫描后重试。": "Could not resolve the conflict. Scan again and retry.",
+  "Markdown 正文双向同步；写作标题等独立元数据保存在软件中。两处同时修改时可保留本地副本并采用外部版本。停止映射会保留软件里的草稿。": "Markdown bodies sync both ways; writing titles and other independent metadata stay in the app. If both versions change, you can keep a local copy and use the external version. Disconnecting keeps app drafts."
+}

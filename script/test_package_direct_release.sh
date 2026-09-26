@@ -18,9 +18,13 @@ fail() {
 
 mkdir -p \
   "$FIXTURE_ROOT/Packaging/ThirdPartyNotices" \
+  "$FIXTURE_ROOT/ShareExtension" \
+  "$FIXTURE_ROOT/ShortcutExtension" \
   "$FIXTURE_ROOT/script" \
   "$BIN_DIR"
 cp "$ROOT_DIR/Packaging/DirectDistribution.entitlements" "$FIXTURE_ROOT/Packaging/"
+cp "$ROOT_DIR/ShareExtension/Distribution.entitlements" "$FIXTURE_ROOT/ShareExtension/"
+cp "$ROOT_DIR/ShortcutExtension/Distribution.entitlements" "$FIXTURE_ROOT/ShortcutExtension/"
 cp "$ROOT_DIR/Package.resolved" "$FIXTURE_ROOT/"
 for notice_file in \
   NOTICE-MANIFEST.txt \
@@ -71,11 +75,53 @@ sparkle_version="$sparkle/Versions/B"
 mkdir -p \
   "$app/Contents/MacOS" \
   "$app/Contents/Resources/ThirdPartyNotices" \
+  "$app/Contents/PlugIns/RepoPressShareExtension.appex/Contents/MacOS" \
+  "$app/Contents/Extensions/RepoPressShortcutExtension.appex/Contents/MacOS" \
+  "$app/Contents/Extensions/RepoPressShortcutExtension.appex/Contents/Resources/Metadata.appintents" \
   "$sparkle_version/XPCServices/Installer.xpc" \
   "$sparkle_version/XPCServices/Downloader.xpc" \
   "$sparkle_version/Updater.app"
 printf '#!/usr/bin/env bash\nexit 0\n' >"$app/Contents/MacOS/PersonalSitePublisherMac"
 chmod +x "$app/Contents/MacOS/PersonalSitePublisherMac"
+share_extension="$app/Contents/PlugIns/RepoPressShareExtension.appex"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$share_extension/Contents/MacOS/RepoPressShareExtension"
+chmod +x "$share_extension/Contents/MacOS/RepoPressShareExtension"
+cat >"$share_extension/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>com.jinfang.PersonalSitePublisherMac.ShareExtension</string>
+  <key>CFBundleVersion</key><string>3</string>
+  <key>NSExtension</key><dict>
+    <key>NSExtensionPointIdentifier</key><string>com.apple.share-services</string>
+    <key>NSExtensionPrincipalClass</key><string>RepoPressShareExtension.ShareViewController</string>
+  </dict>
+</dict></plist>
+PLIST
+if [[ "${FIXTURE_SHARE_PRINCIPAL_CLASS:-}" == "__MISSING__" ]]; then
+  /usr/libexec/PlistBuddy -c 'Delete :NSExtension:NSExtensionPrincipalClass' \
+    "$share_extension/Contents/Info.plist"
+elif [[ -n "${FIXTURE_SHARE_PRINCIPAL_CLASS:-}" ]]; then
+  /usr/libexec/PlistBuddy -c "Set :NSExtension:NSExtensionPrincipalClass $FIXTURE_SHARE_PRINCIPAL_CLASS" \
+    "$share_extension/Contents/Info.plist"
+fi
+shortcut_extension="$app/Contents/Extensions/RepoPressShortcutExtension.appex"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$shortcut_extension/Contents/MacOS/RepoPressShortcutExtension"
+chmod +x "$shortcut_extension/Contents/MacOS/RepoPressShortcutExtension"
+printf 'fixture metadata\n' >"$shortcut_extension/Contents/Resources/Metadata.appintents/extract.actionsdata"
+cat >"$shortcut_extension/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>com.jinfang.PersonalSitePublisherMac.ShortcutExtension</string>
+  <key>CFBundleVersion</key><string>3</string>
+  <key>EXAppExtensionAttributes</key><dict>
+    <key>EXExtensionPointIdentifier</key><string>com.apple.appintents-extension</string>
+  </dict>
+</dict></plist>
+PLIST
+if [[ -n "${FIXTURE_SHORTCUT_EXTENSION_POINT:-}" ]]; then
+  /usr/libexec/PlistBuddy -c "Set :EXAppExtensionAttributes:EXExtensionPointIdentifier $FIXTURE_SHORTCUT_EXTENSION_POINT" \
+    "$shortcut_extension/Contents/Info.plist"
+fi
 for notice_file in \
   NOTICE-MANIFEST.txt \
   Sparkle-LICENSE.txt \
@@ -128,6 +174,12 @@ fi
 if [[ "$arguments" == *" -d "* && "$arguments" == *" --entitlements "* ]]; then
   if [[ "$target" == *Downloader.xpc ]]; then
     cat "${DIRECT_TEST_ROOT:?}/Packaging/Downloader.entitlements"
+  elif [[ "$target" == *.appex ]]; then
+    if [[ "$target" == *RepoPressShortcutExtension.appex ]]; then
+      cat "${DIRECT_TEST_ROOT:?}/ShortcutExtension/Distribution.entitlements"
+    else
+      cat "${DIRECT_TEST_ROOT:?}/ShareExtension/Distribution.entitlements"
+    fi
   else
     if [[ "${FIXTURE_MAIN_APP_SANDBOX:-}" == "true" ]]; then
       python3 - "${DIRECT_TEST_ROOT:?}/Packaging/DirectDistribution.entitlements" <<'PY'
@@ -337,6 +389,36 @@ fi
 grep -Fq "does not match the Keychain private key account" <<<"$mismatch_output" \
   || fail "public-key mismatch failed without an explicit diagnostic"
 
+if share_principal_output="$(env "${common_environment[@]}" \
+  FIXTURE_SHARE_PRINCIPAL_CLASS="__MISSING__" \
+  DIRECT_DISTRIBUTION_APPLICATION_IDENTITY="$identity" \
+  DIRECT_DISTRIBUTION_NOTARY_PROFILE="Fixture-Notary" \
+  REPOPRESS_UPDATE_FEED_URL="https://updates.example.invalid/stable-appcast.xml" \
+  REPOPRESS_UPDATE_PUBLIC_ED_KEY="fixture-public-ed-key" \
+  REPOPRESS_UPDATE_DOWNLOAD_URL_PREFIX="https://updates.example.invalid/downloads" \
+  bash "$ROOT_DIR/script/package_direct_release.sh" \
+    --release --output-dir "$FIXTURE_ROOT/artifacts/rejected-share-principal" 2>&1)"; then
+  fail "release mode accepted a Share extension without its principal class"
+fi
+grep -Fq "RepoPress Share extension principal class is invalid" <<<"$share_principal_output" \
+  || fail "missing Share principal class failed without an explicit diagnostic"
+
+if shortcut_extension_output="$(env "${common_environment[@]}" \
+  FIXTURE_SHORTCUT_EXTENSION_POINT="com.example.fixture.wrong-extension" \
+  DIRECT_DISTRIBUTION_APPLICATION_IDENTITY="$identity" \
+  DIRECT_DISTRIBUTION_NOTARY_PROFILE="Fixture-Notary" \
+  REPOPRESS_UPDATE_FEED_URL="https://updates.example.invalid/stable-appcast.xml" \
+  REPOPRESS_UPDATE_PUBLIC_ED_KEY="fixture-public-ed-key" \
+  REPOPRESS_UPDATE_DOWNLOAD_URL_PREFIX="https://updates.example.invalid/downloads" \
+  bash "$ROOT_DIR/script/package_direct_release.sh" \
+    --release --output-dir "$FIXTURE_ROOT/artifacts/rejected-shortcut-extension-point" 2>&1)"; then
+  fail "release mode accepted a Shortcuts extension with the wrong extension point"
+fi
+grep -Fq "RepoPress Shortcuts extension point is invalid" <<<"$shortcut_extension_output" \
+  || fail "wrong Shortcuts extension point failed without an explicit diagnostic"
+[[ ! -s "$TMP_DIR/codesign.log" ]] \
+  || fail "extension registration rejection reached signing"
+
 env "${common_environment[@]}" \
   DIRECT_DISTRIBUTION_APPLICATION_IDENTITY="$identity" \
   DIRECT_DISTRIBUTION_NOTARY_PROFILE="Fixture-Notary" \
@@ -392,6 +474,15 @@ if len(targets) < len(expected) or any(not target.endswith(suffix) for target, s
     raise SystemExit(f"unexpected Sparkle signing order: {targets}")
 if "--entitlements" not in lines[1]:
     raise SystemExit("Downloader.xpc was re-signed without retained entitlements")
+share_lines = [index for index, line in enumerate(lines) if line.endswith("RepoPressShareExtension.appex")]
+shortcut_lines = [index for index, line in enumerate(lines) if line.endswith("RepoPressShortcutExtension.appex")]
+host_lines = [index for index, line in enumerate(lines) if line.endswith("RepoPress Studio.app")]
+if not share_lines or len(share_lines) != len(shortcut_lines) or len(shortcut_lines) != len(host_lines) or any(not (share < shortcut < host) for share, shortcut, host in zip(share_lines, shortcut_lines, host_lines)):
+    raise SystemExit("both extensions must be independently signed before the host app")
+if "--entitlements" not in lines[share_lines[0]] or "--options runtime" not in lines[share_lines[0]]:
+    raise SystemExit("Share extension signing omitted hardened runtime or entitlements")
+if "--entitlements" not in lines[shortcut_lines[0]] or "--options runtime" not in lines[shortcut_lines[0]]:
+    raise SystemExit("Shortcuts extension signing omitted hardened runtime or entitlements")
 if any("--deep" in line for line in lines):
     raise SystemExit("nested code was re-signed with --deep")
 dmg_lines = [line for line in lines if line.split()[-1].endswith(".dmg")]

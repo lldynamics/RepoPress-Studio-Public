@@ -1,4 +1,5 @@
 import Combine
+import PublishingPreviewCore
 import Foundation
 import PublishingDomainContracts
 

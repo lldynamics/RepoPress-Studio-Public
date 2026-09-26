@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 import os
 
 private let logger = Logger(subsystem: "com.repopress", category: "DraftFullTextSavedQueryService")

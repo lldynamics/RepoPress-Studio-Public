@@ -7,8 +7,8 @@ CORE_RESOURCE_DIR="$ROOT_DIR/Sources/PublishingCoreSupport/Resources"
 PACKAGE_FILE="$ROOT_DIR/Package.swift"
 CATALOG_FILE="$RESOURCE_DIR/Localizable.xcstrings"
 
-# Scope: app-target SwiftUI/literal localization calls, semantic model keys,
-# and presentation strings explicitly migrated through CoreL10n.
+# Scope: compiler-exported app-target localization keys, supplemented source
+# literals and semantic model keys, and presentation strings in CoreL10n.
 
 fail() {
   echo "localization gate: $*" >&2

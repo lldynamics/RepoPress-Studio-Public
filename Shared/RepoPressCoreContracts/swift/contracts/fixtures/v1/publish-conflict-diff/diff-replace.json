@@ -1,0 +1,42 @@
+{
+  "capability": "publish-conflict-diff",
+  "description": "Reports a replacement with remote then local lines.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "lines": [
+        {
+          "id": 0,
+          "kind": "same",
+          "marker": " ",
+          "text": "title"
+        },
+        {
+          "id": 1,
+          "kind": "remote",
+          "marker": "-",
+          "text": "old body"
+        },
+        {
+          "id": 2,
+          "kind": "local",
+          "marker": "+",
+          "text": "new body"
+        },
+        {
+          "id": 3,
+          "kind": "same",
+          "marker": " ",
+          "text": "footer"
+        }
+      ],
+      "strategy": "lcs"
+    }
+  },
+  "id": "diff-replace",
+  "input": {
+    "local": "title\nnew body\nfooter",
+    "remote": "title\nold body\nfooter"
+  },
+  "validity": "valid"
+}

@@ -1,37 +1,21 @@
 import Foundation
+import RepoPressCore
 
 #if canImport(FoundationNetworking)
   import FoundationNetworking
 #endif
 
 package final class CredentialSafeURLSessionDelegate: NSObject, URLSessionTaskDelegate {
-  private static let credentialHeaders = ["Authorization", "PRIVATE-TOKEN", "X-API-Key"]
-
   package static func redirectedRequest(
     originalRequest: URLRequest?,
     responseURL: URL?,
     proposedRequest: URLRequest
   ) -> URLRequest? {
-    let containsCredential = credentialHeaders.contains { header in
-      originalRequest?.value(forHTTPHeaderField: header)?.isEmpty == false
-    }
-    let method = originalRequest?.httpMethod?.uppercased() ?? "GET"
-    let containsSensitiveBody =
-      method != "GET" && method != "HEAD"
-      && (originalRequest?.httpBody != nil || originalRequest?.httpBodyStream != nil)
-    guard containsCredential || containsSensitiveBody else { return proposedRequest }
-    guard let sourceURL = responseURL ?? originalRequest?.url,
-      let destinationURL = proposedRequest.url
-    else {
-      return nil
-    }
-    let isAllowed =
-      containsCredential
-      ? CredentialedEndpointPolicy.isAllowedCredentialRedirect(from: sourceURL, to: destinationURL)
-      : CredentialedEndpointPolicy.isAllowedSensitiveBodyRedirect(
-        from: sourceURL, to: destinationURL)
-    guard isAllowed else { return nil }
-    return proposedRequest
+    CredentialSafeRedirectPolicy.redirectedRequest(
+      originalRequest: originalRequest,
+      responseURL: responseURL,
+      proposedRequest: proposedRequest
+    )
   }
 
   package func urlSession(

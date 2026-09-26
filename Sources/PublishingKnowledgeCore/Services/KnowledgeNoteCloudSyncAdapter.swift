@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 
 private actor KnowledgeNoteAdapterMutationGate {
@@ -6,13 +7,15 @@ private actor KnowledgeNoteAdapterMutationGate {
   private var waiters: [CheckedContinuation<Void, Never>] = []
 
   func acquire() async {
-    if !occupied { occupied = true; return }
+    if !occupied {
+      occupied = true
+      return
+    }
     await withCheckedContinuation { waiters.append($0) }
   }
 
   func release() {
-    if waiters.isEmpty { occupied = false }
-    else { waiters.removeFirst().resume() }
+    if waiters.isEmpty { occupied = false } else { waiters.removeFirst().resume() }
   }
 }
 
@@ -36,9 +39,16 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
     var systemFields: Data? = nil
   }
 
+  private struct PendingAcknowledgement {
+    var kind: RecordKind
+    var revision: String
+    var deletedAt: Date?
+  }
+
   private struct SidecarState: Codable {
     var engineState: Data?
     var boundAccountID: String?
+    var libraryRestoreID: UUID?
     var initialFetchComplete = false
     var zoneRecoveryRequired = false
     var zoneEstablished = false
@@ -46,7 +56,9 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
     var entries: [String: Entry] = [:]
 
     private enum CodingKeys: String, CodingKey {
-      case engineState, boundAccountID, initialFetchComplete, zoneRecoveryRequired, zoneEstablished
+      case engineState, boundAccountID, libraryRestoreID, initialFetchComplete,
+        zoneRecoveryRequired,
+        zoneEstablished
       case attachmentBaselines, entries
     }
 
@@ -56,12 +68,16 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
       let values = try decoder.container(keyedBy: CodingKeys.self)
       engineState = try values.decodeIfPresent(Data.self, forKey: .engineState)
       boundAccountID = try values.decodeIfPresent(String.self, forKey: .boundAccountID)
-      initialFetchComplete = try values.decodeIfPresent(Bool.self, forKey: .initialFetchComplete) ?? false
-      zoneRecoveryRequired = try values.decodeIfPresent(Bool.self, forKey: .zoneRecoveryRequired) ?? false
+      libraryRestoreID = try values.decodeIfPresent(UUID.self, forKey: .libraryRestoreID)
+      initialFetchComplete =
+        try values.decodeIfPresent(Bool.self, forKey: .initialFetchComplete) ?? false
+      zoneRecoveryRequired =
+        try values.decodeIfPresent(Bool.self, forKey: .zoneRecoveryRequired) ?? false
       zoneEstablished = try values.decodeIfPresent(Bool.self, forKey: .zoneEstablished) ?? false
-      attachmentBaselines = try values.decodeIfPresent(
-        [String: RPNoteCloudAttachmentBaseline].self, forKey: .attachmentBaselines
-      ) ?? [:]
+      attachmentBaselines =
+        try values.decodeIfPresent(
+          [String: RPNoteCloudAttachmentBaseline].self, forKey: .attachmentBaselines
+        ) ?? [:]
       entries = try values.decodeIfPresent([String: Entry].self, forKey: .entries) ?? [:]
     }
 
@@ -93,10 +109,15 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
   private let mutationGate = KnowledgeNoteAdapterMutationGate()
   private var remoteApplyHandler: (@Sendable () async -> Void)?
   private var stagedAssetsPruned = false
+  // Only the engine's accepted send batches register acknowledgements. A
+  // local scan can run many times while a single older save is in flight.
+  private var pendingAcknowledgements: [UUID: PendingAcknowledgement] = [:]
 
   public init(service: KnowledgeLibraryService, stateDirectoryURL: URL? = nil) {
     self.service = service
-    let directory = stateDirectoryURL ?? service.rootURL.deletingLastPathComponent()
+    let directory =
+      stateDirectoryURL
+      ?? service.rootURL.deletingLastPathComponent()
       .appendingPathComponent("KnowledgeNoteCloudSync", isDirectory: true)
     self.stateDirectoryURL = directory
     self.stateFileURL = directory.appendingPathComponent("adapter-state.json")
@@ -127,7 +148,10 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
     await beginMutation()
     defer { endMutation() }
     try loadIfNeeded()
-    guard RPNoteCloudBootstrapPolicy.maySeedLocalChanges(state?.persistentState ?? RPNoteCloudPersistentState()) else {
+    guard
+      RPNoteCloudBootstrapPolicy.maySeedLocalChanges(
+        state?.persistentState ?? RPNoteCloudPersistentState())
+    else {
       return []
     }
 
@@ -169,7 +193,8 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
       updated.entries[key] = entry
       if entry.pendingKind == .note, let pendingRevision = entry.pendingRevision {
         pendingNotesByID[key] = note
-        changes.append(.upsert(note: note, revision: pendingRevision, systemFields: entry.systemFields))
+        changes.append(
+          .upsert(note: note, revision: pendingRevision, systemFields: entry.systemFields))
       }
     }
 
@@ -196,18 +221,20 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
 
     for (key, entry) in updated.entries.sorted(by: { $0.key < $1.key }) {
       guard let pendingKind = entry.pendingKind, let revision = entry.pendingRevision,
-            let id = UUID(uuidString: key) else { continue }
+        let id = UUID(uuidString: key)
+      else { continue }
       switch pendingKind {
       case .note:
         // Live-note upserts were emitted during the one-at-a-time scan above.
         guard pendingNotesByID[key] != nil else { continue }
       case .tombstone:
-        changes.append(.tombstone(
-          id: id,
-          deletedAt: entry.pendingDeletedAt ?? now,
-          revision: revision,
-          systemFields: entry.systemFields
-        ))
+        changes.append(
+          .tombstone(
+            id: id,
+            deletedAt: entry.pendingDeletedAt ?? now,
+            revision: revision,
+            systemFields: entry.systemFields
+          ))
       }
     }
     try persist(updated)
@@ -215,12 +242,13 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
     return changes
   }
 
-  public func applyRemote(_ change: RPNoteCloudRemoteChange) async throws -> RPNoteCloudApplyResult {
+  public func applyRemote(_ change: RPNoteCloudRemoteChange) async throws -> RPNoteCloudApplyResult
+  {
     await beginMutation()
     defer { endMutation() }
     try loadIfNeeded()
     switch change {
-    case let .note(note, sha256, systemFields):
+    case .note(let note, let sha256, let systemFields):
       guard try Self.revision(for: note) == sha256 else {
         throw KnowledgeLibraryError.databaseIntegrity("iCloud 笔记内容摘要不匹配。")
       }
@@ -228,7 +256,7 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
       var updated = state ?? SidecarState()
       let key = Self.key(note.id)
       var entry = updated.entries[key] ?? Entry()
-      let local = try await service.noteAsync(documentID: note.id)
+      let local = try await localNoteForSync(documentID: note.id)
       let localNote = local.map(Self.portableNote)
       let localRevision = try localNote.map(Self.revision)
 
@@ -273,9 +301,10 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
         return .ignoredStale
       }
 
-      let hasLocalChanges = localNote != nil && (
-        entry.pendingKind != nil || entry.baselineKind != .note || localRevision != entry.baselineRevision
-      )
+      let hasLocalChanges =
+        localNote != nil
+        && (entry.pendingKind != nil || entry.baselineKind != .note
+          || localRevision != entry.baselineRevision)
       if hasLocalChanges, let localNote {
         try await preserveConflictCopy(localNote, remoteRevision: sha256)
       }
@@ -294,12 +323,12 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
       await remoteApplyHandler?()
       return hasLocalChanges ? .keptLocalWithConflictCopy : .applied
 
-    case let .tombstone(id, deletedAt, systemFields):
+    case .tombstone(let id, let deletedAt, let systemFields):
       let remoteRevision = Self.tombstoneRevision(id: id, deletedAt: deletedAt)
       var updated = state ?? SidecarState()
       let key = Self.key(id)
       var entry = updated.entries[key] ?? Entry()
-      let local = try await service.noteAsync(documentID: id).map(Self.portableNote)
+      let local = try await localNoteForSync(documentID: id).map(Self.portableNote)
       let localRevision = try local.map(Self.revision)
 
       if entry.baselineKind == .tombstone, entry.baselineRevision == remoteRevision {
@@ -310,9 +339,10 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
         return .ignoredStale
       }
 
-      let hasLocalChanges = local != nil && (
-        entry.pendingKind != nil || entry.baselineKind != .note || localRevision != entry.baselineRevision
-      )
+      let hasLocalChanges =
+        local != nil
+        && (entry.pendingKind != nil || entry.baselineKind != .note
+          || localRevision != entry.baselineRevision)
       if hasLocalChanges, let local {
         try await preserveConflictCopy(local, remoteRevision: remoteRevision)
       }
@@ -335,24 +365,66 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
     }
   }
 
+  public func prepareForSend(_ change: RPNoteCloudLocalChange) {
+    switch change {
+    case .upsert(let note, let revision, _):
+      pendingAcknowledgements[note.id] = PendingAcknowledgement(
+        kind: .note, revision: revision)
+    case .tombstone(let id, let deletedAt, let revision, _):
+      pendingAcknowledgements[id] = PendingAcknowledgement(
+        kind: .tombstone, revision: revision, deletedAt: deletedAt)
+    }
+  }
+
+  public func abandonPreparedSend(id: UUID, revision: String) {
+    guard pendingAcknowledgements[id]?.revision == revision else { return }
+    pendingAcknowledgements.removeValue(forKey: id)
+  }
+
   public func markSent(id: UUID, revision: String, systemFields: Data) async throws {
     await beginMutation()
     defer { endMutation() }
     try loadIfNeeded()
+    guard let acknowledgement = pendingAcknowledgements[id],
+      acknowledgement.revision == revision
+    else { return }
+
     var updated = state ?? SidecarState()
     let key = Self.key(id)
-    guard var entry = updated.entries[key], entry.pendingRevision == revision,
-          let pendingKind = entry.pendingKind else { return }
-    entry.baselineKind = pendingKind
+    var entry = updated.entries[key] ?? Entry()
+    let current = try await localNoteForSync(documentID: id)
+    entry.baselineKind = acknowledgement.kind
     entry.baselineRevision = revision
-    entry.baselineDeletedAt = pendingKind == .tombstone ? entry.pendingDeletedAt : nil
-    entry.pendingKind = nil
-    entry.pendingRevision = nil
-    entry.pendingDeletedAt = nil
+    entry.baselineDeletedAt = acknowledgement.deletedAt
     entry.systemFields = systemFields
+
+    if let current {
+      let currentRevision = try Self.revision(for: Self.portableNote(current))
+      entry.currentRevision = currentRevision
+      let matchesServer = acknowledgement.kind == .note && currentRevision == revision
+      entry.pendingKind = matchesServer ? nil : .note
+      entry.pendingRevision = matchesServer ? nil : currentRevision
+      entry.pendingDeletedAt = nil
+    } else if acknowledgement.kind == .tombstone {
+      entry.pendingKind = nil
+      entry.pendingRevision = nil
+      entry.pendingDeletedAt = nil
+      entry.currentRevision = nil
+    } else {
+      // The note was deleted while its upsert was in flight. The server now
+      // has that upsert, so retain the deletion with the new server change tag.
+      let deletedAt = entry.pendingDeletedAt ?? Date()
+      entry.pendingKind = .tombstone
+      entry.pendingRevision = Self.tombstoneRevision(id: id, deletedAt: deletedAt)
+      entry.pendingDeletedAt = deletedAt
+      entry.currentRevision = nil
+    }
     updated.entries[key] = entry
     try persist(updated)
     state = updated
+    if pendingAcknowledgements[id]?.revision == revision {
+      pendingAcknowledgements.removeValue(forKey: id)
+    }
   }
 
   public func clearSystemFields(id: UUID, revision: String?) async throws {
@@ -363,7 +435,10 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
     let key = Self.key(id)
     guard var entry = updated.entries[key] else { return }
     if let revision,
-       entry.pendingRevision != revision && entry.baselineRevision != revision { return }
+      entry.pendingRevision != revision && entry.baselineRevision != revision
+    {
+      return
+    }
     entry.systemFields = nil
     updated.entries[key] = entry
     try persist(updated)
@@ -374,6 +449,7 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
     await beginMutation()
     defer { endMutation() }
     try loadIfNeeded()
+    pendingAcknowledgements = [:]
     let noteIDs = try await service.noteDocumentIDsAsync(includeArchived: true)
     var updated = state ?? SidecarState()
     let oldEntries = updated.entries
@@ -403,8 +479,9 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
     }
     let liveKeys = Set(noteIDs.map(Self.key))
     for (key, oldEntry) in oldEntries where !liveKeys.contains(key) {
-      if (oldEntry.pendingKind == .tombstone || oldEntry.baselineKind == .tombstone),
-         let id = UUID(uuidString: key) {
+      if oldEntry.pendingKind == .tombstone || oldEntry.baselineKind == .tombstone,
+        let id = UUID(uuidString: key)
+      {
         let deletedAt = oldEntry.pendingDeletedAt ?? oldEntry.baselineDeletedAt ?? Date()
         updated.entries[key] = Entry(
           pendingKind: .tombstone,
@@ -426,6 +503,7 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
     await beginMutation()
     defer { endMutation() }
     try loadIfNeeded()
+    pendingAcknowledgements = [:]
     let noteIDs = try await service.noteDocumentIDsAsync(includeArchived: true)
     var updated = state ?? SidecarState()
     let oldEntries = updated.entries
@@ -446,7 +524,7 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
       )
     }
     for (key, oldEntry) in oldEntries
-      where oldEntry.pendingKind == .tombstone || oldEntry.baselineKind == .tombstone {
+    where oldEntry.pendingKind == .tombstone || oldEntry.baselineKind == .tombstone {
       guard let id = UUID(uuidString: key), updated.entries[key] == nil else { continue }
       let deletedAt = oldEntry.pendingDeletedAt ?? oldEntry.baselineDeletedAt ?? Date()
       updated.entries[key] = Entry(
@@ -466,6 +544,22 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
   public func prepareLocalDeletion(ids: Set<UUID>) async throws {
     await beginMutation()
     defer { endMutation() }
+    try await recordLocalDeletionIntent(ids: ids)
+  }
+
+  /// Holds the sync mutation gate until the library has committed deletion.
+  /// Remote records and local scans must not observe the prepared-only state.
+  public func performLocalDeletion<Result: Sendable>(
+    ids: Set<UUID>,
+    operation: @Sendable () async throws -> Result
+  ) async throws -> Result {
+    await beginMutation()
+    defer { endMutation() }
+    try await recordLocalDeletionIntent(ids: ids)
+    return try await operation()
+  }
+
+  private func recordLocalDeletionIntent(ids: Set<UUID>) async throws {
     try loadIfNeeded()
     var updated = state ?? SidecarState()
     let deletedAt = Date()
@@ -493,7 +587,8 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
   }
 
   public func finishAsset(_ url: URL) async {
-    let stagedRoot = stateDirectoryURL.appendingPathComponent("StagedAssets", isDirectory: true)
+    let stagedRoot =
+      stateDirectoryURL.appendingPathComponent("StagedAssets", isDirectory: true)
       .standardizedFileURL.path + "/"
     guard url.standardizedFileURL.path.hasPrefix(stagedRoot) else { return }
     try? FileManager.default.removeItem(at: url)
@@ -507,15 +602,46 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
   private func loadIfNeeded() throws {
     guard state == nil else { return }
     try pruneStaleStagedAssets()
-    guard FileManager.default.fileExists(atPath: stateFileURL.path) else {
-      state = SidecarState()
-      return
+    var loaded = SidecarState()
+    var metadata = stat()
+    let inspectionResult = stateFileURL.path.withCString { lstat($0, &metadata) }
+    if inspectionResult == 0 {
+      guard (metadata.st_mode & S_IFMT) == S_IFREG else {
+        throw KnowledgeLibraryError.databaseIntegrity(
+          "笔记 iCloud 同步状态不是普通文件；为避免丢失待同步操作，已暂停同步。")
+      }
+      let data: Data
+      do {
+        data = try Data(contentsOf: stateFileURL)
+      } catch {
+        throw KnowledgeLibraryError.database("笔记 iCloud 同步状态暂不可读取；已暂停同步，请稍后重试。")
+      }
+      do {
+        loaded = try JSONDecoder().decode(SidecarState.self, from: data)
+      } catch {
+        throw KnowledgeLibraryError.databaseIntegrity("笔记 iCloud 同步状态文件损坏；为避免丢失待同步操作，已暂停同步。")
+      }
+    } else if errno != ENOENT {
+      throw KnowledgeLibraryError.database("笔记 iCloud 同步状态暂不可检查；已暂停同步，请稍后重试。")
     }
-    do {
-      state = try JSONDecoder().decode(SidecarState.self, from: Data(contentsOf: stateFileURL))
-    } catch {
-      throw KnowledgeLibraryError.databaseIntegrity("笔记 iCloud 同步状态文件损坏；为避免丢失待同步操作，已暂停同步。")
+    let restoreID = try KnowledgeNoteCloudRestoreBoundary.restoreID(at: service.rootURL)
+    guard loaded.libraryRestoreID == nil || restoreID != nil else {
+      throw KnowledgeLibraryError.databaseIntegrity(
+        "笔记恢复标识缺失；为避免覆盖云端笔记，已暂停同步。")
     }
+    if loaded.libraryRestoreID != restoreID {
+      // A restored library is a new local snapshot, not a set of user deletions.
+      // Keep account and deleted-zone safeguards, but fetch all cloud records
+      // before deriving any new local changes from this snapshot.
+      loaded.engineState = nil
+      loaded.initialFetchComplete = false
+      loaded.attachmentBaselines = [:]
+      loaded.entries = [:]
+      loaded.libraryRestoreID = restoreID
+      try persist(loaded)
+      pendingAcknowledgements = [:]
+    }
+    state = loaded
   }
 
   private func pruneStaleStagedAssets() throws {
@@ -530,8 +656,10 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
       includingPropertiesForKeys: [.isRegularFileKey],
       options: [.skipsHiddenFiles]
     )
-    for url in assets where url.pathExtension == "asset" &&
-      (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true {
+    for url in assets
+    where url.pathExtension == "asset"
+      && (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+    {
       try FileManager.default.removeItem(at: url)
     }
     stagedAssetsPruned = true
@@ -544,22 +672,38 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
   }
 
   private func persist(_ updated: SidecarState) throws {
-    try FileManager.default.createDirectory(at: stateDirectoryURL, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: stateDirectoryURL, withIntermediateDirectories: true)
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
     let data = try encoder.encode(updated)
     try data.write(to: stateFileURL, options: .atomic)
   }
 
+  /// Match the live-note inventory: a recycle-bin row remains readable for
+  /// local recovery, but is absent from cloud synchronization. The note's own
+  /// metadata archive flag is separate and must still be synchronized.
+  private func localNoteForSync(documentID: UUID) async throws -> KnowledgeNote? {
+    let service = self.service
+    return try await performKnowledgeLibraryIO {
+      guard let document = try service.document(id: documentID), !document.isArchived else {
+        return nil
+      }
+      return try service.note(documentID: documentID)
+    }
+  }
+
   private func preserveConflictCopy(_ source: RPNote, remoteRevision: String) async throws {
     let localRevision = try Self.revision(for: source)
-    let copyID = Self.deterministicUUID(namespace: source.id, name: "\(localRevision):\(remoteRevision)")
+    let copyID = Self.deterministicUUID(
+      namespace: source.id, name: "\(localRevision):\(remoteRevision)")
     let existing = try await service.noteAsync(documentID: copyID)
     var copy = source
     copy.id = copyID
     copy.attachments = source.attachments.map { attachment in
       var copy = attachment
-      copy.id = Self.deterministicUUID(namespace: copyID, name: attachment.id.uuidString.lowercased())
+      copy.id = Self.deterministicUUID(
+        namespace: copyID, name: attachment.id.uuidString.lowercased())
       return copy
     }
     if let existing {
@@ -572,7 +716,8 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
   }
 
   private static func revision(for note: RPNote) throws -> String {
-    SHA256.hash(data: try RPNoteCloudPayload.encode(note)).map { String(format: "%02x", $0) }.joined()
+    SHA256.hash(data: try RPNoteCloudPayload.encode(note)).map { String(format: "%02x", $0) }
+      .joined()
   }
 
   /// Used only when the package encoder rejects a note above its hard limit.
@@ -604,7 +749,8 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
       sourceURL: note.sourceURL,
       markdown: note.markdown,
       attachments: note.attachments.map {
-        AttachmentMetadata(id: $0.id, fileName: $0.fileName, mimeType: $0.mimeType, byteCount: $0.data.count)
+        AttachmentMetadata(
+          id: $0.id, fileName: $0.fileName, mimeType: $0.mimeType, byteCount: $0.data.count)
       }
     )
     var hasher = SHA256()
@@ -615,7 +761,6 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
     return hasher.finalize().map { String(format: "%02x", $0) }.joined()
   }
 
-
   private static func tombstoneRevision(id: UUID, deletedAt: Date) -> String {
     let value = "tombstone|\(key(id))|\(deletedAt.timeIntervalSince1970.bitPattern)"
     return SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined()
@@ -624,13 +769,15 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
   private static func key(_ id: UUID) -> String { id.uuidString.lowercased() }
 
   private static func deterministicUUID(namespace: UUID, name: String) -> UUID {
-    var digest = Array(SHA256.hash(data: Data("\(namespace.uuidString.lowercased())|\(name)".utf8)).prefix(16))
+    var digest = Array(
+      SHA256.hash(data: Data("\(namespace.uuidString.lowercased())|\(name)".utf8)).prefix(16))
     digest[6] = (digest[6] & 0x0f) | 0x50
     digest[8] = (digest[8] & 0x3f) | 0x80
-    return UUID(uuid: (
-      digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7],
-      digest[8], digest[9], digest[10], digest[11], digest[12], digest[13], digest[14], digest[15]
-    ))
+    return UUID(
+      uuid: (
+        digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7],
+        digest[8], digest[9], digest[10], digest[11], digest[12], digest[13], digest[14], digest[15]
+      ))
   }
 
   private static func portableNote(_ note: KnowledgeNote) -> RPNote {
@@ -644,7 +791,9 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
       sourceURL: note.sourceURL,
       markdown: note.markdown,
       attachments: note.attachments.map {
-        RPNoteAttachment(id: $0.id, fileName: $0.fileName, mimeType: $0.mimeType ?? "application/octet-stream", data: $0.data)
+        RPNoteAttachment(
+          id: $0.id, fileName: $0.fileName, mimeType: $0.mimeType ?? "application/octet-stream",
+          data: $0.data)
       }
     )
   }
@@ -660,7 +809,8 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
       sourceURL: note.sourceURL,
       markdown: note.markdown,
       attachments: note.attachments.map {
-        KnowledgeNoteAttachment(id: $0.id, fileName: $0.fileName, mimeType: $0.mimeType, data: $0.data)
+        KnowledgeNoteAttachment(
+          id: $0.id, fileName: $0.fileName, mimeType: $0.mimeType, data: $0.data)
       }
     )
   }

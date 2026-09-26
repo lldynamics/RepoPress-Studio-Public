@@ -36,31 +36,6 @@ public enum DraftStatus: String, Codable, CaseIterable, Identifiable, Sendable {
   }
 }
 
-public enum ArticleVisibility: String, Codable, CaseIterable, Identifiable, Sendable {
-  case `public`
-  case `private`
-
-  public var id: String { rawValue }
-
-  public var displayName: String {
-    switch self {
-    case .public:
-      return "公开"
-    case .private:
-      return "私密"
-    }
-  }
-
-  public var systemImage: String {
-    switch self {
-    case .public:
-      return "globe"
-    case .private:
-      return "lock"
-    }
-  }
-}
-
 public enum ArticleDraftScope: Codable, Hashable, Sendable {
   case site(UUID)
   case general
@@ -150,6 +125,7 @@ public struct ArticleDraftMetadataProjection: Equatable, Hashable, Sendable {
   public let id: UUID
   public let siteProfileID: UUID
   public let scope: ArticleDraftScope
+  public let generalDraftFolderName: String?
   public let title: String
   public let date: Date
   public let slug: String
@@ -174,6 +150,7 @@ public struct ArticleDraftMetadataProjection: Equatable, Hashable, Sendable {
     id = draft.id
     siteProfileID = draft.siteProfileID
     scope = draft.scope
+    generalDraftFolderName = draft.generalDraftFolderName
     title = draft.title
     date = draft.date
     slug = draft.slug
@@ -220,6 +197,7 @@ public struct ArticleDraftListMetadataProjection: Equatable, Hashable, Sendable 
   public let id: UUID
   public let siteProfileID: UUID
   public let scope: ArticleDraftScope
+  public let generalDraftFolderName: String?
   public let title: String
   public let date: Date
   public let slug: String
@@ -234,6 +212,7 @@ public struct ArticleDraftListMetadataProjection: Equatable, Hashable, Sendable 
     id = draft.id
     siteProfileID = draft.siteProfileID
     scope = draft.scope
+    generalDraftFolderName = draft.generalDraftFolderName
     title = draft.title
     date = draft.date
     slug = draft.slug

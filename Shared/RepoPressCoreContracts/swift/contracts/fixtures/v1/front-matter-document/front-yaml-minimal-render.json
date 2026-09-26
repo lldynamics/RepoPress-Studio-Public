@@ -1,0 +1,26 @@
+{
+  "capability": "front-matter-document",
+  "description": "Omits optional metadata and empty collections from YAML.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "text": "---\ntitle: \"Minimal\"\ndate: \"2026-01-01\"\n---"
+    }
+  },
+  "id": "front-yaml-minimal-render",
+  "input": {
+    "document": {
+      "authors": [],
+      "bodyMarkdown": "",
+      "categories": [],
+      "formattedDate": "2026-01-01",
+      "syntax": "yaml",
+      "tags": [],
+      "taxonomyLayout": "inlineTable",
+      "title": "Minimal",
+      "writesCoverInExtraTable": false
+    },
+    "operation": "render"
+  },
+  "validity": "valid"
+}

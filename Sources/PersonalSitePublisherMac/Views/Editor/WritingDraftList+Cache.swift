@@ -11,22 +11,22 @@ extension WritingDraftColumn {
   }
 
   func synchronizeFolderExpansionState() {
-    guard store.draftListContentScope == .currentSite else {
-      folderExpansionState.clearTransientReveal()
-      draftListCache.clearFolderProjectionCache()
-      return
-    }
-
     updateFolderProjectionCache()
     guard let universeProjection = draftListCache.universeFolderProjection else {
       return
     }
     let validFolderIDs = Set(universeProjection.root.allFolderIDs)
-    if folderExpansionSiteID != store.activeProfile.id {
+    let expansionID =
+      store.draftListContentScope == .general
+      ? DraftFolderProjection.generalLibraryID : store.activeProfile.id
+    if folderExpansionSiteID != expansionID
+      || folderExpansionContentScope != store.draftListContentScope
+    {
       folderExpansionState = WritingDraftFolderExpansionState(
         defaultExpandedTopLevelNodes: universeProjection.topLevelNodes
       )
-      folderExpansionSiteID = store.activeProfile.id
+      folderExpansionSiteID = expansionID
+      folderExpansionContentScope = store.draftListContentScope
     } else {
       folderExpansionState.reconcile(validFolderIDs: validFolderIDs)
     }
@@ -36,11 +36,6 @@ extension WritingDraftColumn {
   }
 
   func updateFolderProjectionCache() {
-    guard store.draftListContentScope == .currentSite else {
-      draftListCache.clearFolderProjectionCache()
-      return
-    }
-
     let universeDrafts = visibleDraftSnapshot
     let currentFilteredDrafts = filteredDrafts
     let maskedDraftIDs = Set(
@@ -51,6 +46,7 @@ extension WritingDraftColumn {
     let projectionOrder = DraftListSortOrder(rawValue: sortOrder.rawValue) ?? .updatedNewest
     draftListCache.updateFolderProjectionCache(
       profile: store.activeProfile,
+      contentScope: store.draftListContentScope,
       universeDrafts: universeDrafts,
       filteredDrafts: currentFilteredDrafts,
       sortOrder: projectionOrder,
@@ -60,11 +56,6 @@ extension WritingDraftColumn {
   }
 
   func updateFolderEntriesCache() {
-    guard store.draftListContentScope == .currentSite else {
-      draftListCache.clearFolderProjectionCache()
-      return
-    }
-
     let loadedDraftIDs = Set(
       draftListCache.filteredDraftIDs.prefix(draftListLimit)
     )
@@ -75,8 +66,7 @@ extension WritingDraftColumn {
   }
 
   func updateFolderSearchReveal() {
-    guard store.draftListContentScope == .currentSite,
-      !debouncedSearchText.isEmpty
+    guard !debouncedSearchText.isEmpty
     else {
       folderExpansionState.clearTransientReveal()
       return
@@ -201,8 +191,7 @@ extension WritingDraftColumn {
       applyDraftFilterDebounce()
     }
 
-    guard store.draftListContentScope == .currentSite,
-      let selectedIndex = draftListCache.filteredDraftIDs.firstIndex(of: selectedDraftID)
+    guard let selectedIndex = draftListCache.filteredDraftIDs.firstIndex(of: selectedDraftID)
     else {
       return
     }

@@ -263,7 +263,36 @@ extension PublishingStore {
     if hasUnsavedDraftChange {
       store.scheduleAutosave()
       store.scheduleSiteDraftFileAutosave(for: updated)
+      store.scheduleExternalDraftWrite(for: updated)
     }
+  }
+
+  /// Changes only the library organization of active general drafts. Folder
+  /// labels never become repository paths or site draft file writes.
+  @discardableResult
+  public func moveGeneralDrafts(_ draftIDs: [UUID], toFolder name: String?, store: WorkbenchStore)
+    -> Int
+  {
+    let normalizedName = ArticleDraft.validGeneralDraftFolderName(name)
+    guard name == nil || normalizedName != nil else { return 0 }
+    let targetIDs = Set(draftIDs)
+    var changedCount = 0
+    for index in drafts.indices where targetIDs.contains(drafts[index].id) {
+      let previous = drafts[index]
+      guard previous.isGeneralDraft,
+        previous.generalDraftFolderName != normalizedName
+      else { continue }
+      var updated = previous
+      guard updated.setGeneralDraftFolderName(normalizedName) else { continue }
+      updated.markMetadataUpdated(replacing: previous)
+      drafts[index] = updated
+      changedCount += 1
+    }
+    if changedCount > 0 {
+      store.scheduleAutosave()
+      store.invalidateDraftDerivedCaches()
+    }
+    return changedCount
   }
 
   func updateDraftWordCount(
@@ -483,6 +512,15 @@ extension PublishingStore {
     }
     let removed = activeProfileID
     guard let profile = profiles.first(where: { $0.id == removed }) else { return nil }
+    if let mapping = profile.externalDraftFolder,
+      !store.detachExternalDraftSources(for: mapping)
+    {
+      store.setPublishActionMessage(
+        CoreL10n.text("外部草稿正在写回；完成后请重新删除此站点 Profile。"),
+        status: .warning
+      )
+      return nil
+    }
     // Capture the editor's latest debounced body in the reversible deletion
     // payload instead of restoring the older baseline after an undo.
     store.flushDraftBodyEditorBuffers()
@@ -596,6 +634,9 @@ extension PublishingStore {
     customMarkdownSnippets.append(contentsOf: recentlyDeletedProfile.customMarkdownSnippets)
     draftVersions.append(contentsOf: recentlyDeletedProfile.draftVersions)
     recycledDrafts.append(contentsOf: recentlyDeletedProfile.recycledDrafts)
+    if let mapping = recentlyDeletedProfile.profile.externalDraftFolder {
+      store.reconnectDetachedExternalDraftSources(to: mapping)
+    }
     draftRepositoryCleanupRequests.append(
       contentsOf: recentlyDeletedProfile.draftRepositoryCleanupRequests
     )

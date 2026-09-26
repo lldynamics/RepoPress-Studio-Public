@@ -519,7 +519,7 @@ extension MacMarkdownComposerView {
       )
     else { return }
     guard store.focusImageInspector(draftID: draft.id, attachmentID: attachmentID) else {
-      selectionActionMessage = "找不到刚插入的图片，请刷新图片 Inspector 后重试。"
+      selectionActionMessage = "找不到刚插入的图片，请刷新图片详情栏后重试。"
       return
     }
     dismissInsertedImageMetadata()
@@ -537,7 +537,7 @@ extension MacMarkdownComposerView {
           isCover: metadata.isCover
         )
       else {
-        selectionActionMessage = "图片附件已变化，请重新插入或前往图片 Inspector 处理。"
+        selectionActionMessage = "图片附件已变化，请重新插入或前往图片详情栏处理。"
         return false
       }
       updated = result.draft

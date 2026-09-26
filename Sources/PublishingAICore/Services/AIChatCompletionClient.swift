@@ -151,6 +151,13 @@ public struct AIChatCompletionClient: Sendable {
     if let transport {
       return transport
     }
+    // A local connection must not relay article text through a proxy left on
+    // a formerly remote profile or added later in advanced settings.
+    if config.isLocalEndpoint,
+      config.resolvedAdvancedSettings.normalizedProxyURL != nil
+    {
+      throw AIChatCompletionClientError.invalidProxyURL
+    }
     do {
       return try transportCache.transport(
         proxyURL: config.resolvedAdvancedSettings.proxyURL,

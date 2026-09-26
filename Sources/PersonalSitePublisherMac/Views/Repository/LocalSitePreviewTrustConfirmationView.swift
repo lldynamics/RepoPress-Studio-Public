@@ -1,4 +1,4 @@
-import PublishingWorkbenchCore
+import PublishingPreviewCore
 import SwiftUI
 
 enum LocalSitePreviewTrustEntryPoint: String, CaseIterable {

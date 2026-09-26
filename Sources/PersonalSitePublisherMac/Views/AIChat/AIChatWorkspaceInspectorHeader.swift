@@ -506,7 +506,7 @@ extension AIChatContextInspectorView {
       ForEach(AIPublishingChatQuickAction.allCases) { action in
         Button {
           setInputText(action.localizedPrompt)
-          isComposerFocused = true
+          focusComposerIfAvailable()
         } label: {
           Label {
             Text(action.localizedDisplayName)

@@ -15,8 +15,12 @@ BUNDLE_ID = "com.jinfang.PersonalSitePublisherMac"
 BUILD_INPUTS = (
     "Package.swift",
     "Package.resolved",
+    "Shared/RepoPressCoreContracts/swift/Package.swift",
+    "Shared/RepoPressCoreContracts/swift/Sources",
     "Sources",
     "Packaging",
+    "ShareExtension",
+    "ShortcutExtension",
     "script/build_and_run.sh",
 )
 

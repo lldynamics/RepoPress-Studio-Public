@@ -1,8 +1,7 @@
+import PublishingPreviewCore
 import XCTest
 
 @testable import PersonalSitePublisherMac
-@testable import PublishingWorkbenchCore
-
 final class LocalSitePreviewTrustConfirmationTests: XCTestCase {
   func testPresentationShowsExactRepositoryAndCommandWithNativeCodeWarning() {
     let request = makeRequest()

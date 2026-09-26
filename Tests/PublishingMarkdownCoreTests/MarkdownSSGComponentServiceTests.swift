@@ -115,4 +115,75 @@ final class MarkdownSSGComponentServiceTests: XCTestCase {
       )
     )
   }
+
+  func testAutomaticShortcutKeepsUTF16NormalizationWhitespaceAndFenceBoundaries() throws {
+    let siteID = UUID()
+    let snippets = MarkdownSnippetLibraryService.savingCustomSnippet(
+      title: "警告框",
+      detail: "项目自己的提醒组件",
+      kind: .snippet,
+      markdown: "::: warning 警告\n请确认配置。\n:::",
+      siteProfileID: siteID,
+      shortcut: "/callout",
+      in: []
+    )
+    let service = MarkdownCursorCompletionService()
+    let longPrefix = String(repeating: "😀正文\n", count: 20_000)
+    let source = longPrefix + "\t/CALLOUT"
+    let cursor = NSRange(location: (source as NSString).length, length: 0)
+
+    let candidate = try XCTUnwrap(
+      service.automaticShortcutCandidate(
+        in: source,
+        selectedRange: cursor,
+        snippets: snippets
+      )
+    )
+    XCTAssertEqual(candidate.expectedText, "/CALLOUT")
+    XCTAssertEqual(candidate.replacementRange.location, (longPrefix as NSString).length + 1)
+    XCTAssertEqual(candidate.replacementRange.length, ("/CALLOUT" as NSString).length)
+    XCTAssertEqual(candidate.selectedRangeAfterApplying.length, 0)
+
+    XCTAssertNil(
+      service.automaticShortcutCandidate(
+        in: longPrefix + " /callout ",
+        selectedRange: NSRange(
+          location: ((longPrefix + " /callout ") as NSString).length,
+          length: 0
+        ),
+        snippets: snippets
+      )
+    )
+    XCTAssertNil(
+      service.automaticShortcutCandidate(
+        in: longPrefix + " /callout",
+        selectedRange: NSRange(
+          location: (longPrefix as NSString).length + 1,
+          length: 1
+        ),
+        snippets: snippets
+      )
+    )
+    for command in ["/c", "/callou", "/unknown", "//callout"] {
+      let incomplete = longPrefix + " " + command
+      XCTAssertNil(
+        service.automaticShortcutCandidate(
+          in: incomplete,
+          selectedRange: NSRange(location: (incomplete as NSString).length, length: 0),
+          snippets: snippets
+        )
+      )
+    }
+    let fenced = longPrefix + "```text\n/callout\n```"
+    XCTAssertNil(
+      service.automaticShortcutCandidate(
+        in: fenced,
+        selectedRange: NSRange(
+          location: NSMaxRange((fenced as NSString).range(of: "/callout")),
+          length: 0
+        ),
+        snippets: snippets
+      )
+    )
+  }
 }

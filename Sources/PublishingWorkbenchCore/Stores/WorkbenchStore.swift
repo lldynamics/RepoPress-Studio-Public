@@ -2,6 +2,7 @@ import Combine
 import Foundation
 import PublishingAICore
 import PublishingKnowledgeCore
+import PublishingSyncCore
 
 public enum FreshWorkspaceSeedPolicy: Sendable {
   case blank
@@ -137,6 +138,12 @@ public final class WorkbenchStore: ObservableObject {
   var siteDraftFileReconciliationGeneration: UInt64 = 0
   var siteDraftFileWritesInProgress: Set<UUID> = []
   var siteDraftFileSaveGenerations: [UUID: UInt64] = [:]
+  var externalDraftFolderScanGeneration: UInt64 = 0
+  var externalDraftWriteTasks: [UUID: Task<Void, Never>] = [:]
+  var externalDraftWriteGenerations: [UUID: UInt64] = [:]
+  var externalDraftWritesInProgress: Set<UUID> = []
+  @Published public internal(set) var externalDraftWriteFailures: [UUID: String] = [:]
+  @Published public internal(set) var externalDraftConflicts: Set<UUID> = []
   var siteMaintenanceRefreshTask: Task<SiteMaintenanceReport, Error>?
   var siteMaintenanceRefreshScheduleTask: Task<Void, Never>?
   var siteMaintenanceRefreshGeneration: UInt64 = 0
@@ -793,18 +800,21 @@ public final class WorkbenchStore: ObservableObject {
   public func flushPendingChanges() -> Bool {
     flushDraftBodyEditorBuffers()
     let siteDraftFilesSucceeded = flushPendingSiteDraftFileWrites()
+    let externalDraftFilesSucceeded = flushPendingExternalDraftWrites()
     let input = persistenceStore.persistence.snapshotInput(from: self)
     let persistenceSucceeded = persistenceStore.flush(
       input: input
     )
     let primarySaveSucceeded =
       siteDraftFilesSucceeded
+      && externalDraftFilesSucceeded
       && persistenceSucceeded
       && !persistenceStore.isRecoveryWriteProtected
     let draftRecoverySucceeded = flushDraftRecoveryJournal(
       pruningResolvedRecords: primarySaveSucceeded
     )
-    return siteDraftFilesSucceeded && persistenceSucceeded && draftRecoverySucceeded
+    return siteDraftFilesSucceeded && externalDraftFilesSucceeded
+      && persistenceSucceeded && draftRecoverySucceeded
   }
 
   /// Completes the synchronous workspace save and then waits for the separate

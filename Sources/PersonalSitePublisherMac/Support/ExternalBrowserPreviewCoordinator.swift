@@ -1,4 +1,5 @@
 import Combine
+import PublishingPreviewCore
 import Foundation
 import PublishingWorkbenchCore
 
@@ -191,7 +192,17 @@ final class ExternalBrowserPreviewCoordinator: ObservableObject {
     message = String(localized: "正在等待预览页面就绪…")
     openTask = Task { [weak self] in
       guard let self else { return }
-      let isReady = await self.readinessService.waitUntilReady(pendingOpen.url)
+      let siteKind = self.store.localSitePreviewPlan?.siteKind ?? .zola
+      let isReady: Bool
+      if siteKind == .quartz {
+        isReady = await self.readinessService.waitUntilReady(
+          pendingOpen.url,
+          maxAttempts: LocalSitePreviewStartupBudget.maximumReadinessAttempts(for: siteKind),
+          maximumWait: LocalSitePreviewStartupBudget.maximumReadinessWait(for: siteKind)
+        )
+      } else {
+        isReady = await self.readinessService.waitUntilReady(pendingOpen.url)
+      }
       guard !Task.isCancelled, self.isCurrent(pendingOpen.generation) else { return }
       guard isReady else {
         self.finishFailure(

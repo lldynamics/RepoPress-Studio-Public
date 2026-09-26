@@ -66,7 +66,8 @@ struct WorkbenchStateView: View {
       }
       .padding(.vertical, WorkbenchSpacing.card)
       .frame(maxWidth: .infinity)
-      .frame(minHeight: 120, idealHeight: 132, maxHeight: 140)
+      // No height cap: a fixed maximum truncated longer explanations.
+      .frame(minHeight: 120)
 
     case .inline:
       HStack(alignment: .top, spacing: WorkbenchSpacing.control) {

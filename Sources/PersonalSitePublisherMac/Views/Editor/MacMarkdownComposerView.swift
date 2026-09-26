@@ -45,6 +45,8 @@ struct MacMarkdownComposerView: View {
   var editorLineSpacing = MarkdownEditorComfortConfiguration.defaultLineSpacing
   @AppStorage(MarkdownEditorComfortPreferences.bodyWidthKey)
   var editorBodyWidth = MarkdownEditorComfortConfiguration.defaultBodyWidth
+  @AppStorage(MarkdownEditorComfortPreferences.bodyFontStyleKey)
+  var editorBodyFontStyleRawValue = MarkdownEditorBodyFontStyle.defaultStyle.rawValue
   @AppStorage(MarkdownEditorComfortPreferences.spellCheckEnabledKey)
   var isEditorSpellCheckEnabled = MarkdownEditorComfortConfiguration.defaultSpellCheckEnabled
   @AppStorage(MarkdownEditorComfortPreferences.typewriterModeEnabledKey)
@@ -100,6 +102,7 @@ struct MacMarkdownComposerView: View {
       fontSize: editorFontSize,
       lineSpacing: editorLineSpacing,
       bodyWidth: editorBodyWidth,
+      bodyFontStyle: MarkdownEditorBodyFontStyle.resolved(rawValue: editorBodyFontStyleRawValue),
       spellCheckEnabled: isEditorSpellCheckEnabled,
       typewriterModeEnabled: isTypewriterModeEnabled,
       currentParagraphHighlightEnabled: isCurrentParagraphHighlightEnabled,
@@ -255,7 +258,9 @@ struct MacMarkdownComposerView: View {
         externalBrowserPreviewCoordinator: externalBrowserPreviewCoordinator,
         writingToolDensity: writingToolDensity,
         availableWritingContextPanels: availableWritingContextPanels,
-        actions: markdownEditorToolbarActions
+        actions: markdownEditorToolbarActions,
+        articleInformationToggle: articleInformationToggle,
+        formattingToolbar: integratedFormattingToolbar
       )
       .opacity(zenModeController.toolbarOpacity)
       .onHover { isHovered in
@@ -263,7 +268,6 @@ struct MacMarkdownComposerView: View {
       }
       .environmentObject(zenModeController)
       Divider()
-      articleInformationDisclosure
       if isFindReplacePresented {
         FindReplaceBar(
           findQuery: $editorSessionState.findQuery,
@@ -331,6 +335,18 @@ struct MacMarkdownComposerView: View {
     }
     .onChange(of: editorState.editorFocusRequest?.id) { _, _ in
       applyEditorFocusRequest()
+    }
+    .onReceive(
+      NotificationCenter.default.publisher(for: .markdownLocalPreviewDiagnosticJumpRequested)
+    ) {
+      notification in
+      guard let request = notification.object as? MarkdownLocalPreviewDiagnosticJumpRequest,
+        request.draftID == draft.id,
+        workspaceWindowIsKey
+      else {
+        return
+      }
+      jumpToMarkdownLine(request.line)
     }
     .onChange(of: workspaceWindowIsKey) { _, isKeyWindow in
       // A legacy Store request can arrive while this editor is behind a
@@ -668,9 +684,10 @@ struct MacMarkdownComposerView: View {
     store.clearActiveEditorSelection(for: draft.id)
   }
 
+  // Full-bleed writing surface: the pane itself is the page, so the editor is
+  // not inset as a bordered card inside it.
   var editorSurface: some View {
     markdownEditor
-      .padding(14)
       .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
   }
 
@@ -682,58 +699,6 @@ struct MacMarkdownComposerView: View {
 
   var markdownEditor: some View {
     VStack(spacing: 0) {
-      if zenModeController.isFormattingBarVisible {
-        MacMarkdownFormattingToolbar(
-          statisticsState: editorStatisticsState,
-          cursorPosition: markdownCursorPosition,
-          fenceMatch: activeMarkdownFenceMatch,
-          completion: markdownCursorCompletion,
-          writingToolDensity: writingToolDensity,
-          onApplyMarkdownFormatting: applyMarkdownFormatting,
-          onApplyAdvancedFormatting: applyAdvancedMarkdownFormatting,
-          onEditLines: applyMarkdownLineEditing,
-          onWrapSelection: { prefix, suffix, placeholder in
-            wrapSelection(prefix: prefix, suffix: suffix, placeholder: placeholder)
-          },
-          onPrefixCurrentLine: prefixCurrentLine,
-          onInsertCodeBlock: insertCodeBlock,
-          onInsertTable: insertTable,
-          onInsertHorizontalRule: insertHorizontalRule,
-          onInsertInternalLink: {
-            guard requireBodyEditingContext() else { return }
-            isInternalLinkPickerPresented = true
-          },
-          onShowSnippets: {
-            guard requireBodyEditingContext() else { return }
-            isSnippetLibraryPresented = true
-          },
-          onShowDiagnostics: {
-            showDiagnostics()
-          },
-          diagnosticCount: inlineDiagnostics.count,
-          onInsertImage: {
-            guard requireBodyEditingContext() else { return }
-            insertImageReferences(ImageSelectionPanel.chooseImages())
-          },
-          onInsertVideo: {
-            guard requireBodyEditingContext() else { return }
-            insertVideoReferences(VideoSelectionPanel.chooseVideos())
-          },
-          onJumpToLine: jumpToMarkdownLine,
-          onJumpToCounterpartFence: jumpToCounterpartFence,
-          onApplyCompletion: applyMarkdownCompletion,
-          onInsertCompletionTrigger: insertMarkdownCompletionTrigger,
-          onFormatChineseTypography: formatChineseTypography,
-          onCopyForWeChatAndZhihu: copyForWeChatAndZhihu
-        )
-        .opacity(zenModeController.toolbarOpacity)
-        .onHover { isHovered in
-          zenModeController.updateHovered(isHovered)
-        }
-        .environmentObject(zenModeController)
-        Divider()
-      }
-
       let reviewPresentation = inlineStructuredEditReviewPresentation
       let statisticsDraftID = draft.id
       ZStack {
@@ -982,13 +947,22 @@ struct MacMarkdownComposerView: View {
         )
         .frame(height: 118)
       }
+
+      Divider()
+      MacMarkdownEditorStatusBar(
+        statisticsState: editorStatisticsState,
+        cursorPosition: markdownCursorPosition,
+        fenceMatch: activeMarkdownFenceMatch,
+        completion: markdownCursorCompletion,
+        onJumpToLine: jumpToMarkdownLine,
+        onJumpToCounterpartFence: jumpToCounterpartFence,
+        onApplyCompletion: applyMarkdownCompletion,
+        onInsertCompletionTrigger: insertMarkdownCompletionTrigger,
+        onFormatChineseTypography: formatChineseTypography,
+        onCopyForWeChatAndZhihu: copyForWeChatAndZhihu
+      )
     }
     .background(WorkbenchWritingSurface.color(usesWarmPaper: isWarmPaperBackgroundEnabled))
-    .clipShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
-    .overlay(
-      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-    )
   }
 
   private func contextualPopoverPlacement(
@@ -1189,5 +1163,45 @@ extension MarkdownFrontMatterEditingIssue {
     case .invalidVisibility:
       return String(localized: "visibility 字段不是受支持的可见性值。")
     }
+  }
+}
+
+extension MacMarkdownComposerView {
+  private var integratedFormattingToolbar: MacMarkdownFormattingToolbar {
+    MacMarkdownFormattingToolbar(
+      writingToolDensity: writingToolDensity,
+      onApplyMarkdownFormatting: applyMarkdownFormatting,
+      onApplyAdvancedFormatting: applyAdvancedMarkdownFormatting,
+      onEditLines: applyMarkdownLineEditing,
+      onWrapSelection: { prefix, suffix, placeholder in
+        wrapSelection(prefix: prefix, suffix: suffix, placeholder: placeholder)
+      },
+      onPrefixCurrentLine: prefixCurrentLine,
+      onInsertCodeBlock: insertCodeBlock,
+      onInsertTable: insertTable,
+      onInsertHorizontalRule: insertHorizontalRule,
+      onInsertInternalLink: {
+        guard requireBodyEditingContext() else { return }
+        isInternalLinkPickerPresented = true
+      },
+      onShowSnippets: {
+        guard requireBodyEditingContext() else { return }
+        isSnippetLibraryPresented = true
+      },
+      onShowDiagnostics: {
+        showDiagnostics()
+      },
+      diagnosticCount: inlineDiagnostics.count,
+      onInsertImage: {
+        guard requireBodyEditingContext() else { return }
+        insertImageReferences(ImageSelectionPanel.chooseImages())
+      },
+      onInsertVideo: {
+        guard requireBodyEditingContext() else { return }
+        insertVideoReferences(VideoSelectionPanel.chooseVideos())
+      },
+      onFormatChineseTypography: formatChineseTypography,
+      presentation: .integrated
+    )
   }
 }

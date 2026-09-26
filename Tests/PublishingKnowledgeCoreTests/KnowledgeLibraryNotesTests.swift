@@ -41,7 +41,8 @@ final class KnowledgeLibraryNotesTests: XCTestCase {
     XCTAssertEqual(loaded.attachments.count, 1)
     XCTAssertEqual(loaded.attachments.first?.id, attachmentID)
     XCTAssertEqual(loaded.attachments.first?.data, Data("附件正文".utf8))
-    XCTAssertFalse(try service.documents().contains(where: { $0.id == note.id && $0.allowsRemoteAIUse }))
+    XCTAssertFalse(
+      try service.documents().contains(where: { $0.id == note.id && $0.allowsRemoteAIUse }))
   }
 
   func testUpdateCreatesRevisionAndKeepsCreatedAt() throws {
@@ -86,20 +87,22 @@ final class KnowledgeLibraryNotesTests: XCTestCase {
     let root = try makeRoot()
     defer { try? FileManager.default.removeItem(at: root) }
     let service = KnowledgeLibraryService(rootURL: root)
-    let original = try service.createNote(KnowledgeNote(
-      title: "Note",
-      markdown: "original",
-      attachments: [KnowledgeNoteAttachment(fileName: "proof.txt", data: Data("proof".utf8))]
-    ))
+    let original = try service.createNote(
+      KnowledgeNote(
+        title: "Note",
+        markdown: "original",
+        attachments: [KnowledgeNoteAttachment(fileName: "proof.txt", data: Data("proof".utf8))]
+      ))
     let expectedRevision = service.noteEditRevision(original)
-    _ = try service.updateNote(KnowledgeNote(
-      id: original.id,
-      title: "Note",
-      createdAt: original.createdAt,
-      updatedAt: original.updatedAt.addingTimeInterval(30),
-      markdown: "remote update",
-      attachments: original.attachments
-    ))
+    _ = try service.updateNote(
+      KnowledgeNote(
+        id: original.id,
+        title: "Note",
+        createdAt: original.createdAt,
+        updatedAt: original.updatedAt.addingTimeInterval(30),
+        markdown: "remote update",
+        attachments: original.attachments
+      ))
     let staleDraft = KnowledgeNote(
       id: original.id,
       title: "Stale editor",
@@ -109,7 +112,9 @@ final class KnowledgeLibraryNotesTests: XCTestCase {
       attachments: original.attachments
     )
 
-    XCTAssertThrowsError(try service.updateNote(staleDraft, expectedContentRevision: expectedRevision)) { error in
+    XCTAssertThrowsError(
+      try service.updateNote(staleDraft, expectedContentRevision: expectedRevision)
+    ) { error in
       guard let libraryError = error as? KnowledgeLibraryError,
         case .staleNoteRevision = libraryError
       else {
@@ -129,7 +134,11 @@ final class KnowledgeLibraryNotesTests: XCTestCase {
     let notes = try service.notes()
     XCTAssertEqual(notes.count, 2)
     XCTAssertTrue(notes.contains(where: { $0.id == original.id && $0.markdown == "remote update" }))
-    XCTAssertTrue(notes.contains(where: { $0.id == durableCopy.id && $0.markdown == "stale overwrite" && $0.attachments.first?.data == Data("proof".utf8) }))
+    XCTAssertTrue(
+      notes.contains(where: {
+        $0.id == durableCopy.id && $0.markdown == "stale overwrite"
+          && $0.attachments.first?.data == Data("proof".utf8)
+      }))
   }
 
   func testRejectConflictLeavesEntireBatchUnchanged() throws {
@@ -260,7 +269,8 @@ final class KnowledgeLibraryNotesTests: XCTestCase {
     let now = Date()
     let invalidNotes = [
       KnowledgeNote(title: " 标题", createdAt: now, updatedAt: now, markdown: "正文"),
-      KnowledgeNote(tags: Array(repeating: "标签", count: 51), createdAt: now, updatedAt: now, markdown: "正文"),
+      KnowledgeNote(
+        tags: Array(repeating: "标签", count: 51), createdAt: now, updatedAt: now, markdown: "正文"),
     ]
 
     for note in invalidNotes {
@@ -283,8 +293,10 @@ final class KnowledgeLibraryNotesTests: XCTestCase {
 
     XCTAssertEqual(try service.importNote(note), .inserted(note.id))
     let loaded = try XCTUnwrap(service.note(documentID: note.id))
-    XCTAssertEqual(loaded.createdAt.timeIntervalSince1970, createdAt.timeIntervalSince1970, accuracy: 0.000_001)
-    XCTAssertEqual(loaded.updatedAt.timeIntervalSince1970, updatedAt.timeIntervalSince1970, accuracy: 0.000_001)
+    XCTAssertEqual(
+      loaded.createdAt.timeIntervalSince1970, createdAt.timeIntervalSince1970, accuracy: 0.000_001)
+    XCTAssertEqual(
+      loaded.updatedAt.timeIntervalSince1970, updatedAt.timeIntervalSince1970, accuracy: 0.000_001)
     XCTAssertEqual(try service.importNote(note), .skippedIdentical(note.id))
   }
 

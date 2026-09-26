@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import PublishingKnowledgeCore
 
 final class RPNoteCloudPayloadTests: XCTestCase {
@@ -9,7 +10,8 @@ final class RPNoteCloudPayloadTests: XCTestCase {
     let created = Date(timeIntervalSince1970: 1_700_000_000.123_456_7)
     let updated = Date(timeIntervalSince1970: 1_700_000_001.987_654_3)
     let attachment = RPNoteAttachment(
-      id: attachmentID, fileName: "图片.png", mimeType: "image/png", data: Data([0, 1, 127, 128, 255])
+      id: attachmentID, fileName: "图片.png", mimeType: "image/png",
+      data: Data([0, 1, 127, 128, 255])
     )
     let note = RPNote(
       id: noteID, title: "跨端笔记", tags: ["同步", "想法"], createdAt: created, updatedAt: updated,
@@ -45,7 +47,9 @@ final class RPNoteCloudPayloadTests: XCTestCase {
     func note(_ data: Data) -> RPNote {
       RPNote(
         id: id, createdAt: date, updatedAt: date, markdown: "x",
-        attachments: [RPNoteAttachment(id: attachmentID, fileName: "a", mimeType: "x/a", data: data)]
+        attachments: [
+          RPNoteAttachment(id: attachmentID, fileName: "a", mimeType: "x/a", data: data)
+        ]
       )
     }
     let encoded = try RPNoteCloudPayload.encode(note(marker))
@@ -66,16 +70,20 @@ final class RPNoteCloudPayloadTests: XCTestCase {
 
   func testEncodingIsDeterministicAndIndependentOfAttachmentOrder() throws {
     let first = RPNoteAttachment(
-      id: UUID(uuidString: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")!, fileName: "a", mimeType: "x/a", data: Data([1])
+      id: UUID(uuidString: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")!, fileName: "a", mimeType: "x/a",
+      data: Data([1])
     )
     let second = RPNoteAttachment(
-      id: UUID(uuidString: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")!, fileName: "b", mimeType: "x/b", data: Data([2])
+      id: UUID(uuidString: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")!, fileName: "b", mimeType: "x/b",
+      data: Data([2])
     )
     let id = UUID(uuidString: "cccccccc-cccc-cccc-cccc-cccccccccccc")!
     let created = Date(timeIntervalSince1970: 1_700_000_000.5)
     let updated = Date(timeIntervalSince1970: 1_700_000_001.5)
-    let ordered = RPNote(id: id, createdAt: created, updatedAt: updated, markdown: "x", attachments: [first, second])
-    let reversed = RPNote(id: id, createdAt: created, updatedAt: updated, markdown: "x", attachments: [second, first])
+    let ordered = RPNote(
+      id: id, createdAt: created, updatedAt: updated, markdown: "x", attachments: [first, second])
+    let reversed = RPNote(
+      id: id, createdAt: created, updatedAt: updated, markdown: "x", attachments: [second, first])
     XCTAssertEqual(try RPNoteCloudPayload.encode(ordered), try RPNoteCloudPayload.encode(reversed))
   }
 
@@ -97,13 +105,18 @@ final class RPNoteCloudPayloadTests: XCTestCase {
     let edited = RPNoteAttachment(fileName: "edited", mimeType: "x/a", data: Data([2]))
     let removedID = UUID()
     let noteKey = noteID.uuidString.lowercased()
-    func name(_ id: UUID) -> String { RPNoteCloudAttachmentPlan.recordName(noteID: noteID, attachmentID: id) }
+    func name(_ id: UUID) -> String {
+      RPNoteCloudAttachmentPlan.recordName(noteID: noteID, attachmentID: id)
+    }
     let otherNoteRecord = RPNoteCloudAttachmentPlan.recordName(noteID: UUID(), attachmentID: UUID())
     let baselines: [String: RPNoteCloudAttachmentBaseline] = [
-      name(kept.id): .init(noteID: noteKey, sha256: RPNoteCloudPayload.attachmentDigest(kept.data), systemFields: nil),
-      name(edited.id): .init(noteID: noteKey, sha256: RPNoteCloudPayload.attachmentDigest(Data([9])), systemFields: nil),
+      name(kept.id): .init(
+        noteID: noteKey, sha256: RPNoteCloudPayload.attachmentDigest(kept.data), systemFields: nil),
+      name(edited.id): .init(
+        noteID: noteKey, sha256: RPNoteCloudPayload.attachmentDigest(Data([9])), systemFields: nil),
       name(removedID): .init(noteID: noteKey, sha256: "old", systemFields: nil),
-      otherNoteRecord: .init(noteID: UUID().uuidString.lowercased(), sha256: "other", systemFields: nil),
+      otherNoteRecord: .init(
+        noteID: UUID().uuidString.lowercased(), sha256: "other", systemFields: nil),
     ]
     let note = RPNote(id: noteID, markdown: "text edit", attachments: [kept, edited])
 
@@ -114,7 +127,8 @@ final class RPNoteCloudPayloadTests: XCTestCase {
     XCTAssertEqual(plan.deletions, [name(removedID)])
 
     let tombstonePlan = RPNoteCloudAttachmentPlan.plan(
-      for: .tombstone(id: noteID, deletedAt: Date(), revision: "t", systemFields: nil), baselines: baselines
+      for: .tombstone(id: noteID, deletedAt: Date(), revision: "t", systemFields: nil),
+      baselines: baselines
     )
     XCTAssertTrue(tombstonePlan.uploads.isEmpty)
     XCTAssertEqual(Set(tombstonePlan.deletions), [name(kept.id), name(edited.id), name(removedID)])
@@ -123,11 +137,15 @@ final class RPNoteCloudPayloadTests: XCTestCase {
   func testPersistentStateKeepsAttachmentBaselinesAndZoneRecoveryClearsThem() throws {
     var state = RPNoteCloudPersistentState(boundAccountID: "account", zoneEstablished: true)
     state.attachmentBaselines["att-x"] = .init(noteID: "n", sha256: "s", systemFields: Data([1]))
-    let decoded = try JSONDecoder().decode(RPNoteCloudPersistentState.self, from: JSONEncoder().encode(state))
+    let decoded = try JSONDecoder().decode(
+      RPNoteCloudPersistentState.self, from: JSONEncoder().encode(state))
     XCTAssertEqual(decoded, state)
-    let legacy = try JSONDecoder().decode(RPNoteCloudPersistentState.self, from: Data(#"{"initialFetchComplete":true}"#.utf8))
+    let legacy = try JSONDecoder().decode(
+      RPNoteCloudPersistentState.self, from: Data(#"{"initialFetchComplete":true}"#.utf8))
     XCTAssertTrue(legacy.attachmentBaselines.isEmpty)
     XCTAssertTrue(RPNoteCloudBootstrapPolicy.confirmZoneRecovery(state).attachmentBaselines.isEmpty)
-    XCTAssertTrue(RPNoteCloudBootstrapPolicy.stateForConfirmedAccountChange("other").attachmentBaselines.isEmpty)
+    XCTAssertTrue(
+      RPNoteCloudBootstrapPolicy.stateForConfirmedAccountChange("other").attachmentBaselines.isEmpty
+    )
   }
 }

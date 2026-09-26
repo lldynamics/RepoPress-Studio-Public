@@ -25,8 +25,8 @@ struct AIChatConnectionStatusCapsule: View {
 
         Text(statusSummary)
           .font(.caption.weight(.semibold))
-          .lineLimit(1)
-          .truncationMode(.middle)
+          .lineLimit(2)
+          .truncationMode(.tail)
 
         Image(systemName: "chevron.down")
           .font(.workbenchMetadata.weight(.bold))
@@ -39,7 +39,7 @@ struct AIChatConnectionStatusCapsule: View {
     }
     .buttonStyle(.plain)
     .disabled(draft == nil && ai.chatContextMode != .general)
-    .help(statusDetail)
+    .help(statusSummary + "\n" + statusDetail)
     .accessibilityLabel(String(localized: "AI 连接与模型"))
     .accessibilityValue(statusDetail)
     .accessibilityIdentifier("ai-assistant-connection-status")
@@ -288,24 +288,25 @@ struct AIChatModelQuickSwitchSheet: View {
   }
 
   private var connectionStatusCard: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(spacing: 8) {
+    let modelSummary = AIChatInspectorHeaderPresentation.modelSummary(
+      for: currentConfig,
+      activeModel: currentSelection?.activeModel
+    )
+    return VStack(alignment: .leading, spacing: 10) {
+      HStack(alignment: .top, spacing: 8) {
         Circle()
           .fill(connectionStatusColor)
           .frame(width: 9, height: 9)
         Text(connectionStatusTitle)
           .font(.callout.weight(.semibold))
         Spacer()
-        Text(
-          AIChatInspectorHeaderPresentation.modelSummary(
-            for: currentConfig,
-            activeModel: currentSelection?.activeModel
-          )
-        )
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
-        .truncationMode(.middle)
+        Text(modelSummary)
+          .font(.caption.monospaced())
+          .foregroundStyle(.secondary)
+          .lineLimit(2)
+          .truncationMode(.tail)
+          .fixedSize(horizontal: false, vertical: true)
+          .help(modelSummary)
       }
 
       Text(connectionReport?.detailText ?? connectionDetail)
@@ -458,8 +459,9 @@ struct AIChatModelQuickSwitchSheet: View {
                 Text(profile.summary)
                   .font(.caption)
                   .foregroundStyle(.secondary)
-                  .lineLimit(1)
-                  .truncationMode(.middle)
+                  .lineLimit(2)
+                  .truncationMode(.tail)
+                  .help(profile.summary)
               }
               Spacer(minLength: 8)
             }
@@ -543,8 +545,9 @@ struct AIChatModelQuickSwitchSheet: View {
               Text(candidate.model)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
+                .lineLimit(2)
+                .truncationMode(.tail)
+                .help(candidate.model)
             }
             Spacer(minLength: 8)
           }

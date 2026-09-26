@@ -157,7 +157,7 @@ struct ArticleInspectorTabs: View {
     }
     .background(.bar)
     .accessibilityIdentifier("article-inspector")
-    .accessibilityLabel("文章 Inspector")
+    .accessibilityLabel("文章详情栏")
     .onAppear {
       normalizeSelectedTab()
       prepareSelectedTab()
@@ -186,7 +186,7 @@ struct ArticleInspectorTabs: View {
         .frame(width: 18)
 
       VStack(alignment: .leading, spacing: 2) {
-        Text("文章 Inspector")
+        Text("文章详情栏")
           .font(.headline)
         let markdownPath = store.profile(for: draft).markdownPath(for: draft)
         Text(markdownPath)
@@ -201,7 +201,7 @@ struct ArticleInspectorTabs: View {
   }
 
   private var tabPicker: some View {
-    Picker("Inspector", selection: $selectedTab) {
+    Picker("详情栏", selection: $selectedTab) {
       ForEach(availableTabs) { tab in
         Label(tab.pickerTitle, systemImage: tab.systemImage)
           .tag(tab)
@@ -211,7 +211,7 @@ struct ArticleInspectorTabs: View {
     .tint(WorkbenchTheme.navigationSelection)
     .labelsHidden()
     .padding(10)
-    .accessibilityLabel("文章 Inspector 标签")
+    .accessibilityLabel("文章详情栏标签")
     .accessibilityValue(selectedTab.title)
   }
 
@@ -242,7 +242,7 @@ struct ArticleInspectorTabs: View {
     .padding(.vertical, 10)
     .background(.bar)
     .accessibilityElement(children: .contain)
-    .accessibilityLabel("文章 Inspector 主要操作")
+    .accessibilityLabel("文章详情栏主要操作")
   }
 
   private func scrollToFocusedImage(using proxy: ScrollViewProxy) {

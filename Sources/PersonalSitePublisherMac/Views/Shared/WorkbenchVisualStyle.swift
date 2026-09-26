@@ -84,21 +84,15 @@ private enum WorkbenchSemanticPalette {
   )
 }
 
+/// Semantic roles only: status colors plus the two tinted foregrounds used by
+/// document and metadata badges.
 struct WorkbenchThemePalette {
   let primary: Color
   let success: Color
   let warning: Color
   let risk: Color
-  let document: Color
   let documentForeground: Color
-  let finance: Color
-  let inventory: Color
   let inventoryForeground: Color
-  let people: Color
-  let journal: Color
-  let photo: Color
-  let calculations: Color
-  let quotation: Color
 }
 
 enum WorkbenchTheme {
@@ -108,16 +102,8 @@ enum WorkbenchTheme {
     success: WorkbenchSemanticPalette.success.color,
     warning: WorkbenchSemanticPalette.warning.color,
     risk: WorkbenchSemanticPalette.risk.color,
-    document: adaptive(light: (0.55, 0.66, 0.73), dark: (0.65, 0.75, 0.80)),
     documentForeground: adaptive(light: (0.22, 0.39, 0.48), dark: (0.65, 0.75, 0.80)),
-    finance: adaptive(light: (0.83, 0.66, 0.33), dark: (0.88, 0.72, 0.44)),
-    inventory: adaptive(light: (0.61, 0.55, 0.71), dark: (0.70, 0.64, 0.78)),
-    inventoryForeground: adaptive(light: (0.38, 0.31, 0.50), dark: (0.70, 0.64, 0.78)),
-    people: adaptive(light: (0.49, 0.65, 0.65), dark: (0.60, 0.74, 0.74)),
-    journal: adaptive(light: (0.78, 0.72, 0.59), dark: (0.85, 0.79, 0.67)),
-    photo: adaptive(light: (0.72, 0.44, 0.42), dark: (0.80, 0.54, 0.52)),
-    calculations: adaptive(light: (0.42, 0.62, 0.71), dark: (0.54, 0.72, 0.80)),
-    quotation: adaptive(light: (0.77, 0.61, 0.48), dark: (0.84, 0.69, 0.56))
+    inventoryForeground: adaptive(light: (0.38, 0.31, 0.50), dark: (0.70, 0.64, 0.78))
   )
 
   static let `default` = jiangnanSpring
@@ -161,10 +147,7 @@ enum WorkbenchTheme {
   static var primaryActionForeground: Color { .white }
   /// 导航与选中态遵循用户的应用强调色偏好；品牌绿仅用于操作和状态。
   static var navigationSelection: Color { WorkbenchAccentPalette.selected().color }
-  static var document: Color { `default`.document }
   static var documentForeground: Color { `default`.documentForeground }
-  static var finance: Color { `default`.finance }
-  static var inventory: Color { `default`.inventory }
   static var inventoryForeground: Color { `default`.inventoryForeground }
 
   private static func adaptive(
@@ -348,11 +331,11 @@ enum WorkbenchSheetMetrics {
 }
 
 enum WorkbenchSettingsMetrics {
-  static let minimumWidth: CGFloat = 820
+  static let minimumWidth: CGFloat = 960
   static let idealWidth: CGFloat = 1_120
-  static let minimumHeight: CGFloat = 560
+  static let minimumHeight: CGFloat = 640
   static let idealHeight: CGFloat = 760
-  static let sidebarWidth: CGFloat = 204
+  static let sidebarWidth: CGFloat = 300
   static let focusedContentWidth: CGFloat = 820
   static let detailedContentWidth: CGFloat = 820
 }
@@ -523,6 +506,10 @@ struct WorkbenchFocusRingButtonStyle: ButtonStyle {
   var lineWidth: CGFloat = 1.5
 
   @Environment(\.isFocused) private var isFocused
+  // Custom styles do not inherit the dimmed appearance that `.plain` applies,
+  // so disabled rows (for example "文件变更" without a repository) must fade
+  // here or they look actionable.
+  @Environment(\.isEnabled) private var isEnabled
 
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
@@ -533,7 +520,7 @@ struct WorkbenchFocusRingButtonStyle: ButtonStyle {
             lineWidth: isFocused ? lineWidth : 0
           )
       }
-      .opacity(configuration.isPressed ? 0.82 : 1)
+      .opacity(!isEnabled ? 0.4 : configuration.isPressed ? 0.82 : 1)
   }
 }
 
@@ -623,5 +610,72 @@ extension View {
   ) -> some View {
     buttonStyle(.borderedProminent)
       .tint(tint)
+  }
+}
+
+/// Left-aligned wrapping layout for chips and tags. Wrapping keeps every
+/// option visible in narrow panes instead of hiding them behind a horizontal
+/// scroller.
+struct WorkbenchFlowLayout: Layout {
+  var horizontalSpacing: CGFloat = WorkbenchSpacing.icon
+  var verticalSpacing: CGFloat = WorkbenchSpacing.icon
+
+  func sizeThatFits(
+    proposal: ProposedViewSize,
+    subviews: Subviews,
+    cache: inout ()
+  ) -> CGSize {
+    let rows = rows(for: subviews, maxWidth: proposal.width ?? .infinity)
+    let width = rows.map(\.width).max() ?? 0
+    let gaps = verticalSpacing * CGFloat(max(rows.count - 1, 0))
+    let height = rows.map(\.height).reduce(0, +) + gaps
+    return CGSize(width: proposal.width ?? width, height: height)
+  }
+
+  func placeSubviews(
+    in bounds: CGRect,
+    proposal: ProposedViewSize,
+    subviews: Subviews,
+    cache: inout ()
+  ) {
+    var y = bounds.minY
+    for row in rows(for: subviews, maxWidth: bounds.width) {
+      var x = bounds.minX
+      for index in row.indices {
+        let size = subviews[index].sizeThatFits(.unspecified)
+        subviews[index].place(
+          at: CGPoint(x: x, y: y),
+          proposal: ProposedViewSize(size)
+        )
+        x += size.width + horizontalSpacing
+      }
+      y += row.height + verticalSpacing
+    }
+  }
+
+  private struct Row {
+    var indices: [Int] = []
+    var width: CGFloat = 0
+    var height: CGFloat = 0
+  }
+
+  private func rows(for subviews: Subviews, maxWidth: CGFloat) -> [Row] {
+    var rows: [Row] = []
+    var current = Row()
+    for index in subviews.indices {
+      let size = subviews[index].sizeThatFits(.unspecified)
+      let proposedWidth =
+        current.indices.isEmpty ? size.width : current.width + horizontalSpacing + size.width
+      if !current.indices.isEmpty, proposedWidth > maxWidth {
+        rows.append(current)
+        current = Row()
+      }
+      current.width =
+        current.indices.isEmpty ? size.width : current.width + horizontalSpacing + size.width
+      current.height = max(current.height, size.height)
+      current.indices.append(index)
+    }
+    if !current.indices.isEmpty { rows.append(current) }
+    return rows
   }
 }

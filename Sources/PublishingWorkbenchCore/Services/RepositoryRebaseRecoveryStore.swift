@@ -1,4 +1,5 @@
 import Foundation
+import PublishingSyncCore
 
 enum RepositoryRebaseRecoveryStoreError: Error, LocalizedError, Sendable, Equatable {
   case invalidDirectory

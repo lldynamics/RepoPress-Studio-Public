@@ -24,6 +24,19 @@ final class SettingsTaskGroupTests: XCTestCase {
     XCTAssertTrue(SettingsTaskGroup.currentSite.tabs.allSatisfy(\.isSiteScoped))
   }
 
+  func testAppPreferencesOpenInTheSettingsWindowAndSiteSettingsStayInline() {
+    XCTAssertTrue(SettingsNavigation.opensInSettingsWindow(nil))
+    for tab in SettingsTaskGroup.application.tabs {
+      XCTAssertTrue(SettingsNavigation.opensInSettingsWindow(.tab(tab)), "\(tab)")
+    }
+    for tab in SettingsTaskGroup.currentSite.tabs {
+      XCTAssertFalse(SettingsNavigation.opensInSettingsWindow(.tab(tab)), "\(tab)")
+    }
+    XCTAssertTrue(SettingsNavigation.opensInSettingsWindow(.ai(.connection)))
+    XCTAssertFalse(SettingsNavigation.opensInSettingsWindow(.ai(.writingStyle)))
+    XCTAssertFalse(SettingsNavigation.opensInSettingsWindow(.token(.repository)))
+  }
+
   func testEachTabResolvesBackToItsTaskGroup() {
     for group in SettingsTaskGroup.allCases {
       for tab in group.tabs {

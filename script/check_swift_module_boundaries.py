@@ -21,9 +21,9 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parent.parent
-POLICY_VERSION = "swift-module-boundaries-v3"
+POLICY_VERSION = "swift-module-boundaries-v4"
 SCHEMA_VERSION = "2"
-TOOL_VERSION = "3"
+TOOL_VERSION = "4"
 
 GOVERNED_DEPENDENCIES: dict[str, set[str]] = {
     "PublishingCoreSupport": set(),
@@ -33,6 +33,9 @@ GOVERNED_DEPENDENCIES: dict[str, set[str]] = {
     "PublishingAICore": {"PublishingCoreSupport"},
     "PublishingAgentContracts": {"PublishingAICore"},
     "PublishingKnowledgeCore": {"PublishingCoreSupport", "PublishingMarkdownCore"},
+    "PublishingPreviewCore": {"PublishingCoreSupport", "PublishingDomainContracts"},
+    "PublishingBackupCore": {"PublishingCoreSupport", "PublishingDomainContracts"},
+    "PublishingSyncCore": {"PublishingCoreSupport", "PublishingGitCore"},
     "PublishingWorkbenchCore": {
         "PublishingAICore",
         "PublishingAgentContracts",
@@ -41,6 +44,9 @@ GOVERNED_DEPENDENCIES: dict[str, set[str]] = {
         "PublishingGitCore",
         "PublishingKnowledgeCore",
         "PublishingMarkdownCore",
+        "PublishingPreviewCore",
+        "PublishingBackupCore",
+        "PublishingSyncCore",
     },
     "PersonalSitePublisherMac": {
         "PublishingAICore",
@@ -50,6 +56,9 @@ GOVERNED_DEPENDENCIES: dict[str, set[str]] = {
         "PublishingKnowledgeCore",
         "PublishingMarkdownCore",
         "PublishingWorkbenchCore",
+        "PublishingPreviewCore",
+        "PublishingBackupCore",
+        "PublishingSyncCore",
     },
 }
 EXPECTED_PRODUCTION_TARGET_TYPES = {
@@ -60,6 +69,9 @@ EXPECTED_PRODUCTION_TARGET_TYPES = {
     "PublishingAICore": "regular",
     "PublishingAgentContracts": "regular",
     "PublishingKnowledgeCore": "regular",
+    "PublishingPreviewCore": "regular",
+    "PublishingBackupCore": "regular",
+    "PublishingSyncCore": "regular",
     "PublishingWorkbenchCore": "regular",
     "PersonalSitePublisherMac": "executable",
 }
@@ -83,6 +95,9 @@ TEST_TARGET_DEPENDENCIES: dict[str, set[str]] = {
         "PublishingKnowledgeCore",
         "PublishingMarkdownCore",
         "PublishingWorkbenchCore",
+        "PublishingPreviewCore",
+        "PublishingBackupCore",
+        "PublishingSyncCore",
     },
     "PersonalSitePublisherMacTests": {
         "PersonalSitePublisherMac",
@@ -93,6 +108,9 @@ TEST_TARGET_DEPENDENCIES: dict[str, set[str]] = {
         "PublishingKnowledgeCore",
         "PublishingMarkdownCore",
         "PublishingWorkbenchCore",
+        "PublishingPreviewCore",
+        "PublishingBackupCore",
+        "PublishingSyncCore",
     },
 }
 EXPECTED_PRODUCTS = {
@@ -104,11 +122,14 @@ EXPECTED_PRODUCTS = {
         "targets": {"PublishingAgentContracts"},
     },
     "PublishingKnowledgeCore": {"type": "library", "targets": {"PublishingKnowledgeCore"}},
+    "PublishingPreviewCore": {"type": "library", "targets": {"PublishingPreviewCore"}},
+    "PublishingBackupCore": {"type": "library", "targets": {"PublishingBackupCore"}},
+    "PublishingSyncCore": {"type": "library", "targets": {"PublishingSyncCore"}},
     "PublishingWorkbenchCore": {"type": "library", "targets": {"PublishingWorkbenchCore"}},
     "PersonalSitePublisherMac": {"type": "executable", "targets": {"PersonalSitePublisherMac"}},
 }
 EXPECTED_EXTERNAL_PRODUCTS: dict[str, dict[str, str]] = {
-    "PublishingCoreSupport": {},
+    "PublishingCoreSupport": {"RepoPressCore": "RepoPressShared"},
     "PublishingDomainContracts": {},
     "PublishingMarkdownCore": {
         "SwiftTreeSitter": "swift-tree-sitter",
@@ -118,7 +139,10 @@ EXPECTED_EXTERNAL_PRODUCTS: dict[str, dict[str, str]] = {
     "PublishingGitCore": {},
     "PublishingAICore": {},
     "PublishingAgentContracts": {},
-    "PublishingKnowledgeCore": {},
+    "PublishingKnowledgeCore": {"RepoPressAppleSupport": "RepoPressShared"},
+    "PublishingPreviewCore": {},
+    "PublishingBackupCore": {},
+    "PublishingSyncCore": {},
     "PublishingWorkbenchCore": {},
     "PersonalSitePublisherMac": {"Sparkle": "Sparkle"},
 }
@@ -132,6 +156,8 @@ EXTERNAL_PRODUCT_MODULES = {
     "SwiftTreeSitterLayer": {"SwiftTreeSitterLayer"},
     "TreeSitterMarkdown": {"TreeSitterMarkdown", "TreeSitterMarkdownInline"},
     "Sparkle": {"Sparkle"},
+    "RepoPressCore": {"RepoPressCore"},
+    "RepoPressAppleSupport": {"RepoPressAppleSupport"},
 }
 UMBRELLA_SOURCE = "Sources/PublishingWorkbenchCore/Support/PublishingCoreModuleExports.swift"
 LEAF_TARGETS = {
@@ -142,6 +168,9 @@ LEAF_TARGETS = {
     "PublishingAICore",
     "PublishingAgentContracts",
     "PublishingKnowledgeCore",
+    "PublishingPreviewCore",
+    "PublishingBackupCore",
+    "PublishingSyncCore",
 }
 LEAF_TEST_TARGETS = {
     f"{target_name}Tests"
@@ -156,6 +185,9 @@ CORE_SOURCE_TARGETS = (
     "PublishingAICore",
     "PublishingAgentContracts",
     "PublishingKnowledgeCore",
+    "PublishingPreviewCore",
+    "PublishingBackupCore",
+    "PublishingSyncCore",
     "PublishingWorkbenchCore",
 )
 EXPECTED_EXPORTS = {

@@ -18,7 +18,9 @@ struct SiteMaintenanceSnapshotPlaceholder: View {
         : (errorMessage.map {
           WorkbenchStatePresentation(kind: .failure(reason: $0))
         } ?? WorkbenchStatePresentation(kind: .empty)),
-      density: .compactPane,
+      // The placeholder is the whole page, so it is centered like other
+      // full-page empty states rather than pinned to the top.
+      density: .fullPage,
       detail: errorMessage == nil && !isRefreshing
         ? LocalizedStringKey("点击生成后才会扫描标签、旧文和链接，避免打开页面时自动重算。")
         : nil,

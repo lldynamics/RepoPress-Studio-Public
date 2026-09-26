@@ -51,16 +51,16 @@ public struct RepositoryScanReport: Codable, Hashable, Sendable {
 
   public var statusTitle: String {
     if !preflightIssues.contains(where: { $0.severity == .error }) {
-      return "仓库规则可用"
+      return CoreL10n.text("仓库规则可用")
     }
-    return "仓库需要处理"
+    return CoreL10n.text("仓库需要处理")
   }
 
   public var syncStatusTitle: String {
     guard hasGitDirectory else {
-      return "未发现 Git 仓库"
+      return CoreL10n.text("未发现 Git 仓库")
     }
-    return branchStatus?.syncStatusTitle ?? "未识别同步状态"
+    return branchStatus?.syncStatusTitle ?? CoreL10n.text("未识别同步状态")
   }
 
   public func preflightIssues(requiringDeploymentReadiness: Bool) -> [PreflightIssue] {

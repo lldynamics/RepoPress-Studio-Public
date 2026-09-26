@@ -56,21 +56,22 @@ extension KnowledgeDatabase {
 
   func noteDocumentIDs(includeArchived: Bool) throws -> [UUID] {
     try withLock {
-      let sql = includeArchived
+      let sql =
+        includeArchived
         ? """
-          SELECT d.id
-          FROM knowledge_documents d
-          LEFT JOIN knowledge_note_metadata m ON m.document_id = d.id
-          WHERE d.kind = 'note' AND d.is_archived = 0
-          ORDER BY d.imported_at DESC, d.id ASC;
-          """
+        SELECT d.id
+        FROM knowledge_documents d
+        LEFT JOIN knowledge_note_metadata m ON m.document_id = d.id
+        WHERE d.kind = 'note' AND d.is_archived = 0
+        ORDER BY d.imported_at DESC, d.id ASC;
+        """
         : """
-          SELECT d.id
-          FROM knowledge_documents d
-          LEFT JOIN knowledge_note_metadata m ON m.document_id = d.id
-          WHERE d.kind = 'note' AND d.is_archived = 0 AND COALESCE(m.is_archived, 0) = 0
-          ORDER BY d.imported_at DESC, d.id ASC;
-          """
+        SELECT d.id
+        FROM knowledge_documents d
+        LEFT JOIN knowledge_note_metadata m ON m.document_id = d.id
+        WHERE d.kind = 'note' AND d.is_archived = 0 AND COALESCE(m.is_archived, 0) = 0
+        ORDER BY d.imported_at DESC, d.id ASC;
+        """
       return try withCachedStatementUnlocked(sql) { statement in
         var ids: [UUID] = []
         while sqlite3_step(statement) == SQLITE_ROW {

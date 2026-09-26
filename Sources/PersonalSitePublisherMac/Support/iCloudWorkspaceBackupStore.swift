@@ -1,4 +1,5 @@
 import Dispatch
+import PublishingBackupCore
 import Foundation
 import PublishingWorkbenchCore
 

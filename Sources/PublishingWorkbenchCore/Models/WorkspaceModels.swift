@@ -75,13 +75,13 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
     case .library:
       return "2"
     case .rss:
-      return "9"
-    case .sync:
       return "3"
+    case .sync:
+      return "4"
     case .images:
       return "6"
     case .contentHealth:
-      return "4"
+      return "5"
     }
   }
 

@@ -1,3 +1,4 @@
+import PublishingPreviewCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -62,7 +63,12 @@ struct LocalSitePreviewPanelView: View {
 
       if previewURL != nil {
         Button {
-          state.reload()
+          if let disposition = state.reload() {
+            pendingAuthorizationRequest = LocalSitePreviewTrustConfirmationPolicy.request(
+              from: disposition,
+              entryPoint: .panel
+            )
+          }
         } label: {
           Label("刷新", systemImage: "arrow.clockwise")
         }
@@ -104,7 +110,17 @@ struct LocalSitePreviewPanelView: View {
 
   @ViewBuilder
   private var content: some View {
-    if let plan = state.plan, state.runtimeStatus.isRunning {
+    if let plan = state.plan, plan.siteKind == .quartz,
+      state.runtimeStatus.isRunning, !state.runtimeStatus.isReachable
+    {
+      VStack(spacing: 16) {
+        ProgressView()
+        Text("正在构建 Quartz 4 静态预览…")
+          .foregroundStyle(.secondary)
+        statusBar
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+    } else if let plan = state.plan, state.runtimeStatus.isRunning {
       VStack(spacing: 0) {
         LocalSitePreviewWebView(
           url: state.runtimeStatus.previewURL ?? plan.previewURL,
@@ -223,6 +239,24 @@ struct LocalSitePreviewPanelView: View {
             .font(.caption)
             .foregroundStyle(issue.severity.isBlocking ? WorkbenchTheme.risk : .secondary)
           }
+        }
+      }
+
+      if !state.runtimeStatus.isRunning,
+        !state.runtimeStatus.recentLogLines.isEmpty
+      {
+        VStack(alignment: .leading, spacing: 8) {
+          Text("SSG / 构建失败详情")
+            .font(.callout.weight(.semibold))
+          ForEach(state.runtimeStatus.diagnostics) { diagnostic in
+            Text(verbatim: "\(diagnostic.relativePath):\(diagnostic.line): \(diagnostic.message)")
+              .font(.caption.monospaced())
+              .textSelection(.enabled)
+          }
+          Text(verbatim: state.runtimeStatus.recentLogLines.suffix(20).joined(separator: "\n"))
+            .font(.caption.monospaced())
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
       }
 

@@ -72,7 +72,8 @@ public struct PublishPackageFile: Identifiable, Codable, Hashable, Sendable {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     kind = try container.decode(PublishFileKind.self, forKey: .kind)
     // Payloads written before delete operations existed omitted this key.
-    operation = try container.decodeIfPresent(PublishFileOperation.self, forKey: .operation)
+    operation =
+      try container.decodeIfPresent(PublishFileOperation.self, forKey: .operation)
       ?? .upsert
     repositoryPath = try container.decode(String.self, forKey: .repositoryPath)
     content = try container.decodeIfPresent(String.self, forKey: .content)

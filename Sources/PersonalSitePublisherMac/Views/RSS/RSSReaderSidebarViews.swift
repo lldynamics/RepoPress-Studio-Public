@@ -94,7 +94,9 @@ struct RSSFeedSidebar: View {
         } label: {
           WorkspaceSidebarHeaderIcon("plus")
         }
-        .workbenchProminentActionStyle()
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .controlSize(.small)
         .help("添加 RSS 或 Atom 订阅")
         .accessibilityLabel("添加 RSS 或 Atom 订阅")
         .accessibilityIdentifier("rss-add-subscription")

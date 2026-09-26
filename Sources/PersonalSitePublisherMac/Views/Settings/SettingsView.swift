@@ -12,6 +12,12 @@ struct SettingsView: View {
   let workspaceDestination: SettingsDestination?
   let workspaceSubsection: SettingsSubsection?
   let workspaceNavigationRequestID: UUID?
+  /// The groups this presentation owns. App preferences live in the standard
+  /// Settings window; site configuration lives in the main window's workspace.
+  let groups: [SettingsTaskGroup]
+  /// Receives destinations that belong to the other presentation, so search
+  /// results and cross-links still reach every setting.
+  let openOutOfScopeDestination: ((SettingsDestination) -> Void)?
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
@@ -41,13 +47,22 @@ struct SettingsView: View {
     closeWorkspace: (() -> Void)? = nil,
     workspaceDestination: SettingsDestination? = nil,
     workspaceSubsection: SettingsSubsection? = nil,
-    workspaceNavigationRequestID: UUID? = nil
+    workspaceNavigationRequestID: UUID? = nil,
+    groups: [SettingsTaskGroup] = SettingsTaskGroup.allCases,
+    openOutOfScopeDestination: ((SettingsDestination) -> Void)? = nil
   ) {
-    let initialRoute =
+    let groups = groups.isEmpty ? SettingsTaskGroup.allCases : groups
+    let requestedRoute =
       SettingsRoute.workspace(
         destination: workspaceDestination,
         subsection: workspaceSubsection
       ) ?? Self.initialSettingsRoute()
+    let initialRoute =
+      groups.contains(SettingsTaskGroup.group(for: requestedRoute.tab))
+      ? requestedRoute
+      : SettingsRoute.tab(groups.flatMap(\.tabs).first ?? requestedRoute.tab)
+    self.groups = groups
+    self.openOutOfScopeDestination = openOutOfScopeDestination
     self.store = store
     _settingsState = ObservedObject(wrappedValue: store.settings)
     _persistenceStatus = ObservedObject(wrappedValue: store.persistenceStatus)
@@ -76,9 +91,6 @@ struct SettingsView: View {
       )
 
       VStack(spacing: 0) {
-        settingsWorkspaceHeader(presentation: presentation)
-        Divider()
-
         settingsColumns(presentation: presentation)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
@@ -183,43 +195,29 @@ struct SettingsView: View {
       || persistenceStatus.isRecoveryWriteProtected
   }
 
-  private func settingsWorkspaceHeader(
-    presentation: SettingsWorkspaceLayout.Presentation
-  ) -> some View {
-    HStack(spacing: WorkbenchSpacing.section) {
-      if let closeWorkspace {
-        Button(action: closeWorkspace) {
-          Label("返回工作台", systemImage: "chevron.left")
-            .font(.callout.weight(.medium))
-        }
-        .buttonStyle(.bordered)
-        .controlSize(.regular)
-        .keyboardShortcut(.cancelAction)
-        .help("返回之前的工作区和文章")
-        .accessibilityIdentifier("settings-return-to-workbench")
-      } else {
-        Label("设置", systemImage: "gearshape")
-          .font(.headline)
-      }
-
-      Spacer(minLength: WorkbenchSpacing.content)
-    }
-    .padding(.horizontal, WorkbenchSpacing.content)
-    .padding(.vertical, WorkbenchSpacing.card)
-    .frame(minHeight: presentation.workspaceHeaderHeight)
-    .background(Color(nsColor: .windowBackgroundColor))
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("settings-workspace-header")
-  }
-
   private func settingsSidebar(
     presentation: SettingsWorkspaceLayout.Presentation
   ) -> some View {
     return VStack(alignment: .leading, spacing: 0) {
-      settingsSidebarSearchField(minimumHeight: presentation.searchFieldHeight)
-        .padding(.horizontal, WorkbenchSpacing.content)
-        .padding(.top, WorkbenchSpacing.content)
-        .padding(.bottom, WorkbenchSpacing.card)
+      HStack(spacing: WorkbenchSpacing.card) {
+        if let closeWorkspace {
+          Button(action: closeWorkspace) {
+            Label("返回工作台", systemImage: "chevron.left")
+              .labelStyle(.iconOnly)
+              .frame(width: presentation.searchFieldHeight, height: presentation.searchFieldHeight)
+          }
+          .buttonStyle(.bordered)
+          .keyboardShortcut(.cancelAction)
+          .help("返回之前的工作区和文章")
+          .accessibilityLabel("返回工作台")
+          .accessibilityIdentifier("settings-return-to-workbench")
+        }
+
+        settingsSidebarSearchField(minimumHeight: presentation.searchFieldHeight)
+      }
+      .padding(.horizontal, WorkbenchSpacing.content)
+      .padding(.top, WorkbenchSpacing.content)
+      .padding(.bottom, WorkbenchSpacing.card)
 
       if selectedSettingsTab.isSiteScoped {
         profileBar
@@ -250,12 +248,32 @@ struct SettingsView: View {
       SettingsNavigationList(
         searchText: searchSession.sidebarQuery,
         searchItems: matchingSearchItems,
+        groups: groups,
         selection: settingsRouteSelection,
         tabsNeedingAttention: tabsNeedingAttention,
         rowVerticalPadding: presentation.sidebarRowVerticalPadding,
         subsectionVerticalPadding: presentation.subsectionRowVerticalPadding,
         selectSearchItem: selectSettingsSearchItem
       )
+
+      if let openOutOfScopeDestination, let otherTab = otherScopeEntryTab {
+        Divider()
+        Button {
+          openOutOfScopeDestination(.tab(otherTab))
+        } label: {
+          Label(
+            otherTab.isSiteScoped ? String(localized: "站点设置…") : String(localized: "应用设置…"),
+            systemImage: otherTab.isSiteScoped ? "globe" : "gearshape"
+          )
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.accentColor)
+        .padding(.horizontal, WorkbenchSpacing.content)
+        .padding(.vertical, WorkbenchSpacing.card)
+        .accessibilityIdentifier("settings-open-other-scope")
+      }
     }
     .frame(width: presentation.primarySidebarWidth)
     .workbenchGlassContainer(material: .thinMaterial, drawsBorder: false)
@@ -315,6 +333,14 @@ struct SettingsView: View {
     )
     searchSession.open(item)
     isSearchFocused = false
+  }
+
+  /// First page of the settings area this presentation does not show.
+  private var otherScopeEntryTab: SettingsTab? {
+    SettingsTaskGroup.allCases
+      .filter { !groups.contains($0) }
+      .flatMap(\.tabs)
+      .first
   }
 
   private var tabsNeedingAttention: Set<SettingsTab> {
@@ -405,7 +431,8 @@ struct SettingsView: View {
   }
 
   /// Each top-level page owns exactly one native vertical scroll container:
-  /// Form-backed pages use their Form, while data management owns a ScrollView.
+  /// Form-backed pages use their Form, while the site overview and data
+  /// management each own a ScrollView.
   @ViewBuilder
   private var settingsPageContent: some View {
     ScrollViewReader { proxy in
@@ -576,6 +603,12 @@ struct SettingsView: View {
     healthDestination: SettingsConfigurationHealthDestination?,
     targetRoute: SettingsRoute? = nil
   ) {
+    if !groups.contains(SettingsTaskGroup.group(for: destination.tab)),
+      let openOutOfScopeDestination
+    {
+      openOutOfScopeDestination(destination)
+      return
+    }
     apply(
       navigationSession.selectDestination(
         destination,
@@ -696,7 +729,7 @@ private struct SettingsSaveStatusBarOverlay: View {
 
 enum SettingsSidebarPresentation {
   static let minimumWidth: CGFloat = 232
-  static let maximumWidth: CGFloat = 272
+  static let maximumWidth: CGFloat = 320
   static var attentionBadgeTitle: String { String(localized: "需配置") }
   static var attentionAccessibilityValue: String { String(localized: "需要配置") }
 
@@ -709,7 +742,6 @@ enum SettingsWorkspaceLayout {
   struct Presentation {
     let usesCompactVerticalMetrics: Bool
     let primarySidebarWidth: CGFloat
-    let workspaceHeaderHeight: CGFloat
     let searchFieldHeight: CGFloat
     let pageHeaderHeight: CGFloat
     let sidebarRowVerticalPadding: CGFloat
@@ -717,6 +749,7 @@ enum SettingsWorkspaceLayout {
   }
 
   static let compactHeightThreshold: CGFloat = 720
+  static let minimumDetailWidth: CGFloat = 560
 
   static func presentation(
     width: CGFloat,
@@ -724,14 +757,18 @@ enum SettingsWorkspaceLayout {
     scaledSidebarWidth: CGFloat,
     density: WorkbenchInterfaceDensity = .comfortable
   ) -> Presentation {
-    let compactPrimaryWidth = SettingsSidebarPresentation.clampedWidth(scaledSidebarWidth)
+    let preferredSidebarWidth = SettingsSidebarPresentation.clampedWidth(scaledSidebarWidth)
+    let availableSidebarWidth = max(
+      SettingsSidebarPresentation.minimumWidth,
+      width - minimumDetailWidth
+    )
+    let compactPrimaryWidth = min(preferredSidebarWidth, availableSidebarWidth)
     let usesCompactVerticalMetrics =
       density == .compact || height < compactHeightThreshold
 
     return Presentation(
       usesCompactVerticalMetrics: usesCompactVerticalMetrics,
       primarySidebarWidth: compactPrimaryWidth,
-      workspaceHeaderHeight: usesCompactVerticalMetrics ? 48 : 52,
       searchFieldHeight: usesCompactVerticalMetrics ? 32 : 36,
       pageHeaderHeight: usesCompactVerticalMetrics ? 68 : 76,
       sidebarRowVerticalPadding: usesCompactVerticalMetrics ? 4 : 6,

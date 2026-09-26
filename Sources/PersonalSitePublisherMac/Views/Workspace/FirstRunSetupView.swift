@@ -394,12 +394,13 @@ struct FirstRunSetupView: View {
         detail: String(localized: "不需要先理解仓库结构；选择后只会看到这条路径需要的下一步。")
       )
 
+      // One column per path, so removing or adding a path never leaves an
+      // empty slot in the grid.
       LazyVGrid(
-        columns: [
-          GridItem(.flexible(), spacing: 12),
-          GridItem(.flexible(), spacing: 12),
-          GridItem(.flexible(), spacing: 12),
-        ],
+        columns: Array(
+          repeating: GridItem(.flexible(), spacing: 12),
+          count: FirstRunSetupPath.allCases.count
+        ),
         spacing: 12
       ) {
         ForEach(FirstRunSetupPath.allCases) { path in
@@ -627,7 +628,7 @@ struct FirstRunSetupView: View {
 
         Text(
           !isRepositorySetupActive
-            ? String(localized: "下次启动仍可从这三个入口开始。")
+            ? String(localized: "下次启动仍可从这里选择开始方式。")
             : String(localized: "退出后，本次向导中未完成的设置不会保存；已有工作台配置保持不变。之后可重新设置。")
         )
         .font(.workbenchSupporting)

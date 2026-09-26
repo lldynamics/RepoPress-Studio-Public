@@ -228,7 +228,8 @@ public struct GitCommandRunner: Sendable {
         }
       }
 
-      let inputFinished = inputData == nil
+      let inputFinished =
+        inputData == nil
         || inputWriteCompleted.wait(
           timeout: processFinished ? deadline : .now() + 1
         ) == .success
@@ -312,7 +313,8 @@ public struct GitCommandRunner: Sendable {
     }
     return GitCommandResult(
       terminationStatus: didFinish
-        ? (inputWriteError != nil && process.terminationStatus == 0 ? 74 : process.terminationStatus)
+        ? (inputWriteError != nil && process.terminationStatus == 0
+          ? 74 : process.terminationStatus)
         : 124,
       standardOutput: standardOutput,
       standardError: standardError,
@@ -1023,7 +1025,8 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
       returning: GitCommandResult(
         terminationStatus: timedOut
           ? 124
-          : (cancelled ? 130
+          : (cancelled
+            ? 130
             : (inputWriteError != nil && terminationStatus == 0 ? 74 : terminationStatus)),
         standardOutput: standardOutput,
         standardError: standardError,

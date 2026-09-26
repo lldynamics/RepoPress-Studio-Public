@@ -255,9 +255,9 @@ struct WorkspaceTaskMetadataSection: View {
   private var provenanceHelpText: String {
     switch selectedProvenance {
     case .humanOriginal:
-      return "真人原稿不会写入来源标签，也不会生成创作说明。"
+      return String(localized: "真人原稿不会写入来源标签，也不会生成创作说明。")
     case .aiAssisted, .aiAuthored, .hybrid:
-      return "RepoPress 会维护对应标签，并在正文顶部生成可见的创作说明。"
+      return String(localized: "RepoPress 会维护对应标签，并在正文顶部生成可见的创作说明。")
     }
   }
 
@@ -660,7 +660,10 @@ struct WorkspaceTaskSEOSection: View {
             isExpanded: $showsSocialCards
           ) {
             ForEach(snapshot.cards) { card in
-              socialPreviewCard(card)
+              VStack(alignment: .leading, spacing: 8) {
+                socialPreviewBudgetSummary(card)
+                socialPreviewCard(card)
+              }
             }
           }
 
@@ -819,49 +822,250 @@ struct WorkspaceTaskSEOSection: View {
     return "\(snapshot.cards.count) 张卡片"
   }
 
-  private func socialPreviewCard(_ card: SEOSocialPreviewCard) -> some View {
-    VStack(alignment: .leading, spacing: 5) {
+  private func socialPreviewBudgetSummary(_ card: SEOSocialPreviewCard) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
       Label(card.kind.localizedDisplayName, systemImage: card.kind.systemImage)
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
-      HStack(spacing: 8) {
-        Label(
-          card.titleBudgetText,
-          systemImage: card.isTitleWithinBudget ? "checkmark.circle" : "exclamationmark.triangle"
+
+      HStack(alignment: .firstTextBaseline, spacing: 10) {
+        socialPreviewBudgetLabel(
+          fieldName: "标题",
+          countText: card.titleBudgetText,
+          limit: card.titleCharacterLimit,
+          isWithinBudget: card.isTitleWithinBudget
         )
-        .foregroundStyle(card.isTitleWithinBudget ? Color.secondary : WorkbenchTheme.warning)
-        Label(
-          card.descriptionBudgetText,
-          systemImage: card.isDescriptionWithinBudget
-            ? "checkmark.circle" : "exclamationmark.triangle"
+        socialPreviewBudgetLabel(
+          fieldName: "描述",
+          countText: card.descriptionBudgetText,
+          limit: card.descriptionCharacterLimit,
+          isWithinBudget: card.isDescriptionWithinBudget
         )
-        .foregroundStyle(card.isDescriptionWithinBudget ? Color.secondary : WorkbenchTheme.warning)
-        if let imageAspectRatio = card.imageAspectRatio {
-          Label(imageAspectRatio, systemImage: "aspectratio")
-            .foregroundStyle(.secondary)
-        }
-        if let imageDimensions = card.imageDimensions {
-          Label(imageDimensions.workbenchDimensionText, systemImage: "ruler")
-            .foregroundStyle(.secondary)
-        }
       }
-      .font(.caption)
+
+      if let imageAspectRatio = card.imageAspectRatio {
+        Text("图片建议比例：\(imageAspectRatio)。\(card.imageGuidance)")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .padding(.horizontal, 2)
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel("\(card.kind.localizedDisplayName) 内容预算")
+    .accessibilityValue(
+      "标题 \(card.titleBudgetText) 字符，建议不超过 \(card.titleCharacterLimit) 字符。描述 \(card.descriptionBudgetText) 字符，建议不超过 \(card.descriptionCharacterLimit) 字符。"
+    )
+  }
+
+  private func socialPreviewBudgetLabel(
+    fieldName: String,
+    countText: String,
+    limit: Int,
+    isWithinBudget: Bool
+  ) -> some View {
+    Label {
+      Text("\(fieldName) \(countText) 字符")
+    } icon: {
+      Image(systemName: isWithinBudget ? "checkmark.circle" : "exclamationmark.triangle")
+    }
+    .font(.caption.monospacedDigit())
+    .foregroundStyle(isWithinBudget ? Color.secondary : WorkbenchTheme.warning)
+    .help("\(fieldName)建议不超过 \(limit) 字符")
+    .accessibilityLabel("\(fieldName)字符数")
+    .accessibilityValue("\(countText) 字符，建议不超过 \(limit) 字符")
+  }
+
+  @ViewBuilder
+  private func socialPreviewCard(_ card: SEOSocialPreviewCard) -> some View {
+    switch card.kind {
+    case .search:
+      searchResultPreview(card)
+    case .openGraph:
+      openGraphPreview(card)
+    case .twitter:
+      xCardPreview(card)
+    }
+  }
+
+  private func searchResultPreview(_ card: SEOSocialPreviewCard) -> some View {
+    VStack(alignment: .leading, spacing: 5) {
+      HStack(spacing: 5) {
+        Image(systemName: "globe")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        Text(card.siteName)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        Text(card.urlText)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+      }
       Text(card.title)
-        .font(.caption.weight(.semibold))
+        .font(.callout.weight(.medium))
+        .foregroundStyle(.tint)
         .workbenchTruncatedIdentity(card.title, lineLimit: 2)
       Text(card.description)
         .font(.caption)
         .foregroundStyle(.secondary)
         .lineLimit(3)
     }
-    .padding(8)
+    .padding(12)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(.background, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .overlay {
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+        .strokeBorder(.quaternary)
+    }
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel("搜索结果预览")
+    .accessibilityValue(socialPreviewAccessibilityValue(card))
+  }
+
+  private func openGraphPreview(_ card: SEOSocialPreviewCard) -> some View {
+    let imageDescription = socialPreviewImageAccessibilityText(card)
+    return VStack(alignment: .leading, spacing: 0) {
+      socialPreviewImage(card, placeholder: "Open Graph 图片")
+      VStack(alignment: .leading, spacing: 5) {
+        Text("\(card.siteName) · \(card.urlText)")
+          .font(.caption.weight(.medium))
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+        Text(card.title)
+          .font(.callout.weight(.semibold))
+          .workbenchTruncatedIdentity(card.title, lineLimit: 2)
+        Text(card.description)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(3)
+      }
+      .padding(12)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
     )
+    .overlay {
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+        .strokeBorder(.quaternary)
+    }
+    .clipShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
     .accessibilityElement(children: .combine)
-    .accessibilityLabel("社交卡片：\(card.kind.localizedDisplayName)")
-    .accessibilityValue("\(card.title)。\(card.description)")
+    .accessibilityLabel("Open Graph 链接卡片预览")
+    .accessibilityValue(
+      socialPreviewAccessibilityValue(card, imageDescription: imageDescription)
+    )
+  }
+
+  private func xCardPreview(_ card: SEOSocialPreviewCard) -> some View {
+    let imageDescription = socialPreviewImageAccessibilityText(card)
+    return VStack(alignment: .leading, spacing: 0) {
+      HStack {
+        Text("𝕏")
+          .font(.title3.weight(.bold))
+        Text(card.siteName)
+          .font(.caption.weight(.semibold))
+        Spacer(minLength: 0)
+      }
+      .padding(.horizontal, 12)
+      .padding(.top, 10)
+
+      socialPreviewImage(card, placeholder: "X 卡片图片")
+        .padding(.top, 8)
+
+      VStack(alignment: .leading, spacing: 4) {
+        Text(card.urlText)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+        Text(card.title)
+          .font(.callout.weight(.semibold))
+          .workbenchTruncatedIdentity(card.title, lineLimit: 2)
+        Text(card.description)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(2)
+      }
+      .padding(12)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+    )
+    .overlay {
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+        .strokeBorder(.quaternary)
+    }
+    .clipShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel("X 链接卡片预览")
+    .accessibilityValue(
+      socialPreviewAccessibilityValue(card, imageDescription: imageDescription)
+    )
+  }
+
+  private func socialPreviewAccessibilityValue(
+    _ card: SEOSocialPreviewCard,
+    imageDescription: String? = nil
+  ) -> String {
+    var parts = [
+      "站点 \(card.siteName)",
+      "地址 \(card.urlText)",
+      "标题 \(card.title)",
+      "描述 \(card.description)",
+    ]
+    if let imageDescription { parts.append(imageDescription) }
+    return parts.joined(separator: "，")
+  }
+
+  @ViewBuilder
+  private func socialPreviewImage(_ card: SEOSocialPreviewCard, placeholder: String) -> some View {
+    if let imagePath = socialPreviewImageFilePath(card),
+      let image = NSImage(contentsOfFile: imagePath)
+    {
+      Image(nsImage: image)
+        .resizable()
+        .scaledToFill()
+        .frame(maxWidth: .infinity)
+        .frame(height: 132)
+        .clipped()
+        .accessibilityHidden(true)
+    } else {
+      VStack(spacing: 6) {
+        Image(systemName: "photo")
+          .font(.title3)
+        Text(placeholder)
+          .font(.caption)
+      }
+      .foregroundStyle(.secondary)
+      .frame(maxWidth: .infinity)
+      .frame(height: 132)
+      .background(.quaternary)
+      .accessibilityHidden(true)
+    }
+  }
+
+  private func socialPreviewImageAccessibilityText(_ card: SEOSocialPreviewCard) -> String {
+    guard let imagePath = socialPreviewImageFilePath(card) else {
+      return "未设置社交图片"
+    }
+    guard NSImage(contentsOfFile: imagePath) != nil else {
+      return "社交图片不可用，显示占位"
+    }
+    if let imageAltText = card.imageAltText?.nilIfEmpty {
+      return "图片：\(imageAltText)"
+    }
+    return "已设置社交图片"
+  }
+
+  private func socialPreviewImageFilePath(_ card: SEOSocialPreviewCard) -> String? {
+    guard let imagePath = card.imagePath?.nilIfEmpty else { return nil }
+    // Only render a source image already attached to this draft. Metadata may
+    // contain arbitrary paths, which must not make the inspector read local files.
+    return draft.attachments.first(where: { $0.relativePublishPath == imagePath })?.sourceFilePath
   }
 
   private func socialPreviewReadinessSection(_ snapshot: SEOSocialPreviewSnapshot) -> some View {

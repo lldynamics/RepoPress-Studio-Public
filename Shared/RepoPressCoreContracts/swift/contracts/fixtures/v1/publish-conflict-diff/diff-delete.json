@@ -1,0 +1,36 @@
+{
+  "capability": "publish-conflict-diff",
+  "description": "Reports a remote deletion candidate.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "lines": [
+        {
+          "id": 0,
+          "kind": "same",
+          "marker": " ",
+          "text": "a"
+        },
+        {
+          "id": 1,
+          "kind": "remote",
+          "marker": "-",
+          "text": "b"
+        },
+        {
+          "id": 2,
+          "kind": "same",
+          "marker": " ",
+          "text": "c"
+        }
+      ],
+      "strategy": "lcs"
+    }
+  },
+  "id": "diff-delete",
+  "input": {
+    "local": "a\nc",
+    "remote": "a\nb\nc"
+  },
+  "validity": "valid"
+}

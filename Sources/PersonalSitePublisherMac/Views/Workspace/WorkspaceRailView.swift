@@ -20,10 +20,12 @@ struct WorkspaceTaskNavigation: View {
   }
 
   var body: some View {
-    VStack(spacing: 8) {
+    // Compact 2+2+1 grid: the navigation must not push the article list below
+    // the fold, so rows are 28 pt with 6 pt gutters.
+    VStack(spacing: 6) {
       ForEach(Array(WorkspaceNavigationRouteDescriptor.primaryRows.enumerated()), id: \.offset) {
         row in
-        HStack(spacing: row.offset == 0 ? 8 : 6) {
+        HStack(spacing: 6) {
           ForEach(row.element) { section in
             sectionButton(section, prominence: row.offset == 0 ? .primary : .compact)
           }
@@ -63,7 +65,7 @@ struct WorkspaceTaskNavigation: View {
           .multilineTextAlignment(.leading)
       }
       .foregroundStyle(isSelected ? WorkbenchTheme.navigationSelection : Color.primary)
-      .frame(maxWidth: .infinity, minHeight: 32)
+      .frame(maxWidth: .infinity, minHeight: 28)
       .padding(.horizontal, prominence.horizontalPadding)
       .background {
         RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)

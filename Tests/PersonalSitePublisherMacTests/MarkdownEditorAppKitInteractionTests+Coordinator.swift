@@ -337,6 +337,76 @@ final class MarkdownEditorAppKitInteractionCoordinatorTests: MarkdownEditorAppKi
     XCTAssertEqual(textWriteCount, 1)
   }
 
+  func testLongDocumentIMEPreeditKeepsHeightCacheUntilCommit() throws {
+    _ = NSApplication.shared
+    let source = (0..<120).map { index in
+      "段落\(index) " + String(repeating: "中文输入与长文排版。", count: 15)
+        + (index.isMultiple(of: 10) ? "\n```swift\nlet n = \(index)\n```\n![图](large.png)" : "")
+    }.joined(separator: "\n\n")
+    let coordinator = makeCoordinator(
+      source: source,
+      bodyMarkdown: source,
+      bodyUTF16Offset: 0
+    )
+    let scrollView = MarkdownEditorScrollView(
+      frame: NSRect(x: 0, y: 0, width: 680, height: 400)
+    )
+    let textView = DroppableMarkdownTextView.makeTextKit2(
+      containerSize: NSSize(width: 640, height: CGFloat.greatestFiniteMagnitude)
+    )
+    textView.textContainer?.widthTracksTextView = false
+    textView.textContainer?.heightTracksTextView = false
+    textView.string = source
+    scrollView.documentView = textView
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 680, height: 400),
+      styleMask: .titled,
+      backing: .buffered,
+      defer: false
+    )
+    window.contentView = scrollView
+    window.makeKeyAndOrderFront(nil)
+    defer { window.orderOut(nil) }
+    window.layoutIfNeeded()
+    let layoutManager = try XCTUnwrap(textView.textLayoutManager)
+    layoutManager.ensureLayout(for: layoutManager.documentRange)
+    scrollView.layout()
+    scrollView.invalidateDocumentHeight(immediately: true)
+    scrollView.layout()
+    let initialHeight = try XCTUnwrap(scrollView.cachedDocumentHeightForTesting)
+    XCTAssertGreaterThan(initialHeight, scrollView.contentSize.height)
+
+    let insertion = NSMaxRange((source as NSString).range(of: "段落60 "))
+    textView.setSelectedRange(NSRange(location: insertion, length: 0))
+    textView.delegate = coordinator
+    for preedit in ["n", "ni", "nihao"] {
+      let replacement =
+        textView.hasMarkedText()
+        ? textView.markedRange() : textView.selectedRange()
+      textView.setMarkedText(
+        preedit,
+        selectedRange: NSRange(location: (preedit as NSString).length, length: 0),
+        replacementRange: replacement
+      )
+      coordinator.textDidChange(
+        Notification(name: NSText.didChangeNotification, object: textView)
+      )
+      XCTAssertEqual(
+        try XCTUnwrap(scrollView.cachedDocumentHeightForTesting), initialHeight, accuracy: 0.01)
+      XCTAssertEqual(coordinator.statisticsFullScanCount, 0)
+      XCTAssertEqual(coordinator.syntaxHighlightDebouncer.metrics.scheduledRequestCount, 0)
+      XCTAssertEqual(coordinator.bodyMarkdown, textView.string)
+    }
+    XCTAssertNotNil(coordinator.pendingSyntaxParserEdit)
+    textView.insertText("你好", replacementRange: textView.markedRange())
+    XCTAssertFalse(textView.hasMarkedText())
+    XCTAssertTrue(textView.string.contains("段落60 你好"))
+    XCTAssertEqual(textView.selectedRange(), NSRange(location: insertion + 2, length: 0))
+    XCTAssertNil(scrollView.cachedDocumentHeightForTesting)
+    XCTAssertEqual(coordinator.syntaxHighlightDebouncer.metrics.scheduledRequestCount, 1)
+    coordinator.flushPendingBindingWrites()
+  }
+
   func testSimulatedIMECancelAndUnmarkPathsClearMarkedStateWithoutBindingEcho() {
     var text = "正文"
     var selectedRange = NSRange(location: 0, length: 0)

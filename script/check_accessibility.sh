@@ -635,14 +635,16 @@ require_literal_any_file \
   "markdown editor statistics must expose an accessibility label" \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerView.swift" \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownFormattingToolbar.swift"
+  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownFormattingToolbar.swift" \
+  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownEditorStatusBar.swift"
 
 require_literal_any_file \
   ".accessibilityValue(statisticsAccessibilityValue)" \
   "markdown editor statistics must expose an accessibility value" \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerView.swift" \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownFormattingToolbar.swift"
+  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownFormattingToolbar.swift" \
+  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownEditorStatusBar.swift"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownTextView+DocumentSupport.swift" \
@@ -1086,13 +1088,40 @@ require_literal \
 for unfolded_repository_file in \
   Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspacePublishingSections.swift \
   Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspaceLocalPreviewSection.swift \
-  Sources/PersonalSitePublisherMac/Views/Publishing/ReleaseHistoryDetailView.swift \
   Sources/PersonalSitePublisherMac/Views/Publishing/ReleaseHistoryComponents.swift; do
   require_absent_literal \
     "$unfolded_repository_file" \
     "DisclosureGroup" \
     "repository and release-history functions must remain visible instead of folded: $unfolded_repository_file"
 done
+
+release_history_file="Sources/PersonalSitePublisherMac/Views/Publishing/ReleaseHistoryDetailView.swift"
+require_literal "$release_history_file" "releaseActionCommandDisclosure(item)" \
+  "release history must keep advanced command details reachable from each record"
+require_literal "$release_history_file" "DisclosureGroup(" \
+  "advanced release commands must use a native collapsible control"
+require_literal "$release_history_file" "@State private var expandedCommandActionIDs: Set<String> = []" \
+  "advanced release commands must default to collapsed"
+require_literal "$release_history_file" ".accessibilityIdentifier(\"release-action-\\(item.id)-advanced-commands\")" \
+  "advanced release commands must expose a stable accessibility identifier"
+require_literal "Sources/PersonalSitePublisherMac/Views/Publishing/ReleaseHistoryRecordCardSection.swift" \
+  "if !rollbackDraft.commandLines.isEmpty" \
+  "rollback Git commands must remain reachable from release records"
+require_literal "Sources/PersonalSitePublisherMac/Views/Publishing/ReleaseHistoryRecordCardSection.swift" \
+  ".accessibilityIdentifier(\"release-record-\\(record.id)-advanced-commands\")" \
+  "rollback Git commands must expose a stable accessibility identifier"
+python3 - "$ROOT_DIR/$release_history_file" <<'PY'
+import pathlib
+import sys
+source = pathlib.Path(sys.argv[1]).read_text()
+row = source.split("private func releaseActionRow", 1)[1].split("private func releaseActionPriorityBadge", 1)[0]
+assert "releaseActionCommandDisclosure(item)" in row, "release command details must remain in the record row"
+assert "releaseActionButtons(item" in row, "release record actions must remain in the record row"
+assert "DisclosureGroup" not in row, "the main release record row must not be folded"
+commands = source.split("private func releaseActionCommandDisclosure", 1)[1].split("@ViewBuilder", 1)[0]
+assert "DisclosureGroup(" in commands and "expandedCommandActionIDs" in commands
+assert 'release-action-\\(item.id)-advanced-commands' in commands
+PY
 
 # The overview may collapse configuration tools, while problems, publication
 # status and Git management must remain available before that disclosure.
@@ -1418,7 +1447,7 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MarkdownEditorComfortControl.swift" \
-  "Label(\"编辑显示与辅助功能\", systemImage: \"accessibility\")" \
+  "Label(\"编辑显示与辅助功能\", systemImage: \"textformat.size\")" \
   "editor display accessibility control must expose text when space permits"
 
 require_literal \

@@ -16,6 +16,19 @@ enum RepositorySelectionPanel {
   }
 }
 
+enum ExternalDraftFolderSelectionPanel {
+  @MainActor
+  static func chooseDirectory() -> URL? {
+    let panel = NSOpenPanel()
+    panel.title = String(localized: "选择 Obsidian、Logseq 或 Markdown 草稿文件夹")
+    panel.prompt = String(localized: "映射文件夹")
+    panel.canChooseFiles = false
+    panel.canChooseDirectories = true
+    panel.allowsMultipleSelection = false
+    return panel.runModal() == .OK ? panel.url : nil
+  }
+}
+
 enum ImageSelectionPanel {
   @MainActor
   static func chooseImages() -> [URL] {

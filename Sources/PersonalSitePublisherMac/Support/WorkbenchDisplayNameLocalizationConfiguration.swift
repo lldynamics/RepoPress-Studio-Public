@@ -1,3 +1,4 @@
+import PublishingBackupCore
 import PublishingWorkbenchCore
 
 extension WorkspaceBackupComponent {
@@ -38,6 +39,8 @@ extension SiteKind {
     case .foam: "display.site-kind.foam"
     case .hexo: "display.site-kind.hexo"
     case .jekyll: "display.site-kind.jekyll"
+    case .docusaurus: "display.site-kind.docusaurus"
+    case .mkDocs: "display.site-kind.mkdocs"
     }
   }
 
@@ -52,6 +55,8 @@ extension SiteKind {
     case .foam: "Foam"
     case .hexo: "Hexo"
     case .jekyll: "Jekyll"
+    case .docusaurus: "Docusaurus"
+    case .mkDocs: "MkDocs"
     }
   }
 }

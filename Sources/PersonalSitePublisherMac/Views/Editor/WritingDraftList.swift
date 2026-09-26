@@ -119,6 +119,16 @@ extension WritingDraftColumn {
     .accessibilityIdentifier(
       "writing-draft-folder-\(RepositoryAccessibilityIdentifier.token(for: folder.id))"
     )
+    .contextMenu {
+      if store.draftListContentScope == .general, folder.kind == .directory {
+        Button("重命名文件夹…") {
+          beginRenamingGeneralFolder(folder.name)
+        }
+        Button("移出文件夹") {
+          moveGeneralFolderContentsToUnfiled(folder.name)
+        }
+      }
+    }
   }
 
   private func folderDisplayName(for folder: DraftFolderNode) -> String {
@@ -297,6 +307,12 @@ extension WritingDraftColumn {
       Label("编辑文章", systemImage: "square.and.pencil")
     }
 
+    Button {
+      openWindow(id: "content-popout", value: PopOutWindowTarget.draft(draft.id))
+    } label: {
+      Label("弹出为独立窗口", systemImage: "arrow.up.forward.app")
+    }
+
     if !actionDraft.isGeneralDraft {
       Button {
         onFocusDraft(draft.id, .contentHealth)
@@ -314,6 +330,10 @@ extension WritingDraftColumn {
     Divider()
 
     draftOwnershipActions(for: actionDraft)
+
+    if actionDraft.isGeneralDraft {
+      generalDraftFolderActions(for: actionDraft)
+    }
 
     Button {
       onFocusDraft(draft.id, .images)

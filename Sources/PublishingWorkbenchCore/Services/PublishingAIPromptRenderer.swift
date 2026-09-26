@@ -1,4 +1,5 @@
 import Foundation
+import PublishingPreviewCore
 
 /// Renders an explicit publishing snapshot without reading or mutating workspace state.
 enum PublishingAIPromptRenderer {

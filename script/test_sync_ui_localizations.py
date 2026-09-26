@@ -162,6 +162,69 @@ public enum WorkspaceCenterSurface {
             [],
         )
 
+    def test_compiler_export_preserves_integer_placeholder_type(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_root = root / "App"
+            source_root.mkdir()
+            source = source_root / "Status.swift"
+            source.write_text(r'Text("已完成 \(3) 项")', encoding="utf-8")
+            export_root = root / "export"
+            export_root.mkdir()
+            (export_root / "Status.stringsdata").write_text(
+                json.dumps({
+                    "source": str(source),
+                    "tables": {"Localizable": [
+                        {"key": "已完成 %lld 项"}, {"key": ""},
+                    ]},
+                    "version": 1,
+                }),
+                encoding="utf-8",
+            )
+
+            extracted = SYNC.parse_compiler_localizations(export_root, source_root)
+
+        self.assertEqual(extracted, {"已完成 %lld 项": "已完成 %lld 项"})
+        catalog = {
+            "strings": {
+                "已完成 %lld 项": SYNC.catalog_entry("已完成 %@ 项", "Completed %@ items")
+            }
+        }
+        self.assertIn(
+            "已完成 %lld 项: en placeholders differ",
+            SYNC.validate(catalog, extracted, set()),
+        )
+        legacy_catalog = {
+            "strings": {
+                "已完成 %@ 项": SYNC.catalog_entry("已完成 %@ 项", "Completed %@ items")
+            }
+        }
+        self.assertIn(
+            "已完成 %lld 项: missing zh-Hans/en value",
+            SYNC.validate(legacy_catalog, extracted, set()),
+        )
+
+    def test_compiler_export_rejects_missing_source_output(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_root = root / "App"
+            source_root.mkdir()
+            (source_root / "First.swift").write_text("", encoding="utf-8")
+            (source_root / "Second.swift").write_text("", encoding="utf-8")
+            export_root = root / "export"
+            export_root.mkdir()
+            (export_root / "First.stringsdata").write_text(
+                json.dumps({
+                    "source": str(source_root / "First.swift"),
+                    "tables": {"Localizable": []},
+                    "version": 1,
+                }),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "missing 1 app source"):
+                SYNC.parse_compiler_localizations(export_root, source_root)
+
     def test_validation_rejects_literal_swift_expression_in_ui_copy(self) -> None:
         key = "定位到标题：(item.title)"
         catalog = {"strings": {key: SYNC.catalog_entry(key, "Locate heading")}}

@@ -1,4 +1,5 @@
 import CryptoKit
+import PublishingBackupCore
 import Foundation
 
 extension WorkspaceBackupService {

@@ -1,4 +1,5 @@
 import Foundation
+import PublishingPreviewCore
 
 public enum AIPublishingActionKind: String, Codable, CaseIterable, Identifiable, Sendable {
   case publishingReadiness

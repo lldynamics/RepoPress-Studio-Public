@@ -216,7 +216,7 @@ struct WorkspaceQuickSearchView: View {
   private func repositoryStageNavigation(
     _ stage: Binding<RepositoryContextStage>
   ) -> some View {
-    VStack(spacing: 5) {
+    VStack(spacing: 2) {
       ForEach(RepositoryContextStage.navigationStages) { item in
         repositoryStageButton(item, stage: stage)
       }
@@ -250,7 +250,7 @@ struct WorkspaceQuickSearchView: View {
   private func imageStageNavigation(
     _ stage: Binding<ImageWorkbenchContextStage>
   ) -> some View {
-    VStack(spacing: 5) {
+    VStack(spacing: 2) {
       ForEach(ImageWorkbenchContextStage.navigationStages) { item in
         sidebarStageButton(
           title: item.title,
@@ -273,7 +273,7 @@ struct WorkspaceQuickSearchView: View {
   private func contentHealthNavigation(
     _ filter: Binding<ContentHealthContextFilter>
   ) -> some View {
-    VStack(spacing: 5) {
+    VStack(spacing: 2) {
       ForEach(ContentHealthContextFilter.navigationFilters) { item in
         sidebarStageButton(
           title: item.title,
@@ -313,38 +313,23 @@ struct WorkspaceQuickSearchView: View {
           .lineLimit(1)
 
         Spacer(minLength: 4)
-
-        if isSelected {
-          Image(systemName: "checkmark")
-            .font(.caption.weight(.semibold))
-            .accessibilityHidden(true)
-        }
       }
+      // Source-list rows: unselected rows are plain, the selected row carries
+      // the only fill. No borders or trailing checkmark compete with content.
       .foregroundStyle(isSelected ? WorkbenchTheme.navigationSelection : Color.primary)
-      .frame(maxWidth: .infinity, minHeight: 31, alignment: .leading)
+      .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
       .padding(.horizontal, 10)
       .background {
         RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
           .fill(
             isSelected
-              ? AnyShapeStyle(
-                WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.accentBackground)
-              )
-              : WorkbenchBackgroundStyle.control
-          )
-      }
-      .overlay {
-        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-          .strokeBorder(
-            isSelected
-              ? WorkbenchTheme.navigationSelection.opacity(0.30)
-              : Color.primary.opacity(0.08),
-            lineWidth: 1
+              ? WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.accentBackground)
+              : Color.clear
           )
       }
       .contentShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
     }
-    .buttonStyle(.plain)
+    .buttonStyle(WorkbenchFocusRingButtonStyle())
     .disabled(isDisabled)
     .help(help)
     .accessibilityLabel(Text(title))

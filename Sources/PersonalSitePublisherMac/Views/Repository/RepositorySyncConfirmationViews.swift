@@ -1,3 +1,4 @@
+import PublishingSyncCore
 import PublishingWorkbenchCore
 import SwiftUI
 

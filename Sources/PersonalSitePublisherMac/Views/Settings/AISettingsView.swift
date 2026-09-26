@@ -385,10 +385,13 @@ struct AISettingsView: View {
   private func applyLocalAIConfiguration(baseURL: String, model: String) -> Bool {
     invalidateConnectionReport()
     var connection = activeConnection
-    connection.config.preset = .local
-    connection.config.baseURL = baseURL
-    connection.config.model = model
-    connection.config.requiresAPIKey = false
+    guard
+      let localConfig = connection.config.applyingDetectedLocalEngine(
+        baseURL: baseURL,
+        model: model
+      )
+    else { return false }
+    connection.config = localConfig
     return commitConnectionUpdate(connection)
   }
 

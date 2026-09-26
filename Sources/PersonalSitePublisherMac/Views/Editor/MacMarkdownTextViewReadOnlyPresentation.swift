@@ -148,7 +148,9 @@ extension MacMarkdownTextView.Coordinator {
       min(
         textView.textContainer?.containerSize.width ?? textView.bounds.width,
         textView.bounds.width > 0 ? textView.bounds.width : CGFloat(comfortConfiguration.bodyWidth)
-      ) - (textView.textContainerInset.width * 2)
+        // The horizontal inset now also centers the column, so only the fixed
+        // 16pt text margin on each side is subtracted here.
+      ) - 32
     )
     let baseFontSize = syntaxHighlightPalette.baseFont.pointSize
     var outputForReuse: MarkdownTextKit2ReadOnlyPresentationFactory.Output?

@@ -63,7 +63,7 @@ extension ArticleDraft {
     }
   }
 
-  public static let currentSoftwareGuideSeedVersion = 6
+  public static let currentSoftwareGuideSeedVersion = 7
 
   public struct SoftwareGuideSynchronizationResult: Sendable {
     public let drafts: [ArticleDraft]
@@ -269,7 +269,7 @@ extension ArticleDraft {
       slug: "personal-site-publisher-getting-started",
       tags: ["使用指南", "入门"],
       categories: ["指南"],
-      summary: "认识顶部状态区、工作区导航、文章范围和检查器，并按推荐顺序完成第一次安全发布。",
+      summary: "认识顶部状态区、工作区导航、文章范围和详情栏，并按推荐顺序完成第一次安全发布。",
       bodyMarkdown: """
         # 开始使用：认识发布工作台
 
@@ -293,11 +293,11 @@ extension ArticleDraft {
 
         ## 推荐的第一次使用顺序
 
-        1. 已有网站时，在“仓库与发布”选择本地仓库，并确认站点类型、分支、文章目录和图片目录。
+        1. 已有网站时，在“站点”选择本地仓库，并确认站点类型、分支、文章目录和图片目录。
         2. 还没有网站时，选择“暂不配置站点”；以后准备好仓库后再连接站点。
         3. 回到“写作”，新建或导入文章，补全标题、摘要、slug、标签和分类。
-        4. 在“内容健康”修复阻断问题，然后打开顶部“发布状态”。
-        5. 在发布抽屉审阅检查与差异，选择“保存到本地”或“发布所有变更”。
+        4. 在“检查”修复阻断问题，然后打开顶部“发布状态”。
+        5. 在“准备发布”面板审阅检查与差异，选择“保存到本地”或“发布所有变更”。
         6. 发布后到“发布记录”核对提交、PR/MR、自动化任务和部署结果。
 
         > 安全练习：修改本段文字，切换“编辑 / 预览 / 分屏”，再打开检查器。只要不执行保存或发布动作，仓库不会发生变化。
@@ -333,7 +333,7 @@ extension ArticleDraft {
 
         ## 4. 处理提示再发布
 
-        编辑过程中可查看行内诊断、文章大纲和写作统计。完成后打开“内容健康”，先修复阻断问题，再决定保留草稿或标记为“待发布”。
+        编辑过程中可查看行内诊断、文章大纲和写作统计。完成后打开“检查”，先修复阻断问题，再决定保留草稿或标记为“待发布”。
 
         RepoPress Studio 会自动保存工作台。重要改动可在版本历史中比较和恢复；误删文章先到回收站查找。
 
@@ -429,11 +429,11 @@ extension ArticleDraft {
       bodyMarkdown: """
         # 安全发布：连接仓库、检查并提交
 
-        最新发布流程集中回答两个问题：文件是否安全，以及这次只保存到本地还是发布上线。分支、远端、同步、历史和部署管理统一放在“仓库与发布”页面。
+        最新发布流程集中回答两个问题：文件是否安全，以及这次只保存到本地还是发布上线。分支、远端、同步、历史和部署管理统一放在“站点”页面。
 
         ## 1. 配置站点
 
-        在“仓库与发布”或设置中确认站点类型、本地仓库、远端提供商、仓库名称、目标分支、文章目录和图片目录。访问令牌应保存到系统钥匙串，不要写进文章、仓库或截图。
+        在“站点”或设置中确认站点类型、本地仓库、远端提供商、仓库名称、目标分支、文章目录和图片目录。访问令牌应保存到系统钥匙串，不要写进文章、仓库或截图。
 
         获取远端变化后，先阅读仓库状态和 Diff。若同一篇文章已经在远端更新，应先导入、合并或重新确认内容，不要直接覆盖。
 
@@ -466,7 +466,7 @@ extension ArticleDraft {
       slug: "personal-site-publisher-maintenance",
       tags: ["使用指南", "图片", "维护"],
       categories: ["指南"],
-      summary: "用图片工作台、内容健康、维护报告和版本历史保持网站长期清晰、稳定、可恢复。",
+      summary: "用图片工作台、内容检查、维护报告和版本历史保持网站长期清晰、稳定、可恢复。",
       bodyMarkdown: """
         # 发布之后：图片、维护与版本恢复
 
@@ -476,9 +476,9 @@ extension ArticleDraft {
 
         在“图片”工作区统一检查附件、封面、尺寸、格式、alt 文本和说明。优化或转换图片前先查看影响范围；不要用压缩后的临时文件覆盖唯一原图。
 
-        ## 内容健康
+        ## 内容检查
 
-        发布前后都可以运行内容健康检查，重点关注空标题、重复 slug、无效链接、缺失图片、公开风险和不完整元数据。先解决错误，再评估警告是否适用于当前文章。
+        发布前后都可以运行内容检查，重点关注空标题、重复 slug、无效链接、缺失图片、公开风险和不完整元数据。先解决错误，再评估警告是否适用于当前文章。
 
         ## 日常维护
 
@@ -488,7 +488,7 @@ extension ArticleDraft {
 
         - 使用文章版本历史比较改动，必要时恢复正文。
         - 误删文章先到回收站恢复，不要立即手动删除仓库文件。
-        - 在“仓库与发布”处理分支、远端和同步，在“发布记录”查看提交、PR/MR 和部署结果。
+        - 在“站点”处理分支、远端和同步，在“发布记录”查看提交、PR/MR 和部署结果。
         - 定期备份工作台和资料库；备份验证通过后再清理旧副本。
 
         当你已经熟悉这些流程，可以删除这组示例文章，或把它们改成自己的发布操作手册。
@@ -532,7 +532,7 @@ extension ArticleDraft {
         1. For an existing site, choose its local repository in Repository & Publish, then confirm the site type, branch, content path, and image path.
         2. Without a site, start with local drafts and connect a site after its repository is ready.
         3. Return to Writing, create or import an article, and complete its title, summary, slug, tags, and category.
-        4. Resolve blocking issues in Content Health, then open Publishing Status.
+        4. Resolve blocking issues in Checks, then open Publishing Status.
         5. Review checks and file differences, then choose Save Locally or Publish All Changes.
         6. Verify commits, pull or merge requests, automation, and deployment in Release History.
 
@@ -571,7 +571,7 @@ extension ArticleDraft {
 
         ## 4. Resolve feedback before release
 
-        Use inline diagnostics, the outline, and writing statistics. When ready, open Content Health, fix blocking issues, and then keep the article as a draft or mark it Ready.
+        Use inline diagnostics, the outline, and writing statistics. When ready, open Checks, fix blocking issues, and then keep the article as a draft or mark it Ready.
 
         RepoPress Studio autosaves the workbench. Compare and restore important revisions in version history, and check the recycle bin before treating an accidental deletion as permanent.
 
@@ -718,9 +718,9 @@ extension ArticleDraft {
 
         Use Images to review attachments, covers, dimensions, formats, alt text, and captions. Check the affected files before optimization or conversion, and never replace your only original with a temporary compressed copy.
 
-        ## Content Health
+        ## Content Checks
 
-        Run Content Health before and after release. Pay particular attention to empty titles, duplicate slugs, broken links, missing images, public-exposure risks, and incomplete metadata. Fix errors first, then decide whether each warning applies.
+        Run content checks before and after release. Pay particular attention to empty titles, duplicate slugs, broken links, missing images, public-exposure risks, and incomplete metadata. Fix errors first, then decide whether each warning applies.
 
         ## Routine maintenance
 

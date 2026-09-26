@@ -10,6 +10,7 @@ struct ReleaseHistoryDetailView: View {
   @State var pendingDangerousReleaseAction: DangerousReleaseAction?
   @State private var showsAllRecords = false
   @State var pendingFailureReview: ReleaseRecord?
+  @State private var expandedCommandActionIDs: Set<String> = []
 
   init(
     store: WorkbenchStore,
@@ -36,11 +37,18 @@ struct ReleaseHistoryDetailView: View {
           if let focusedRecordID, !showsAllRecords {
             focusedReleaseRecordContent(focusedRecordID)
           } else {
-            PublishExecutionHistorySection(
-              store: store,
-              activeProfileID: store.activeProfileID,
-              records: store.publishExecutionRecords
-            )
+            // Records written before execution logging existed still appear in
+            // the ledger; an empty execution section beside them would read as
+            // "no releases", so it is shown only when it has something to say.
+            if store.publishExecutionRecords.contains(where: {
+              $0.plan.target.profileID == store.activeProfileID
+            }) || ledger.entries.isEmpty {
+              PublishExecutionHistorySection(
+                store: store,
+                activeProfileID: store.activeProfileID,
+                records: store.publishExecutionRecords
+              )
+            }
             releasePrimaryMetrics(ledger.summary)
             releaseSecondaryMetrics(ledger.summary)
             releaseOperationalContent(
@@ -148,9 +156,9 @@ struct ReleaseHistoryDetailView: View {
         .accessibilityIdentifier("release-history-show-all-records")
       }
       Button {
-        copy(ledger.operationLogMarkdown, message: "已复制发布台账。")
+        copy(ledger.operationLogMarkdown, message: "已复制发布记录。")
       } label: {
-        releaseHistoryActionLabel("复制台账", systemImage: "doc.on.doc")
+        releaseHistoryActionLabel("复制发布记录", systemImage: "doc.on.doc")
       }
       .accessibilityIdentifier("release-history-copy-ledger")
 
@@ -349,7 +357,7 @@ struct ReleaseHistoryDetailView: View {
 
   private func releaseSecondaryMetrics(_ summary: ReleaseLedgerSummary) -> some View {
     VStack(alignment: .leading, spacing: 10) {
-      Label("台账指标", systemImage: "chart.bar.xaxis")
+      Label("发布统计", systemImage: "chart.bar.xaxis")
         .font(.workbenchSectionTitle)
         .accessibilityAddTraits(.isHeader)
 
@@ -421,9 +429,7 @@ struct ReleaseHistoryDetailView: View {
               .padding(.vertical, 2)
               .background(WorkbenchBackgroundStyle.control, in: Capsule())
             Spacer()
-            Text(item.priority.localizedDisplayName)
-              .font(.caption.weight(.semibold))
-              .foregroundStyle(releaseActionPriorityForeground(item.priority))
+            releaseActionPriorityBadge(item.priority)
           }
 
           Text(item.summary)
@@ -441,12 +447,7 @@ struct ReleaseHistoryDetailView: View {
       }
 
       if !item.commandLines.isEmpty {
-        ForEach(item.commandLines.prefix(2), id: \.self) { command in
-          Text(command)
-            .font(.caption.monospaced())
-            .textSelection(.enabled)
-            .lineLimit(2)
-        }
+        releaseActionCommandDisclosure(item)
       }
 
       let entry = store.activeProfileReleaseLedger.entries.first(where: { $0.id == item.recordID })
@@ -457,6 +458,46 @@ struct ReleaseHistoryDetailView: View {
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("release-action-row-\(item.id)")
+  }
+
+  private func releaseActionPriorityBadge(_ priority: ReleaseLedgerActionPriority) -> some View {
+    Text(priority.localizedDisplayName)
+      .font(.callout.weight(.bold))
+      .foregroundStyle(releaseActionPriorityForeground(priority))
+      .padding(.horizontal, 9)
+      .padding(.vertical, 4)
+      .background(releaseActionPriorityBackground(priority), in: Capsule())
+      .accessibilityLabel("优先级：\(priority.localizedDisplayName)")
+  }
+
+  private func releaseActionCommandDisclosure(_ item: ReleaseLedgerActionItem) -> some View {
+    DisclosureGroup(
+      isExpanded: Binding(
+        get: { expandedCommandActionIDs.contains(item.id) },
+        set: { isExpanded in
+          if isExpanded {
+            expandedCommandActionIDs.insert(item.id)
+          } else {
+            expandedCommandActionIDs.remove(item.id)
+          }
+        }
+      )
+    ) {
+      VStack(alignment: .leading, spacing: 6) {
+        ForEach(item.commandLines, id: \.self) { command in
+          Text(command)
+            .font(.callout.monospaced())
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      .padding(.top, 6)
+    } label: {
+      Label("高级：命令行（\(item.commandLines.count) 条）", systemImage: "terminal")
+        .font(.callout.weight(.medium))
+    }
+    .accessibilityIdentifier("release-action-\(item.id)-advanced-commands")
+    .accessibilityLabel("高级命令行，\(item.commandLines.count) 条")
   }
 
   @ViewBuilder
@@ -994,6 +1035,17 @@ struct ReleaseHistoryDetailView: View {
       return AnyShapeStyle(WorkbenchTheme.warning)
     case .low:
       return AnyShapeStyle(.secondary)
+    }
+  }
+
+  private func releaseActionPriorityBackground(_ priority: ReleaseLedgerActionPriority) -> Color {
+    switch priority {
+    case .high:
+      return WorkbenchTheme.risk.opacity(0.14)
+    case .medium:
+      return WorkbenchTheme.warning.opacity(0.14)
+    case .low:
+      return Color.secondary.opacity(0.12)
     }
   }
 

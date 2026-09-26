@@ -47,7 +47,7 @@ extension WritingDraftColumn {
       } label: {
         // Icon-only like the neighbouring header actions so the article count
         // keeps its space when the sidebar narrows beside the Inspector.
-        WorkspaceSidebarHeaderIcon("externaldrive")
+        WorkspaceSidebarHeaderIcon("archivebox")
       }
       .buttonStyle(.plain)
       .help(String(localized: "集中管理版本、回收站、备份和迁移"))
@@ -112,8 +112,10 @@ extension WritingDraftColumn {
           .foregroundStyle(.secondary)
           .font(.footnote)
 
+        // Short prompt so it never clips in a 240 pt sidebar; the accessibility
+        // label keeps the full description of the searched fields.
         TextField(
-          "搜索标题、摘要、标签或路径",
+          "搜索文章",
           text: Binding(get: { searchText }, set: { searchText = $0 })
         )
           .textFieldStyle(.plain)
@@ -133,28 +135,30 @@ extension WritingDraftColumn {
           .help(String(localized: "清除搜索"))
           .accessibilityLabel("清除草稿搜索")
         }
+
+        // Full-text search is a scope of the same search, so it lives inside
+        // the field instead of occupying its own sidebar row.
+        Button {
+          sceneCommandRouter.draftFullTextSearchAction?.open(
+            DraftFullTextSearchRequest(
+              query: searchText.trimmingCharacters(in: .whitespacesAndNewlines),
+              scope: store.draftListContentScope == .general ? .generalDrafts : .currentSite
+            )
+          )
+        } label: {
+          Image(systemName: "doc.text.magnifyingglass")
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help("搜索正文…")
+        .accessibilityLabel("打开跨文章全文搜索")
+        .accessibilityIdentifier("writing-draft-full-text-search")
       }
       .padding(.horizontal, 8)
       .padding(.vertical, 6)
       .background(
         WorkbenchBackgroundStyle.control,
         in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
-
-      Button {
-        sceneCommandRouter.draftFullTextSearchAction?.open(
-          DraftFullTextSearchRequest(
-            query: searchText.trimmingCharacters(in: .whitespacesAndNewlines),
-            scope: store.draftListContentScope == .general ? .generalDrafts : .currentSite
-          )
-        )
-      } label: {
-        Label("搜索正文…", systemImage: "doc.text.magnifyingglass")
-      }
-      .buttonStyle(.plain)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .help("在当前范围内搜索标题、元数据和正文")
-      .accessibilityLabel("打开跨文章全文搜索")
-      .accessibilityIdentifier("writing-draft-full-text-search")
 
       if filter != .all || !searchText.isEmpty {
         HStack(spacing: 6) {
@@ -221,7 +225,8 @@ extension WritingDraftColumn {
   @ViewBuilder
   private var draftListFilterControls: some View {
     if isCompact {
-      draftFilterMenu
+      // Filtering is folded into the display-options menu.
+      EmptyView()
     } else {
       ForEach(DraftListFilter.primaryFilters) { candidate in
         Button(candidate.localizedDisplayName) {
@@ -247,51 +252,74 @@ extension WritingDraftColumn {
     }
   }
 
+  /// One menu for filter (in compact layouts), grouping and sorting keeps the
+  /// scope picker and all list options on a single sidebar row.
   @ViewBuilder
   private var draftListArrangementMenus: some View {
     Menu {
-      ForEach(WritingDraftListDisplayMode.allCases) { option in
-        Button {
-          displayModeRawValue = option.rawValue
-        } label: {
-          if displayMode == option {
-            Label(writingDraftDisplayModeName(option), systemImage: "checkmark")
-          } else {
-            Text(writingDraftDisplayModeName(option))
+      if isCompact {
+        Section(String(localized: "筛选")) {
+          ForEach(DraftListFilter.allCases) { candidate in
+            filterButton(candidate)
           }
         }
       }
+      Section(String(localized: "排序")) {
+        ForEach(WritingDraftSortOrder.allCases) { option in
+          Button {
+            sortOrderRawValue = option.rawValue
+          } label: {
+            if sortOrder == option {
+              Label(option.localizedDisplayName, systemImage: "checkmark")
+            } else {
+              Text(option.localizedDisplayName)
+            }
+          }
+        }
+      }
+      Section(String(localized: "文章分组方式")) {
+        ForEach(WritingDraftListDisplayMode.allCases) { option in
+          Button {
+            displayModeRawValue = option.rawValue
+          } label: {
+            if displayMode == option {
+              Label(writingDraftDisplayModeName(option), systemImage: "checkmark")
+            } else {
+              Text(writingDraftDisplayModeName(option))
+            }
+          }
+        }
+        if store.draftListContentScope == .general {
+          Divider()
+          Button {
+            beginCreatingGeneralFolder(for: Array(selectedDraftIDs))
+          } label: {
+            Label("新建文件夹并移入所选草稿…", systemImage: "folder.badge.plus")
+          }
+          .disabled(selectedDraftIDs.isEmpty)
+        }
+      }
     } label: {
-      Image(systemName: effectiveDisplayMode == .folders ? "folder" : "list.bullet")
+      Image(
+        systemName: isCompact && filter != .all
+          ? "line.3.horizontal.decrease.circle.fill"
+          : "line.3.horizontal.decrease.circle"
+      )
     }
     .menuStyle(.borderlessButton)
     .menuIndicator(.hidden)
-    .disabled(store.draftListContentScope == .general)
-    .help(String(localized: "文章分组方式"))
-    .accessibilityLabel(String(localized: "文章分组方式"))
-    .accessibilityValue(writingDraftDisplayModeName(effectiveDisplayMode))
+    .fixedSize()
+    .help(
+      String(
+        localized:
+          "显示选项：\(filter.localizedDisplayName) · \(sortOrder.localizedDisplayName) · \(writingDraftDisplayModeName(effectiveDisplayMode))"
+      )
+    )
+    .accessibilityLabel(String(localized: "文章显示选项"))
+    .accessibilityValue(
+      "\(filter.localizedDisplayName)，\(sortOrder.localizedDisplayName)，\(writingDraftDisplayModeName(effectiveDisplayMode))"
+    )
     .accessibilityIdentifier("writing-draft-display-mode")
-
-    Menu {
-      ForEach(WritingDraftSortOrder.allCases) { option in
-        Button {
-          sortOrderRawValue = option.rawValue
-        } label: {
-          if sortOrder == option {
-            Label(option.localizedDisplayName, systemImage: "checkmark")
-          } else {
-            Text(option.localizedDisplayName)
-          }
-        }
-      }
-    } label: {
-      Image(systemName: "arrow.up.arrow.down")
-    }
-    .menuStyle(.borderlessButton)
-    .menuIndicator(.hidden)
-    .help(String(localized: "排序：\(sortOrder.localizedDisplayName)"))
-    .accessibilityLabel("文章排序")
-    .accessibilityValue(sortOrder.localizedDisplayName)
   }
 
   private var contentScopePicker: some View {
@@ -320,30 +348,6 @@ extension WritingDraftColumn {
     case .folders:
       return String(localized: "文件夹")
     }
-  }
-
-  private var draftFilterMenu: some View {
-    Menu {
-      ForEach(DraftListFilter.allCases) { candidate in
-        filterButton(candidate)
-      }
-    } label: {
-      // The compact row cannot fit the filter name next to the scope picker;
-      // the filled symbol signals an active filter and AX keeps the name.
-      Label(
-        filter.localizedDisplayName,
-        systemImage: filter == .all
-          ? "line.3.horizontal.decrease.circle"
-          : "line.3.horizontal.decrease.circle.fill"
-      )
-      .labelStyle(.iconOnly)
-    }
-    .menuIndicator(.hidden)
-    .controlSize(.small)
-    .accessibilityLabel("草稿筛选")
-    .accessibilityValue(filter.localizedDisplayName)
-    .help(String(localized: "筛选草稿"))
-    .fixedSize()
   }
 
   @ViewBuilder

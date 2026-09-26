@@ -1,4 +1,5 @@
 import Foundation
+import PublishingWorkbenchCore
 import XCTest
 
 @testable import PersonalSitePublisherMac
@@ -11,82 +12,62 @@ final class WorkspaceTopBarPresentationTests: XCTestCase {
     XCTAssertEqual(WorkspaceTopBarPresentation.density(for: 959), .minimal)
   }
 
-  func testSearchContextCombinesOptionalArticleStatistics() {
-    let locale = Locale(identifier: "en_US")
-    let complete = WorkspaceTopBarPresentation.ContextStatistics(
-      wordCount: 1_260,
-      readingMinutes: 6,
-      locale: locale
+  func testRepositoryScanStatusNeverReportsReadyWithoutGitOrWithBlockers() {
+    typealias Status = WorkspaceTopBarPresentation.RepositoryScanStatus
+    let changed = RepositoryChangedFile(
+      status: " M", path: "content/a.md", kind: .modified, lineDiff: nil
     )
-    XCTAssertEqual(
-      complete.displayText,
-      String(format: "%lld 字 · %lld 分钟阅读", locale: locale, Int64(1_260), Int64(6))
-    )
-    XCTAssertEqual(
-      complete.accessibilityValue,
-      String(format: "字数 %lld，预计阅读 %lld 分钟", locale: locale, Int64(1_260), Int64(6))
-    )
+    let blocker = PreflightIssue(severity: .error, title: "blocked", message: "blocked")
+    let warning = PreflightIssue(severity: .warning, title: "note", message: "note")
 
     XCTAssertEqual(
-      WorkspaceTopBarPresentation.ContextStatistics(wordCount: 42, locale: locale).displayText,
-      String(format: "%lld 字", locale: locale, Int64(42))
+      WorkspaceTopBarPresentation.repositoryScanStatus(
+        for: Self.report(hasGit: false, changed: [changed], issues: [blocker])
+      ),
+      Status.missingGitDirectory
     )
-    XCTAssertNil(WorkspaceTopBarPresentation.ContextStatistics().displayText)
+    XCTAssertEqual(
+      WorkspaceTopBarPresentation.repositoryScanStatus(
+        for: Self.report(remote: [changed], issues: [blocker, warning])
+      ),
+      Status.blockingIssues(count: 1)
+    )
+    XCTAssertEqual(
+      WorkspaceTopBarPresentation.repositoryScanStatus(
+        for: Self.report(changed: [changed], remote: [changed])
+      ),
+      Status.remoteChanges(count: 1)
+    )
+    XCTAssertEqual(
+      WorkspaceTopBarPresentation.repositoryScanStatus(
+        for: Self.report(changed: [changed], issues: [warning])
+      ),
+      Status.localChanges(count: 1)
+    )
+    XCTAssertEqual(
+      WorkspaceTopBarPresentation.repositoryScanStatus(for: Self.report(issues: [warning])),
+      Status.ready
+    )
   }
 
-  func testSearchContextStatisticsUsesInjectedEnglishAndChineseBundles() throws {
-    let englishBundle = try Self.makeLocalizedBundle(
-      localization: "en",
-      contents: Self.englishStrings
-    )
-    let chineseBundle = try Self.makeLocalizedBundle(
-      localization: "zh-Hans",
-      contents: Self.chineseStrings
-    )
-    defer {
-      try? FileManager.default.removeItem(at: englishBundle.bundleURL)
-      try? FileManager.default.removeItem(at: chineseBundle.bundleURL)
-    }
-
-    let english = WorkspaceTopBarPresentation.ContextStatistics(
-      wordCount: 1_260,
-      readingMinutes: 6,
-      locale: Locale(identifier: "en_US"),
-      bundle: englishBundle
-    )
-    XCTAssertEqual(english.displayText, "1,260 words · 6 min read")
-    XCTAssertEqual(
-      english.accessibilityValue,
-      "1,260 words, estimated reading time 6 min"
-    )
-
-    let chinese = WorkspaceTopBarPresentation.ContextStatistics(
-      wordCount: 42,
-      readingMinutes: 6,
-      locale: Locale(identifier: "en_US"),
-      bundle: chineseBundle
-    )
-    XCTAssertEqual(chinese.displayText, "42 字 · 6 分钟阅读")
-    XCTAssertEqual(chinese.accessibilityValue, "字数 42，预计阅读 6 分钟")
-
-    let englishWordOnly = WorkspaceTopBarPresentation.ContextStatistics(
-      wordCount: 1_260,
-      locale: Locale(identifier: "en_US"),
-      bundle: englishBundle
-    )
-    XCTAssertEqual(
-      englishWordOnly.displayText,
-      "1,260 words"
-    )
-
-    let chineseMinutesOnly = WorkspaceTopBarPresentation.ContextStatistics(
-      readingMinutes: 6,
-      locale: Locale(identifier: "en_US"),
-      bundle: chineseBundle
-    )
-    XCTAssertEqual(
-      chineseMinutesOnly.displayText,
-      "6 分钟阅读"
+  private static func report(
+    hasGit: Bool = true,
+    changed: [RepositoryChangedFile] = [],
+    remote: [RepositoryChangedFile] = [],
+    issues: [PreflightIssue] = []
+  ) -> RepositoryScanReport {
+    RepositoryScanReport(
+      rootPath: "/tmp/site",
+      detectedKind: .zola,
+      expectedKind: .zola,
+      hasGitDirectory: hasGit,
+      contentRootExists: true,
+      assetRootExists: true,
+      markdownFileCount: 0,
+      imageFileCount: 0,
+      changedFiles: changed,
+      remoteChangedFiles: remote,
+      preflightIssues: issues
     )
   }
 
@@ -147,73 +128,4 @@ final class WorkspaceTopBarPresentationTests: XCTestCase {
       .publishing
     )
   }
-
-  private static func makeLocalizedBundle(
-    localization: String,
-    contents: String
-  ) throws -> Bundle {
-    let fileManager = FileManager.default
-    let bundleURL = fileManager.temporaryDirectory
-      .appendingPathComponent("WorkspaceTopBarPresentation-\(UUID().uuidString)")
-      .appendingPathExtension("bundle")
-    try fileManager.createDirectory(at: bundleURL, withIntermediateDirectories: true)
-
-    let info: [String: Any] = [
-      "CFBundleDevelopmentRegion": localization,
-      "CFBundleIdentifier": "com.jinfang.RepoPress.TopBarPresentationTests",
-      "CFBundleLocalizations": [localization],
-    ]
-    let infoData = try PropertyListSerialization.data(
-      fromPropertyList: info,
-      format: .xml,
-      options: 0
-    )
-    try infoData.write(to: bundleURL.appendingPathComponent("Info.plist"))
-
-    try writeStrings(contents, localization: localization, bundleURL: bundleURL)
-
-    guard let bundle = Bundle(path: bundleURL.path) else {
-      throw LocalizedBundleFixtureError.unreadableBundle
-    }
-    return bundle
-  }
-
-  private static func writeStrings(
-    _ contents: String,
-    localization: String,
-    bundleURL: URL
-  ) throws {
-    let localizationURL = bundleURL.appendingPathComponent("\(localization).lproj")
-    try FileManager.default.createDirectory(
-      at: localizationURL,
-      withIntermediateDirectories: true
-    )
-    try contents.write(
-      to: localizationURL.appendingPathComponent("Localizable.strings"),
-      atomically: true,
-      encoding: .utf8
-    )
-  }
-
-  private static let englishStrings = """
-    \"%lld 字 · %lld 分钟阅读\" = \"%lld words · %lld min read\";
-    \"%lld 字\" = \"%lld words\";
-    \"%lld 分钟阅读\" = \"%lld min read\";
-    \"字数 %lld，预计阅读 %lld 分钟\" = \"%lld words, estimated reading time %lld min\";
-    \"字数 %lld\" = \"%lld words\";
-    \"预计阅读 %lld 分钟\" = \"Estimated reading time: %lld min\";
-    """
-
-  private static let chineseStrings = """
-    \"%lld 字 · %lld 分钟阅读\" = \"%lld 字 · %lld 分钟阅读\";
-    \"%lld 字\" = \"%lld 字\";
-    \"%lld 分钟阅读\" = \"%lld 分钟阅读\";
-    \"字数 %lld，预计阅读 %lld 分钟\" = \"字数 %lld，预计阅读 %lld 分钟\";
-    \"字数 %lld\" = \"字数 %lld\";
-    \"预计阅读 %lld 分钟\" = \"预计阅读 %lld 分钟\";
-    """
-}
-
-private enum LocalizedBundleFixtureError: Error {
-  case unreadableBundle
 }

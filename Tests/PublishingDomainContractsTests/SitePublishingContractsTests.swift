@@ -7,7 +7,10 @@ final class SitePublishingContractsTests: XCTestCase {
   func testSiteValueTypesKeepStableRawValuesAndIDs() {
     XCTAssertEqual(
       SiteKind.allCases.map(\.rawValue),
-      ["zola", "astro", "hugo", "vitePress", "nextJS", "quartz", "foam", "hexo", "jekyll"]
+      [
+        "zola", "astro", "hugo", "vitePress", "nextJS", "quartz", "foam", "hexo", "jekyll",
+        "docusaurus", "mkDocs",
+      ]
     )
     XCTAssertEqual(SiteKind.allCases.map(\.id), SiteKind.allCases.map(\.rawValue))
 
@@ -166,6 +169,32 @@ final class SitePublishingContractsTests: XCTestCase {
         imagePathPattern: "assets/images/{year}/{filename}",
         publicImagePathPattern: "/assets/images/{year}/{filename}",
         dateFormat: "yyyy-MM-dd HH:mm:ss Z",
+        includeDraftFlagInFrontMatter: false,
+        includeCoverInFrontMatter: true,
+        slugValidationRule: .lowercaseKebab
+      ),
+      SitePublishingDefaults(
+        siteKind: .docusaurus,
+        frontMatterStyle: .yaml,
+        contentRoot: "docs",
+        assetRoot: "static",
+        markdownPathPattern: "docs/{slug}.md",
+        imagePathPattern: "static/images/{year}/{filename}",
+        publicImagePathPattern: "/images/{year}/{filename}",
+        dateFormat: "yyyy-MM-dd",
+        includeDraftFlagInFrontMatter: false,
+        includeCoverInFrontMatter: true,
+        slugValidationRule: .lowercaseKebab
+      ),
+      SitePublishingDefaults(
+        siteKind: .mkDocs,
+        frontMatterStyle: .yaml,
+        contentRoot: "docs",
+        assetRoot: "docs",
+        markdownPathPattern: "docs/{slug}.md",
+        imagePathPattern: "docs/images/{year}/{filename}",
+        publicImagePathPattern: "/images/{year}/{filename}",
+        dateFormat: "yyyy-MM-dd",
         includeDraftFlagInFrontMatter: false,
         includeCoverInFrontMatter: true,
         slugValidationRule: .lowercaseKebab

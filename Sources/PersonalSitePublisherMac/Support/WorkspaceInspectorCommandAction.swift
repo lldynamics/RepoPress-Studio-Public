@@ -8,8 +8,8 @@ struct WorkspaceInspectorCommandAction {
 
   var title: String {
     if exitsFocusMode {
-      return String(localized: "显示 Inspector 并退出专注")
+      return String(localized: "显示详情栏并退出专注")
     }
-    return isPresented ? String(localized: "隐藏 Inspector") : String(localized: "显示 Inspector")
+    return isPresented ? String(localized: "隐藏详情栏") : String(localized: "显示详情栏")
   }
 }

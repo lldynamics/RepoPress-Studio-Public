@@ -1,4 +1,5 @@
 import Foundation
+import PublishingPreviewCore
 
 extension PublishingStore {
   public func localSitePreviewPlan(for draft: ArticleDraft, store: WorkbenchStore)
@@ -105,15 +106,29 @@ extension PublishingStore {
   }
 
   public func refreshLocalSitePreviewRuntimeStatus() {
-    localSitePreviewRuntimeStatus = localSitePreviewProcessService.status
+    var refreshed = localSitePreviewProcessService.status
+    if refreshed.isRunning,
+      refreshed.processIdentifier == localSitePreviewRuntimeStatus.processIdentifier,
+      refreshed.previewURL == localSitePreviewRuntimeStatus.previewURL
+    {
+      refreshed.isReachable = localSitePreviewRuntimeStatus.isReachable
+    }
+    localSitePreviewRuntimeStatus = refreshed
   }
 
-  public func reloadLocalSitePreview() {
-    guard localSitePreviewRuntimeStatus.isRunning else { return }
+  @discardableResult
+  public func reloadLocalSitePreview() -> LocalSitePreviewStartDisposition? {
+    guard localSitePreviewRuntimeStatus.isRunning else { return nil }
+    if localSitePreviewPlan?.siteKind == .quartz {
+      invalidateQuartzStaticPreview()
+      return startLocalSitePreview()
+    }
     localSitePreviewRefreshToken &+= 1
+    return nil
   }
 
   public func verifyLocalSitePreviewReachability() async {
+    let generation = localSitePreviewGeneration
     guard
       let previewURL = localSitePreviewRuntimeStatus.previewURL ?? localSitePreviewPlan?.previewURL
     else {
@@ -125,7 +140,25 @@ extension PublishingStore {
       return
     }
 
-    var request = URLRequest(url: previewURL)
+    let quartzProbe = localSitePreviewPlan.flatMap {
+      localSitePreviewProcessService.quartzReadinessProbe(for: $0)
+    }
+    if localSitePreviewPlan?.siteKind == .quartz, quartzProbe == nil {
+      let current = localSitePreviewProcessService.status
+      localSitePreviewRuntimeStatus = LocalSitePreviewRuntimeStatus(
+        isRunning: current.isRunning,
+        isReachable: false,
+        processIdentifier: current.processIdentifier,
+        previewURL: previewURL,
+        message: current.message,
+        startedAt: current.startedAt,
+        recentLogLines: current.recentLogLines,
+        diagnostics: current.diagnostics
+      )
+      return
+    }
+
+    var request = URLRequest(url: quartzProbe?.url ?? previewURL)
     request.httpMethod = "GET"
     request.timeoutInterval = 1.5
     request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -135,7 +168,26 @@ extension PublishingStore {
       // endpoint answered", not "the requested page is ready".  Keep that
       // compatibility contract while sharing the bounded headers-only probe.
       let response = try await LocalSitePreviewHTTPMetadataProbe.perform(request)
+      guard localSitePreviewGeneration == generation else { return }
+      let current = localSitePreviewProcessService.status
+      if localSitePreviewPlan?.siteKind == .quartz,
+        !current.isRunning
+          || current.processIdentifier != localSitePreviewRuntimeStatus.processIdentifier
+          || localSitePreviewPlan.flatMap({
+            localSitePreviewProcessService.quartzReadinessProbe(for: $0)?.token
+          }) != quartzProbe?.token
+      {
+        localSitePreviewRuntimeStatus = current
+        return
+      }
+      if let quartzProbe,
+        response.statusCode != 200
+          || response.responseHeaders["x-repopress-quartz-preview"] != quartzProbe.token
+      {
+        throw URLError(.badServerResponse)
+      }
       let responseCode = response.statusCode == 0 ? nil : response.statusCode
+      let wasReachable = localSitePreviewRuntimeStatus.isReachable
       localSitePreviewRuntimeStatus = LocalSitePreviewRuntimeStatus(
         isRunning: true,
         isReachable: true,
@@ -143,17 +195,28 @@ extension PublishingStore {
         previewURL: previewURL,
         message: responseCode.map { "本地预览可访问（HTTP \($0)）。" } ?? "本地预览端口可访问。",
         startedAt: localSitePreviewRuntimeStatus.startedAt,
-        recentLogLines: localSitePreviewProcessService.status.recentLogLines
+        recentLogLines: current.recentLogLines,
+        diagnostics: current.diagnostics
       )
+      if localSitePreviewPlan?.siteKind == .quartz, !wasReachable {
+        localSitePreviewRefreshToken &+= 1
+      }
     } catch {
+      guard localSitePreviewGeneration == generation else { return }
+      let current = localSitePreviewProcessService.status
       localSitePreviewRuntimeStatus = LocalSitePreviewRuntimeStatus(
-        isRunning: localSitePreviewProcessService.status.isRunning,
+        isRunning: current.isRunning,
         isReachable: false,
-        processIdentifier: localSitePreviewProcessService.status.processIdentifier,
+        processIdentifier: current.processIdentifier,
         previewURL: previewURL,
-        message: "尚未检测到本地预览端口：\(error.localizedDescription)",
-        startedAt: localSitePreviewProcessService.status.startedAt,
-        recentLogLines: localSitePreviewProcessService.status.recentLogLines
+        message: localSitePreviewPlan?.siteKind == .quartz
+          ? (current.isRunning
+            ? "Quartz 4 静态快照尚未提供预览端口：\(error.localizedDescription)"
+            : current.message)
+          : "尚未检测到本地预览端口：\(error.localizedDescription)",
+        startedAt: current.startedAt,
+        recentLogLines: current.recentLogLines,
+        diagnostics: current.diagnostics
       )
     }
   }
@@ -264,14 +327,37 @@ extension PublishingStore {
       startLocalSitePreviewFileWatcher(for: plan, generation: generation)
       setPublishActionMessage(localSitePreviewRuntimeStatus.message, status: .inProgress)
       Task { [weak self] in
-        for _ in 0..<5 {
-          try? await Task.sleep(for: .seconds(1))
-          guard let self,
-            self.localSitePreviewGeneration == generation,
-            self.localSitePreviewRuntimeStatus.isRunning
-          else { return }
-          await self.verifyLocalSitePreviewReachability()
-          if self.localSitePreviewRuntimeStatus.isReachable { return }
+        if plan.siteKind == .quartz {
+          let clock = ContinuousClock()
+          let deadline =
+            clock.now + LocalSitePreviewStartupBudget.maximumReadinessWait(for: .quartz)
+          while clock.now < deadline {
+            do {
+              try await Task.sleep(for: .seconds(1))
+            } catch {
+              return
+            }
+            guard let self,
+              self.localSitePreviewGeneration == generation,
+              self.localSitePreviewRuntimeStatus.isRunning
+            else { return }
+            await self.verifyLocalSitePreviewReachability()
+            if self.localSitePreviewRuntimeStatus.isReachable { return }
+          }
+        } else {
+          for _ in 0..<LocalSitePreviewStartupBudget.normalBackgroundReachabilityAttempts {
+            do {
+              try await Task.sleep(for: .seconds(1))
+            } catch {
+              return
+            }
+            guard let self,
+              self.localSitePreviewGeneration == generation,
+              self.localSitePreviewRuntimeStatus.isRunning
+            else { return }
+            await self.verifyLocalSitePreviewReachability()
+            if self.localSitePreviewRuntimeStatus.isReachable { return }
+          }
         }
       }
     } catch {
@@ -338,12 +424,24 @@ extension PublishingStore {
     guard localSitePreviewGeneration == generation,
       localSitePreviewRuntimeStatus.isRunning
     else { return }
+    if localSitePreviewPlan?.siteKind == .quartz {
+      invalidateQuartzStaticPreview()
+      return
+    }
     localSitePreviewRefreshToken &+= 1
     localSitePreviewRuntimeStatus.message = "检测到仓库文件变更，预览已刷新。"
     setPublishActionMessage(
       localSitePreviewRuntimeStatus.message,
       status: .success
     )
+  }
+
+  private func invalidateQuartzStaticPreview() {
+    guard localSitePreviewPlan?.siteKind == .quartz else { return }
+    if let plan = localSitePreviewPlan {
+      localSitePreviewProcessService.invalidateAuthorization(for: plan)
+    }
+    requestLocalSitePreviewStop(message: "Quartz 4 快照已失效；再次启动前请确认仓库命令。")
   }
 
   private func requestLocalSitePreviewStop(message: String) {
@@ -372,7 +470,11 @@ extension PublishingStore {
       self.localSitePreviewStopTask = nil
       self.localSitePreviewStopOperationID = nil
       if self.localSitePreviewGeneration == generation {
-        self.localSitePreviewRuntimeStatus = .stopped
+        self.localSitePreviewRuntimeStatus = LocalSitePreviewRuntimeStatus(
+          isRunning: false,
+          previewURL: previewURL,
+          message: message
+        )
       }
     }
   }

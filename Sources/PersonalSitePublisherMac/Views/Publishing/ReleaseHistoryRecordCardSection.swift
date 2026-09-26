@@ -204,11 +204,22 @@ extension ReleaseHistoryDetailView {
             .font(.callout)
             .foregroundStyle(.secondary)
 
-          ForEach(rollbackDraft.commandLines, id: \.self) { command in
-            Text(command)
-              .font(.caption.monospaced())
-              .textSelection(.enabled)
-              .lineLimit(2)
+          if !rollbackDraft.commandLines.isEmpty {
+            DisclosureGroup {
+              VStack(alignment: .leading, spacing: 6) {
+                ForEach(rollbackDraft.commandLines, id: \.self) { command in
+                  Text(command)
+                    .font(.callout.monospaced())
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+              }
+              .padding(.top, 6)
+            } label: {
+              Label("高级：Git 命令（\(rollbackDraft.commandLines.count) 条）", systemImage: "terminal")
+                .font(.callout.weight(.medium))
+            }
+            .accessibilityIdentifier("release-record-\(record.id)-advanced-commands")
           }
 
           if rollbackDraft.reviewTitle != nil || rollbackDraft.reviewBody != nil {

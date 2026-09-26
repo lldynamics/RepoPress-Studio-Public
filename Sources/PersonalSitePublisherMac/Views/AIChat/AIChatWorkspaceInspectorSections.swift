@@ -1,23 +1,49 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
+struct AIChatMissingKeyEmptyState: View {
+  let configureAIConnection: () -> Void
+
+  var body: some View {
+    ContentUnavailableView {
+      Label(String(localized: "未配置 API Key"), systemImage: "key.horizontal")
+    } description: {
+      EmptyView()
+    } actions: {
+      Button(String(localized: "配置 AI 连接")) {
+        configureAIConnection()
+      }
+      .accessibilityIdentifier("ai-assistant-configure-connection")
+    }
+    .accessibilityIdentifier("ai-assistant-missing-key-empty-state")
+  }
+}
+
 struct AIChatConversationInspectorSection: View {
   let context: AIChatInspectorConversationContext
   let actions: AIChatContextInspectorActions
+  let isAIKeyMissing: Bool
+  let configureAIConnection: () -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: 9) {
       if context.messages.isEmpty {
-        ContentUnavailableView(
-          String(localized: "开始对话"),
-          systemImage: "bubble.left.and.text.bubble.right",
-          description: Text(
-            context.draft == nil
-              ? String(localized: "在下方输入问题，AI 不会自动读取当前文章。")
-              : String(localized: "在下方输入问题，AI 会结合当前文章回答。")
+        if isAIKeyMissing {
+          AIChatMissingKeyEmptyState(configureAIConnection: configureAIConnection)
+            .frame(minHeight: 130)
+        } else {
+          ContentUnavailableView(
+            String(localized: "开始对话"),
+            systemImage: "bubble.left.and.text.bubble.right",
+            description: Text(
+              context.draft == nil
+                ? String(localized: "在下方输入问题，AI 不会自动读取当前文章。")
+                : String(localized: "在下方输入问题，AI 会结合当前文章回答。")
+            )
           )
-        )
-        .frame(minHeight: 130)
+          .accessibilityIdentifier("ai-assistant-empty-state")
+          .frame(minHeight: 130)
+        }
       } else {
         if context.totalMessageCount > context.messages.count {
           Button {

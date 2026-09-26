@@ -1,4 +1,5 @@
 import Combine
+import PublishingBackupCore
 import Foundation
 
 /// Narrow observation and command boundary for data-management surfaces.

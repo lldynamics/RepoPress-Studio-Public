@@ -16,14 +16,14 @@ final class WorkspaceContextNavigationTests: XCTestCase {
   func testCompactRailExposesTheFiveDirectWorkspaceRoutes() {
     XCTAssertEqual(
       WorkspaceCompactNavigationRail.primarySections,
-      [.rss, .library, .sync, .contentHealth, .writing]
+      [.writing, .library, .rss, .sync, .contentHealth]
     )
   }
 
-  func testFullAndCompactRailsShareTheOriginalTwoPlusTwoPlusOneOrder() {
+  func testFullAndCompactRailsShareTheCommandShortcutOrder() {
     XCTAssertEqual(
       WorkspaceNavigationRouteDescriptor.primaryRows,
-      [[.rss, .library], [.sync, .contentHealth], [.writing]]
+      [[.writing, .library], [.rss, .sync], [.contentHealth]]
     )
     XCTAssertEqual(
       WorkspaceNavigationRouteDescriptor.primaryRows.flatMap { $0 },

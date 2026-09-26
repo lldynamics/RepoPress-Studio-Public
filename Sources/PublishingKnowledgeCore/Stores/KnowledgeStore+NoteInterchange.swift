@@ -22,13 +22,16 @@ extension KnowledgeStore {
 
   public func exportNotePackage(selectedIDs: Set<UUID>) async throws -> RPNotePackage {
     let allNotes = try await service.notesAsync()
-    let chosen = selectedIDs.isEmpty
+    let chosen =
+      selectedIDs.isEmpty
       ? allNotes
       : allNotes.filter { selectedIDs.contains($0.id) }
     return RPNotePackage(notes: chosen.map(Self.portableNote))
   }
 
-  public func previewNotePackage(_ package: RPNotePackage) async throws -> KnowledgeNotePackagePreview {
+  public func previewNotePackage(_ package: RPNotePackage) async throws
+    -> KnowledgeNotePackagePreview
+  {
     try await service.validateNotesForImportAsync(package.notes.map(Self.knowledgeNote))
     var newCount = 0
     var identicalCount = 0
@@ -37,7 +40,8 @@ extension KnowledgeStore {
     for incoming in package.notes {
       guard let existing = try await service.noteAsync(documentID: incoming.id) else {
         if let existingDocument = try service.document(id: incoming.id) {
-          blockedTitles.append(existingDocument.title.isEmpty ? incoming.id.uuidString : existingDocument.title)
+          blockedTitles.append(
+            existingDocument.title.isEmpty ? incoming.id.uuidString : existingDocument.title)
         } else {
           newCount += 1
         }

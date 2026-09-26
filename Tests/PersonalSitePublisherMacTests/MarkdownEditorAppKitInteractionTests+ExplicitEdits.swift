@@ -402,6 +402,76 @@ final class MarkdownEditorAppKitInteractionExplicitEditTests:
     XCTAssertTrue(scrollView.documentVisibleRect.intersects(visibleRect))
   }
 
+  func testMountedComposerLaysOutHeadingAndEmphasisFontsInTextStorage() async throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: fixture.root.appendingPathComponent("workbench.json")
+      ),
+      safeMode: true
+    )
+    var initialDraft = try XCTUnwrap(store.selectedDraft)
+    initialDraft.title = "标题层级"
+    initialDraft.bodyMarkdown =
+      "正文开头。\n\n# 一级标题\n\n## 二级标题\n\n### 三级标题\n\n正文 **粗体** 结尾。"
+    store.updateDraft(initialDraft)
+    let draft = try XCTUnwrap(store.draft(for: initialDraft.id))
+    var boundDraft = draft
+    let composer = MacMarkdownComposerView(
+      draft: Binding(
+        get: { store.draft(for: draft.id) ?? boundDraft },
+        set: { updated in
+          boundDraft = updated
+          _ = store.updateDraftFromEditor(updated)
+        }
+      ),
+      store: store
+    )
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 900, height: 700),
+      styleMask: .titled,
+      backing: .buffered,
+      defer: false
+    )
+    window.contentView = NSHostingView(
+      rootView:
+        composer
+        .environmentObject(WorkspaceSceneCommandRouter())
+        .frame(width: 900, height: 700)
+    )
+    window.makeKeyAndOrderFront(nil)
+    defer { window.orderOut(nil) }
+
+    let textView = try await mountedMarkdownTextView(in: window)
+    try await Task.sleep(for: .milliseconds(600))
+    window.layoutIfNeeded()
+    window.displayIfNeeded()
+
+    let storage = try XCTUnwrap(textView.textStorage)
+    let source = textView.string as NSString
+    func pointSize(of needle: String) throws -> CGFloat {
+      let location = source.range(of: needle).location
+      XCTAssertNotEqual(location, NSNotFound, needle)
+      let font = try XCTUnwrap(
+        storage.attribute(.font, at: location, effectiveRange: nil) as? NSFont
+      )
+      return font.pointSize
+    }
+    let body = try pointSize(of: "正文开头")
+    let h1 = try pointSize(of: "一级标题")
+    let h2 = try pointSize(of: "二级标题")
+    let h3 = try pointSize(of: "三级标题")
+    XCTAssertGreaterThan(h1, h2)
+    XCTAssertGreaterThan(h2, h3)
+    XCTAssertGreaterThan(h3, body)
+    let boldFont = try XCTUnwrap(
+      storage.attribute(.font, at: source.range(of: "粗体").location, effectiveRange: nil)
+        as? NSFont
+    )
+    XCTAssertTrue(boldFont.fontDescriptor.symbolicTraits.contains(.bold))
+  }
+
   func testMountedComposerEOFInputKeepsCaretInManuallyScrolledViewport() async throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -603,10 +673,14 @@ final class MarkdownEditorAppKitInteractionExplicitEditTests:
     textView.insertText("\nUser scroll wins", replacementRange: textView.selectedRange())
     scrollView.layoutSubtreeIfNeeded()
     let originBeforeWheel = scrollView.contentView.bounds.minY
+    // A zero-delta wheel event still runs the scroll view's reveal
+    // cancellation, but gives AppKit's display-link scrolling animator no
+    // distance to consume later; a large synthetic delta was animated after
+    // the test set the user-chosen origin below and scrolled to the top.
     let wheelEvent = try XCTUnwrap(
       CGEvent(
         scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1,
-        wheel1: 10_000, wheel2: 0, wheel3: 0
+        wheel1: 0, wheel2: 0, wheel3: 0
       ).flatMap { NSEvent(cgEvent: $0) }
     )
     // Reproduce a deferred caret reveal that a user scroll must supersede.

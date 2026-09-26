@@ -362,6 +362,29 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
     advancedSettings ?? AIProviderAdvancedSettings()
   }
 
+  /// Applies a discovery result without carrying a remote profile's proxy or
+  /// future fallback destination into a connection presented as local.
+  public func applyingDetectedLocalEngine(baseURL: String, model: String) -> Self? {
+    let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let url = URL(string: baseURL),
+      LocalAIEngineDiscoveryService.isStrictLoopbackURL(url),
+      !trimmedModel.isEmpty
+    else { return nil }
+
+    var updated = self
+    updated.preset = .local
+    updated.baseURL = baseURL
+    updated.model = trimmedModel
+    updated.requiresAPIKey = false
+    updated.capabilityProbeEvidence = nil
+    if var settings = updated.advancedSettings {
+      settings.proxyURL = nil
+      settings.fallbackProfileID = nil
+      updated.advancedSettings = settings
+    }
+    return updated
+  }
+
   public var normalizedBaseURL: String {
     baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
   }

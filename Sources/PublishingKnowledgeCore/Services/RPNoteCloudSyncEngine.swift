@@ -1,20 +1,14 @@
 import CloudKit
-import CryptoKit
 import Foundation
+import RepoPressAppleSupport
 import Security
 
 /// Server state of one attachment record. Owned by the sync engine; adapters only persist it.
-public struct RPNoteCloudAttachmentBaseline: Sendable, Equatable, Codable {
-  public var noteID: String
-  public var sha256: String
-  public var systemFields: Data?
-
-  public init(noteID: String, sha256: String, systemFields: Data?) {
-    self.noteID = noteID
-    self.sha256 = sha256
-    self.systemFields = systemFields
-  }
-}
+public typealias RPNoteCloudAttachmentBaseline = RepoPressAppleSupport.RPNoteCloudAttachmentBaseline
+public typealias RPNoteCloudLocalChange = RepoPressAppleSupport.RPNoteCloudLocalChange
+public typealias RPNoteCloudRemoteChange = RepoPressAppleSupport.RPNoteCloudRemoteChange
+public typealias RPNoteCloudApplyResult = RepoPressAppleSupport.RPNoteCloudApplyResult
+public typealias RPNoteCloudAttachmentPlan = RepoPressAppleSupport.RPNoteCloudAttachmentPlan
 
 public struct RPNoteCloudPersistentState: Sendable, Equatable, Codable {
   public var engineState: Data?
@@ -42,19 +36,23 @@ public struct RPNoteCloudPersistentState: Sendable, Equatable, Codable {
   }
 
   private enum CodingKeys: String, CodingKey {
-    case engineState, boundAccountID, initialFetchComplete, zoneRecoveryRequired, zoneEstablished, attachmentBaselines
+    case engineState, boundAccountID, initialFetchComplete, zoneRecoveryRequired, zoneEstablished,
+      attachmentBaselines
   }
 
   public init(from decoder: Decoder) throws {
     let values = try decoder.container(keyedBy: CodingKeys.self)
     engineState = try values.decodeIfPresent(Data.self, forKey: .engineState)
     boundAccountID = try values.decodeIfPresent(String.self, forKey: .boundAccountID)
-    initialFetchComplete = try values.decodeIfPresent(Bool.self, forKey: .initialFetchComplete) ?? false
-    zoneRecoveryRequired = try values.decodeIfPresent(Bool.self, forKey: .zoneRecoveryRequired) ?? false
+    initialFetchComplete =
+      try values.decodeIfPresent(Bool.self, forKey: .initialFetchComplete) ?? false
+    zoneRecoveryRequired =
+      try values.decodeIfPresent(Bool.self, forKey: .zoneRecoveryRequired) ?? false
     zoneEstablished = try values.decodeIfPresent(Bool.self, forKey: .zoneEstablished) ?? false
-    attachmentBaselines = try values.decodeIfPresent(
-      [String: RPNoteCloudAttachmentBaseline].self, forKey: .attachmentBaselines
-    ) ?? [:]
+    attachmentBaselines =
+      try values.decodeIfPresent(
+        [String: RPNoteCloudAttachmentBaseline].self, forKey: .attachmentBaselines
+      ) ?? [:]
   }
 
   public func encode(to encoder: Encoder) throws {
@@ -69,42 +67,56 @@ public struct RPNoteCloudPersistentState: Sendable, Equatable, Codable {
 }
 
 public enum RPNoteCloudBootstrapPolicy {
-  public static func accountChanged(_ accountID: String, saved: RPNoteCloudPersistentState) -> Bool {
+  public static func accountChanged(_ accountID: String, saved: RPNoteCloudPersistentState) -> Bool
+  {
     saved.boundAccountID != nil && saved.boundAccountID != accountID
   }
 
-  public static func stateForFirstBinding(_ accountID: String, saved: RPNoteCloudPersistentState) -> RPNoteCloudPersistentState {
+  public static func stateForFirstBinding(_ accountID: String, saved: RPNoteCloudPersistentState)
+    -> RPNoteCloudPersistentState
+  {
     guard saved.boundAccountID == nil else { return saved }
     var state = saved
     state.boundAccountID = accountID
     return state
   }
 
-  public static func stateForConfirmedAccountChange(_ accountID: String) -> RPNoteCloudPersistentState {
-    RPNoteCloudPersistentState(boundAccountID: accountID, initialFetchComplete: false, zoneEstablished: false)
+  public static func stateForConfirmedAccountChange(_ accountID: String)
+    -> RPNoteCloudPersistentState
+  {
+    RPNoteCloudPersistentState(
+      boundAccountID: accountID, initialFetchComplete: false, zoneEstablished: false)
   }
 
-  public static func resetAfterInvalidEngineState(_ saved: RPNoteCloudPersistentState) -> RPNoteCloudPersistentState {
+  public static func resetAfterInvalidEngineState(_ saved: RPNoteCloudPersistentState)
+    -> RPNoteCloudPersistentState
+  {
     var state = saved
     state.engineState = nil
     state.initialFetchComplete = false
     return state
   }
 
-  public static func lockSeedUntilFetch(_ saved: RPNoteCloudPersistentState) -> RPNoteCloudPersistentState {
+  public static func lockSeedUntilFetch(_ saved: RPNoteCloudPersistentState)
+    -> RPNoteCloudPersistentState
+  {
     var state = saved
     state.initialFetchComplete = false
     return state
   }
 
-  public static func requireZoneRecovery(_ saved: RPNoteCloudPersistentState) -> RPNoteCloudPersistentState {
+  public static func requireZoneRecovery(_ saved: RPNoteCloudPersistentState)
+    -> RPNoteCloudPersistentState
+  {
     var state = saved
     state.initialFetchComplete = false
     state.zoneRecoveryRequired = true
     return state
   }
 
-  public static func confirmZoneRecovery(_ saved: RPNoteCloudPersistentState) -> RPNoteCloudPersistentState {
+  public static func confirmZoneRecovery(_ saved: RPNoteCloudPersistentState)
+    -> RPNoteCloudPersistentState
+  {
     var state = saved
     state.engineState = nil
     state.initialFetchComplete = false
@@ -118,85 +130,14 @@ public enum RPNoteCloudBootstrapPolicy {
     state.boundAccountID != nil && state.initialFetchComplete
   }
 
-  public static func mayCommitFetch(completed: Bool, zoneFetchSucceeded: Bool, allRemoteChangesApplied: Bool) -> Bool {
+  public static func mayCommitFetch(
+    completed: Bool, zoneFetchSucceeded: Bool, allRemoteChangesApplied: Bool
+  ) -> Bool {
     completed && zoneFetchSucceeded && allRemoteChangesApplied
   }
 
   public static func missingZoneRequiresRecovery(_ state: RPNoteCloudPersistentState) -> Bool {
     state.zoneEstablished
-  }
-}
-
-public enum RPNoteCloudLocalChange: Sendable {
-  case upsert(note: RPNote, revision: String, systemFields: Data?)
-  case tombstone(id: UUID, deletedAt: Date, revision: String, systemFields: Data?)
-
-  public var id: UUID {
-    switch self {
-    case let .upsert(note, _, _): note.id
-    case let .tombstone(id, _, _, _): id
-    }
-  }
-
-  public var revision: String {
-    switch self {
-    case let .upsert(_, revision, _), let .tombstone(_, _, revision, _): revision
-    }
-  }
-}
-
-public enum RPNoteCloudRemoteChange: Sendable {
-  case note(RPNote, sha256: String, systemFields: Data)
-  case tombstone(id: UUID, deletedAt: Date, systemFields: Data)
-}
-
-public enum RPNoteCloudApplyResult: Sendable, Equatable {
-  case applied
-  case keptLocalWithConflictCopy
-  case ignoredStale
-}
-
-/// Decides which attachment records a local note change uploads or deletes. Attachments
-/// whose server copy already has the same digest are not uploaded again.
-public enum RPNoteCloudAttachmentPlan {
-  public static let recordNamePrefix = "att-"
-
-  public struct Upload: Sendable, Equatable {
-    public let recordName: String
-    public let attachment: RPNoteAttachment
-    public let sha256: String
-  }
-
-  public struct Plan: Sendable, Equatable {
-    public var uploads: [Upload]
-    /// Record names of attachments the note no longer references (or all of them for a tombstone).
-    public var deletions: [String]
-  }
-
-  public static func recordName(noteID: UUID, attachmentID: UUID) -> String {
-    "\(recordNamePrefix)\(noteID.uuidString.lowercased())-\(attachmentID.uuidString.lowercased())"
-  }
-
-  public static func plan(
-    for change: RPNoteCloudLocalChange,
-    baselines: [String: RPNoteCloudAttachmentBaseline]
-  ) -> Plan {
-    let noteKey = change.id.uuidString.lowercased()
-    let existing = baselines.filter { $0.value.noteID == noteKey }
-    guard case let .upsert(note, _, _) = change else {
-      return Plan(uploads: [], deletions: existing.keys.sorted())
-    }
-    var uploads: [Upload] = []
-    var referenced = Set<String>()
-    for attachment in note.attachments.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
-      let name = recordName(noteID: note.id, attachmentID: attachment.id)
-      referenced.insert(name)
-      let sha256 = RPNoteCloudPayload.attachmentDigest(attachment.data)
-      if existing[name]?.sha256 != sha256 {
-        uploads.append(Upload(recordName: name, attachment: attachment, sha256: sha256))
-      }
-    }
-    return Plan(uploads: uploads, deletions: existing.keys.filter { !referenced.contains($0) }.sorted())
   }
 }
 
@@ -207,6 +148,9 @@ public protocol RPNoteCloudSyncLocalAdapter: Sendable {
   func savePersistentState(_ state: RPNoteCloudPersistentState) async throws
   func localChanges() async throws -> [RPNoteCloudLocalChange]
   func applyRemote(_ change: RPNoteCloudRemoteChange) async throws -> RPNoteCloudApplyResult
+  /// Registers the exact change accepted into a send batch, not every scanned candidate.
+  func prepareForSend(_ change: RPNoteCloudLocalChange) async
+  func abandonPreparedSend(id: UUID, revision: String) async
   func markSent(id: UUID, revision: String, systemFields: Data) async throws
   func clearSystemFields(id: UUID, revision: String?) async throws
   /// Clears account-scoped CloudKit baselines and requeues retained local notes/tombstones.
@@ -236,18 +180,14 @@ public enum RPNoteCloudSyncStatus: Sendable, Equatable {
 public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
   public static let containerIdentifier = "iCloud.com.chengjinfang.repopress"
   public static let zoneName = "RepoPressNotesV2"
-  public static let recordType = "RPNoteV2"
-  public static let attachmentRecordType = "RPNoteAttachmentV2"
-  public static let schemaVersion: Int64 = 2
+  public static let recordType = RPNoteCloudRecordCodec.recordType
+  public static let attachmentRecordType = RPNoteCloudRecordCodec.attachmentRecordType
+  public static let schemaVersion: Int64 = RPNoteCloudRecordCodec.schemaVersion
   /// Bounds transient memory during encoding; oversized notes remain local and get a visible per-note error.
-  public static let maximumAutomaticPayloadBytes = 64 * 1024 * 1024
+  public static let maximumAutomaticPayloadBytes = RPNoteCloudRecordCodec
+    .maximumAutomaticPayloadBytes
 
-  private static let payloadField = "payload"
   private static let payloadDigestField = "sha256"
-  private static let deletedAtField = "deletedAt"
-  private static let schemaVersionField = "schemaVersion"
-  private static let attachmentDataField = "data"
-  private static let attachmentByteCountField = "byteCount"
   private static let attachmentNoteField = "noteID"
   private static let maximumRecordsPerBatch = 200
   private static let maximumBytesPerBatch = 128 * 1024 * 1024
@@ -308,9 +248,16 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
   public func currentStatus() -> RPNoteCloudSyncStatus { status }
   public func noteErrors() -> [UUID: String] { perNoteErrors }
 
+  // Linear bootstrap: each guard is one account, recovery, or lifecycle check.
   /// Starts only after explicit user opt-in and a usable iCloud account.
-  public func start(confirmAccountChange: Bool = false, confirmZoneRecovery: Bool = false) async throws {
-    guard isEnabled else { status = .disabled; return }
+  public func start(  // swiftlint:disable:this cyclomatic_complexity
+    confirmAccountChange: Bool = false,
+    confirmZoneRecovery: Bool = false
+  ) async throws {
+    guard isEnabled else {
+      status = .disabled
+      return
+    }
     if engine != nil { return }
     guard !startInProgress else {
       queuedAccountConfirmation = queuedAccountConfirmation || confirmAccountChange
@@ -328,7 +275,10 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
         restartRequested = false
         queuedAccountConfirmation = false
         queuedZoneConfirmation = false
-        Task { try? await self.start(confirmAccountChange: accountConfirmation, confirmZoneRecovery: zoneConfirmation) }
+        Task {
+          try? await self.start(
+            confirmAccountChange: accountConfirmation, confirmZoneRecovery: zoneConfirmation)
+        }
       }
     }
     unsafeStateAfterApplyFailure = false
@@ -353,7 +303,10 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
       activeContainer = cloudContainer
       let accountStatus = try await cloudContainer.accountStatus()
       guard generation == lifecycleGeneration, isEnabled else { return }
-      guard accountStatus == .available else { status = .waitingForAccount; return }
+      guard accountStatus == .available else {
+        status = .waitingForAccount
+        return
+      }
       let accountID = try await cloudContainer.userRecordID().recordName
       guard generation == lifecycleGeneration, isEnabled else { return }
       let oldState = try await adapter.loadPersistentState()
@@ -380,7 +333,9 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
       }
       let serialization: CKSyncEngine.State.Serialization?
       if let bytes = saved.engineState {
-        if let decoded = try? JSONDecoder().decode(CKSyncEngine.State.Serialization.self, from: bytes) {
+        if let decoded = try? JSONDecoder().decode(
+          CKSyncEngine.State.Serialization.self, from: bytes)
+        {
           serialization = decoded
         } else {
           saved = RPNoteCloudBootstrapPolicy.resetAfterInvalidEngineState(saved)
@@ -393,16 +348,38 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
       try await adapter.savePersistentState(saved)
       guard generation == lifecycleGeneration, isEnabled else { return }
       persistentState = saved
+      if saved.zoneEstablished, serialization == nil {
+        do {
+          _ = try await cloudContainer.privateCloudDatabase.recordZone(for: zoneID)
+        } catch let error as CKError where error.code == .zoneNotFound {
+          guard generation == lifecycleGeneration, isEnabled else { return }
+          await requireZoneRecovery(message: "Could not persist the missing iCloud zone state")
+          return
+        }
+        guard generation == lifecycleGeneration, isEnabled else { return }
+      }
       var configuration = CKSyncEngine.Configuration(
         database: cloudContainer.privateCloudDatabase,
         stateSerialization: serialization,
         delegate: self
       )
       configuration.automaticallySync = true
-      engine = CKSyncEngine(configuration)
-      engine?.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: zoneID))])
+      let newEngine = CKSyncEngine(configuration)
+      engine = newEngine
       status = .syncing
+      if saved.zoneEstablished {
+        // A restored library has no fetch token. Never recreate a previously
+        // established zone before checking whether it was deliberately deleted.
+        try await newEngine.fetchChanges(.init(scope: .zoneIDs([zoneID])))
+      } else {
+        newEngine.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: zoneID))])
+      }
     } catch {
+      guard generation == lifecycleGeneration, isEnabled else { return }
+      if persistentState.zoneRecoveryRequired {
+        status = .remoteZoneDeletedNeedsRecovery
+        return
+      }
       status = .failed(error.localizedDescription)
       throw error
     }
@@ -414,7 +391,9 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
     guard zoneReady else { return }
     let generation = lifecycleGeneration
     try await engine.fetchChanges(CKSyncEngine.FetchChangesOptions(scope: .all))
-    guard generation == lifecycleGeneration, self.engine === engine, persistentState.initialFetchComplete else { return }
+    guard generation == lifecycleGeneration, self.engine === engine,
+      persistentState.initialFetchComplete
+    else { return }
     try await enqueueLocalChanges(on: engine)
     guard generation == lifecycleGeneration, self.engine === engine else { return }
     try await engine.sendChanges(CKSyncEngine.SendChangesOptions(scope: .all))
@@ -438,7 +417,10 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
       return
     }
     isEnabled = true
-    if startInProgress { restartRequested = true; return }
+    if startInProgress {
+      restartRequested = true
+      return
+    }
     try await start()
   }
 
@@ -455,10 +437,12 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
     try await start()
   }
 
+  // One case per CKSyncEngine event; each case delegates to a handler.
+  // swiftlint:disable:next cyclomatic_complexity
   public func handleEvent(_ event: CKSyncEngine.Event, syncEngine: CKSyncEngine) async {
     guard isEnabled, engine === syncEngine else { return }
     switch event {
-    case let .stateUpdate(update):
+    case .stateUpdate(let update):
       await handleStateUpdate(update, syncEngine: syncEngine)
     case .accountChange:
       // Never let an engine continue under a different signed-in account.
@@ -470,19 +454,19 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
       fetchInProgress = true
       deferredSerialization = nil
       discardBufferedRemoteChanges()
-    case let .fetchedDatabaseChanges(changes):
+    case .fetchedDatabaseChanges(let changes):
       await handleFetchedDatabaseChanges(changes)
-    case let .fetchedRecordZoneChanges(changes):
+    case .fetchedRecordZoneChanges(let changes):
       await handleFetchedRecordZoneChanges(changes, syncEngine: syncEngine)
-    case let .didFetchRecordZoneChanges(result):
+    case .didFetchRecordZoneChanges(let result):
       await handleDidFetchRecordZoneChanges(result, syncEngine: syncEngine)
     case .didFetchChanges:
       await handleDidFetchChanges(syncEngine: syncEngine)
-    case let .sentDatabaseChanges(result):
+    case .sentDatabaseChanges(let result):
       await handleSentDatabaseChanges(result, syncEngine: syncEngine)
     case .willSendChanges, .didSendChanges:
       attemptedInCurrentSend = []
-    case let .sentRecordZoneChanges(result):
+    case .sentRecordZoneChanges(let result):
       await handleSentRecordZoneChanges(result, syncEngine: syncEngine)
     default:
       break
@@ -493,12 +477,18 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
     _ context: CKSyncEngine.SendChangesContext,
     syncEngine: CKSyncEngine
   ) async -> CKSyncEngine.RecordZoneChangeBatch? {
-    guard isEnabled, RPNoteCloudBootstrapPolicy.maySeedLocalChanges(persistentState), !unsafeStateAfterApplyFailure else {
+    guard isEnabled, engine === syncEngine,
+      RPNoteCloudBootstrapPolicy.maySeedLocalChanges(persistentState),
+      !unsafeStateAfterApplyFailure
+    else {
       return nil
     }
     let scope = context.options.scope
-    let pendingSaves = syncEngine.state.pendingRecordZoneChanges.compactMap { change -> CKRecord.ID? in
-      guard scope.contains(change), case let .saveRecord(recordID) = change, recordID.zoneID == zoneID else { return nil }
+    let pendingSaves = syncEngine.state.pendingRecordZoneChanges.compactMap {
+      change -> CKRecord.ID? in
+      guard scope.contains(change), case .saveRecord(let recordID) = change,
+        recordID.zoneID == zoneID
+      else { return nil }
       return recordID
     }
     guard !pendingSaves.isEmpty else { return nil }
@@ -508,7 +498,9 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
       // Pending saves without a local change were already sent, or name records this
       // engine no longer produces. Groups are rebuilt from local changes on every batch.
       let stale = pendingSaves.filter { !changedNames.contains($0.recordName) }
-      if !stale.isEmpty { syncEngine.state.remove(pendingRecordZoneChanges: stale.map { .saveRecord($0) }) }
+      if !stale.isEmpty {
+        syncEngine.state.remove(pendingRecordZoneChanges: stale.map { .saveRecord($0) })
+      }
       let pendingNames = Set(pendingSaves.map(\.recordName))
 
       var recordsToSave: [CKRecord] = []
@@ -523,15 +515,19 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
         } catch {
           setNoteFailure(id: change.id, error: error)
           attemptedInCurrentSend.insert(name)
-          syncEngine.state.remove(pendingRecordZoneChanges: [.saveRecord(Self.recordID(change.id, zoneID: zoneID))])
+          syncEngine.state.remove(pendingRecordZoneChanges: [
+            .saveRecord(Self.recordID(change.id, zoneID: zoneID))
+          ])
           continue
         }
-        let wouldOverflow = recordsToSave.count + group.records.count > Self.maximumRecordsPerBatch
+        let wouldOverflow =
+          recordsToSave.count + group.records.count > Self.maximumRecordsPerBatch
           || batchBytes + group.byteCount > Self.maximumBytesPerBatch
         if !recordsToSave.isEmpty, wouldOverflow {
           await releaseStagedAssets(of: group)
           break
         }
+        await adapter.prepareForSend(change)
         attemptedInCurrentSend.insert(name)
         recordsToSave += group.records
         recordIDsToDelete += group.deletions
@@ -553,7 +549,9 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
 
   // MARK: - Fetch
 
-  private func handleStateUpdate(_ update: CKSyncEngine.Event.StateUpdate, syncEngine: CKSyncEngine) async {
+  private func handleStateUpdate(_ update: CKSyncEngine.Event.StateUpdate, syncEngine: CKSyncEngine)
+    async
+  {
     guard !unsafeStateAfterApplyFailure else { return }
     if fetchInProgress || !persistentState.initialFetchComplete {
       deferredSerialization = update.stateSerialization
@@ -568,7 +566,9 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
     }
   }
 
-  private func handleFetchedDatabaseChanges(_ changes: CKSyncEngine.Event.FetchedDatabaseChanges) async {
+  private func handleFetchedDatabaseChanges(_ changes: CKSyncEngine.Event.FetchedDatabaseChanges)
+    async
+  {
     guard changes.deletions.contains(where: { $0.zoneID == zoneID }) else { return }
     // Do not silently re-seed old local data after the entire remote zone was removed.
     await requireZoneRecovery(message: "Could not persist the deleted iCloud zone state")
@@ -579,20 +579,24 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
     syncEngine: CKSyncEngine
   ) async {
     do {
-      for modification in changes.modifications where modification.record.recordID.zoneID == zoneID {
+      for modification in changes.modifications where modification.record.recordID.zoneID == zoneID
+      {
         try bufferRemoteRecord(modification.record)
       }
       for deletion in changes.deletions where deletion.recordID.zoneID == zoneID {
         let name = deletion.recordID.recordName
         // Notes are deleted with tombstone records; only attachment records are removed physically.
-        guard Self.isAttachmentRecordName(name) else { throw SyncError.unexpectedCloudDeletion(name) }
+        guard Self.isAttachmentRecordName(name) else {
+          throw SyncError.unexpectedCloudDeletion(name)
+        }
         removeStagedAttachment(name)
         persistentState.attachmentBaselines.removeValue(forKey: name)
       }
     } catch {
       guard isEnabled, engine === syncEngine else { return }
       unsafeStateAfterApplyFailure = true
-      status = .failed("Remote note was not applied; restart sync to retry safely: \(error.localizedDescription)")
+      status = .failed(
+        "Remote note was not applied; restart sync to retry safely: \(error.localizedDescription)")
     }
   }
 
@@ -627,7 +631,8 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
     } catch {
       guard isEnabled, engine === syncEngine else { return }
       unsafeStateAfterApplyFailure = true
-      status = .failed("Remote note was not applied; restart sync to retry safely: \(error.localizedDescription)")
+      status = .failed(
+        "Remote note was not applied; restart sync to retry safely: \(error.localizedDescription)")
     }
   }
 
@@ -638,7 +643,10 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
       zoneFetchSucceeded: zoneReady,
       allRemoteChangesApplied: !unsafeStateAfterApplyFailure
     )
-    guard canCommit else { deferredSerialization = nil; return }
+    guard canCommit else {
+      deferredSerialization = nil
+      return
+    }
     do {
       persistentState.initialFetchComplete = true
       if let deferredSerialization {
@@ -673,38 +681,22 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
 
   /// Copies a fetched record's asset out of CloudKit's temporary storage and queues it.
   private func bufferRemoteRecord(_ record: CKRecord) throws {
-    let name = record.recordID.recordName
-    guard record.recordID.zoneID == zoneID,
-      (record[Self.schemaVersionField] as? Int64) == Self.schemaVersion
-    else { throw SyncError.invalidRemoteRecord }
-    switch record.recordType {
-    case Self.attachmentRecordType:
-      guard let noteKey = record[Self.attachmentNoteField] as? String,
-        let noteID = UUID(uuidString: noteKey), noteKey == Self.key(noteID),
-        name.hasPrefix(Self.attachmentRecordPrefix(noteID: noteID)),
-        let sha256 = record[Self.payloadDigestField] as? String,
-        let asset = record[Self.attachmentDataField] as? CKAsset, let sourceURL = asset.fileURL
-      else { throw SyncError.invalidRemoteRecord }
+    switch try withRecordCodec({ try RPNoteCloudRecordCodec.incoming(record, zoneID: zoneID) }) {
+    case .attachment(let name, let noteKey, let sourceURL, let sha256, let fields):
+      let stagedURL = try Self.copyAssetToStaging(sourceURL)
       removeStagedAttachment(name)
-      stagedRemoteAttachments[name] = StagedAttachment(url: try Self.copyAssetToStaging(sourceURL), sha256: sha256)
+      stagedRemoteAttachments[name] = StagedAttachment(url: stagedURL, sha256: sha256)
       persistentState.attachmentBaselines[name] = RPNoteCloudAttachmentBaseline(
-        noteID: noteKey, sha256: sha256, systemFields: try Self.archiveSystemFields(record)
+        noteID: noteKey, sha256: sha256, systemFields: fields
       )
-    case Self.recordType:
-      guard let id = UUID(uuidString: name), name == Self.key(id) else { throw SyncError.invalidRemoteRecord }
-      let fields = try Self.archiveSystemFields(record)
-      if let deletedAt = record[Self.deletedAtField] as? Date {
-        bufferedRemoteChanges.append(.tombstone(id: id, deletedAt: deletedAt, systemFields: fields))
-        return
-      }
-      guard let asset = record[Self.payloadField] as? CKAsset, let sourceURL = asset.fileURL,
-        let sha256 = record[Self.payloadDigestField] as? String
-      else { throw SyncError.invalidRemoteRecord }
-      bufferedRemoteChanges.append(.note(
-        id: id, envelopeURL: try Self.copyAssetToStaging(sourceURL), sha256: sha256, systemFields: fields
-      ))
-    default:
-      throw SyncError.invalidRemoteRecord
+    case .tombstone(let id, let deletedAt, let fields):
+      bufferedRemoteChanges.append(.tombstone(id: id, deletedAt: deletedAt, systemFields: fields))
+    case .note(let id, let sourceURL, let sha256, let fields):
+      bufferedRemoteChanges.append(
+        .note(
+          id: id, envelopeURL: try Self.copyAssetToStaging(sourceURL), sha256: sha256,
+          systemFields: fields
+        ))
     }
   }
 
@@ -712,35 +704,42 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
     let buffered = bufferedRemoteChanges
     bufferedRemoteChanges = []
     defer {
-      for change in buffered { if case let .note(_, url, _, _) = change { Self.removeStagedFile(url) } }
+      for change in buffered {
+        if case .note(_, let url, _, _) = change { Self.removeStagedFile(url) }
+      }
       discardStagedAttachments()
     }
     for change in buffered {
       switch change {
-      case let .tombstone(id, deletedAt, fields):
-        _ = try await adapter.applyRemote(.tombstone(id: id, deletedAt: deletedAt, systemFields: fields))
-      case let .note(id, url, sha256, fields):
+      case .tombstone(let id, let deletedAt, let fields):
+        _ = try await adapter.applyRemote(
+          .tombstone(id: id, deletedAt: deletedAt, systemFields: fields))
+      case .note(let id, let url, let sha256, let fields):
         try await applyRemoteNote(id: id, envelopeURL: url, sha256: sha256, systemFields: fields)
       }
       guard isEnabled, engine === syncEngine else { return }
     }
   }
 
-  private func applyRemoteNote(id: UUID, envelopeURL: URL, sha256: String, systemFields: Data) async throws {
+  private func applyRemoteNote(id: UUID, envelopeURL: URL, sha256: String, systemFields: Data)
+    async throws
+  {
     let values = try envelopeURL.resourceValues(forKeys: [.fileSizeKey])
     guard let fileSize = values.fileSize, fileSize <= RPNoteCloudPayload.maximumEnvelopeBytes else {
       throw SyncError.remotePayloadTooLarge
     }
     let payload = try Data(contentsOf: envelopeURL)
-    guard Self.digest(payload) == sha256 else { throw SyncError.assetDigestMismatch }
-    let envelope = try RPNoteCloudPayload.decode(payload)
-    guard envelope.note.id == id else { throw SyncError.recordIdentityMismatch }
+    let envelope = try withRecordCodec {
+      try RPNoteCloudRecordCodec.envelope(payload, noteID: id, sha256: sha256)
+    }
     var bytes: [UUID: Data] = [:]
     for descriptor in envelope.attachments {
       bytes[descriptor.id] = try await attachmentBytes(noteID: id, descriptor: descriptor)
     }
     let note = try RPNoteCloudPayload.assemble(envelope) { descriptor in
-      guard let data = bytes[descriptor.id] else { throw SyncError.missingRemoteAttachment(descriptor.id.uuidString) }
+      guard let data = bytes[descriptor.id] else {
+        throw SyncError.missingRemoteAttachment(descriptor.id.uuidString)
+      }
       return data
     }
     _ = try await adapter.applyRemote(.note(note, sha256: sha256, systemFields: systemFields))
@@ -748,26 +747,33 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
 
   /// Unchanged attachments are not re-sent, so a note's bytes come from this fetch or,
   /// when their digest still matches, from the local copy.
-  private func attachmentBytes(noteID: UUID, descriptor: RPNoteCloudAttachmentDescriptor) async throws -> Data {
+  private func attachmentBytes(noteID: UUID, descriptor: RPNoteCloudAttachmentDescriptor)
+    async throws -> Data
+  {
     let name = RPNoteCloudAttachmentPlan.recordName(noteID: noteID, attachmentID: descriptor.id)
     if let staged = stagedRemoteAttachments[name], staged.sha256 == descriptor.sha256 {
       return try Data(contentsOf: staged.url)
     }
     if let local = try await adapter.attachmentData(noteID: noteID, attachmentID: descriptor.id),
-      RPNoteCloudPayload.attachmentDigest(local) == descriptor.sha256 {
+      RPNoteCloudPayload.attachmentDigest(local) == descriptor.sha256
+    {
       return local
     }
     throw SyncError.missingRemoteAttachment(name)
   }
 
   private func discardBufferedRemoteChanges() {
-    for change in bufferedRemoteChanges { if case let .note(_, url, _, _) = change { Self.removeStagedFile(url) } }
+    for change in bufferedRemoteChanges {
+      if case .note(_, let url, _, _) = change { Self.removeStagedFile(url) }
+    }
     bufferedRemoteChanges = []
     discardStagedAttachments()
   }
 
   private func removeStagedAttachment(_ name: String) {
-    if let staged = stagedRemoteAttachments.removeValue(forKey: name) { Self.removeStagedFile(staged.url) }
+    if let staged = stagedRemoteAttachments.removeValue(forKey: name) {
+      Self.removeStagedFile(staged.url)
+    }
   }
 
   private func discardStagedAttachments() {
@@ -779,7 +785,9 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
 
   private func enqueueLocalChanges(on engine: CKSyncEngine) async throws {
     let changes = try await adapter.localChanges()
-    let pending = changes.map { CKSyncEngine.PendingRecordZoneChange.saveRecord(Self.recordID($0.id, zoneID: zoneID)) }
+    let pending = changes.map {
+      CKSyncEngine.PendingRecordZoneChange.saveRecord(Self.recordID($0.id, zoneID: zoneID))
+    }
     if !pending.isEmpty { engine.state.add(pendingRecordZoneChanges: pending) }
   }
 
@@ -792,73 +800,32 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
 
   /// The note record plus the attachment records it adds, replaces, or no longer uses.
   private func makeRecordGroup(for change: RPNoteCloudLocalChange) async throws -> RecordGroup {
-    if case let .upsert(note, _, _) = change, Self.estimatedNoteBytes(note) > Self.maximumAutomaticPayloadBytes {
-      throw SyncError.noteExceedsAutomaticLimit
+    let plan = try withRecordCodec {
+      try RPNoteCloudRecordCodec.upload(
+        change, baselines: persistentState.attachmentBaselines, zoneID: zoneID)
     }
-    let plan = RPNoteCloudAttachmentPlan.plan(for: change, baselines: persistentState.attachmentBaselines)
-    var group = RecordGroup(records: [], deletions: [], byteCount: 0, assetURLs: [])
+    var group = RecordGroup(
+      records: [], deletions: plan.deletions, byteCount: plan.byteCount, assetURLs: [])
     do {
-      for upload in plan.uploads {
-        let record = try await makeAttachmentRecord(upload, noteID: change.id, group: &group)
-        group.records.append(record)
-        group.byteCount += upload.attachment.data.count
+      for save in plan.saves {
+        if let bytes = save.assetData, let field = save.assetField {
+          let staged = try await adapter.stageAsset(bytes)
+          group.assetURLs.append(staged)
+          save.record[field] = CKAsset(fileURL: staged)
+        }
+        group.records.append(save.record)
       }
-      group.records.append(try await makeRecord(for: change, group: &group))
     } catch {
-      await releaseStagedAssets(of: group)
+      // No revision becomes in-flight until the entire group's staging succeeds.
+      for url in group.assetURLs { await adapter.finishAsset(url) }
       throw error
     }
-    group.deletions = plan.deletions.map { CKRecord.ID(recordName: $0, zoneID: zoneID) }
-    return group
-  }
-
-  private func makeAttachmentRecord(
-    _ upload: RPNoteCloudAttachmentPlan.Upload,
-    noteID: UUID,
-    group: inout RecordGroup
-  ) async throws -> CKRecord {
-    let recordID = CKRecord.ID(recordName: upload.recordName, zoneID: zoneID)
-    let record = try Self.makeRecord(
-      recordID: recordID,
-      recordType: Self.attachmentRecordType,
-      systemFields: persistentState.attachmentBaselines[upload.recordName]?.systemFields
-    )
-    let staged = try await adapter.stageAsset(upload.attachment.data)
-    group.assetURLs.append(staged)
-    record[Self.attachmentDataField] = CKAsset(fileURL: staged)
-    record[Self.payloadDigestField] = upload.sha256 as CKRecordValue
-    record[Self.attachmentByteCountField] = Int64(upload.attachment.data.count) as CKRecordValue
-    record[Self.attachmentNoteField] = Self.key(noteID) as CKRecordValue
-    record[Self.schemaVersionField] = Self.schemaVersion as CKRecordValue
-    trackInFlight(recordID.recordName, revision: upload.sha256, assetURL: staged)
-    return record
-  }
-
-  private func makeRecord(for change: RPNoteCloudLocalChange, group: inout RecordGroup) async throws -> CKRecord {
-    let recordID = Self.recordID(change.id, zoneID: zoneID)
-    let record: CKRecord
-    switch change {
-    case let .upsert(note, revision, systemFields):
-      record = try Self.makeRecord(recordID: recordID, recordType: Self.recordType, systemFields: systemFields)
-      let payload = try RPNoteCloudPayload.encode(note)
-      let staged = try await adapter.stageAsset(payload)
-      group.assetURLs.append(staged)
-      group.byteCount += payload.count
-      record[Self.payloadField] = CKAsset(fileURL: staged)
-      record[Self.payloadDigestField] = Self.digest(payload) as CKRecordValue
-      record[Self.deletedAtField] = nil
-      record[Self.schemaVersionField] = Self.schemaVersion as CKRecordValue
-      trackInFlight(recordID.recordName, revision: revision, assetURL: staged)
-    case let .tombstone(_, deletedAt, revision, systemFields):
-      record = try Self.makeRecord(recordID: recordID, recordType: Self.recordType, systemFields: systemFields)
-      record[Self.payloadField] = nil
-      record[Self.payloadDigestField] = nil
-      record[Self.deletedAtField] = deletedAt as CKRecordValue
-      record[Self.schemaVersionField] = Self.schemaVersion as CKRecordValue
-      trackInFlight(recordID.recordName, revision: revision, assetURL: nil)
+    for save in plan.saves {
+      let assetURL = save.assetField.flatMap { (save.record[$0] as? CKAsset)?.fileURL }
+      trackInFlight(save.record.recordID.recordName, revision: save.revision, assetURL: assetURL)
     }
     perNoteErrors.removeValue(forKey: change.id)
-    return record
+    return group
   }
 
   private func trackInFlight(_ recordName: String, revision: String, assetURL: URL?) {
@@ -878,7 +845,8 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
     syncEngine: CKSyncEngine
   ) async {
     if let failedZone = result.failedZoneSaves.first(where: { $0.zone.zoneID == zoneID }) {
-      status = .failed("Could not create the private notes zone: \(failedZone.error.localizedDescription)")
+      status = .failed(
+        "Could not create the private notes zone: \(failedZone.error.localizedDescription)")
       return
     }
     guard result.savedZones.contains(where: { $0.zoneID == zoneID }) else { return }
@@ -893,35 +861,21 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
     _ result: CKSyncEngine.Event.SentRecordZoneChanges,
     syncEngine: CKSyncEngine
   ) async {
+    // A cleared engine (disabled, account change, zone recovery) must not record further results.
+    func isCurrent() -> Bool { isEnabled && engine === syncEngine }
     var attachmentStateChanged = false
     for record in result.savedRecords where record.recordID.zoneID == zoneID {
-      guard isEnabled, engine === syncEngine else { return }
-      let name = record.recordID.recordName
-      guard let sent = inFlight.removeValue(forKey: name) else { continue }
-      do {
-        if record.recordType == Self.attachmentRecordType {
-          if let noteKey = record[Self.attachmentNoteField] as? String {
-            persistentState.attachmentBaselines[name] = RPNoteCloudAttachmentBaseline(
-              noteID: noteKey, sha256: sent.revision, systemFields: try Self.archiveSystemFields(record)
-            )
-            attachmentStateChanged = true
-          }
-        } else if let id = UUID(uuidString: name) {
-          try await adapter.markSent(id: id, revision: sent.revision, systemFields: Self.archiveSystemFields(record))
-        }
-      } catch {
-        guard isEnabled, engine === syncEngine else { return }
-        status = .failed("CloudKit saved a note, but local sync status could not be updated: \(error.localizedDescription)")
-      }
-      for url in sent.assetURLs { await adapter.finishAsset(url) }
+      guard isCurrent() else { return }
+      attachmentStateChanged =
+        await recordSavedRecord(record, syncEngine: syncEngine) || attachmentStateChanged
     }
     for recordID in result.deletedRecordIDs where recordID.zoneID == zoneID {
-      if persistentState.attachmentBaselines.removeValue(forKey: recordID.recordName) != nil {
-        attachmentStateChanged = true
-      }
+      attachmentStateChanged =
+        persistentState.attachmentBaselines.removeValue(forKey: recordID.recordName) != nil
+        || attachmentStateChanged
     }
     for failed in result.failedRecordSaves where failed.record.recordID.zoneID == zoneID {
-      guard isEnabled, engine === syncEngine else { return }
+      guard isCurrent() else { return }
       if failed.record.recordType == Self.attachmentRecordType {
         await handleFailedAttachmentSave(failed, syncEngine: syncEngine)
         attachmentStateChanged = true
@@ -929,23 +883,64 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
         await handleFailedRecordSave(failed, syncEngine: syncEngine)
       }
     }
-    for (recordID, error) in result.failedRecordDeletes where recordID.zoneID == zoneID {
-      guard isEnabled, engine === syncEngine else { return }
+    guard isCurrent() else { return }
+    attachmentStateChanged =
+      recordFailedDeletes(result.failedRecordDeletes) || attachmentStateChanged
+    guard attachmentStateChanged else { return }
+    do {
+      try await adapter.savePersistentState(persistentState)
+    } catch {
+      guard isCurrent() else { return }
+      status = .failed("Could not persist iCloud attachment state: \(error.localizedDescription)")
+    }
+  }
+
+  /// Only attachment records are deleted. Returns whether engine-owned attachment state changed.
+  private func recordFailedDeletes(_ failures: [CKRecord.ID: CKError]) -> Bool {
+    var changed = false
+    for (recordID, error) in failures where recordID.zoneID == zoneID {
       if error.code == .unknownItem {
+        // Already gone on the server: that is the state the delete asked for.
         persistentState.attachmentBaselines.removeValue(forKey: recordID.recordName)
-        attachmentStateChanged = true
+        changed = true
       } else if error.code != .batchRequestFailed {
         status = .failed(error.localizedDescription)
       }
     }
-    if attachmentStateChanged {
-      do {
-        try await adapter.savePersistentState(persistentState)
-      } catch {
-        guard isEnabled, engine === syncEngine else { return }
-        status = .failed("Could not persist iCloud attachment state: \(error.localizedDescription)")
+    return changed
+  }
+
+  /// Records one successful save. Returns whether engine-owned attachment state changed.
+  private func recordSavedRecord(_ record: CKRecord, syncEngine: CKSyncEngine) async -> Bool {
+    guard let sent = inFlight.removeValue(forKey: record.recordID.recordName) else { return false }
+    let changed = await applySavedRecord(record, revision: sent.revision, syncEngine: syncEngine)
+    for url in sent.assetURLs { await adapter.finishAsset(url) }
+    return changed
+  }
+
+  private func applySavedRecord(_ record: CKRecord, revision: String, syncEngine: CKSyncEngine)
+    async -> Bool
+  {
+    let name = record.recordID.recordName
+    do {
+      if record.recordType == Self.attachmentRecordType {
+        guard let noteKey = record[Self.attachmentNoteField] as? String else { return false }
+        persistentState.attachmentBaselines[name] = RPNoteCloudAttachmentBaseline(
+          noteID: noteKey, sha256: revision, systemFields: try Self.archiveSystemFields(record)
+        )
+        return true
       }
+      if let id = UUID(uuidString: name) {
+        try await adapter.markSent(
+          id: id, revision: revision, systemFields: Self.archiveSystemFields(record))
+      }
+    } catch {
+      guard isEnabled, engine === syncEngine else { return false }
+      status = .failed(
+        "CloudKit saved a note, but local sync status could not be updated: \(error.localizedDescription)"
+      )
     }
+    return false
   }
 
   private func handleFailedAttachmentSave(
@@ -959,14 +954,16 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
     guard let noteKey = failure.record[Self.attachmentNoteField] as? String,
       let noteID = UUID(uuidString: noteKey)
     else { return }
-    let noteChange = CKSyncEngine.PendingRecordZoneChange.saveRecord(Self.recordID(noteID, zoneID: zoneID))
+    let noteChange = CKSyncEngine.PendingRecordZoneChange.saveRecord(
+      Self.recordID(noteID, zoneID: zoneID))
     switch failure.error.code {
     case .serverRecordChanged:
       // Another device already created this attachment record; adopt its change tag and
       // let the note's next group re-upload only if the content differs.
       if let serverRecord = failure.error.serverRecord,
         let sha256 = serverRecord[Self.payloadDigestField] as? String,
-        let fields = try? Self.archiveSystemFields(serverRecord) {
+        let fields = try? Self.archiveSystemFields(serverRecord)
+      {
         persistentState.attachmentBaselines[name] = RPNoteCloudAttachmentBaseline(
           noteID: noteKey, sha256: sha256, systemFields: fields
         )
@@ -997,6 +994,9 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
       status = .failed(failure.error.localizedDescription)
       return
     }
+    if let sent = inFlight[recordID.recordName] {
+      await adapter.abandonPreparedSend(id: id, revision: sent.revision)
+    }
     let code = failure.error.code
     do {
       switch code {
@@ -1017,12 +1017,14 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
           await requireZoneRecovery(message: "Could not persist the missing iCloud zone state")
           return
         }
-        try await adapter.clearSystemFields(id: id, revision: inFlight[recordID.recordName]?.revision)
+        try await adapter.clearSystemFields(
+          id: id, revision: inFlight[recordID.recordName]?.revision)
         syncEngine.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: zoneID))])
         syncEngine.state.add(pendingRecordZoneChanges: [.saveRecord(recordID)])
         status = .syncing
       case .unknownItem:
-        try await adapter.clearSystemFields(id: id, revision: inFlight[recordID.recordName]?.revision)
+        try await adapter.clearSystemFields(
+          id: id, revision: inFlight[recordID.recordName]?.revision)
         syncEngine.state.add(pendingRecordZoneChanges: [.saveRecord(recordID)])
         status = .syncing
       case .batchRequestFailed:
@@ -1041,29 +1043,30 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
       }
     } catch {
       unsafeStateAfterApplyFailure = true
-      status = .failed("The failed iCloud save could not be reconciled safely: \(error.localizedDescription)")
+      status = .failed(
+        "The failed iCloud save could not be reconciled safely: \(error.localizedDescription)")
     }
   }
 
   /// Applies the server's version of a conflicting note. If it references attachment
   /// bytes this device has not fetched yet, a fetch delivers them together with the note.
   private func applyServerRecord(_ record: CKRecord, syncEngine: CKSyncEngine) async throws {
-    guard record.recordType == Self.recordType, record.recordID.zoneID == zoneID,
-      (record[Self.schemaVersionField] as? Int64) == Self.schemaVersion,
-      let id = UUID(uuidString: record.recordID.recordName), record.recordID.recordName == Self.key(id)
-    else { throw SyncError.invalidRemoteRecord }
-    let fields = try Self.archiveSystemFields(record)
-    if let deletedAt = record[Self.deletedAtField] as? Date {
-      _ = try await adapter.applyRemote(.tombstone(id: id, deletedAt: deletedAt, systemFields: fields))
+    let incoming = try withRecordCodec {
+      try RPNoteCloudRecordCodec.incoming(record, zoneID: zoneID)
+    }
+    if case .tombstone(let id, let deletedAt, let fields) = incoming {
+      _ = try await adapter.applyRemote(
+        .tombstone(id: id, deletedAt: deletedAt, systemFields: fields))
       return
     }
-    guard let asset = record[Self.payloadField] as? CKAsset, let sourceURL = asset.fileURL,
-      let sha256 = record[Self.payloadDigestField] as? String
-    else { throw SyncError.invalidRemoteRecord }
+    guard case .note(let id, let sourceURL, let sha256, let fields) = incoming else {
+      throw SyncError.invalidRemoteRecord
+    }
     let stagedURL = try Self.copyAssetToStaging(sourceURL)
     defer { Self.removeStagedFile(stagedURL) }
     do {
-      try await applyRemoteNote(id: id, envelopeURL: stagedURL, sha256: sha256, systemFields: fields)
+      try await applyRemoteNote(
+        id: id, envelopeURL: stagedURL, sha256: sha256, systemFields: fields)
     } catch SyncError.missingRemoteAttachment {
       Task { try? await syncEngine.fetchChanges(CKSyncEngine.FetchChangesOptions(scope: .all)) }
     }
@@ -1098,23 +1101,28 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
       case .invalidRemoteRecord: "The iCloud note has an unsupported record schema or identity."
       case .assetDigestMismatch: "The iCloud note payload failed its SHA-256 check."
       case .recordIdentityMismatch: "The iCloud record UUID does not match its note payload."
-      case let .unexpectedCloudDeletion(id): "CloudKit physically deleted note record \(id); a tombstone is required."
-      case .noteExceedsAutomaticLimit: "This note exceeds the 64 MiB automatic iCloud sync limit. The local note remains unchanged."
+      case .unexpectedCloudDeletion(let id):
+        "CloudKit physically deleted note record \(id); a tombstone is required."
+      case .noteExceedsAutomaticLimit:
+        "This note exceeds the 64 MiB automatic iCloud sync limit. The local note remains unchanged."
       case .remotePayloadTooLarge: "The iCloud note payload exceeds the supported maximum size."
-      case let .missingRemoteAttachment(name): "The iCloud note references attachment \(name), which is not available yet."
+      case .missingRemoteAttachment(let name):
+        "The iCloud note references attachment \(name), which is not available yet."
       }
     }
   }
 
-  private static func estimatedNoteBytes(_ note: RPNote) -> Int {
-    var total = note.markdown.utf8.count
-    for attachment in note.attachments {
-      let (next, overflow) = total.addingReportingOverflow(attachment.data.count)
-      if overflow { return Int.max }
-      total = next
+  /// Keep platform-specific localized messages at the app boundary.
+  private func withRecordCodec<T>(_ operation: () throws -> T) throws -> T {
+    do { return try operation() } catch let error as RPNoteCloudRecordCodec.Failure {
+      switch error {
+      case .invalidRemoteRecord: throw SyncError.invalidRemoteRecord
+      case .assetDigestMismatch: throw SyncError.assetDigestMismatch
+      case .recordIdentityMismatch: throw SyncError.recordIdentityMismatch
+      case .noteExceedsAutomaticLimit: throw SyncError.noteExceedsAutomaticLimit
+      case .remotePayloadTooLarge: throw SyncError.remotePayloadTooLarge
+      }
     }
-    let (estimated, overflow) = total.addingReportingOverflow(512 * 1024)
-    return overflow ? Int.max : estimated
   }
 
   private static func key(_ id: UUID) -> String { id.uuidString.lowercased() }
@@ -1123,30 +1131,12 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
     CKRecord.ID(recordName: key(id), zoneID: zoneID)
   }
 
-  private static func attachmentRecordPrefix(noteID: UUID) -> String {
-    RPNoteCloudAttachmentPlan.recordNamePrefix + key(noteID) + "-"
-  }
-
   private static func isAttachmentRecordName(_ name: String) -> Bool {
     name.hasPrefix(RPNoteCloudAttachmentPlan.recordNamePrefix)
   }
 
-  private static func makeRecord(recordID: CKRecord.ID, recordType: String, systemFields: Data?) throws -> CKRecord {
-    guard let systemFields else { return CKRecord(recordType: recordType, recordID: recordID) }
-    let unarchiver = try NSKeyedUnarchiver(forReadingFrom: systemFields)
-    unarchiver.requiresSecureCoding = true
-    defer { unarchiver.finishDecoding() }
-    guard let record = CKRecord(coder: unarchiver), record.recordType == recordType,
-      record.recordID == recordID
-    else { throw SyncError.invalidRemoteRecord }
-    return record
-  }
-
   private static func archiveSystemFields(_ record: CKRecord) throws -> Data {
-    let archiver = NSKeyedArchiver(requiringSecureCoding: true)
-    record.encodeSystemFields(with: archiver)
-    archiver.finishEncoding()
-    return archiver.encodedData
+    RPNoteCloudRecordCodec.archiveSystemFields(record)
   }
 
   private static func copyAssetToStaging(_ source: URL) throws -> URL {
@@ -1163,33 +1153,32 @@ public actor RPNoteCloudSyncEngine: CKSyncEngineDelegate {
     try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
   }
 
-  private static func digest(_ data: Data) -> String {
-    SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-  }
-
   private static func hasRequiredCloudKitEntitlements() -> Bool {
-#if os(macOS)
-    guard let task = SecTaskCreateFromSelf(kCFAllocatorDefault) else { return false }
-    let containers = SecTaskCopyValueForEntitlement(
-      task,
-      "com.apple.developer.icloud-container-identifiers" as CFString,
-      nil
-    ) as? [String]
-    let services = SecTaskCopyValueForEntitlement(
-      task,
-      "com.apple.developer.icloud-services" as CFString,
-      nil
-    ) as? [String]
-    return Self.hasRequiredCloudKitEntitlements(containerIdentifiers: containers, services: services)
-#elseif targetEnvironment(simulator)
-    // Simulator signing commonly omits the app's real CloudKit container
-    // entitlement. Do not construct CKContainer or attempt real sync there.
-    return false
-#else
-    // iOS does not expose SecTask entitlement inspection in its public SDK.
-    // Device builds rely on the signed provisioning profile and Xcode capability.
-    return true
-#endif
+    #if os(macOS)
+      guard let task = SecTaskCreateFromSelf(kCFAllocatorDefault) else { return false }
+      let containers =
+        SecTaskCopyValueForEntitlement(
+          task,
+          "com.apple.developer.icloud-container-identifiers" as CFString,
+          nil
+        ) as? [String]
+      let services =
+        SecTaskCopyValueForEntitlement(
+          task,
+          "com.apple.developer.icloud-services" as CFString,
+          nil
+        ) as? [String]
+      return Self.hasRequiredCloudKitEntitlements(
+        containerIdentifiers: containers, services: services)
+    #elseif targetEnvironment(simulator)
+      // Simulator signing commonly omits the app's real CloudKit container
+      // entitlement. Do not construct CKContainer or attempt real sync there.
+      return false
+    #else
+      // iOS does not expose SecTask entitlement inspection in its public SDK.
+      // Device builds rely on the signed provisioning profile and Xcode capability.
+      return true
+    #endif
   }
 
   static func hasRequiredCloudKitEntitlements(

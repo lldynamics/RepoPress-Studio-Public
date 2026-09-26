@@ -59,3 +59,15 @@ struct WorkspaceInspectorWidthState: Equatable {
       : constraints.minimum
   }
 }
+
+/// The reset command only earns space in the Inspector once the user has
+/// actually resized the column; at the default width it would just crowd the
+/// panel header.
+enum WorkspaceInspectorWidthResetPolicy {
+  static let tolerance: CGFloat = 8
+
+  static func showsResetControl(measuredWidth: CGFloat?, defaultWidth: CGFloat?) -> Bool {
+    guard let measuredWidth, let defaultWidth, measuredWidth > 0 else { return false }
+    return abs(measuredWidth - defaultWidth) > tolerance
+  }
+}

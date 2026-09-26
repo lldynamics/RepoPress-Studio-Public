@@ -158,7 +158,14 @@ struct MarkdownCursorWorkflowControls: View {
 
   private var cursorStatus: String {
     guard let position else { return String(localized: "行 —，列 —") }
-    return String(localized: "行 \(position.line)，列 \(position.column)")
+    // Explicit %lld template: Int interpolation extracted as %@ and never
+    // matched the runtime key, so English showed the Chinese source.
+    return String(
+      format: String(localized: "行 %lld，列 %lld"),
+      locale: .current,
+      Int64(position.line),
+      Int64(position.column)
+    )
   }
 
   private var validRequestedLine: Int? {

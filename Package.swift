@@ -30,6 +30,18 @@ let package = Package(
       targets: ["PublishingKnowledgeCore"]
     ),
     .library(
+      name: "PublishingPreviewCore",
+      targets: ["PublishingPreviewCore"]
+    ),
+    .library(
+      name: "PublishingBackupCore",
+      targets: ["PublishingBackupCore"]
+    ),
+    .library(
+      name: "PublishingSyncCore",
+      targets: ["PublishingSyncCore"]
+    ),
+    .library(
       name: "PublishingWorkbenchCore",
       targets: ["PublishingWorkbenchCore"]
     ),
@@ -39,6 +51,10 @@ let package = Package(
     ),
   ],
   dependencies: [
+    .package(
+      name: "RepoPressShared",
+      path: "Shared/RepoPressCoreContracts/swift"
+    ),
     .package(
       url: "https://github.com/tree-sitter/swift-tree-sitter",
       exact: "0.25.0"
@@ -55,6 +71,9 @@ let package = Package(
   targets: [
     .target(
       name: "PublishingCoreSupport",
+      dependencies: [
+        .product(name: "RepoPressCore", package: "RepoPressShared")
+      ],
       resources: [
         .process("Resources")
       ],
@@ -113,6 +132,7 @@ let package = Package(
       dependencies: [
         "PublishingCoreSupport",
         "PublishingMarkdownCore",
+        .product(name: "RepoPressAppleSupport", package: "RepoPressShared"),
       ],
       swiftSettings: [
         .swiftLanguageMode(.v6)
@@ -126,6 +146,36 @@ let package = Package(
       ]
     ),
     .target(
+      name: "PublishingPreviewCore",
+      dependencies: [
+        "PublishingCoreSupport",
+        "PublishingDomainContracts",
+      ],
+      swiftSettings: [
+        .swiftLanguageMode(.v6)
+      ]
+    ),
+    .target(
+      name: "PublishingBackupCore",
+      dependencies: [
+        "PublishingCoreSupport",
+        "PublishingDomainContracts",
+      ],
+      swiftSettings: [
+        .swiftLanguageMode(.v6)
+      ]
+    ),
+    .target(
+      name: "PublishingSyncCore",
+      dependencies: [
+        "PublishingCoreSupport",
+        "PublishingGitCore",
+      ],
+      swiftSettings: [
+        .swiftLanguageMode(.v6)
+      ]
+    ),
+    .target(
       name: "PublishingWorkbenchCore",
       dependencies: [
         "PublishingCoreSupport",
@@ -135,6 +185,9 @@ let package = Package(
         "PublishingAICore",
         "PublishingAgentContracts",
         "PublishingKnowledgeCore",
+        "PublishingPreviewCore",
+        "PublishingBackupCore",
+        "PublishingSyncCore",
       ],
       swiftSettings: [
         .swiftLanguageMode(.v6)
@@ -155,6 +208,9 @@ let package = Package(
         "PublishingGitCore",
         "PublishingKnowledgeCore",
         "PublishingMarkdownCore",
+        "PublishingPreviewCore",
+        "PublishingBackupCore",
+        "PublishingSyncCore",
         "PublishingWorkbenchCore",
         .product(name: "Sparkle", package: "Sparkle"),
       ],
@@ -242,6 +298,9 @@ let package = Package(
         "PublishingGitCore",
         "PublishingKnowledgeCore",
         "PublishingMarkdownCore",
+        "PublishingPreviewCore",
+        "PublishingBackupCore",
+        "PublishingSyncCore",
         "PublishingWorkbenchCore",
       ],
       swiftSettings: [
@@ -258,6 +317,9 @@ let package = Package(
         "PublishingGitCore",
         "PublishingKnowledgeCore",
         "PublishingMarkdownCore",
+        "PublishingPreviewCore",
+        "PublishingBackupCore",
+        "PublishingSyncCore",
         "PublishingWorkbenchCore",
       ],
       swiftSettings: [

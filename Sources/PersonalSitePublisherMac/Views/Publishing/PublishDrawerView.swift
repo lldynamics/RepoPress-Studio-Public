@@ -1207,15 +1207,12 @@ struct PublishDrawerView: View {
       )
     case .skipped:
       store.setPublishActionMessage(
-        result?.message ?? String(localized: "当前仓库未设置 upstream，发布时仍会通过远端 API 核对。"),
+        String(localized: "当前分支没有关联远端分支，暂未同步远端状态；发布前仍会在线核对文件。"),
         status: .information
       )
     case .failed:
       store.setPublishActionMessage(
-        String(
-          format: String(localized: "本地 fetch 失败；发布时仍会通过远端 API 逐文件核对：%@"),
-          result?.message ?? String(localized: "未知错误")
-        ),
+        String(localized: "获取远端最新状态失败；发布时仍会通过远端服务逐文件核对。"),
         status: .warning
       )
     case nil:

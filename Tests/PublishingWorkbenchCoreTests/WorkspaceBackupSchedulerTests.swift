@@ -1,4 +1,5 @@
 import Foundation
+import PublishingBackupCore
 import XCTest
 
 @testable import PublishingWorkbenchCore
@@ -78,6 +79,9 @@ final class WorkspaceBackupSchedulerTests: XCTestCase {
   func testRealStoreBackupsWithKnowledgeAndHistoryHaveStableFingerprint() async throws {
     let harness = try makeHarness()
     defer { harness.cleanup() }
+    // Compare two idle snapshots only after startup has opened and migrated
+    // the library; an initialization write is a real content change.
+    await harness.store.knowledge.reload()
     let scheduler = WorkspaceBackupScheduler(
       store: harness.store, defaults: harness.defaults,
       defaultDestinationFolderURL: harness.injectedBackupURL
@@ -153,8 +157,192 @@ final class WorkspaceBackupSchedulerTests: XCTestCase {
       WorkspaceBackupScheduler.confirmedCloudUploadStatus(
         isUbiquitousPackage: false, declaredFileUploadStates: [nil]
       ),
-      .localCopyComplete
+      .iCloudFileUnrecognized
     )
+  }
+
+  func testNoBackupDoesNotReportLocalCompletion() throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let scheduler = makeScheduler(harness)
+
+    XCTAssertEqual(scheduler.cloudUploadStatus, .noBackup)
+    scheduler.refreshCloudUploadStatus()
+    XCTAssertEqual(scheduler.cloudUploadStatus, .noBackup)
+  }
+
+  func testLocalBackupReportsCompletedStatusAfterRefresh() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let scheduler = makeScheduler(harness)
+
+    await scheduler.runBackupNow()
+    XCTAssertNotNil(scheduler.settings.lastBackupPath)
+    XCTAssertEqual(scheduler.cloudUploadStatus, .localCopyComplete)
+    scheduler.refreshCloudUploadStatus()
+    XCTAssertEqual(scheduler.cloudUploadStatus, .localCopyComplete)
+  }
+
+  func testMissingOrNonDirectoryBackupDoesNotReportLocalCompletion() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let scheduler = makeScheduler(harness)
+    await scheduler.runBackupNow()
+    let path = try XCTUnwrap(scheduler.settings.lastBackupPath)
+    let packageURL = URL(fileURLWithPath: path)
+
+    try FileManager.default.removeItem(at: packageURL)
+    scheduler.refreshCloudUploadStatus()
+    XCTAssertEqual(scheduler.cloudUploadStatus, .noBackup)
+
+    try Data("not a backup package".utf8).write(to: packageURL)
+    scheduler.refreshCloudUploadStatus()
+    XCTAssertEqual(scheduler.cloudUploadStatus, .backupUnavailable)
+
+    try FileManager.default.removeItem(at: packageURL)
+    try FileManager.default.removeItem(at: packageURL.deletingLastPathComponent())
+    scheduler.refreshCloudUploadStatus()
+    XCTAssertEqual(scheduler.cloudUploadStatus, .backupUnavailable)
+  }
+
+  func testDamagedLocalManifestDoesNotReportLocalCompletion() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let scheduler = makeScheduler(harness)
+    await scheduler.runBackupNow()
+    let path = try XCTUnwrap(scheduler.settings.lastBackupPath)
+    let manifestURL = URL(fileURLWithPath: path).appendingPathComponent(
+      WorkspaceBackupService.manifestFileName)
+
+    try Data("{ damaged manifest".utf8).write(to: manifestURL)
+    scheduler.refreshCloudUploadStatus()
+    XCTAssertEqual(scheduler.cloudUploadStatus, .manifestCorrupt)
+
+    try FileManager.default.removeItem(at: manifestURL)
+    scheduler.refreshCloudUploadStatus()
+    XCTAssertEqual(scheduler.cloudUploadStatus, .manifestCorrupt)
+  }
+
+  func testICloudDestinationWithoutUbiquitousPackageIsUnconfirmed() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let localScheduler = makeScheduler(harness)
+    await localScheduler.runBackupNow()
+    XCTAssertNotNil(localScheduler.settings.lastBackupPath)
+
+    var settings = try loadSettings(from: harness.defaults)
+    settings.destinationPath = harness.injectedBackupURL.path
+    settings.destinationIsICloud = true
+    try persist(settings, in: harness.defaults)
+    let cloudScheduler = WorkspaceBackupScheduler(
+      store: harness.store, defaults: harness.defaults,
+      defaultDestinationFolderURL: harness.injectedBackupURL
+    )
+
+    cloudScheduler.refreshCloudUploadStatus()
+    XCTAssertEqual(cloudScheduler.cloudUploadStatus, .iCloudFileUnrecognized)
+  }
+
+  func testChangingToICloudDestinationDoesNotRelabelPreviousLocalBackup() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let localScheduler = makeScheduler(harness)
+    await localScheduler.runBackupNow()
+    XCTAssertNotNil(localScheduler.settings.lastBackupPath)
+
+    var settings = try loadSettings(from: harness.defaults)
+    settings.destinationPath = harness.rootURL.appendingPathComponent("NewICloudTarget").path
+    settings.destinationIsICloud = true
+    try persist(settings, in: harness.defaults)
+    let switchedScheduler = WorkspaceBackupScheduler(
+      store: harness.store, defaults: harness.defaults,
+      defaultDestinationFolderURL: harness.injectedBackupURL
+    )
+
+    switchedScheduler.refreshCloudUploadStatus()
+    XCTAssertEqual(switchedScheduler.cloudUploadStatus, .localCopyComplete)
+  }
+
+  func testCorruptICloudManifestReportsDamageInsteadOfWaiting() throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let packageURL = harness.injectedBackupURL.appendingPathComponent(
+      "damaged.psworkspacebackup", isDirectory: true)
+    try FileManager.default.createDirectory(at: packageURL, withIntermediateDirectories: true)
+    try persist(
+      WorkspaceBackupScheduleSettings(
+        destinationPath: harness.injectedBackupURL.path,
+        lastBackupPath: packageURL.path,
+        destinationIsICloud: true
+      ),
+      in: harness.defaults
+    )
+    let scheduler = WorkspaceBackupScheduler(
+      store: harness.store, defaults: harness.defaults,
+      defaultDestinationFolderURL: harness.injectedBackupURL
+    )
+
+    scheduler.refreshCloudUploadStatus()
+    XCTAssertEqual(scheduler.cloudUploadStatus, .waitingForUpload)
+
+    try Data("{ damaged manifest".utf8).write(
+      to: packageURL.appendingPathComponent(WorkspaceBackupService.manifestFileName))
+    scheduler.refreshCloudUploadStatus()
+    XCTAssertEqual(scheduler.cloudUploadStatus, .manifestCorrupt)
+  }
+
+  func testOversizedICloudManifestReportsDamageEvenWhenJSONIsValid() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let localScheduler = makeScheduler(harness)
+    await localScheduler.runBackupNow()
+    let path = try XCTUnwrap(localScheduler.settings.lastBackupPath)
+    let manifestURL = URL(fileURLWithPath: path).appendingPathComponent(
+      WorkspaceBackupService.manifestFileName)
+    var manifestData = try Data(contentsOf: manifestURL)
+    let maximumByteCount = WorkspaceBackupService.Limits().maximumManifestByteCount
+    XCTAssertLessThan(manifestData.count, maximumByteCount)
+    manifestData.append(Data(repeating: 0x20, count: maximumByteCount + 1 - manifestData.count))
+    try manifestData.write(to: manifestURL)
+
+    var settings = try loadSettings(from: harness.defaults)
+    settings.destinationPath = harness.injectedBackupURL.path
+    settings.destinationIsICloud = true
+    try persist(settings, in: harness.defaults)
+    let scheduler = WorkspaceBackupScheduler(
+      store: harness.store, defaults: harness.defaults,
+      defaultDestinationFolderURL: harness.injectedBackupURL
+    )
+
+    scheduler.refreshCloudUploadStatus()
+    XCTAssertEqual(scheduler.cloudUploadStatus, .manifestCorrupt)
+  }
+
+  func testNonRegularICloudManifestReportsDamageInsteadOfWaiting() throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let packageURL = harness.injectedBackupURL.appendingPathComponent(
+      "nonregular.psworkspacebackup", isDirectory: true)
+    let manifestURL = packageURL.appendingPathComponent(WorkspaceBackupService.manifestFileName)
+    try FileManager.default.createDirectory(at: manifestURL, withIntermediateDirectories: true)
+    try persist(
+      WorkspaceBackupScheduleSettings(
+        destinationPath: harness.injectedBackupURL.path,
+        lastBackupPath: packageURL.path,
+        destinationIsICloud: true
+      ), in: harness.defaults)
+    let scheduler = WorkspaceBackupScheduler(
+      store: harness.store, defaults: harness.defaults,
+      defaultDestinationFolderURL: harness.injectedBackupURL)
+
+    scheduler.refreshCloudUploadStatus()
+    XCTAssertEqual(scheduler.cloudUploadStatus, .manifestCorrupt)
+
+    try FileManager.default.removeItem(at: manifestURL)
+    try FileManager.default.createSymbolicLink(
+      at: manifestURL, withDestinationURL: packageURL.appendingPathComponent("missing.json"))
+    scheduler.refreshCloudUploadStatus()
+    XCTAssertEqual(scheduler.cloudUploadStatus, .manifestCorrupt)
   }
 
   func testBackupURLSelectionSkipsExistingPackagePath() throws {
@@ -657,7 +845,14 @@ final class WorkspaceBackupSchedulerTests: XCTestCase {
     let waitingPath = try XCTUnwrap(scheduler.settings.lastBackupPath)
     XCTAssertEqual(try automaticBackupCount(in: harness.injectedBackupURL), 14)
 
+    await scheduler.performBackup(isAutomatic: true)
+    XCTAssertEqual(scheduler.settings.lastBackupPath, waitingPath)
+    XCTAssertEqual(try automaticBackupCount(in: harness.injectedBackupURL), 14)
+
     scheduler.cloudUploadStatusReader = { _ in .uploadFailed("quota exceeded") }
+    await scheduler.performBackup(isAutomatic: true)
+    XCTAssertEqual(scheduler.settings.lastBackupPath, waitingPath)
+    XCTAssertEqual(try automaticBackupCount(in: harness.injectedBackupURL), 14)
     await scheduler.refreshRecentBackups()
     XCTAssertEqual(scheduler.cloudUploadStatus, .uploadFailed("quota exceeded"))
     XCTAssertEqual(try automaticBackupCount(in: harness.injectedBackupURL), 14)

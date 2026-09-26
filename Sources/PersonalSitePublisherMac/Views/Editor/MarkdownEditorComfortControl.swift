@@ -3,6 +3,9 @@ import SwiftUI
 struct MarkdownEditorComfortControl: View {
   let showsTitle: Bool
 
+  @AppStorage(MarkdownEditorComfortPreferences.bodyFontStyleKey)
+  private var bodyFontStyleRawValue = MarkdownEditorBodyFontStyle.defaultStyle.rawValue
+
   @AppStorage(MarkdownEditorComfortPreferences.fontSizeKey)
   private var fontSize = MarkdownEditorComfortConfiguration.defaultFontSize
   @AppStorage(MarkdownEditorComfortPreferences.lineSpacingKey)
@@ -33,14 +36,14 @@ struct MarkdownEditorComfortControl: View {
       isPresented.toggle()
     } label: {
       if showsTitle {
-        Label("编辑显示与辅助功能", systemImage: "accessibility")
+        Label("编辑显示与辅助功能", systemImage: "textformat.size")
           .labelStyle(.titleAndIcon)
           .font(.workbenchButtonLabel)
           .fixedSize(horizontal: true, vertical: false)
           .padding(.horizontal, 6)
           .frame(minHeight: 28)
       } else {
-        Image(systemName: "accessibility")
+        Image(systemName: "textformat.size")
           .frame(width: 28, height: 28)
       }
     }
@@ -55,8 +58,16 @@ struct MarkdownEditorComfortControl: View {
 
   private var controls: some View {
     VStack(alignment: .leading, spacing: 14) {
-      Label("编辑显示与辅助功能", systemImage: "accessibility")
+      Label("编辑显示与辅助功能", systemImage: "textformat.size")
         .font(.headline)
+
+      Picker("正文字体", selection: $bodyFontStyleRawValue) {
+        ForEach(MarkdownEditorBodyFontStyle.allCases) { style in
+          Text(style.title).tag(style.rawValue)
+        }
+      }
+      .pickerStyle(.segmented)
+      .help("代码与代码块始终使用等宽字体。")
 
       preferenceSlider(
         title: "字号",
@@ -153,6 +164,7 @@ struct MarkdownEditorComfortControl: View {
   }
 
   private func resetDefaults() {
+    bodyFontStyleRawValue = MarkdownEditorBodyFontStyle.defaultStyle.rawValue
     fontSize = MarkdownEditorComfortConfiguration.defaultFontSize
     lineSpacing = MarkdownEditorComfortConfiguration.defaultLineSpacing
     bodyWidth = MarkdownEditorComfortConfiguration.defaultBodyWidth

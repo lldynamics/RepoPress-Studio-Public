@@ -1,4 +1,5 @@
 import Foundation
+import PublishingBackupCore
 
 @MainActor
 extension WorkbenchStore {

@@ -1,5 +1,6 @@
 import XCTest
 
+@testable import PublishingPreviewCore
 @testable import PublishingWorkbenchCore
 
 #if canImport(Darwin)
@@ -79,12 +80,181 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:3000")
   }
 
-  func testQuartzPreviewPlanFailsClosedWithoutLoopbackBindingSupport() {
+  func testQuartzPreviewPlanUsesIsolatedStaticSnapshotInsteadOfQuartzServe() throws {
     var profile = SiteProfile.defaultProfile
     profile.siteKind = .quartz
     profile.localRepositoryRootPath = "/tmp/quartz-site"
 
-    XCTAssertNil(serviceWithAvailableDefaultPorts.plan(profile: profile))
+    let plan = try XCTUnwrap(serviceWithAvailableDefaultPorts.plan(profile: profile))
+
+    XCTAssertEqual(URL(fileURLWithPath: plan.executablePath).lastPathComponent, "python3")
+    XCTAssertEqual(Array(plan.arguments.prefix(2)), ["-I", "-c"])
+    XCTAssertEqual(plan.arguments[3], "/tmp/quartz-site")
+    XCTAssertEqual(plan.arguments[5], "8080")
+    XCTAssertFalse(plan.arguments.contains("--serve"))
+    XCTAssertTrue(plan.command.contains("quartz/bootstrap-cli.mjs build"))
+    XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:8080")
+    XCTAssertFalse(plan.diagnostics.isReadyToStart)
+  }
+
+  func testQuartzExecutionFingerprintChangesWithConfigAndBootstrap() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "quartz-manifest-\(UUID().uuidString)", isDirectory: true
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(
+      at: root.appendingPathComponent("quartz", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    let config = root.appendingPathComponent("quartz.config.ts")
+    let bootstrap = root.appendingPathComponent("quartz/bootstrap-cli.mjs")
+    try Data("config 1".utf8).write(to: config)
+    try Data("bootstrap 1".utf8).write(to: bootstrap)
+
+    let original = try LocalSitePreviewExecutionFingerprint.manifestDigest(
+      rootPath: root.path, siteKind: .quartz
+    )
+    try Data("config 2".utf8).write(to: config)
+    let afterConfigChange = try LocalSitePreviewExecutionFingerprint.manifestDigest(
+      rootPath: root.path, siteKind: .quartz
+    )
+    try Data("bootstrap 2".utf8).write(to: bootstrap)
+    let afterBootstrapChange = try LocalSitePreviewExecutionFingerprint.manifestDigest(
+      rootPath: root.path, siteKind: .quartz
+    )
+
+    XCTAssertNotEqual(original, afterConfigChange)
+    XCTAssertNotEqual(afterConfigChange, afterBootstrapChange)
+  }
+
+  func testQuartzPreviewPlanIsReadyForInstalledProjectWithTrustedTools() throws {
+    guard FileManager.default.isExecutableFile(atPath: "/usr/bin/python3"),
+      let node = RepositoryPublishPreflightService.resolveTrustedExecutable(named: "node")
+    else { throw XCTSkip("Trusted Python or Node is unavailable") }
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "quartz-ready-preview-\(UUID().uuidString)", isDirectory: true
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(
+      at: root.appendingPathComponent("quartz", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+      at: root.appendingPathComponent("node_modules", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try Data("{}".utf8).write(to: root.appendingPathComponent("package.json"))
+    try Data("config".utf8).write(to: root.appendingPathComponent("quartz.config.ts"))
+    try Data("cli".utf8).write(to: root.appendingPathComponent("quartz/bootstrap-cli.mjs"))
+    var profile = SiteProfile(name: "Quartz", siteKind: .quartz)
+    profile.localRepositoryRootPath = root.path
+    let service = LocalSitePreviewService(
+      executableResolver: { name in
+        name == "python3" ? "/usr/bin/python3" : name == "node" ? node : nil
+      },
+      portAllocator: LocalSitePreviewPortAllocator(
+        isPortAvailable: { _ in true }, dynamicPort: { nil }
+      )
+    )
+
+    let plan = try XCTUnwrap(service.plan(profile: profile))
+
+    XCTAssertTrue(plan.diagnostics.isReadyToStart)
+    XCTAssertTrue(QuartzStaticPreviewRunner.isValid(plan: plan))
+    XCTAssertNotNil(plan.executionIdentity)
+
+    let trustStore = LocalSitePreviewTrustStore(
+      fileURL: root.appendingPathComponent("preview-trust.json")
+    )
+    let processService = LocalSitePreviewProcessService(
+      trustStore: trustStore,
+      isPortAvailable: { _ in false }
+    )
+    try processService.authorize(
+      plan: plan,
+      matching: XCTUnwrap(processService.authorizationRequest(for: plan))
+    )
+    XCTAssertThrowsError(try processService.start(plan: plan)) { error in
+      guard case LocalSitePreviewError.portUnavailable = error else {
+        return XCTFail("Expected portUnavailable, got \(error)")
+      }
+    }
+    XCTAssertFalse(trustStore.isAuthorized(try XCTUnwrap(plan.executionIdentity)))
+    XCTAssertNotNil(try processService.authorizationRequest(for: plan))
+  }
+
+  func testQuartzProcessUsesOneTimeTrustAndItsOwnLoopbackProbe() async throws {
+    let base = try temporaryDirectory(named: "quartz-process-probe")
+    defer { try? FileManager.default.removeItem(at: base) }
+    let root = base.appendingPathComponent("site", isDirectory: true)
+    try FileManager.default.createDirectory(
+      at: root.appendingPathComponent("quartz", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+      at: root.appendingPathComponent("node_modules", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try Data("{}".utf8).write(to: root.appendingPathComponent("package.json"))
+    try Data("export default {}".utf8).write(to: root.appendingPathComponent("quartz.config.ts"))
+    try Data(
+      """
+      from pathlib import Path
+      import sys
+      output = Path(sys.argv[sys.argv.index('--output') + 1])
+      output.mkdir(parents=True)
+      (output / 'index.html').write_text('<h1>Quartz fixture</h1>')
+      """.utf8
+    ).write(to: root.appendingPathComponent("quartz/bootstrap-cli.mjs"))
+    var profile = SiteProfile(name: "Quartz", siteKind: .quartz)
+    profile.localRepositoryRootPath = root.path
+    let port = try XCTUnwrap(LocalSitePreviewPortAllocator.allocateDynamicPort())
+    let planner = LocalSitePreviewService(
+      executableResolver: { name in
+        name == "python3" || name == "node" ? "/usr/bin/python3" : nil
+      },
+      portAllocator: LocalSitePreviewPortAllocator(
+        isPortAvailable: { _ in true }, dynamicPort: { nil }
+      )
+    )
+    let plan = try XCTUnwrap(
+      planner.plan(profile: profile, repositoryReport: nil, preferredPort: port)
+    )
+    XCTAssertTrue(plan.diagnostics.isReadyToStart)
+    let trustStore = LocalSitePreviewTrustStore(
+      fileURL: base.appendingPathComponent("trust.json")
+    )
+    let processService = LocalSitePreviewProcessService(
+      trustStore: trustStore,
+      isPortAvailable: { _ in true }
+    )
+    try processService.authorize(
+      plan: plan,
+      matching: XCTUnwrap(processService.authorizationRequest(for: plan))
+    )
+    let started = try processService.start(plan: plan)
+    defer { processService.stop() }
+    XCTAssertTrue(started.isRunning)
+    XCTAssertFalse(trustStore.isAuthorized(try XCTUnwrap(plan.executionIdentity)))
+
+    var acceptedOwnProbe = false
+    for _ in 0..<100 {
+      guard processService.status.isRunning else { break }
+      if let probe = processService.quartzReadinessProbe(for: plan) {
+        var request = URLRequest(url: probe.url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 0.2
+        if let response = try? await LocalSitePreviewHTTPMetadataProbe.perform(request),
+          response.statusCode == 200,
+          response.responseHeaders["x-repopress-quartz-preview"] == probe.token
+        {
+          acceptedOwnProbe = true
+          break
+        }
+      }
+      try await Task.sleep(for: .milliseconds(50))
+    }
+    XCTAssertTrue(acceptedOwnProbe)
   }
 
   func testFoamWorkspaceDoesNotInventAStaticSitePreviewCommand() {
@@ -149,6 +319,29 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     XCTAssertTrue(plan.notes.contains("需要 Ruby bundle 环境可用。"))
   }
 
+  func testDocusaurusPreviewPlanUsesStartScriptBoundToLoopback() throws {
+    var profile = SiteProfile.defaultProfile
+    profile.siteKind = .docusaurus
+    profile.localRepositoryRootPath = "/tmp/docusaurus-site"
+
+    let plan = try XCTUnwrap(serviceWithAvailableDefaultPorts.plan(profile: profile))
+
+    XCTAssertEqual(plan.arguments, ["run", "start", "--", "--host", "127.0.0.1"])
+    XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:3000")
+  }
+
+  func testMkDocsPreviewPlanUsesLoopbackDevAddress() throws {
+    var profile = SiteProfile.defaultProfile
+    profile.siteKind = .mkDocs
+    profile.localRepositoryRootPath = "/tmp/mkdocs-site"
+
+    let plan = try XCTUnwrap(serviceWithAvailableDefaultPorts.plan(profile: profile))
+
+    XCTAssertEqual(URL(fileURLWithPath: plan.executablePath).lastPathComponent, "mkdocs")
+    XCTAssertEqual(plan.arguments, ["serve", "--dev-addr", "127.0.0.1:8000"])
+    XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:8000")
+  }
+
   func testPreviewPlanCopiesRepositoryPathWithSpacesSafely() throws {
     var profile = SiteProfile.defaultProfile
     profile.siteKind = .zola
@@ -173,6 +366,88 @@ final class LocalSitePreviewServiceTests: XCTestCase {
       LocalSitePreviewService().previewURL(for: draft, profile: profile))
 
     XCTAssertEqual(previewURL.absoluteString, "http://127.0.0.1:4321/preview-post")
+  }
+
+  func testPreviewDiagnosticParserExtractsRelativeHugoLocation() throws {
+    let diagnostic = try XCTUnwrap(
+      LocalSitePreviewDiagnosticParser.parse(
+        line:
+          #"ERROR render of \"page\" failed: \"content/posts/hello.md:12:7\": execute template"#,
+        rootPath: "/tmp/preview-site"
+      )
+    )
+
+    XCTAssertEqual(diagnostic.relativePath, "content/posts/hello.md")
+    XCTAssertEqual(diagnostic.line, 12)
+    XCTAssertEqual(diagnostic.column, 7)
+    XCTAssertEqual(diagnostic.severity, .error)
+  }
+
+  func testPreviewDiagnosticParserExtractsAbsoluteAstroLocation() throws {
+    let diagnostic = try XCTUnwrap(
+      LocalSitePreviewDiagnosticParser.parse(
+        line: "[ERROR] /tmp/preview-site/src/content/blog/hello.mdx:8:3 malformed frontmatter",
+        rootPath: "/tmp/preview-site"
+      )
+    )
+
+    XCTAssertEqual(diagnostic.relativePath, "src/content/blog/hello.mdx")
+    XCTAssertEqual(diagnostic.line, 8)
+    XCTAssertEqual(diagnostic.column, 3)
+  }
+
+  func testPreviewDiagnosticParserRejectsLocationsOutsideRepository() {
+    XCTAssertNil(
+      LocalSitePreviewDiagnosticParser.parse(
+        line: "ERROR /tmp/another-site/secrets.md:4:2 invalid",
+        rootPath: "/tmp/preview-site"
+      )
+    )
+    XCTAssertNil(
+      LocalSitePreviewDiagnosticParser.parse(
+        line: "ERROR ../secrets.md:4:2 invalid",
+        rootPath: "/tmp/preview-site"
+      )
+    )
+  }
+
+  func testPreviewDiagnosticOnlyTargetsItsMatchingArticlePath() throws {
+    let diagnostic = try XCTUnwrap(
+      LocalSitePreviewDiagnosticParser.parse(
+        line: "ERROR content/posts/hello.md:4:2 invalid front matter",
+        rootPath: "/tmp/preview-site"
+      )
+    )
+
+    XCTAssertTrue(diagnostic.targets(relativeArticlePath: "content/posts/hello.md"))
+    XCTAssertFalse(diagnostic.targets(relativeArticlePath: "content/posts/other.md"))
+    XCTAssertFalse(diagnostic.targets(relativeArticlePath: nil))
+  }
+
+  func testPreviewLogCollectorKeepsSplitDiagnosticUntilLineIsComplete() throws {
+    let collector = LocalSitePreviewLogCollector(maximumLineCount: 8)
+    collector.append(Data("ERROR content/posts/hello".utf8))
+    XCTAssertTrue(collector.lines().isEmpty)
+
+    collector.append(Data(".md:12:7 invalid shortcode\n".utf8))
+    let lines = collector.lines()
+    XCTAssertEqual(lines, ["ERROR content/posts/hello.md:12:7 invalid shortcode"])
+
+    let diagnostic = try XCTUnwrap(
+      LocalSitePreviewDiagnosticParser.diagnostics(lines: lines, rootPath: "/tmp/preview-site")
+        .first
+    )
+    XCTAssertEqual(diagnostic.relativePath, "content/posts/hello.md")
+    XCTAssertEqual(diagnostic.line, 12)
+  }
+
+  func testPreviewLogCollectorDoesNotJoinInterleavedStreams() {
+    let collector = LocalSitePreviewLogCollector(maximumLineCount: 8)
+    collector.append(Data("ERROR content/post".utf8), stream: .standardError)
+    collector.append(Data("ready\n".utf8), stream: .standardOutput)
+    collector.append(Data(".md:4:2 invalid\n".utf8), stream: .standardError)
+
+    XCTAssertEqual(collector.lines(), ["ready", "ERROR content/post.md:4:2 invalid"])
   }
 
   func testPreviewProcessServiceStartsAndStopsControlledProcess() throws {
@@ -323,9 +598,16 @@ final class LocalSitePreviewServiceTests: XCTestCase {
 
     try Data("{".utf8).write(to: trustFileURL)
     XCTAssertFalse(trustStore.isAuthorized(identity))
+    XCTAssertThrowsError(try trustStore.authorize(identity))
+    XCTAssertEqual(try Data(contentsOf: trustFileURL), Data("{".utf8))
 
     try Data("{\"schemaVersion\":999,\"records\":[]}".utf8).write(to: trustFileURL)
     XCTAssertFalse(trustStore.isAuthorized(identity))
+    XCTAssertThrowsError(try trustStore.authorize(identity))
+    XCTAssertEqual(
+      try Data(contentsOf: trustFileURL),
+      Data("{\"schemaVersion\":999,\"records\":[]}".utf8)
+    )
 
     try Data(repeating: 0x41, count: 512 * 1_024 + 1).write(to: trustFileURL)
     XCTAssertFalse(trustStore.isAuthorized(identity))

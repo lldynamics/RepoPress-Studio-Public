@@ -63,6 +63,20 @@ final class WorkbenchLayoutModeTests: XCTestCase {
     )
   }
 
+  func testSidebarNarrowsWithTheWindowWithoutInspector() {
+    func width(_ workspaceWidth: CGFloat) -> CGFloat {
+      WorkbenchLayoutMode.sidebarWidth(
+        storedWidth: 300,
+        workspaceWidth: workspaceWidth,
+        centerMinimumWidth: 460,
+        inspectorPresented: false
+      )
+    }
+    XCTAssertEqual(width(900), 240)
+    XCTAssertEqual(width(1_000), 260)
+    XCTAssertEqual(width(1_473), 300)
+  }
+
   func testHTMLSourceInspectorRequiresRoomForBothSourceColumns() {
     XCTAssertEqual(WorkbenchLayoutMode.minimumHTMLSourceInspectorWorkspaceWidth, 1240)
     XCTAssertEqual(

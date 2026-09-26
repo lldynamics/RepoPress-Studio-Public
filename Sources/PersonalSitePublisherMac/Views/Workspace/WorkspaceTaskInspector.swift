@@ -97,7 +97,7 @@ struct RepositoryContextInspectorView: View {
         Image(systemName: "arrow.left.arrow.right")
           .foregroundStyle(.secondary)
         VStack(alignment: .leading, spacing: 2) {
-          Text("仓库与发布 Inspector")
+          Text("仓库与发布详情栏")
             .font(.headline)
           Text("只显示当前阻断与文件变更")
             .font(.caption)
@@ -120,7 +120,7 @@ struct RepositoryContextInspectorView: View {
     }
     .background(.bar)
     .accessibilityIdentifier("repository-context-inspector")
-    .accessibilityLabel("仓库与发布 Inspector")
+    .accessibilityLabel("仓库与发布详情栏")
   }
 
   @ViewBuilder
@@ -129,7 +129,13 @@ struct RepositoryContextInspectorView: View {
     if let issue = issues.first(where: { $0.severity == .error })
       ?? issues.first(where: { $0.severity == .warning })
     {
-      inspectorCard(title: "当前阻断", systemImage: "exclamationmark.triangle") {
+      // Only an error blocks; a warning is shown under a neutral heading so the
+      // card title never contradicts its own severity badge.
+      inspectorCard(
+        title: issue.severity == .error
+          ? LocalizedStringKey("当前阻断") : LocalizedStringKey("需要注意"),
+        systemImage: "exclamationmark.triangle"
+      ) {
         SeverityBadge(severity: issue.severity)
         Text(issue.title)
           .font(.callout.weight(.medium))
@@ -143,7 +149,7 @@ struct RepositoryContextInspectorView: View {
       inspectorCard(title: "当前阻断", systemImage: "checklist") {
         Text("当前文章有 \(readiness.blockingIssueCount) 个发布阻断项。")
           .font(.callout)
-        Text("在内容健康中选择文章，可在 Inspector 直接处理检查结果。")
+        Text("在“检查”中选择文章，可在详情栏直接处理检查结果。")
           .font(.caption)
           .foregroundStyle(.secondary)
       }
@@ -245,7 +251,7 @@ struct RepositoryContextInspectorView: View {
   }
 
   private func inspectorCard<Content: View>(
-    title: String,
+    title: LocalizedStringKey,
     systemImage: String,
     @ViewBuilder content: () -> Content
   ) -> some View {

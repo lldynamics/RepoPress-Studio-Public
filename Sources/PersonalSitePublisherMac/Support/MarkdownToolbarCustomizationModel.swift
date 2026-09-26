@@ -88,7 +88,7 @@ enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiabl
     case .exportMenu: return "square.and.arrow.up"
     case .aiActions: return "sparkles"
     case .autoInlineAI: return "wand.and.stars"
-    case .aiChat: return "sparkles"
+    case .aiChat: return "bubble.left"
     case .localPreview: return "play.rectangle"
     case .preparePublish: return "paperplane"
     case .copyRichText: return "doc.on.doc.fill"
@@ -110,7 +110,7 @@ enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiabl
     case .image: return "photo"
     case .moreInsertions: return "ellipsis.circle"
     case .diagnostics: return "waveform.badge.exclamationmark"
-    case .formatChineseTypography: return "paragraphsign"
+    case .formatChineseTypography: return "character.textbox"
     }
   }
 

@@ -214,6 +214,7 @@ struct ImageWorkbenchView: View {
       .accessibilityIdentifier("image-workbench-refresh")
     }
     .controlSize(.regular)
+    .fixedSize(horizontal: true, vertical: false)
   }
 
   @ViewBuilder
@@ -283,14 +284,6 @@ struct ImageWorkbenchView: View {
         }
       }
 
-      HStack(alignment: .top, spacing: 10) {
-        Image(systemName: "lightbulb")
-          .foregroundStyle(WorkbenchTheme.navigationSelection)
-          .accessibilityHidden(true)
-        Text("图片工作区只管理资源。文章缺图、无效引用、过大图片等问题统一到“检查”处理。")
-          .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
-      }
     }
     .padding(WorkbenchSpacing.section)
     .background(
@@ -311,7 +304,7 @@ struct ImageWorkbenchView: View {
           .foregroundStyle(.secondary)
       }
 
-      LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 10)], spacing: 10) {
+      LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], spacing: 10) {
         ForEach(ImageWorkbenchBatchAction.allActions) { action in
           batchActionButton(action, summary: summary)
         }
@@ -342,18 +335,22 @@ struct ImageWorkbenchView: View {
         VStack(alignment: .leading, spacing: 3) {
           Text(action.title)
             .font(.workbenchCardTitle)
+            .foregroundStyle(.primary)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
           Text(action.shortDescription)
             .font(.workbenchSupporting)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
+            .foregroundStyle(count == 0 ? Color.primary.opacity(0.68) : Color.secondary)
+            .lineLimit(3)
+            .fixedSize(horizontal: false, vertical: true)
         }
         Spacer(minLength: 6)
         Text("\(count)")
           .font(.callout.monospacedDigit().weight(.semibold))
       }
-      .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+      .frame(maxWidth: .infinity, minHeight: 66, alignment: .leading)
     }
-    .buttonStyle(.bordered)
+    .buttonStyle(ImageWorkbenchBatchCardStyle(isAvailable: count > 0))
     .disabled(count == 0 || imageWorkbench.isProcessingBatch)
     .help(count == 0 ? String(localized: "当前没有符合此操作的图片。") : action.shortDescription)
     .accessibilityLabel(action.title)
@@ -656,5 +653,27 @@ enum ImageWorkbenchResourceNavigationPolicy {
   ) -> ImageWorkbenchResourceNavigationDestination? {
     guard request.profileID == activeProfileID, request.windowID == windowID else { return nil }
     return .assetResourceManager
+  }
+}
+
+private struct ImageWorkbenchBatchCardStyle: ButtonStyle {
+  let isAvailable: Bool
+
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .padding(.horizontal, 12)
+      .padding(.vertical, 6)
+      .frame(maxWidth: .infinity)
+      .background(
+        isAvailable ? Color.accentColor.opacity(0.08) : Color.primary.opacity(0.025),
+        in: RoundedRectangle(cornerRadius: 8)
+      )
+      .overlay {
+        RoundedRectangle(cornerRadius: 8)
+          .strokeBorder(
+            isAvailable ? Color.accentColor.opacity(0.12) : Color.primary.opacity(0.08)
+          )
+      }
+      .opacity(configuration.isPressed ? 0.75 : 1)
   }
 }

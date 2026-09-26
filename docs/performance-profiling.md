@@ -60,6 +60,27 @@ article content or search ranking:
   format values for each request; explicit locale calls can alternate languages.
   The existing next-launch application language setting and automatic formatting
   locale remain unchanged.
+- Automatic custom slash snippets first check for an exact shortcut on the
+  current line. Partial or unknown commands no longer scan the whole document
+  for code ranges on each keystroke. A complete match still checks code ranges
+  and uses the existing completion candidate, preserving fenced-code exclusion,
+  UTF-16 replacement ranges and placeholder selection. This reduces work in
+  the automatic snippet path; it does not establish native IME or overall
+  editor latency improvements.
+- Stale palette paragraph metrics are reset by a synchronous MainActor range
+  walk. This avoids capturing AppKit objects in a nested Objective-C enumeration
+  block that fails Swift 6 Release isolation diagnostics, while preserving
+  metrics owned by attachments and limiting writes to the requested range.
+- During native marked-text composition, repeated preedit changes coalesce
+  document-height invalidation and defer syntax parsing, layout-attribute
+  application, contextual-anchor geometry, automatic snippets, and statistics
+  updates. Temporary selection changes avoid extra TextKit layout queries.
+  Source-only documents also reuse the live editor string for the body after
+  validating the edit, avoiding a whole-body mutable copy on each preedit.
+  The committed text still refreshes those states, while the live body channel
+  continues to receive each edit. The simulated input-client regression checks
+  cache and commit behavior; only a manual `markdown-typing` trace with an
+  observed input source can establish native IME latency and caret stability.
 
 Repository content events still perform an authoritative scan. Skipping it would
 leave the visible Git change list stale, so path-only import is not a substitute

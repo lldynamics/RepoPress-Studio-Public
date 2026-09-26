@@ -10,6 +10,9 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   /// Optional storage keeps snapshots written before draft scopes backward compatible.
   /// Legacy drafts resolve to their existing site and are normalized on load.
   private var scopeStorage: ArticleDraftScope?
+  /// Library-only organization for general drafts. Optional storage keeps
+  /// snapshots written before general draft folders backward compatible.
+  private var generalDraftFolderNameStorage: String?
   public var title: String
   public var date: Date
   public var slug: String
@@ -63,6 +66,8 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   /// Atomic repository ownership and sync state. The three legacy projections above remain
   /// encoded during migration, while repository-aware flows update this value as a unit.
   public private(set) var repositoryBinding: DraftRepositoryBinding?
+  /// A linked Markdown file outside the site repository.
+  public var externalDraftSource: ExternalDraftSource?
   public var reusedFromSourceSnapshot: GeneralDraftReuseSourceSnapshot?
   /// Stable identity for built-in software guides. This is intentionally
   /// independent from the editable title and slug so user content with the
@@ -77,6 +82,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     id: UUID = UUID(),
     siteProfileID: UUID,
     scope: ArticleDraftScope? = nil,
+    generalDraftFolderName: String? = nil,
     title: String,
     date: Date = Date(),
     slug: String = "",
@@ -102,6 +108,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     repositorySHA: String? = nil,
     repositoryImportFingerprint: String? = nil,
     repositoryBinding: DraftRepositoryBinding? = nil,
+    externalDraftSource: ExternalDraftSource? = nil,
     reusedFromSourceSnapshot: GeneralDraftReuseSourceSnapshot? = nil,
     softwareGuideID: String? = nil,
     softwareGuideTemplateVersion: Int? = nil
@@ -110,6 +117,8 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     let resolvedScope = scope ?? .site(siteProfileID)
     self.siteProfileID = resolvedScope.siteProfileID ?? siteProfileID
     self.scopeStorage = resolvedScope
+    self.generalDraftFolderNameStorage =
+      resolvedScope.isGeneral ? Self.validGeneralDraftFolderName(generalDraftFolderName) : nil
     self.title = title
     self.date = date
     self.slug = slug
@@ -144,6 +153,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
         path: repositoryPath,
         remoteRevision: repositorySHA
       )
+    self.externalDraftSource = externalDraftSource
     self.reusedFromSourceSnapshot = reusedFromSourceSnapshot
     self.softwareGuideID = softwareGuideID
     self.softwareGuideTemplateVersion = softwareGuideTemplateVersion
@@ -183,6 +193,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     id == other.id
       && siteProfileID == other.siteProfileID
       && scope == other.scope
+      && generalDraftFolderName == other.generalDraftFolderName
       && title == other.title
       && date == other.date
       && slug == other.slug
@@ -207,6 +218,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       && repositorySHA == other.repositorySHA
       && repositoryImportFingerprint == other.repositoryImportFingerprint
       && repositoryBinding == other.repositoryBinding
+      && externalDraftSource == other.externalDraftSource
       && reusedFromSourceSnapshot == other.reusedFromSourceSnapshot
   }
 
@@ -330,6 +342,28 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     scope.isGeneral
   }
 
+  public var generalDraftFolderName: String? {
+    isGeneralDraft ? Self.validGeneralDraftFolderName(generalDraftFolderNameStorage) : nil
+  }
+
+  @discardableResult
+  public mutating func setGeneralDraftFolderName(_ name: String?) -> Bool {
+    guard isGeneralDraft else { return false }
+    if let name, Self.validGeneralDraftFolderName(name) == nil { return false }
+    generalDraftFolderNameStorage = Self.validGeneralDraftFolderName(name)
+    return true
+  }
+
+  public static func validGeneralDraftFolderName(_ name: String?) -> String? {
+    guard let name else { return nil }
+    let value = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !value.isEmpty, value != ".", value != "..", value.count <= 80,
+      !value.contains("/"), !value.contains("\\"),
+      value.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) })
+    else { return nil }
+    return value
+  }
+
   public func belongs(toSiteProfileID profileID: UUID) -> Bool {
     scope == .site(profileID)
   }
@@ -337,6 +371,8 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   public mutating func assignToSite(_ profileID: UUID) {
     siteProfileID = profileID
     scopeStorage = .site(profileID)
+    generalDraftFolderNameStorage = nil
+    externalDraftSource = nil
   }
 
   public mutating func assignToGeneralDraft(editingProfileID: UUID? = nil) {
@@ -344,6 +380,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       siteProfileID = editingProfileID
     }
     scopeStorage = .general
+    generalDraftFolderNameStorage = nil
     draft = true
     status = .draft
     detachFromRepository()
@@ -538,12 +575,13 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     repositoryBinding = nil
   }
 
-  /// Editor bindings own content and workflow fields, never repository concurrency state.
+  /// Editor bindings own content and workflow fields, never file concurrency state.
   public mutating func preserveRepositoryState(from current: ArticleDraft) {
     repositoryPath = current.repositoryPath
     repositorySHA = current.repositorySHA
     repositoryImportFingerprint = current.repositoryImportFingerprint
     repositoryBinding = current.repositoryBinding
+    externalDraftSource = current.externalDraftSource
   }
 
   mutating func replaceRepositoryPathForProjection(_ path: String?) {

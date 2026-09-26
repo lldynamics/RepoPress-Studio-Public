@@ -68,7 +68,7 @@ struct OperationLogWindowView: View {
       }
       Button("取消", role: .cancel) {}
     } message: {
-      Text("活动窗口会清空，但发布台账、维护记录等业务事实不会删除。")
+      Text("活动窗口会清空，但发布记录、维护记录等业务事实不会删除。")
     }
     .alert("活动记录状态", isPresented: statusAlertPresented) {
       Button("好") {

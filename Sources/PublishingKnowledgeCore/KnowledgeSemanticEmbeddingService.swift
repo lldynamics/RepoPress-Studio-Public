@@ -84,8 +84,8 @@ package struct KnowledgeSemanticIndexRecord: Sendable {
 ///
 /// A compact feature-hashed vector is always available. When macOS already has a
 /// suitable NaturalLanguage model, the service also stores its dense vector. A
-/// missing contextual model is requested in the background and becomes an
-/// additional index on a later search; retrieval never blocks on a model download.
+/// missing contextual model is not downloaded automatically, so knowledge
+/// indexing and search can run without fetching system model assets.
 package final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
   package static let fallbackModelIdentifier = "local-semantic-hash-v2"
 
@@ -207,6 +207,7 @@ package final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
   package func prepareContextualModelIfNeeded(for text: String) {
     let language = detectedLanguage(for: text)
     guard let model = contextualModel(for: language) else { return }
+    guard model.hasAvailableAssets else { return }
     let identifier = contextualIdentifier(for: model)
 
     lock.lock()
@@ -217,9 +218,6 @@ package final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
     guard shouldPrepare else { return }
 
     Task.detached(priority: .utility) { [weak self] in
-      if !model.hasAvailableAssets {
-        _ = try? await model.requestAssets()
-      }
       let didLoad: Bool
       if model.hasAvailableAssets {
         do {

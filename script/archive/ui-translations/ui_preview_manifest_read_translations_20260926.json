@@ -1,0 +1,3 @@
+{
+  "站点配置无法在不跟随符号链接的情况下有界读取：%@": "Could not read the site configuration within size limits without following symbolic links: %@"
+}

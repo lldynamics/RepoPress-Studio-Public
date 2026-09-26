@@ -588,7 +588,9 @@ struct QuickHideOverlay: View {
     }
     .padding(28)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(.regularMaterial)
+    // Privacy mode must cover the workbench completely; a translucent material
+    // lets the underlying accent colors appear as blurred patches.
+    .background(Color(nsColor: .windowBackgroundColor))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("quick-hide-overlay")
     .accessibilityLabel(status.title)

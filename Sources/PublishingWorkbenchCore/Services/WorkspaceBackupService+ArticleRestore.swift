@@ -1,4 +1,5 @@
 import CryptoKit
+import PublishingBackupCore
 import Foundation
 import PublishingCoreSupport
 import PublishingDomainContracts
@@ -122,6 +123,7 @@ extension WorkspaceBackupService {
           ArticleDraft(
             siteProfileID: editingProfileID,
             scope: .general,
+            generalDraftFolderName: draft.generalDraftFolderName,
             title: draft.title,
             date: draft.date,
             slug: draft.slug,

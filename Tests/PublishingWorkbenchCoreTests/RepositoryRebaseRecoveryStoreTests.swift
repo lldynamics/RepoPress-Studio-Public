@@ -1,4 +1,5 @@
 import Foundation
+import PublishingSyncCore
 import XCTest
 
 @testable import PublishingWorkbenchCore

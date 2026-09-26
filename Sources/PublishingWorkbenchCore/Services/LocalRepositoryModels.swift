@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 import PublishingGitCore
 
 public extension RepositoryChangeKind {
@@ -143,23 +144,23 @@ public extension RepositoryBranchStatus {
     if isDetached {
       return "Detached HEAD"
     }
-    return branchName ?? "未识别分支"
+    return branchName ?? CoreL10n.text("未识别分支")
   }
 
   var syncStatusTitle: String {
     if upstreamName == nil {
-      return "未设置上游分支"
+      return CoreL10n.text("未设置上游分支")
     }
     if aheadCount == 0 && behindCount == 0 {
-      return "已与远端同步"
+      return CoreL10n.text("已与远端同步")
     }
     if aheadCount > 0 && behindCount > 0 {
-      return "本地领先 \(aheadCount)，落后 \(behindCount)"
+      return CoreL10n.format("本地领先 %lld，落后 %lld", Int64(aheadCount), Int64(behindCount))
     }
     if aheadCount > 0 {
-      return "本地领先 \(aheadCount)"
+      return CoreL10n.format("本地领先 %lld", Int64(aheadCount))
     }
-    return "落后远端 \(behindCount)"
+    return CoreL10n.format("落后远端 %lld", Int64(behindCount))
   }
 }
 

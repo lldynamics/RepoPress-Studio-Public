@@ -40,7 +40,7 @@ public enum WorkbenchAutomationRegistry {
     ),
     entry(
       .showInspector,
-      title: "打开 Inspector",
+      title: "打开详情栏",
       detail: "显示当前工作区的检查面板",
       systemImage: "sidebar.right",
       risk: .readOnly

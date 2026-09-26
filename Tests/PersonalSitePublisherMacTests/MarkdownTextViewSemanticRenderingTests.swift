@@ -83,6 +83,130 @@ final class MarkdownTextViewSemanticRenderingTests: XCTestCase {
     XCTAssertEqual(pointSizes[5], palette.baseFont.pointSize, accuracy: 0.01)
   }
 
+  func testLayoutAttributeSynchronizationWritesHeadingMetricsToStorageOnlyWhereNeeded() throws {
+    let source = "## Title\nBody\nCard"
+    let palette = MarkdownTextViewSyntaxPalette(
+      configuration: MarkdownEditorComfortConfiguration(fontSize: 16)
+    )
+    let defaultParagraphStyle = try XCTUnwrap(
+      palette.defaultAttributes[.paragraphStyle] as? NSParagraphStyle
+    )
+    let storage = NSMutableAttributedString(string: source, attributes: palette.defaultAttributes)
+    let cardRange = (source as NSString).range(of: "Card")
+    let cardParagraphStyle = NSMutableParagraphStyle()
+    cardParagraphStyle.minimumLineHeight = 120
+    storage.addAttribute(.paragraphStyle, value: cardParagraphStyle, range: cardRange)
+    let fullRange = NSRange(location: 0, length: storage.length)
+    let headingRange = (source as NSString).range(of: "## Title")
+    let markerRange = NSRange(location: 0, length: 3)
+    storage.addAttribute(.font, value: palette.inactiveMarkerLayoutFont, range: markerRange)
+    let headingSnapshot = MarkdownSyntaxHighlightSnapshot(
+      range: fullRange,
+      runs: [MarkdownSyntaxHighlightRun(style: .heading2, range: headingRange)]
+    )
+
+    func synchronize(_ snapshot: MarkdownSyntaxHighlightSnapshot) -> Int {
+      MarkdownTextViewSemanticAttributeApplier.synchronizeLayoutAttributes(
+        snapshot,
+        in: storage,
+        within: fullRange,
+        excluding: [markerRange],
+        defaultAttributes: palette.defaultAttributes,
+        styleAttributes: palette.styleAttributes
+      )
+    }
+
+    XCTAssertGreaterThan(synchronize(headingSnapshot), 0)
+    let headingFont = try XCTUnwrap(palette.styleAttributes[.heading2]?[.font] as? NSFont)
+    let titleLocation = (source as NSString).range(of: "Title").location
+    XCTAssertEqual(
+      storage.attribute(.font, at: titleLocation, effectiveRange: nil) as? NSFont,
+      headingFont
+    )
+    XCTAssertEqual(
+      storage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont,
+      palette.inactiveMarkerLayoutFont,
+      "Collapsed markers keep their compact layout font."
+    )
+    XCTAssertEqual(
+      storage.attribute(.paragraphStyle, at: titleLocation, effectiveRange: nil)
+        as? NSParagraphStyle,
+      palette.styleAttributes[.heading2]?[.paragraphStyle] as? NSParagraphStyle
+    )
+    XCTAssertEqual(synchronize(headingSnapshot), 0, "An unchanged repaint must not touch storage.")
+
+    XCTAssertGreaterThan(
+      synchronize(MarkdownSyntaxHighlightSnapshot(range: fullRange, runs: [])),
+      0
+    )
+    XCTAssertEqual(
+      storage.attribute(.font, at: titleLocation, effectiveRange: nil) as? NSFont,
+      palette.baseFont
+    )
+    XCTAssertEqual(
+      storage.attribute(.paragraphStyle, at: titleLocation, effectiveRange: nil)
+        as? NSParagraphStyle,
+      defaultParagraphStyle
+    )
+    XCTAssertEqual(
+      storage.attribute(.paragraphStyle, at: cardRange.location, effectiveRange: nil)
+        as? NSParagraphStyle,
+      cardParagraphStyle,
+      "Paragraph styles owned by other features are preserved."
+    )
+  }
+
+  func testStaleParagraphCleanupStaysWithinPartialRangeAndPreservesOtherStyles() throws {
+    let palette = MarkdownTextViewSyntaxPalette(
+      configuration: MarkdownEditorComfortConfiguration(fontSize: 16)
+    )
+    let headingStyle = try XCTUnwrap(
+      palette.styleAttributes[.heading1]?[.paragraphStyle] as? NSParagraphStyle)
+    let secondHeadingStyle = try XCTUnwrap(
+      palette.styleAttributes[.heading2]?[.paragraphStyle] as? NSParagraphStyle)
+    let defaultStyle = try XCTUnwrap(
+      palette.defaultAttributes[.paragraphStyle] as? NSParagraphStyle)
+    let storage = NSMutableAttributedString(
+      string: "abcdefghij", attributes: palette.defaultAttributes)
+    storage.addAttribute(
+      .paragraphStyle, value: headingStyle, range: NSRange(location: 0, length: 10))
+    let cardStyle = NSMutableParagraphStyle()
+    cardStyle.minimumLineHeight = 120
+    storage.addAttribute(
+      .paragraphStyle, value: cardStyle, range: NSRange(location: 4, length: 1))
+    storage.addAttribute(
+      .paragraphStyle, value: secondHeadingStyle, range: NSRange(location: 5, length: 2))
+    storage.removeAttribute(.paragraphStyle, range: NSRange(location: 7, length: 1))
+    let range = NSRange(location: 2, length: 6)
+    let snapshot = MarkdownSyntaxHighlightSnapshot(range: range, runs: [])
+
+    for expectedWrites in [2, 0] {
+      XCTAssertEqual(
+        MarkdownTextViewSemanticAttributeApplier.synchronizeLayoutAttributes(
+          snapshot,
+          in: storage,
+          within: range,
+          excluding: [],
+          defaultAttributes: palette.defaultAttributes,
+          styleAttributes: palette.styleAttributes
+        ), expectedWrites)
+    }
+    for location in [0, 1, 8, 9] {
+      XCTAssertEqual(
+        storage.attribute(.paragraphStyle, at: location, effectiveRange: nil) as? NSParagraphStyle,
+        headingStyle)
+    }
+    for location in [2, 3, 5, 6] {
+      XCTAssertEqual(
+        storage.attribute(.paragraphStyle, at: location, effectiveRange: nil) as? NSParagraphStyle,
+        defaultStyle)
+    }
+    XCTAssertEqual(
+      storage.attribute(.paragraphStyle, at: 4, effectiveRange: nil) as? NSParagraphStyle,
+      cardStyle)
+    XCTAssertNil(storage.attribute(.paragraphStyle, at: 7, effectiveRange: nil))
+  }
+
   func testNestedEmphasisPreservesHeadingSizeAndCombinesFontTraits() throws {
     let source = "# ***Title***"
     let storage = NSMutableAttributedString(string: source)

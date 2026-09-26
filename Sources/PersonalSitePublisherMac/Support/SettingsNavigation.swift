@@ -134,4 +134,28 @@ enum SettingsNavigation {
   static func request(destination: SettingsDestination?) {
     UserDefaults.standard.set(destination?.id ?? "", forKey: requestedTabStorageKey)
   }
+
+  /// Site configuration is shown in the main window. The Settings window hands
+  /// such destinations over through this one-shot key; the main window
+  /// consumes and clears it.
+  static let requestedSiteDestinationStorageKey = "settingsRequestedSiteDestinationID"
+
+  static func requestSiteSettings(_ destination: SettingsDestination) {
+    UserDefaults.standard.set(destination.id, forKey: requestedSiteDestinationStorageKey)
+  }
+
+  static func consumeRequestedSiteSettings() -> SettingsDestination? {
+    let defaults = UserDefaults.standard
+    guard let id = defaults.string(forKey: requestedSiteDestinationStorageKey), !id.isEmpty
+    else { return nil }
+    defaults.set("", forKey: requestedSiteDestinationStorageKey)
+    return SettingsDestination(requestedID: id)
+  }
+
+  /// App preferences belong to the standard Settings window; only site
+  /// configuration is presented inside the main workspace.
+  static func opensInSettingsWindow(_ destination: SettingsDestination?) -> Bool {
+    guard let destination else { return true }
+    return !destination.tab.isSiteScoped
+  }
 }

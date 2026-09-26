@@ -663,20 +663,27 @@ struct PublishDrawerReadinessChecklist: View {
           if section.issues.isEmpty && !section.isLoading {
             readinessSectionLabel(section)
           } else {
-            DisclosureGroup(isExpanded: expandedBinding(for: section.id)) {
-              VStack(alignment: .leading, spacing: 7) {
-                if section.isLoading {
-                  Label("正在读取最新检查结果…", systemImage: "arrow.clockwise")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-                ForEach(section.issues) { issue in
-                  readinessIssueRow(issue)
-                }
+            VStack(alignment: .leading, spacing: 0) {
+              DisclosureGroup(isExpanded: expandedBinding(for: section.id)) {
+                EmptyView()
+              } label: {
+                readinessSectionLabel(section)
               }
-              .padding(.top, 5)
-            } label: {
-              readinessSectionLabel(section)
+
+              if expandedSectionIDs.contains(section.id) {
+                VStack(alignment: .leading, spacing: 7) {
+                  if section.isLoading {
+                    Label("正在读取最新检查结果…", systemImage: "arrow.clockwise")
+                      .font(.caption)
+                      .foregroundStyle(.secondary)
+                  }
+                  ForEach(section.issues) { issue in
+                    readinessIssueRow(issue)
+                  }
+                }
+                .padding(.leading, 16)
+                .padding(.top, 5)
+              }
             }
           }
         }
@@ -761,7 +768,7 @@ struct PublishDrawerReadinessChecklist: View {
     return [
       PublishDrawerReadinessSection(
         id: "preflight",
-        title: "Preflight",
+        title: String(localized: "发布前检查"),
         systemImage: "shield.checkered",
         issues: preflight,
         isLoading: false
@@ -841,4 +848,5 @@ struct PublishDrawerReadinessChecklist: View {
       }
     )
   }
+
 }

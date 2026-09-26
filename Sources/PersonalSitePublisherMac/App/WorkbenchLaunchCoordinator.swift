@@ -1,3 +1,4 @@
+import PublishingBackupCore
 import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI

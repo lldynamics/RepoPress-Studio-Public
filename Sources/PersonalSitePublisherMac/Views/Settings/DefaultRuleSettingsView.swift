@@ -119,6 +119,14 @@ private struct DefaultRuleBasicsFocusedSection: View {
           activeProfileBinding.dateFormat.wrappedValue = "yyyy-MM-dd'T'HH:mm:ssXXX"
           activeProfileBinding.includeDraftFlagInFrontMatter.wrappedValue = true
         }
+
+        if activeProfile.siteKind == .astro {
+          Button("Starlight 文档") {
+            var profile = activeProfileBinding.wrappedValue
+            profile.applyPublishingDefaults(SiteProfile.starlightPublishingDefaults)
+            activeProfileBinding.wrappedValue = profile
+          }
+        }
       }
       .buttonStyle(.borderless)
       .accessibilityElement(children: .contain)

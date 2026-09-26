@@ -1,4 +1,6 @@
 import Foundation
+import PublishingPreviewCore
+import PublishingSyncCore
 import PublishingDomainContracts
 import PublishingGitCore
 

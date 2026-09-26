@@ -1,4 +1,5 @@
 import CryptoKit
+import PublishingBackupCore
 import Foundation
 import PublishingDomainContracts
 import PublishingKnowledgeCore
@@ -113,6 +114,9 @@ extension WorkspaceBackupService {
     } catch {
       throw WorkspaceBackupError.knowledgeLibraryInvalid(error.localizedDescription)
     } }
+    if includesKnowledge {
+      try KnowledgeNoteCloudRestoreBoundary.markRestoredLibrary(at: stagedKnowledgeURL)
+    }
 
     let stagedRSSDirectoryURL = stagingURL.appendingPathComponent(
       "RSSReader",

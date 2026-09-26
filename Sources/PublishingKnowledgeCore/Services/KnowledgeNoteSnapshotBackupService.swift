@@ -29,6 +29,16 @@ public struct KnowledgeNoteSnapshotCreation: Sendable {
   public let contentSignature: String
 }
 
+/// The outcome of examining an existing automatic snapshot. `unknown` is
+/// deliberately distinct from an invalid package: File Provider placeholders
+/// and transient reads must not be mistaken for lost backup data.
+public enum KnowledgeNoteSnapshotReadResult: Sendable {
+  case package(RPNotePackage)
+  case missing
+  case invalid
+  case unknown
+}
+
 /// Opt-in automatic snapshots are throttled so repeated keystroke saves do not
 /// flood iCloud Drive. A local container write is recorded separately from the
 /// system's eventual ubiquitous-item upload confirmation.
@@ -40,17 +50,27 @@ public actor KnowledgeNoteAutomaticSnapshotBackup {
   private let preferences: KnowledgeNoteSnapshotPreferences
   private let now: @Sendable () -> Date
   private let directoryProvider: @Sendable () throws -> URL
+  private let snapshotReader: @Sendable (URL) -> KnowledgeNoteSnapshotReadResult
+  private let uploadStatusReader: @Sendable (URL) -> KnowledgeNoteSnapshotUploadStatus
 
   public init(
     preferences: KnowledgeNoteSnapshotPreferences = .standard,
     now: @escaping @Sendable () -> Date = Date.init,
     directoryProvider: @escaping @Sendable () throws -> URL = {
       try KnowledgeNoteSnapshotBackupService.iCloudNotesBackupDirectory()
+    },
+    snapshotReader: @escaping @Sendable (URL) -> KnowledgeNoteSnapshotReadResult = {
+      KnowledgeNoteSnapshotBackupService.snapshotReadResult(at: $0)
+    },
+    uploadStatusReader: @escaping @Sendable (URL) -> KnowledgeNoteSnapshotUploadStatus = {
+      KnowledgeNoteSnapshotBackupService.uploadStatus(at: $0)
     }
   ) {
     self.preferences = preferences
     self.now = now
     self.directoryProvider = directoryProvider
+    self.snapshotReader = snapshotReader
+    self.uploadStatusReader = uploadStatusReader
   }
 
   @discardableResult
@@ -60,32 +80,143 @@ public actor KnowledgeNoteAutomaticSnapshotBackup {
   ) async throws -> URL? {
     guard preferences.bool(forKey: "knowledgeNoteICloudAutoBackupEnabled") else { return nil }
     let date = now()
-    let previousSuccess = preferences.double(forKey: "knowledgeNoteICloudSnapshotLastSuccessAt")
-    guard date.timeIntervalSince1970 - previousSuccess >= Self.minimumInterval else { return nil }
     let previousAttempt = preferences.double(forKey: "knowledgeNoteICloudSnapshotLastAttemptAt")
     guard date.timeIntervalSince1970 - previousAttempt >= Self.retryInterval else { return nil }
+    // Record every due inspection before provider reads. Unknown placeholders
+    // and unavailable directories must be throttled just like a failed write.
     preferences.set(date.timeIntervalSince1970, forKey: "knowledgeNoteICloudSnapshotLastAttemptAt")
 
+    let storedURL = preferences.string(forKey: "knowledgeNoteICloudSnapshotLastURL")
+      .map { URL(fileURLWithPath: $0, isDirectory: true) }
+    let quickState = Self.quickSnapshotState(at: storedURL, fileManager: fileManager)
+    let previousSuccess = preferences.double(forKey: "knowledgeNoteICloudSnapshotLastSuccessAt")
+    let normalCheckIsDue =
+      date.timeIntervalSince1970 - previousSuccess >= Self.minimumInterval
+    var repairIsNeeded =
+      quickState == .absent && previousSuccess > 0
+    var preflightDirectory: URL?
+    if !repairIsNeeded, !normalCheckIsDue, let storedURL {
+      if quickState == .requiresVerification {
+        switch snapshotReader(storedURL) {
+        case .missing, .invalid:
+          repairIsNeeded = true
+        case .package, .unknown:
+          return nil
+        }
+      }
+      // This lightweight current-target check allows a renamed or changed
+      // destination to be repaired after the retry interval without decoding
+      // every attachment on each note save.
+      if !repairIsNeeded {
+        let directory: URL
+        do {
+          directory = try directoryProvider()
+        } catch {
+          return nil
+        }
+        preflightDirectory = directory
+        repairIsNeeded = !KnowledgeNoteSnapshotBackupService.isSnapshot(
+          storedURL, inside: directory)
+      }
+    }
+    guard repairIsNeeded || normalCheckIsDue
+    else { return nil }
+
     do {
-      let directory = try directoryProvider()
+      let directory = try preflightDirectory ?? directoryProvider()
       let notes = try await service.notesAsync().map(Self.portableNote)
       let signature = try KnowledgeNoteSnapshotBackupService.contentSignature(for: notes)
-      guard preferences.string(forKey: "knowledgeNoteICloudSnapshotContentHash") != signature else { return nil }
+
+      switch snapshotReuseState(
+        directory: directory,
+        storedURL: storedURL,
+        storedSignature: preferences.string(forKey: "knowledgeNoteICloudSnapshotContentHash"),
+        currentSignature: signature
+      ) {
+      case .reusable:
+        return nil
+      case .unknown:
+        return nil
+      case .invalid:
+        break
+      }
+
       let url = try KnowledgeNoteSnapshotBackupService.createSnapshot(
         RPNotePackage(createdAt: date, notes: notes),
         in: directory,
         timestamp: date,
         fileManager: fileManager
       )
-      preferences.set(date.timeIntervalSince1970, forKey: "knowledgeNoteICloudSnapshotLastSuccessAt")
+      preferences.set(
+        date.timeIntervalSince1970, forKey: "knowledgeNoteICloudSnapshotLastSuccessAt")
       preferences.set(url.path, forKey: "knowledgeNoteICloudSnapshotLastURL")
-      preferences.set(KnowledgeNoteSnapshotUploadStatus.waitingForUpload.rawValue, forKey: "knowledgeNoteICloudSnapshotUploadStatus")
+      preferences.set(
+        KnowledgeNoteSnapshotUploadStatus.waitingForUpload.rawValue,
+        forKey: "knowledgeNoteICloudSnapshotUploadStatus")
       preferences.set(signature, forKey: "knowledgeNoteICloudSnapshotContentHash")
       preferences.removeObject(forKey: "knowledgeNoteICloudSnapshotLastError")
       return url
     } catch {
       preferences.set(error.localizedDescription, forKey: "knowledgeNoteICloudSnapshotLastError")
       throw error
+    }
+  }
+
+  private enum QuickSnapshotState: Equatable {
+    case absent
+    case present
+    case requiresVerification
+  }
+
+  private enum SnapshotReuseState {
+    case reusable
+    case invalid
+    case unknown
+  }
+
+  private static func quickSnapshotState(
+    at url: URL?,
+    fileManager: FileManager
+  ) -> QuickSnapshotState {
+    guard let url else { return .absent }
+    var isDirectory: ObjCBool = false
+    guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+      return .requiresVerification
+    }
+    guard url.pathExtension == "rpnotes", isDirectory.boolValue else {
+      return .requiresVerification
+    }
+    return .present
+  }
+
+  private func snapshotReuseState(
+    directory: URL,
+    storedURL: URL?,
+    storedSignature: String?,
+    currentSignature: String
+  ) -> SnapshotReuseState {
+    guard let storedURL, let storedSignature,
+      KnowledgeNoteSnapshotBackupService.isSnapshot(storedURL, inside: directory)
+    else {
+      return .invalid
+    }
+
+    switch snapshotReader(storedURL) {
+    case .package(let package):
+      do {
+        let packageSignature = try KnowledgeNoteSnapshotBackupService.contentSignature(
+          for: package.notes)
+        guard packageSignature == storedSignature
+        else { return .invalid }
+        guard uploadStatusReader(storedURL) == .uploaded else { return .unknown }
+        return packageSignature == currentSignature ? .reusable : .invalid
+      } catch {
+        return .invalid
+      }
+    case .missing, .invalid:
+      return .invalid
+    case .unknown:
+      return .unknown
     }
   }
 
@@ -127,7 +258,8 @@ public enum KnowledgeNoteSnapshotBackupService {
     fileManager: FileManager = .default
   ) throws -> KnowledgeNoteSnapshotCreation {
     let directory = try iCloudNotesBackupDirectory(fileManager: fileManager)
-    let url = try createSnapshot(package, in: directory, timestamp: timestamp, fileManager: fileManager)
+    let url = try createSnapshot(
+      package, in: directory, timestamp: timestamp, fileManager: fileManager)
     return KnowledgeNoteSnapshotCreation(
       url: url,
       contentSignature: try contentSignature(for: package.notes)
@@ -154,7 +286,9 @@ public enum KnowledgeNoteSnapshotBackupService {
     let wrapper = try RPNotesPackageCodec.encode(package)
     let expectedPackage = try RPNotesPackageCodec.decode(wrapper)
     var isDirectory: ObjCBool = false
-    guard fileManager.fileExists(atPath: directoryURL.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+    guard fileManager.fileExists(atPath: directoryURL.path, isDirectory: &isDirectory),
+      isDirectory.boolValue
+    else {
       throw SnapshotError.destinationIsNotDirectory
     }
 
@@ -174,13 +308,18 @@ public enum KnowledgeNoteSnapshotBackupService {
       let stageCoordinator = NSFileCoordinator(filePresenter: nil)
       var stageCoordinationError: NSError?
       var stageError: Error?
-      stageCoordinator.coordinate(writingItemAt: directoryURL, options: .forMerging, error: &stageCoordinationError) { coordinatedDirectory in
+      stageCoordinator.coordinate(
+        writingItemAt: directoryURL, options: .forMerging, error: &stageCoordinationError
+      ) { coordinatedDirectory in
         do {
-          let stageDirectory = coordinatedDirectory.appendingPathComponent(stagingName, isDirectory: true)
-          let stageURL = stageDirectory.appendingPathComponent("snapshot.rpnotes", isDirectory: true)
+          let stageDirectory = coordinatedDirectory.appendingPathComponent(
+            stagingName, isDirectory: true)
+          let stageURL = stageDirectory.appendingPathComponent(
+            "snapshot.rpnotes", isDirectory: true)
           try fileManager.createDirectory(at: stageDirectory, withIntermediateDirectories: false)
           try wrapper.write(to: stageURL, options: .atomic, originalContentsURL: nil)
-          destination = coordinatedDirectory.appendingPathComponent(destinationName, isDirectory: true)
+          destination = coordinatedDirectory.appendingPathComponent(
+            destinationName, isDirectory: true)
           stagingDirectory = stageDirectory
           stagedPackage = stageURL
         } catch {
@@ -197,7 +336,8 @@ public enum KnowledgeNoteSnapshotBackupService {
       let coordinator = NSFileCoordinator(filePresenter: nil)
       var coordinationError: NSError?
       var moveError: Error?
-      coordinator.coordinate(writingItemAt: destination, options: [], error: &coordinationError) { coordinatedURL in
+      coordinator.coordinate(writingItemAt: destination, options: [], error: &coordinationError) {
+        coordinatedURL in
         do {
           try fileManager.moveItem(at: stagedPackage, to: coordinatedURL)
         } catch {
@@ -213,7 +353,9 @@ public enum KnowledgeNoteSnapshotBackupService {
       } catch {
         let cleanupCoordinator = NSFileCoordinator(filePresenter: nil)
         var cleanupError: NSError?
-        cleanupCoordinator.coordinate(writingItemAt: destination, options: .forDeleting, error: &cleanupError) { coordinatedURL in
+        cleanupCoordinator.coordinate(
+          writingItemAt: destination, options: .forDeleting, error: &cleanupError
+        ) { coordinatedURL in
           try? fileManager.removeItem(at: coordinatedURL)
         }
         throw error
@@ -229,7 +371,8 @@ public enum KnowledgeNoteSnapshotBackupService {
     let coordinator = NSFileCoordinator(filePresenter: nil)
     var coordinationError: NSError?
     var result: Result<RPNotePackage, Error>?
-    coordinator.coordinate(readingItemAt: url, options: .withoutChanges, error: &coordinationError) { coordinatedURL in
+    coordinator.coordinate(readingItemAt: url, options: .withoutChanges, error: &coordinationError)
+    { coordinatedURL in
       result = Result {
         let wrapper = try FileWrapper(url: coordinatedURL, options: .immediate)
         return try RPNotesPackageCodec.decode(wrapper)
@@ -240,7 +383,55 @@ public enum KnowledgeNoteSnapshotBackupService {
     return try result.get()
   }
 
-  public static func snapshots(in directoryURL: URL, fileManager: FileManager = .default) throws -> [KnowledgeNoteSnapshotInfo] {
+  /// Separates an integrity failure that is safe to replace from a provider
+  /// failure that may merely mean the package has not been materialized yet.
+  public static func snapshotReadResult(
+    at url: URL,
+    fileManager: FileManager = .default
+  ) -> KnowledgeNoteSnapshotReadResult {
+    let placeholder = isUbiquitousPlaceholder(at: url)
+    do {
+      let attributes = try fileManager.attributesOfItem(atPath: url.path)
+      guard url.pathExtension == "rpnotes",
+        attributes[.type] as? FileAttributeType == .typeDirectory
+      else { return .invalid }
+      guard !placeholder else { return .unknown }
+      return .package(try readSnapshot(at: url))
+    } catch is RPNotesPackageError {
+      return placeholder ? .unknown : .invalid
+    } catch {
+      return isKnownMissingFileError(error) && !placeholder ? .missing : .unknown
+    }
+  }
+
+  fileprivate static func isSnapshot(_ url: URL, inside directory: URL) -> Bool {
+    guard url.pathExtension == "rpnotes" else { return false }
+    return url.deletingLastPathComponent().standardizedFileURL.path
+      == directory.standardizedFileURL.path
+  }
+
+  private static func isUbiquitousPlaceholder(at url: URL) -> Bool {
+    let values: URLResourceValues
+    do {
+      values = try url.resourceValues(forKeys: [
+        .isUbiquitousItemKey,
+        .ubiquitousItemDownloadingStatusKey,
+      ])
+    } catch {
+      return false
+    }
+    guard values.isUbiquitousItem == true else { return false }
+    return values.ubiquitousItemDownloadingStatus != .current
+  }
+
+  private static func isKnownMissingFileError(_ error: Error) -> Bool {
+    guard let error = error as? CocoaError else { return false }
+    return error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile
+  }
+
+  public static func snapshots(in directoryURL: URL, fileManager: FileManager = .default) throws
+    -> [KnowledgeNoteSnapshotInfo]
+  {
     let urls = try fileManager.contentsOfDirectory(
       at: directoryURL,
       includingPropertiesForKeys: [.isDirectoryKey, .creationDateKey, .contentModificationDateKey],
@@ -248,7 +439,7 @@ public enum KnowledgeNoteSnapshotBackupService {
     )
     return urls.compactMap { url in
       guard url.pathExtension == "rpnotes",
-            (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+        (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
       else { return nil }
       let values = try? url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
       return KnowledgeNoteSnapshotInfo(
@@ -259,42 +450,74 @@ public enum KnowledgeNoteSnapshotBackupService {
   }
 
   public static func uploadStatus(at url: URL) -> KnowledgeNoteSnapshotUploadStatus {
-    var urls = [url]
-    if let enumerator = FileManager.default.enumerator(
-      at: url,
-      includingPropertiesForKeys: [.isDirectoryKey],
-      options: [.skipsHiddenFiles]
-    ) {
-      while let child = enumerator.nextObject() as? URL { urls.append(child) }
-    }
+    guard let urls = packageURLs(at: url) else { return .unavailable }
     var anyUploading = false
     for item in urls {
-      guard let values = try? item.resourceValues(forKeys: [
-        .isUbiquitousItemKey,
-        .ubiquitousItemIsUploadedKey,
-        .ubiquitousItemIsUploadingKey,
-      ]), values.isUbiquitousItem == true else { return .unavailable }
+      guard
+        let values = try? item.resourceValues(forKeys: [
+          .isUbiquitousItemKey,
+          .ubiquitousItemIsUploadedKey,
+          .ubiquitousItemIsUploadingKey,
+        ]), values.isUbiquitousItem == true
+      else { return .unavailable }
       if values.ubiquitousItemIsUploaded == true { continue }
-      if values.ubiquitousItemIsUploading == true { anyUploading = true }
-      else { return .waitingForUpload }
+      if values.ubiquitousItemIsUploading == true {
+        anyUploading = true
+      } else {
+        return .waitingForUpload
+      }
     }
     return anyUploading ? .uploading : .uploaded
+  }
+
+  static func packageURLs(at url: URL) -> [URL]? {
+    packageURLs(at: url) { directoryURL, errorHandler in
+      FileManager.default.enumerator(
+        at: directoryURL,
+        includingPropertiesForKeys: [.isDirectoryKey],
+        options: [.skipsHiddenFiles],
+        errorHandler: errorHandler
+      )
+    }
+  }
+
+  static func packageURLs(
+    at url: URL,
+    enumerateContents: (URL, @escaping (URL, Error) -> Bool) -> FileManager.DirectoryEnumerator?
+  ) -> [URL]? {
+    var urls = [url]
+    var enumerationFailed = false
+    guard
+      let enumerator = enumerateContents(
+        url,
+        { _, _ in
+          enumerationFailed = true
+          return false
+        }
+      )
+    else { return nil }
+    while let child = enumerator.nextObject() as? URL { urls.append(child) }
+    return enumerationFailed ? nil : urls
   }
 
   public static func iCloudNotesBackupDirectory(
     fileManager: FileManager = .default,
     containerIdentifier: String = "iCloud.com.chengjinfang.repopress"
   ) throws -> URL {
-    guard let container = fileManager.url(forUbiquityContainerIdentifier: containerIdentifier) else {
+    guard let container = fileManager.url(forUbiquityContainerIdentifier: containerIdentifier)
+    else {
       throw SnapshotError.iCloudContainerUnavailable
     }
     var directory: URL?
     var operationError: Error?
     let coordinator = NSFileCoordinator(filePresenter: nil)
     var coordinationError: NSError?
-    coordinator.coordinate(writingItemAt: container, options: .forMerging, error: &coordinationError) { coordinatedContainer in
+    coordinator.coordinate(
+      writingItemAt: container, options: .forMerging, error: &coordinationError
+    ) { coordinatedContainer in
       do {
-        let coordinatedDirectory = coordinatedContainer
+        let coordinatedDirectory =
+          coordinatedContainer
           .appendingPathComponent("Documents/NotesBackups", isDirectory: true)
         try fileManager.createDirectory(at: coordinatedDirectory, withIntermediateDirectories: true)
         directory = coordinatedDirectory

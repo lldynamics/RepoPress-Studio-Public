@@ -2,7 +2,6 @@
 import Combine
 import Foundation
 import PublishingKnowledgeCore
-import PublishingWorkbenchCore
 
 struct RSSArticleSpeechHighlight: Equatable, Sendable {
   let location: Int

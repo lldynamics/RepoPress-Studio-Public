@@ -1,5 +1,6 @@
-import XCTest
+import PublishingBackupCore
 import PublishingWorkbenchCore
+import XCTest
 @testable import PersonalSitePublisherMac
 
 final class iCloudWorkspaceBackupStoreTests: XCTestCase {

@@ -1,0 +1,16 @@
+{
+  "capability": "repository-endpoint",
+  "description": "Preserves an enterprise API base path during validation.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "baseURL": "https://github.example.test/api/v3"
+    }
+  },
+  "id": "endpoint-enterprise-base-path",
+  "input": {
+    "baseURL": "https://github.example.test/api/v3",
+    "operation": "validate"
+  },
+  "validity": "valid"
+}

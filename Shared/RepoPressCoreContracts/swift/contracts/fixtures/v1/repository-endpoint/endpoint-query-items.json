@@ -1,0 +1,27 @@
+{
+  "capability": "repository-endpoint",
+  "description": "Encodes query item spaces and retains a null-valued item as a bare key.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "absoluteURL": "https://api.example.test/api/repos/a/b?q=a%20b&empty"
+    }
+  },
+  "id": "endpoint-query-items",
+  "input": {
+    "baseURL": "https://api.example.test/api",
+    "operation": "build-url",
+    "path": "repos/a/b",
+    "queryItems": [
+      {
+        "name": "q",
+        "value": "a b"
+      },
+      {
+        "name": "empty",
+        "value": null
+      }
+    ]
+  },
+  "validity": "valid"
+}

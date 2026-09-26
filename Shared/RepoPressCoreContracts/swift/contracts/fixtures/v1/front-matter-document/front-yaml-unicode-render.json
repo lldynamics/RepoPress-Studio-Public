@@ -1,0 +1,40 @@
+{
+  "capability": "front-matter-document",
+  "description": "Preserves Chinese and emoji while escaping a tab in YAML.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "text": "---\ntitle: \"中文 😀\"\ndate: \"2026-08-09T12:34:56+08:00\"\nslug: \"中文-😀\"\ntags: [\"中文\", \"🧪\"]\ncategories: [\"指南\"]\nauthors: [\"作者\", \"editor\"]\ndraft: false\ndescription: \"多语言\\t摘要\"\nimage: \"assets/封面 😀.jpg\"\n---"
+    }
+  },
+  "id": "front-yaml-unicode-render",
+  "input": {
+    "document": {
+      "authors": [
+        "作者",
+        "editor"
+      ],
+      "bodyMarkdown": "正文",
+      "categories": [
+        "指南"
+      ],
+      "coverField": "image",
+      "coverPath": "assets/封面 😀.jpg",
+      "draftFlag": false,
+      "formattedDate": "2026-08-09T12:34:56+08:00",
+      "slug": "中文-😀",
+      "summary": "多语言\t摘要",
+      "summaryField": "description",
+      "syntax": "yaml",
+      "tags": [
+        "中文",
+        "🧪"
+      ],
+      "taxonomyLayout": "inlineTable",
+      "title": "中文 😀",
+      "writesCoverInExtraTable": false
+    },
+    "operation": "render"
+  },
+  "validity": "valid"
+}

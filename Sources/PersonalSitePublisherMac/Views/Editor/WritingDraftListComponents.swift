@@ -1,3 +1,4 @@
+import PublishingDomainContracts
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -128,37 +129,65 @@ private func writingDraftRowHelp(
   profile: SiteProfile,
   display: PrivateContentDisplay
 ) -> String {
-  display.isMasked
-    ? display.summary
-    : draft.isGeneralDraft
-      ? String(localized: "通用草稿，不绑定站点")
-      : profile.markdownPath(for: draft)
+  if display.isMasked { return display.summary }
+  if let source = draft.externalDraftSource {
+    if source.isDetached {
+      return String(localized: "已断开的外部文件：\(source.relativePath)")
+    }
+    return String(localized: "外部文件：\(source.relativePath)")
+  }
+  return draft.isGeneralDraft
+    ? String(localized: "通用草稿，不绑定站点")
+    : profile.markdownPath(for: draft)
 }
 
+/// Rows use two lines — title, then status and facts — so a default window
+/// shows substantially more articles than the former three-line layout.
 struct WritingDraftRowPresentation {
   let title: String
   let metadata: String
-  let identity: String
   let leadingSystemImage: String
   let help: String
 
   init(draft: ArticleDraft, profile: SiteProfile, display: PrivateContentDisplay) {
     title = display.title.nilIfEmpty ?? String(localized: "未命名文章")
-    metadata = [
-      draft.metadataUpdatedAt.workbenchShortText,
-      "\(draft.wordCount) \(String(localized: "字/词"))",
-    ].joined(separator: " · ")
-    var identityParts = [draft.status.localizedDisplayName]
-    if draft.isGeneralDraft { identityParts.append(String(localized: "通用草稿")) }
-    if draft.isPrivate { identityParts.append(draft.visibility.localizedDisplayName) }
-    identity = identityParts.joined(separator: " · ")
+    // The list scope already says whether rows are general drafts, so only
+    // status, privacy and the facts that differ per row are repeated here.
+    var parts = [draft.status.localizedDisplayName]
+    if draft.isPrivate { parts.append(draft.visibility.localizedDisplayName) }
+    if let source = draft.externalDraftSource {
+      parts.append(
+        source.isDetached
+          ? String(localized: "外部文件（已断开）") : String(localized: "外部文件"))
+    }
+    parts.append(writingDraftListDateText(draft.metadataUpdatedAt))
+    metadata = parts.joined(separator: " · ")
     if draft.isPrivate {
       leadingSystemImage = display.isMasked ? "lock.shield.fill" : "lock.fill"
     } else {
       leadingSystemImage = draft.status.systemImage
     }
-    help = writingDraftRowHelp(draft: draft, profile: profile, display: display)
+    help = [
+      title,
+      metadata,
+      "\(draft.wordCount) \(String(localized: "字/词"))",
+      writingDraftRowHelp(draft: draft, profile: profile, display: display),
+    ].joined(separator: " · ")
   }
+}
+
+/// Use the shortest useful date in the dense draft list. Comparing calendar
+/// days (rather than elapsed hours) keeps rows around midnight from being
+/// mislabeled as "today".
+func writingDraftListDateText(
+  _ date: Date,
+  now: Date = Date(),
+  calendar: Calendar = .current
+) -> String {
+  if calendar.isDate(date, inSameDayAs: now) {
+    return date.formatted(date: .omitted, time: .shortened)
+  }
+  return date.formatted(date: .numeric, time: .omitted)
 }
 
 struct WritingDraftRow: View {
@@ -170,7 +199,7 @@ struct WritingDraftRow: View {
         .foregroundStyle(.secondary)
         .frame(width: 16)
 
-      VStack(alignment: .leading, spacing: 4) {
+      VStack(alignment: .leading, spacing: 3) {
         Text(presentation.title)
           .font(.workbenchBody.weight(.medium))
           .workbenchTruncatedIdentity(
@@ -183,11 +212,8 @@ struct WritingDraftRow: View {
           .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
           .lineLimit(1)
-        Text(presentation.identity)
-          .font(.workbenchSupporting.weight(.medium))
-          .foregroundStyle(.secondary)
-          .lineLimit(nil)
-          .fixedSize(horizontal: false, vertical: true)
+          .truncationMode(.tail)
+          .accessibilityLabel(presentation.help)
       }
     }
     .padding(.horizontal, 4)

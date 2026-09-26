@@ -73,7 +73,8 @@ final class KnowledgeNoteInterchangeTests: XCTestCase {
     }
     XCTAssertEqual(sourceID, noteID)
     XCTAssertNotEqual(copyID, noteID)
-    XCTAssertEqual(try destinationService.note(documentID: noteID)?.markdown, "# Markdown\n\n正文与附件。")
+    XCTAssertEqual(
+      try destinationService.note(documentID: noteID)?.markdown, "# Markdown\n\n正文与附件。")
     XCTAssertEqual(try destinationService.note(documentID: copyID)?.markdown, "# 另一版")
   }
 

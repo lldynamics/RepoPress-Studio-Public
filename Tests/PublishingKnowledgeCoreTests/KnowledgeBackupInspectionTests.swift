@@ -48,12 +48,13 @@ final class KnowledgeBackupInspectionTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: databaseURL) }
 
     var database: OpaquePointer?
-    XCTAssertEqual(sqlite3_open_v2(
-      databaseURL.path,
-      &database,
-      SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE,
-      nil
-    ), SQLITE_OK)
+    XCTAssertEqual(
+      sqlite3_open_v2(
+        databaseURL.path,
+        &database,
+        SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE,
+        nil
+      ), SQLITE_OK)
     guard let database else { return }
     defer { sqlite3_close(database) }
 

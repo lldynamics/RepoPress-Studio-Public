@@ -1,0 +1,23 @@
+{
+  "capability": "repository-endpoint",
+  "description": "Preserves an enterprise base path and an already encoded request path.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "absoluteURL": "https://github.example.test/api/v3/repos/owner/repo/contents/docs%2Findex.md?ref=main"
+    }
+  },
+  "id": "endpoint-enterprise-encoded-query",
+  "input": {
+    "baseURL": "https://github.example.test/api/v3",
+    "operation": "build-url",
+    "path": "/repos/owner/repo/contents/docs%2Findex.md",
+    "queryItems": [
+      {
+        "name": "ref",
+        "value": "main"
+      }
+    ]
+  },
+  "validity": "valid"
+}

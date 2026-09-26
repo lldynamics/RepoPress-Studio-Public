@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsNavigationList: View {
   let searchText: String
   let searchItems: [SettingsSearchItem]
+  var groups: [SettingsTaskGroup] = SettingsTaskGroup.allCases
   @Binding var selection: SettingsRoute
   let tabsNeedingAttention: Set<SettingsTab>
   let rowVerticalPadding: CGFloat
@@ -84,7 +85,7 @@ struct SettingsNavigationList: View {
 
   @ViewBuilder
   private var taskGroupSections: some View {
-    ForEach(SettingsTaskGroup.allCases) { group in
+    ForEach(groups) { group in
       Section {
         ForEach(group.tabs) { tab in
           pageRow(tab)
@@ -112,7 +113,9 @@ struct SettingsNavigationList: View {
         .accessibilityHidden(true)
 
       Text(tab.title)
-        .lineLimit(1)
+        .lineLimit(2)
+        .fixedSize(horizontal: false, vertical: true)
+        .layoutPriority(1)
 
       Spacer(minLength: 2)
 
@@ -151,7 +154,8 @@ struct SettingsNavigationList: View {
 
       Text(subsection.title)
         .font(.callout)
-        .lineLimit(1)
+        .lineLimit(2)
+        .fixedSize(horizontal: false, vertical: true)
     }
     .padding(.leading, WorkbenchSpacing.spacious)
     .padding(.vertical, subsectionVerticalPadding)

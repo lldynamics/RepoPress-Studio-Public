@@ -1,8 +1,8 @@
 import PublishingCoreSupport
 import PublishingDomainContracts
 
-public extension SiteKind {
-  var displayName: String {
+extension SiteKind {
+  public var displayName: String {
     switch self {
     case .zola:
       return "Zola"
@@ -22,42 +22,46 @@ public extension SiteKind {
       return "Hexo"
     case .jekyll:
       return "Jekyll"
+    case .docusaurus:
+      return "Docusaurus"
+    case .mkDocs:
+      return "MkDocs"
     }
   }
 
-  var coverFrontMatterFieldName: String {
+  public var coverFrontMatterFieldName: String {
     switch self {
     case .zola:
       return "og_preview_img"
-    case .jekyll:
+    case .jekyll, .docusaurus:
       return "image"
     case .quartz:
       return "socialImage"
     case .foam:
       return "image"
-    case .astro, .hugo, .vitePress, .nextJS, .hexo:
+    case .astro, .hugo, .vitePress, .nextJS, .hexo, .mkDocs:
       return "cover"
     }
   }
 
-  var coverFrontMatterDisplayPath: String {
+  public var coverFrontMatterDisplayPath: String {
     switch self {
     case .zola:
       return "extra.og_preview_img"
-    case .jekyll:
+    case .jekyll, .docusaurus:
       return "image"
     case .quartz:
       return "socialImage"
     case .foam:
       return "image"
-    case .astro, .hugo, .vitePress, .nextJS, .hexo:
+    case .astro, .hugo, .vitePress, .nextJS, .hexo, .mkDocs:
       return "cover"
     }
   }
 }
 
-public extension FrontMatterStyle {
-  var displayName: String {
+extension FrontMatterStyle {
+  public var displayName: String {
     switch self {
     case .yaml:
       return "YAML"
@@ -67,8 +71,8 @@ public extension FrontMatterStyle {
   }
 }
 
-public extension SiteSlugValidationRule {
-  var displayName: String {
+extension SiteSlugValidationRule {
+  public var displayName: String {
     switch self {
     case .lowercaseKebab:
       return "小写/CJK 连字符"
@@ -79,7 +83,7 @@ public extension SiteSlugValidationRule {
     }
   }
 
-  var detail: String {
+  public var detail: String {
     switch self {
     case .lowercaseKebab:
       return CoreL10n.text("允许小写字母、数字、CJK 字符和连字符。")

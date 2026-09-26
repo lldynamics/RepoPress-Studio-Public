@@ -1,11 +1,12 @@
 import PublishingMarkdownCore
 import SwiftUI
 
+enum MarkdownFormattingToolbarPresentation {
+  case standalone
+  case integrated
+}
+
 struct MacMarkdownFormattingToolbar: View {
-  @ObservedObject var statisticsState: MarkdownComposerStatisticsState
-  let cursorPosition: MarkdownCursorPosition?
-  let fenceMatch: MarkdownFenceMatch?
-  let completion: MarkdownCompletionContext?
   let writingToolDensity: MarkdownWritingToolDensity
   let onApplyMarkdownFormatting: (MarkdownFormattingCommand) -> Void
   let onApplyAdvancedFormatting: (MarkdownAdvancedFormattingCommand) -> Void
@@ -21,23 +22,10 @@ struct MacMarkdownFormattingToolbar: View {
   let diagnosticCount: Int
   let onInsertImage: () -> Void
   let onInsertVideo: () -> Void
-  let onJumpToLine: (Int) -> Void
-  let onJumpToCounterpartFence: () -> Void
-  let onApplyCompletion: (MarkdownCompletionCandidate) -> Void
-  let onInsertCompletionTrigger: (MarkdownCompletionTrigger) -> Void
   var onFormatChineseTypography: (() -> Void)? = nil
-  var onCopyForWeChatAndZhihu: (() -> Void)? = nil
+  var presentation: MarkdownFormattingToolbarPresentation = .standalone
   @AppStorage("workspace.customToolbarConfig") private var customToolbarConfigRawValue = ""
-  @AppStorage("workspace.editorTargetWordCount") private var targetWordCount: Int = 0
-  @State private var isStatsPopoverPresented = false
   @EnvironmentObject private var zenModeController: ZenModeController
-
-  private var characterCount: Int { statisticsState.value.characterCount }
-  private var hanCharacterCount: Int { statisticsState.value.hanCharacterCount }
-  private var wordCount: Int { statisticsState.value.wordCount }
-  private var writingUnitCount: Int { statisticsState.value.writingUnitCount }
-  private var lineCount: Int { statisticsState.value.lineCount }
-  private var readingMinutes: Int { statisticsState.value.readingMinutes }
 
   private var toolbarConfiguration: MarkdownToolbarConfiguration {
     MarkdownToolbarConfiguration.decodeFromJSON(customToolbarConfigRawValue)
@@ -82,16 +70,22 @@ struct MacMarkdownFormattingToolbar: View {
         .padding(.horizontal, 4)
       }
 
-      if writingToolDensity == .professional {
+      if presentation == .integrated {
+        integratedFormattingOverflowMenu
+      } else if writingToolDensity == .professional {
         professionalFormattingOverflowMenu
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .frame(minHeight: 34)
     .buttonStyle(WorkbenchFocusRingButtonStyle())
-    .padding(.horizontal, 10)
-    .padding(.vertical, 6)
-    .background(.bar)
+    .padding(.horizontal, presentation == .integrated ? 0 : 10)
+    .padding(.vertical, presentation == .integrated ? 0 : 6)
+    .background {
+      if presentation == .standalone {
+        Rectangle().fill(.bar)
+      }
+    }
     .accessibilityElement(children: .contain)
     .accessibilityLabel("格式工具栏")
     .accessibilityIdentifier("markdown-formatting-toolbar")
@@ -151,6 +145,23 @@ struct MacMarkdownFormattingToolbar: View {
     .help("打开全部专业格式与插入操作")
     .accessibilityLabel("全部格式")
     .accessibilityIdentifier("markdown-professional-format-overflow")
+  }
+
+  private var integratedFormattingOverflowMenu: some View {
+    Menu {
+      ForEach(configuredFormattingItemIDs) { item in
+        formattingItem(item, showsTitle: true)
+      }
+      Divider()
+      fixedTrailingControls(showsTitle: true)
+    } label: {
+      Image(systemName: "textformat")
+        .frame(width: 28, height: 28)
+    }
+    .menuIndicator(.hidden)
+    .help("全部格式与写作显示选项")
+    .accessibilityLabel("全部格式与写作显示选项")
+    .accessibilityIdentifier("markdown-integrated-format-overflow")
   }
 
   @ViewBuilder
@@ -218,7 +229,7 @@ struct MacMarkdownFormattingToolbar: View {
     case .diagnostics:
       diagnosticButton(showsTitle: showsTitle)
     case .formatChineseTypography:
-      toolbarButton(title: "中英文排版", systemName: "paragraphsign", showsTitle: showsTitle) {
+      toolbarButton(title: "中英文排版", systemName: "character.textbox", showsTitle: showsTitle) {
         onFormatChineseTypography?()
       }
     default:
@@ -305,199 +316,6 @@ struct MacMarkdownFormattingToolbar: View {
   private func fixedTrailingControls(showsTitle: Bool) -> some View {
     ZenModeToggleButton(showsTitle: showsTitle)
     MarkdownEditorComfortControl(showsTitle: showsTitle)
-    toolbarDivider
-    MarkdownCursorWorkflowControls(
-      position: cursorPosition,
-      lineCount: lineCount,
-      fenceMatch: fenceMatch,
-      completion: completion,
-      showsTitle: showsTitle,
-      onJumpToLine: onJumpToLine,
-      onJumpToCounterpartFence: onJumpToCounterpartFence,
-      onApplyCompletion: onApplyCompletion,
-      onInsertCompletionTrigger: onInsertCompletionTrigger
-    )
-    toolbarDivider
-    statisticsLabel
-  }
-
-  private var toolbarDivider: some View {
-    Divider()
-      .frame(height: 18)
-  }
-
-  private var statisticsLabel: some View {
-    Button {
-      isStatsPopoverPresented.toggle()
-    } label: {
-      HStack(spacing: 5) {
-        if targetWordCount > 0 {
-          let ratio = min(1.0, Double(writingUnitCount) / Double(targetWordCount))
-          let percent = Int((Double(writingUnitCount) / Double(targetWordCount)) * 100)
-          ProgressView(value: ratio)
-            .progressViewStyle(.linear)
-            .frame(width: 36)
-            .tint(ratio >= 1.0 ? WorkbenchTheme.success : WorkbenchTheme.primary)
-          Text("\(writingUnitCount)/\(targetWordCount) (\(percent)%)")
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(ratio >= 1.0 ? WorkbenchTheme.success : .primary)
-        } else {
-          Text(statisticsSummary)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
-        }
-      }
-      .padding(.horizontal, 4)
-      .padding(.vertical, 2)
-      .background(
-        RoundedRectangle(cornerRadius: 4)
-          .fill(isStatsPopoverPresented ? Color.secondary.opacity(0.12) : Color.clear)
-      )
-    }
-    .buttonStyle(.plain)
-    .help("点击查看详细统计与设定目标字数")
-    .accessibilityLabel("文章统计与目标")
-    .accessibilityValue(statisticsAccessibilityValue)
-    .popover(isPresented: $isStatsPopoverPresented, arrowEdge: .bottom) {
-      statisticsDetailPopover
-    }
-  }
-
-  private var statisticsDetailPopover: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HStack {
-        Label("文章统计与目标", systemImage: "chart.bar.doc.horizontal")
-          .font(.headline)
-        Spacer()
-        Text("⏱️ 约 \(readingMinutes) 分钟")
-          .font(.caption.weight(.medium))
-          .foregroundStyle(.secondary)
-      }
-
-      Divider()
-
-      Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
-        GridRow {
-          statCard(title: "中文字数", value: "\(hanCharacterCount)")
-          statCard(title: "西文单词", value: "\(wordCount)")
-        }
-        GridRow {
-          statCard(title: "合计字词", value: "\(writingUnitCount)")
-          statCard(title: "全部字符", value: "\(characterCount)")
-        }
-        GridRow {
-          statCard(title: "正文行数", value: "\(lineCount)")
-          statCard(title: "预估阅读", value: "\(readingMinutes) 分钟")
-        }
-      }
-
-      Divider()
-
-      VStack(alignment: .leading, spacing: 6) {
-        HStack {
-          Label("目标字数", systemImage: "target")
-            .font(.subheadline.weight(.medium))
-          Spacer()
-          if targetWordCount > 0 {
-            let ratio = Double(writingUnitCount) / Double(targetWordCount)
-            let percent = Int(ratio * 100)
-            Text("\(percent)%")
-              .font(.caption.monospacedDigit().weight(.semibold))
-              .foregroundStyle(ratio >= 1.0 ? WorkbenchTheme.success : WorkbenchTheme.primary)
-          }
-        }
-
-        if targetWordCount > 0 {
-          let ratio = min(1.0, Double(writingUnitCount) / Double(targetWordCount))
-          ProgressView(value: ratio)
-            .progressViewStyle(.linear)
-            .tint(ratio >= 1.0 ? WorkbenchTheme.success : WorkbenchTheme.primary)
-
-          if writingUnitCount >= targetWordCount {
-            Text("🎉 已达成目标字数！（超出 \(writingUnitCount - targetWordCount) 字）")
-              .font(.caption)
-              .foregroundStyle(WorkbenchTheme.success)
-          } else {
-            Text("还需 \(targetWordCount - writingUnitCount) 字达成目标")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-        }
-
-        HStack(spacing: 5) {
-          ForEach([0, 500, 1000, 2000, 3000, 5000], id: \.self) { goal in
-            Button {
-              targetWordCount = goal
-            } label: {
-              Text(goal == 0 ? "无" : "\(goal)")
-                .font(.workbenchMetadata)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(
-                  RoundedRectangle(cornerRadius: 4)
-                    .fill(
-                      targetWordCount == goal
-                        ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08))
-                )
-                .foregroundStyle(targetWordCount == goal ? Color.accentColor : Color.primary)
-            }
-            .buttonStyle(.plain)
-          }
-        }
-      }
-
-      if onFormatChineseTypography != nil || onCopyForWeChatAndZhihu != nil {
-        Divider()
-
-        HStack(spacing: 8) {
-          if let onFormatChineseTypography {
-            Button {
-              isStatsPopoverPresented = false
-              onFormatChineseTypography()
-            } label: {
-              Label("排版优化", systemImage: "paragraphsign")
-                .font(.caption)
-            }
-          }
-
-          if let onCopyForWeChatAndZhihu {
-            Button {
-              isStatsPopoverPresented = false
-              onCopyForWeChatAndZhihu()
-            } label: {
-              Label("复制公众号", systemImage: "doc.on.doc")
-                .font(.caption)
-            }
-          }
-        }
-      }
-    }
-    .padding(14)
-    .frame(width: 270)
-  }
-
-  private func statCard(title: String, value: String) -> some View {
-    VStack(alignment: .leading, spacing: 2) {
-      Text(title)
-        .font(.workbenchMetadata)
-        .foregroundStyle(.secondary)
-      Text(value)
-        .font(.callout.monospacedDigit().weight(.semibold))
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-  }
-
-  private var statisticsSummary: String {
-    String(
-      localized: "⏱️ 约 \(readingMinutes) 分钟 · \(writingUnitCount) 字/词"
-    )
-  }
-
-  private var statisticsAccessibilityValue: String {
-    guard targetWordCount > 0 else { return statisticsSummary }
-    let percent = Int((Double(writingUnitCount) / Double(targetWordCount)) * 100)
-    return "\(statisticsSummary) · \(writingUnitCount)/\(targetWordCount) (\(percent)%)"
   }
 
   @ViewBuilder

@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import PublishingPreviewCore
 
 /// A draft-scoped live projection for the Markdown editor and its Inspector
 /// consumers. It observes only the tracked draft's buffer and selection;
@@ -299,7 +300,8 @@ public final class WorkbenchLocalSitePreviewFeatureFacade: ObservableObject {
     store.refreshLocalSitePreviewRuntimeStatus()
   }
 
-  public func reload() {
+  @discardableResult
+  public func reload() -> LocalSitePreviewStartDisposition? {
     store.publishingStore.reloadLocalSitePreview()
   }
 

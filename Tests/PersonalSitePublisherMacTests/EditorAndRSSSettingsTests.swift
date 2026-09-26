@@ -20,7 +20,7 @@ final class EditorAndRSSSettingsTests: XCTestCase {
     XCTAssertEqual(Set(keys).count, keys.count)
     XCTAssertEqual(MarkdownEditorComfortConfiguration.defaultFontSize, 14)
     XCTAssertEqual(MarkdownEditorComfortConfiguration.defaultLineSpacing, 4)
-    XCTAssertEqual(MarkdownEditorComfortConfiguration.defaultBodyWidth, 820)
+    XCTAssertEqual(MarkdownEditorComfortConfiguration.defaultBodyWidth, 720)
   }
 
   func testRSSReaderDefaultsAreOffAndUseCentralizedKeys() {
