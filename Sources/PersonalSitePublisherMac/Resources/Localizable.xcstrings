@@ -1521,6 +1521,22 @@
         }
       }
     },
+    "%@处理中…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ in progress…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@处理中…"
+          }
+        }
+      }
+    },
     "%@字符数": {
       "localizations": {
         "en": {
@@ -1533,6 +1549,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@字符数"
+          }
+        }
+      }
+    },
+    "%@已应用。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ applied."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@已应用。"
           }
         }
       }
@@ -3681,6 +3713,38 @@
         }
       }
     },
+    "AI 修改无法应用：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The AI changes could not be applied: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 修改无法应用：%@"
+          }
+        }
+      }
+    },
+    "AI 修改未能加入编辑器撤销队列。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The AI changes could not be added to the editor's undo history."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 修改未能加入编辑器撤销队列。"
+          }
+        }
+      }
+    },
     "AI 修改预览": {
       "localizations": {
         "en": {
@@ -3885,6 +3949,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "AI 回复"
+          }
+        }
+      }
+    },
+    "AI 回复为空或选区无效。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The AI response is empty or the selection is no longer valid."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 回复为空或选区无效。"
           }
         }
       }
@@ -16166,13 +16246,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Release History"
+            "value": "Publishing History"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "发布记录"
+            "value": "发布历史"
           }
         }
       }
@@ -17165,6 +17245,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "上次检查：%@"
+          }
+        }
+      }
+    },
+    "上次退出时工作台处于快速隐藏状态，请验证身份后继续。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The workbench was hidden when the app last quit. Verify your identity to continue."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上次退出时工作台处于快速隐藏状态，请验证身份后继续。"
           }
         }
       }
@@ -23453,6 +23549,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "克隆未完成："
+          }
+        }
+      }
+    },
+    "克隆未完成：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clone didn't finish: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "克隆未完成：%@"
           }
         }
       }
@@ -31217,6 +31329,38 @@
         }
       }
     },
+    "另一窗口已更新正文，刚才的编辑命令未应用；已同步到最新版本。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Another window updated the body, so the last editing command was not applied. The editor now shows the latest version."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另一窗口已更新正文，刚才的编辑命令未应用；已同步到最新版本。"
+          }
+        }
+      }
+    },
+    "另一窗口已更新正文，刚才的陈旧修改未写入；已同步到最新版本。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Another window updated the body, so your outdated change was not saved. The editor now shows the latest version."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另一窗口已更新正文，刚才的陈旧修改未写入；已同步到最新版本。"
+          }
+        }
+      }
+    },
     "另外 %lld 个片段": {
       "localizations": {
         "en": {
@@ -34129,6 +34273,22 @@
         }
       }
     },
+    "图片 alt、caption 和封面状态已更新。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image alt text, caption, and cover status updated."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图片 alt、caption 和封面状态已更新。"
+          }
+        }
+      }
+    },
     "图片与附件信息": {
       "localizations": {
         "en": {
@@ -34621,6 +34781,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "图片过多，当前只显示前 5,000 张。可以通过 Finder 继续管理。"
+          }
+        }
+      }
+    },
+    "图片附件已变化，请重新插入或前往图片详情栏处理。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The image attachment has changed. Insert it again or fix it in the image inspector."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图片附件已变化，请重新插入或前往图片详情栏处理。"
           }
         }
       }
@@ -38801,6 +38977,22 @@
         }
       }
     },
+    "富文本复制失败，请重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't copy the rich text. Try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "富文本复制失败，请重试。"
+          }
+        }
+      }
+    },
     "对比源版本": {
       "localizations": {
         "en": {
@@ -40913,6 +41105,22 @@
         }
       }
     },
+    "尚未接受任何修改。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No changes have been accepted yet."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未接受任何修改。"
+          }
+        }
+      }
+    },
     "尚未生成同步建议。请先扫描仓库，并确认当前分支已经设置 upstream。": {
       "localizations": {
         "en": {
@@ -41729,6 +41937,22 @@
         }
       }
     },
+    "已丢弃 AI 预览。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI preview discarded."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已丢弃 AI 预览。"
+          }
+        }
+      }
+    },
     "已为当前站点复制配置，其他站点仍使用原连接。": {
       "localizations": {
         "en": {
@@ -41805,6 +42029,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "已从索引删除"
+          }
+        }
+      }
+    },
+    "已从资料库插入引用块。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inserted a quote block from the library."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已从资料库插入引用块。"
           }
         }
       }
@@ -42061,6 +42301,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "已保留软件草稿恢复副本，并采用了当前项目版本。"
+          }
+        }
+      }
+    },
+    "已修复：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fixed: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已修复：%@"
           }
         }
       }
@@ -42881,6 +43137,22 @@
         }
       }
     },
+    "已复制微信公众号/知乎排版富文本，可直接粘贴！": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copied rich text formatted for WeChat Official Accounts and Zhihu. Ready to paste."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已复制微信公众号/知乎排版富文本，可直接粘贴！"
+          }
+        }
+      }
+    },
     "已复制未保存的 Front Matter 文档。": {
       "localizations": {
         "en": {
@@ -43169,6 +43441,22 @@
         }
       }
     },
+    "已完成中英文排版规范化（盘古间距）。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Normalized spacing between Chinese and Latin text (Pangu spacing)."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已完成中英文排版规范化（盘古间距）。"
+          }
+        }
+      }
+    },
     "已完成发布前检查，发布准备已打开。": {
       "localizations": {
         "en": {
@@ -43229,6 +43517,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "已定位到指定发布记录"
+          }
+        }
+      }
+    },
+    "已定位到第 %@ 行的%@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moved to %2$@ on line %1$@."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已定位到第 %@ 行的%@。"
           }
         }
       }
@@ -43533,6 +43837,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "已应用/已审阅"
+          }
+        }
+      }
+    },
+    "已应用接受的 AI 修改；可用撤销恢复。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applied the accepted AI changes. Use Undo to revert."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已应用接受的 AI 修改；可用撤销恢复。"
           }
         }
       }
@@ -43953,6 +44273,38 @@
         }
       }
     },
+    "已插入%@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inserted %@."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已插入%@。"
+          }
+        }
+      }
+    },
+    "已插入%@：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inserted %@: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已插入%@：%@"
+          }
+        }
+      }
+    },
     "已插入“%@”的摘要、摘录和来源；未复制全文。": {
       "localizations": {
         "en": {
@@ -43997,6 +44349,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "已插入安全引用：只包含摘要、摘录和来源。"
+          }
+        }
+      }
+    },
+    "已插入站内链接：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inserted internal link: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已插入站内链接：%@"
           }
         }
       }
@@ -48257,6 +48625,22 @@
         }
       }
     },
+    "当前文章还没有可应用的 AI 回复。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This article has no AI response to apply yet."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前文章还没有可应用的 AI 回复。"
+          }
+        }
+      }
+    },
     "当前文章还没有图片附件。": {
       "localizations": {
         "en": {
@@ -48525,6 +48909,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "当前正文使用解析器 v%lld，可以在本机升级到 v%lld。"
+          }
+        }
+      }
+    },
+    "当前正文排版已符合规范。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The body text already follows the typography rules."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前正文排版已符合规范。"
           }
         }
       }
@@ -49325,6 +49725,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "当前连接能力"
+          }
+        }
+      }
+    },
+    "当前选区不能执行这项行操作。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This line action can't be used on the current selection."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前选区不能执行这项行操作。"
           }
         }
       }
@@ -53921,6 +54337,22 @@
         }
       }
     },
+    "找不到刚插入的图片，请刷新图片详情栏后重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't find the image you just inserted. Refresh the image inspector and try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "找不到刚插入的图片，请刷新图片详情栏后重试。"
+          }
+        }
+      }
+    },
     "找不到当前文章，摘要未应用。": {
       "localizations": {
         "en": {
@@ -54925,6 +55357,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "接受修改"
+          }
+        }
+      }
+    },
+    "接受的修改未改变正文。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The accepted changes didn't change the body."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接受的修改未改变正文。"
           }
         }
       }
@@ -58653,6 +59101,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "文章已不存在，无法返回发布检查。"
+          }
+        }
+      }
+    },
+    "文章已变化，AI 修改未应用；审阅内容仍保留。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The article changed, so the AI changes were not applied. Your review is still available."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文章已变化，AI 修改未应用；审阅内容仍保留。"
           }
         }
       }
@@ -70065,6 +70529,22 @@
         }
       }
     },
+    "正在应用已接受的 AI 修改…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applying the accepted AI changes…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在应用已接受的 AI 修改…"
+          }
+        }
+      }
+    },
     "正在应用已确认的处理方式…": {
       "localizations": {
         "en": {
@@ -79713,6 +80193,22 @@
         }
       }
     },
+    "章节已变化，请刷新大纲后重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The section has changed. Refresh the outline and try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "章节已变化，请刷新大纲后重试。"
+          }
+        }
+      }
+    },
     "章节片段": {
       "localizations": {
         "en": {
@@ -79901,6 +80397,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "笔记版本快照"
+          }
+        }
+      }
+    },
+    "笔记附件超过 128 MB。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The note attachment is larger than 128 MB."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "笔记附件超过 128 MB。"
           }
         }
       }
@@ -83857,6 +84369,22 @@
         }
       }
     },
+    "行号超出正文范围。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That line number is outside the body."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "行号超出正文范围。"
+          }
+        }
+      }
+    },
     "行数": {
       "localizations": {
         "en": {
@@ -83933,6 +84461,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "补全 alt/caption"
+          }
+        }
+      }
+    },
+    "补全上下文已经变化，请重新输入触发词。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The completion context has changed. Type the trigger again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "补全上下文已经变化，请重新输入触发词。"
           }
         }
       }
@@ -86001,6 +86545,22 @@
         }
       }
     },
+    "请先选择要替换的正文。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select the body text to replace first."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先选择要替换的正文。"
+          }
+        }
+      }
+    },
     "请先配置 API 基础地址。配置完成后，应用会判断数据只发送到本机，还是需要第三方授权。": {
       "localizations": {
         "en": {
@@ -86497,6 +87057,22 @@
         }
       }
     },
+    "请等待当前编辑操作完成后再应用 AI 修改。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wait for the current edit to finish before applying AI changes."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请等待当前编辑操作完成后再应用 AI 修改。"
+          }
+        }
+      }
+    },
     "请结束续跑并保留记录，或从这里新建对话。": {
       "localizations": {
         "en": {
@@ -86525,6 +87101,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "请输入有效的 GitHub 或 GitLab HTTPS 仓库地址。"
+          }
+        }
+      }
+    },
+    "请输入有效的 GitHub 或 GitLab HTTPS 仓库地址，例如 https://github.com/owner/repo。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a valid GitHub or GitLab HTTPS repository address, such as https://github.com/owner/repo."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请输入有效的 GitHub 或 GitLab HTTPS 仓库地址，例如 https://github.com/owner/repo。"
           }
         }
       }
@@ -90209,6 +90801,22 @@
         }
       }
     },
+    "这项诊断没有可自动应用的修复。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This diagnostic has no automatic fix."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这项诊断没有可自动应用的修复。"
+          }
+        }
+      }
+    },
     "进行中": {
       "localizations": {
         "en": {
@@ -91485,6 +92093,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "选区整理成结构"
+          }
+        }
+      }
+    },
+    "选区有 %lld 项公开风险。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The selection has %lld publishing risks."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选区有 %lld 项公开风险。"
+          }
+        }
+      }
+    },
+    "选区未发现公开风险。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No publishing risks found in the selection."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选区未发现公开风险。"
           }
         }
       }
@@ -95425,6 +96065,22 @@
         }
       }
     },
+    "问题在 %@ 字段，右侧可直接处理。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The issue is in the %@ field. You can fix it in the panel on the right."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "问题在 %@ 字段，右侧可直接处理。"
+          }
+        }
+      }
+    },
     "问题详情": {
       "localizations": {
         "en": {
@@ -95789,6 +96445,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "附件"
+          }
+        }
+      }
+    },
+    "附件必须是一个普通文件。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The attachment must be a regular file."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "附件必须是一个普通文件。"
           }
         }
       }

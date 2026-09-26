@@ -159,7 +159,7 @@ extension MacMarkdownComposerView {
   func applyInlineStructuredEditReview() {
     guard pendingInlineStructuredEditApplyRequestID == nil else { return }
     guard editorEditRequest == nil else {
-      selectionActionMessage = "请等待当前编辑操作完成后再应用 AI 修改。"
+      selectionActionMessage = String(localized: "请等待当前编辑操作完成后再应用 AI 修改。")
       EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
       return
     }
@@ -169,7 +169,7 @@ extension MacMarkdownComposerView {
         body: editorBody
       )
     else {
-      selectionActionMessage = "尚未接受任何修改。"
+      selectionActionMessage = String(localized: "尚未接受任何修改。")
       EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
       return
     }
@@ -177,28 +177,28 @@ extension MacMarkdownComposerView {
     do {
       result = try AIStructuredEditReviewService.apply(session.review, to: session.sourceBody)
     } catch {
-      selectionActionMessage = "AI 修改无法应用：\(error.localizedDescription)"
+      selectionActionMessage = String(localized: "AI 修改无法应用：\(error.localizedDescription)")
       EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
       return
     }
     guard result.hasAppliedChanges else {
-      selectionActionMessage = "尚未接受任何修改。"
+      selectionActionMessage = String(localized: "尚未接受任何修改。")
       EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
       return
     }
     guard result.finalBody != editorBody else {
-      selectionActionMessage = "接受的修改未改变正文。"
+      selectionActionMessage = String(localized: "接受的修改未改变正文。")
       EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
       return
     }
     var updated = draft
     updated.bodyMarkdown = result.finalBody
     guard requestUndoableBodyUpdate(updated), let requestID = editorEditRequest?.id else {
-      selectionActionMessage = "AI 修改未能加入编辑器撤销队列。"
+      selectionActionMessage = String(localized: "AI 修改未能加入编辑器撤销队列。")
       EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
       return
     }
     pendingInlineStructuredEditApplyRequestID = requestID
-    selectionActionMessage = "正在应用已接受的 AI 修改…"
+    selectionActionMessage = String(localized: "正在应用已接受的 AI 修改…")
   }
 }

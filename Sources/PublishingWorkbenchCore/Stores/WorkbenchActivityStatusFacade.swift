@@ -641,9 +641,14 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
 
   private var currentGitFailureRecord: ReleaseRecord? {
     guard lastGitOperationKind != .local else { return nil }
-    return store.activeProfileReleaseRecords.first {
-      $0.kind == .remotePublishFailure
-        && !(releaseRecordIDsBeforeGitOperation?.contains($0.id) ?? false)
+    return store.activeProfileReleaseRecords.first { record in
+      guard record.kind == .remotePublishFailure else { return false }
+      if let releaseRecordIDsBeforeGitOperation {
+        return !releaseRecordIDsBeforeGitOperation.contains(record.id)
+      }
+      // Before any observed Git operation, only this run's failures count;
+      // history loaded at launch stays in Publishing History.
+      return record.createdAt >= store.sessionStartedAt
     }
   }
 

@@ -33,7 +33,7 @@ extension MacMarkdownComposerView {
 
     editorSessionState.markdownCursorContextService.invalidateCache()
     editorBody = result.buffer.bodyMarkdown
-    selectionActionMessage = "另一窗口已更新正文，刚才的陈旧修改未写入；已同步到最新版本。"
+    selectionActionMessage = String(localized: "另一窗口已更新正文，刚才的陈旧修改未写入；已同步到最新版本。")
   }
 
   /// Stages the NSTextView's body immediately while leaving the published
@@ -61,7 +61,7 @@ extension MacMarkdownComposerView {
       editorBody = result.buffer.bodyMarkdown
       editorBodyRevision = result.buffer.revision
       synchronizeDocumentBodyFromBuffer(previousBody: previousBody)
-      selectionActionMessage = "另一窗口已更新正文，刚才的陈旧修改未写入；已同步到最新版本。"
+      selectionActionMessage = String(localized: "另一窗口已更新正文，刚才的陈旧修改未写入；已同步到最新版本。")
       return
     }
 
@@ -362,7 +362,7 @@ extension MacMarkdownComposerView {
     editorSessionState.liveBodyRevision = result.buffer.revision
     refreshMarkdownCursorContextSnapshot()
     guard result.wasAccepted else {
-      selectionActionMessage = "另一窗口已更新正文，刚才的编辑命令未应用；已同步到最新版本。"
+      selectionActionMessage = String(localized: "另一窗口已更新正文，刚才的编辑命令未应用；已同步到最新版本。")
       return false
     }
     draft = updated
@@ -442,7 +442,7 @@ extension MacMarkdownComposerView {
         )
       }
     }
-    selectionActionMessage = "已从资料库插入引用块。"
+    selectionActionMessage = String(localized: "已从资料库插入引用块。")
     return true
   }
 
@@ -454,7 +454,8 @@ extension MacMarkdownComposerView {
     }
 
     guard request.field == nil || request.field == "body" else {
-      selectionActionMessage = "问题在 \(request.field ?? "元数据") 字段，右侧可直接处理。"
+      let field = request.field ?? String(localized: "元数据")
+      selectionActionMessage = String(localized: "问题在 \(field) 字段，右侧可直接处理。")
       return
     }
 

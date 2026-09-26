@@ -758,9 +758,9 @@ struct MacMarkdownComposerView: View {
             pendingInlineStructuredEditApplyRequestID = nil
             if outcome.wasApplied {
               aiActions.endInlineStructuredEditReview(for: draft.id)
-              selectionActionMessage = "已应用接受的 AI 修改；可用撤销恢复。"
+              selectionActionMessage = String(localized: "已应用接受的 AI 修改；可用撤销恢复。")
             } else {
-              selectionActionMessage = "文章已变化，AI 修改未应用；审阅内容仍保留。"
+              selectionActionMessage = String(localized: "文章已变化，AI 修改未应用；审阅内容仍保留。")
             }
             EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
           },

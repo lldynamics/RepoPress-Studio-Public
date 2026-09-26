@@ -412,7 +412,8 @@ extension RepositoryWorkspaceView {
   func openUnifiedPublishFlow() {
     if let publishDrawerCommandAction {
       publishDrawerCommandAction.open(
-        "选择保存到本地或发布上线；需要时再展开检查结果和文件差异。"
+        String(localized: "选择保存到本地或发布上线；需要时再展开检查结果和文件差异。"),
+        scope: .repository
       )
     } else {
       store.runPreflight()

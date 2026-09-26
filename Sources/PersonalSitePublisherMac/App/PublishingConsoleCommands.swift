@@ -156,10 +156,11 @@ struct PublishingConsoleCommands: Commands {
       ) {
         if presentation.isQuickHideActive {
           Task { @MainActor in
-            _ = await QuickHideUnlockCoordinator.unlock(store)
+            await QuickHideUnlockCoordinator.unlockAndReport(store)
           }
         } else {
           store.activateQuickHide(reason: String(localized: "已手动快速隐藏工作台内容。"))
+          QuickHideUnlockCoordinator.rememberActiveMaskIfNeeded()
         }
       }
       .keyboardShortcut("l", modifiers: [.command, .control])

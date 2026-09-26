@@ -60,15 +60,17 @@ package struct KnowledgeImageOCRService: Sendable {
           kCGImageSourceShouldAllowFloat: false,
         ] as CFDictionary), let type = CGImageSourceGetType(source)
     else {
-      throw KnowledgeLibraryError.unsupportedSource("图片无法由 ImageIO 识别")
+      throw KnowledgeLibraryError.unsupportedSource(CoreL10n.text("图片无法由 ImageIO 识别"))
     }
     let typeIdentifier = type as String
     guard Self.supportedTypeIdentifiers.contains(typeIdentifier) else {
-      throw KnowledgeLibraryError.unsupportedSource("不支持的图片实际类型：\(typeIdentifier)")
+      throw KnowledgeLibraryError.unsupportedSource(
+        CoreL10n.format("不支持的图片实际类型：%@", typeIdentifier))
     }
     let frameCount = CGImageSourceGetCount(source)
     guard frameCount == 1 else {
-      throw KnowledgeLibraryError.unsupportedSource("仅支持单帧 JPEG、PNG、HEIC/HEIF 图片。")
+      throw KnowledgeLibraryError.unsupportedSource(
+        CoreL10n.text("仅支持单帧 JPEG、PNG、HEIC/HEIF 图片。"))
     }
     guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
       let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
@@ -88,7 +90,7 @@ package struct KnowledgeImageOCRService: Sendable {
       )
     }
     guard let image = downsampledImage(source: source, width: width, height: height) else {
-      throw KnowledgeLibraryError.unreadableSource("图片无法解码")
+      throw KnowledgeLibraryError.unreadableSource(CoreL10n.text("图片无法解码"))
     }
     try Task.checkCancellation()
     let request = VNRecognizeTextRequest()

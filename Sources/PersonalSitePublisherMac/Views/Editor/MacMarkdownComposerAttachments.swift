@@ -40,7 +40,7 @@ extension MacMarkdownComposerView {
     guard requireBodyEditingContext() else { return }
     let imageURLs = ImageFileSupport.supportedImageURLs(in: urls)
     guard !imageURLs.isEmpty else {
-      selectionActionMessage = "没有可插入的图片文件。"
+      selectionActionMessage = String(localized: "没有可插入的图片文件。")
       EditorAccessibilityAnnouncementCenter.announce(
         String(localized: "没有可插入的图片文件。"),
         priority: .high
@@ -181,7 +181,7 @@ extension MacMarkdownComposerView {
     guard requireBodyEditingContext() else { return }
     let videoURLs = VideoFileSupport.supportedVideoURLs(in: urls)
     guard !videoURLs.isEmpty else {
-      selectionActionMessage = "没有可插入的视频文件。"
+      selectionActionMessage = String(localized: "没有可插入的视频文件。")
       EditorAccessibilityAnnouncementCenter.announce(
         String(localized: "没有可插入的视频文件。"),
         priority: .high
@@ -519,7 +519,7 @@ extension MacMarkdownComposerView {
       )
     else { return }
     guard store.focusImageInspector(draftID: draft.id, attachmentID: attachmentID) else {
-      selectionActionMessage = "找不到刚插入的图片，请刷新图片详情栏后重试。"
+      selectionActionMessage = String(localized: "找不到刚插入的图片，请刷新图片详情栏后重试。")
       return
     }
     dismissInsertedImageMetadata()
@@ -537,7 +537,7 @@ extension MacMarkdownComposerView {
           isCover: metadata.isCover
         )
       else {
-        selectionActionMessage = "图片附件已变化，请重新插入或前往图片详情栏处理。"
+        selectionActionMessage = String(localized: "图片附件已变化，请重新插入或前往图片详情栏处理。")
         return false
       }
       updated = result.draft
@@ -545,7 +545,7 @@ extension MacMarkdownComposerView {
 
     guard applyDraftUpdate(updated) else { return false }
     store.scheduleImageWorkbenchCachesRefresh(for: updated, force: true)
-    selectionActionMessage = "图片 alt、caption 和封面状态已更新。"
+    selectionActionMessage = String(localized: "图片 alt、caption 和封面状态已更新。")
     return true
   }
 

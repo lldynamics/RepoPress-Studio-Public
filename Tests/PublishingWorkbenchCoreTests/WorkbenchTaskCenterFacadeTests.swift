@@ -364,6 +364,28 @@ final class WorkbenchTaskCenterFacadeTests: XCTestCase {
     XCTAssertEqual(task.target, .draft(draftID))
   }
 
+  func testHistoricalGitFailureRecordDoesNotCreateTaskBeforeGitOperation() {
+    let store = makeStore()
+    _ = store.activityStatus
+    store.publishingStore.prependReleaseRecord(
+      ReleaseRecord(
+        kind: .remotePublishFailure, title: "Old failure", summary: "权限被拒绝",
+        siteProfileID: store.activeProfileID,
+        createdAt: Date(timeIntervalSinceNow: -86_400)
+      )
+    )
+
+    XCTAssertNil(
+      store.activityStatus.taskCenterItems.first { $0.kind == .gitPush }
+    )
+    XCTAssertEqual(store.activityStatus.failedTaskCount, 0)
+    store.setGitActionMessage("Git 推送失败。", status: .failure)
+    XCTAssertEqual(
+      store.activityStatus.taskCenterItems.first { $0.kind == .gitPush }?.failureReason,
+      "Git 推送失败。"
+    )
+  }
+
   func testGitWarningDoesNotBecomeFailureFromMessageText() {
     let store = makeStore()
     store.setPublishActionMessage("没有可提交的发布包。", status: .warning)

@@ -131,7 +131,7 @@ extension MacMarkdownComposerView {
       )
     case .copyAnchorLink:
       guard let anchorLink = outlineService.anchorLink(for: item, in: editorBody) else {
-        selectionActionMessage = "章节已变化，请刷新大纲后重试。"
+        selectionActionMessage = String(localized: "章节已变化，请刷新大纲后重试。")
         return
       }
       ClipboardWriter.copy(
@@ -146,7 +146,7 @@ extension MacMarkdownComposerView {
 
   func applyOutlineEdit(_ edit: MarkdownSmartEdit?, message: String) {
     guard let edit else {
-      selectionActionMessage = "章节已变化，请刷新大纲后重试。"
+      selectionActionMessage = String(localized: "章节已变化，请刷新大纲后重试。")
       return
     }
     editorEditRequest = MarkdownTextEditRequest(expectedText: editorBody, edit: edit)
@@ -394,7 +394,7 @@ extension MacMarkdownComposerView {
         command: command
       )
     else {
-      selectionActionMessage = "当前选区不能执行这项行操作。"
+      selectionActionMessage = String(localized: "当前选区不能执行这项行操作。")
       return
     }
     applyAdvancedMarkdownEdit(edit)
@@ -495,7 +495,7 @@ extension MacMarkdownComposerView {
     guard requestUndoableBodyUpdate(
       replacingRawSelection(in: previewDraft, with: markdown)
     ) else { return }
-    selectionActionMessage = "已插入站内链接：\(suggestion.title)"
+    selectionActionMessage = String(localized: "已插入站内链接：\(suggestion.title)")
   }
 
   func insertSnippet(_ snippet: MarkdownSnippet) {
@@ -504,8 +504,10 @@ extension MacMarkdownComposerView {
     guard requestUndoableBodyUpdate(
       replacingSelection(in: previewDraft, with: markdown)
     ) else { return }
-    let kindName = snippet.kind == .articleTemplate ? "文章模板" : "正文片段"
-    selectionActionMessage = "已插入\(kindName)：\(snippet.title)"
+    let kindName =
+      snippet.kind == .articleTemplate
+      ? String(localized: "文章模板") : String(localized: "正文片段")
+    selectionActionMessage = String(localized: "已插入\(kindName)：\(snippet.title)")
   }
 
   @discardableResult
@@ -528,11 +530,11 @@ extension MacMarkdownComposerView {
 
   func applyDiagnosticQuickFix(_ diagnostic: MarkdownInlineDiagnostic) {
     guard let edit = MarkdownInlineDiagnosticService.quickFix(for: diagnostic, in: editorBody) else {
-      selectionActionMessage = "这项诊断没有可自动应用的修复。"
+      selectionActionMessage = String(localized: "这项诊断没有可自动应用的修复。")
       return
     }
     editorEditRequest = MarkdownTextEditRequest(expectedText: editorBody, edit: edit)
-    selectionActionMessage = "已修复：\(diagnostic.title)"
+    selectionActionMessage = String(localized: "已修复：\(diagnostic.title)")
   }
 
   func selectedText(in text: String) -> String {
@@ -568,11 +570,11 @@ extension MacMarkdownComposerView {
     let service = ChineseTypographyFormattingService()
     let edit = service.formattingEdit(in: editorBody, selectedRange: selectedRange)
     guard let edit else {
-      selectionActionMessage = "当前正文排版已符合规范。"
+      selectionActionMessage = String(localized: "当前正文排版已符合规范。")
       return
     }
     applyAdvancedMarkdownEdit(edit)
-    selectionActionMessage = "已完成中英文排版规范化（盘古间距）。"
+    selectionActionMessage = String(localized: "已完成中英文排版规范化（盘古间距）。")
     EditorAccessibilityAnnouncementCenter.announce("已完成中英文排版规范化。")
   }
 
@@ -582,10 +584,10 @@ extension MacMarkdownComposerView {
       title: draft.title
     )
     if success {
-      selectionActionMessage = "已复制微信公众号/知乎排版富文本，可直接粘贴！"
+      selectionActionMessage = String(localized: "已复制微信公众号/知乎排版富文本，可直接粘贴！")
       EditorAccessibilityAnnouncementCenter.announce("已复制微信公众号与知乎排版格式到剪贴板。")
     } else {
-      selectionActionMessage = "富文本复制失败，请重试。"
+      selectionActionMessage = String(localized: "富文本复制失败，请重试。")
     }
   }
 }

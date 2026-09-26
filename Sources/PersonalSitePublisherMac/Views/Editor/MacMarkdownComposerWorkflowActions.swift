@@ -81,7 +81,7 @@ extension MacMarkdownComposerView {
         line: line
       )
     else {
-      selectionActionMessage = "行号超出正文范围。"
+      selectionActionMessage = String(localized: "行号超出正文范围。")
       return
     }
     focusBodyRange(range, message: "已跳转到第 \(line) 行。")
@@ -116,14 +116,14 @@ extension MacMarkdownComposerView {
         in: editorBody
       )
     else {
-      selectionActionMessage = "补全上下文已经变化，请重新输入触发词。"
+      selectionActionMessage = String(localized: "补全上下文已经变化，请重新输入触发词。")
       return
     }
     editorEditRequest = MarkdownTextEditRequest(
       expectedText: editorBody,
       edit: edit
     )
-    selectionActionMessage = "已插入\(candidate.title)。"
+    selectionActionMessage = String(localized: "已插入\(candidate.title)。")
   }
 
   func insertMarkdownCompletionTrigger(_ trigger: MarkdownCompletionTrigger) {

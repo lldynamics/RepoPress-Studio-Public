@@ -199,7 +199,9 @@
     "zh-Hans": "%@分布"
   },
   "%@变更": "%@ changes",
+  "%@处理中…": "%@ in progress…",
   "%@字符数": "%@ character count",
+  "%@已应用。": "%@ applied.",
   "%@建议不超过 %@ 字符": "Recommended maximum for %@: %@ characters",
   "%@建议不超过 %lld 字符": {
     "en": "Recommended maximum for %@: %lld characters",
@@ -544,6 +546,8 @@
     "en": "AI Edit Review %lld/%lld",
     "zh-Hans": "AI 修改审阅 %lld/%lld"
   },
+  "AI 修改无法应用：%@": "The AI changes could not be applied: %@",
+  "AI 修改未能加入编辑器撤销队列。": "The AI changes could not be added to the editor's undo history.",
   "AI 修改预览": "AI Change Preview",
   "AI 修改预览已打开，接受后才会写入文章。": "The AI edit preview is open. Changes are written only after you accept them.",
   "AI 元数据应用": {
@@ -566,6 +570,7 @@
   "AI 可修复": "AI Fixable",
   "AI 可修复队列暂时不可用": "AI-Fixable Queue Unavailable",
   "AI 回复": "AI Response",
+  "AI 回复为空或选区无效。": "The AI response is empty or the selection is no longer valid.",
   "AI 回复为空，未应用。": "The AI response was empty and was not applied.",
   "AI 处理中": {
     "en": "AI processing",
@@ -3074,6 +3079,7 @@
     "zh-Hans": "上次检查 %@"
   },
   "上次检查：%@": "Last check: %@",
+  "上次退出时工作台处于快速隐藏状态，请验证身份后继续。": "The workbench was hidden when the app last quit. Verify your identity to continue.",
   "上次：%@": {
     "en": "Last: %@",
     "zh-Hans": "上次：%@"
@@ -3726,6 +3732,7 @@
   "克隆仅写入你选择位置中的新文件夹；完成前不会保存站点配置。私有仓库需由系统 Git 凭据支持。": "Cloning creates a new folder in the chosen location. Site settings are saved only after setup is complete. Private repositories require credentials supported by system Git.",
   "克隆仓库": "Clone repository",
   "克隆未完成：": "Clone did not complete: ",
+  "克隆未完成：%@": "Clone didn't finish: %@",
   "全局共享": "Shared Globally",
   "全局共享，适用于所有站点": "Shared globally across all sites",
   "全局搜索": "Global Search",
@@ -4504,6 +4511,8 @@
     "en": "Another window updated the article. Imported media was not inserted.",
     "zh-Hans": "另一窗口已更新文章，媒体导入未插入。"
   },
+  "另一窗口已更新正文，刚才的编辑命令未应用；已同步到最新版本。": "Another window updated the body, so the last editing command was not applied. The editor now shows the latest version.",
+  "另一窗口已更新正文，刚才的陈旧修改未写入；已同步到最新版本。": "Another window updated the body, so your outdated change was not saved. The editor now shows the latest version.",
   "另外 %lld 个片段": "%lld more excerpts",
   "另存恢复包…": "Save recovery package elsewhere…",
   "另存退出恢复包": "Save recovery package before quitting",
@@ -4780,6 +4789,7 @@
   },
   "图片 Alt 文本": "Image Alt Text",
   "图片 Caption": "Image Caption",
+  "图片 alt、caption 和封面状态已更新。": "Image alt text, caption, and cover status updated.",
   "图片与附件信息": {
     "en": "Image and attachment information",
     "zh-Hans": "图片与附件信息"
@@ -4838,6 +4848,7 @@
     "en": "There are too many images, so only the first 5,000 are shown. Use Finder to manage the rest.",
     "zh-Hans": "图片过多，当前只显示前 5,000 张。可以通过 Finder 继续管理。"
   },
+  "图片附件已变化，请重新插入或前往图片详情栏处理。": "The image attachment has changed. Insert it again or fix it in the image inspector.",
   "图片：%@": "Image: %@",
   "在 %@ 找到 %lld 个 RSS / Atom 订阅。": "Found %lld RSS / Atom subscriptions at %@.",
   "在 Finder 中显示": "Show in Finder",
@@ -5318,6 +5329,7 @@
   "审阅并安全同步远端…": "Review and Safe Sync Remote…",
   "审阅文件内容": "Review file contents",
   "密钥按设置独立保存在受限本地配置、系统钥匙串或本次会话。": "The key is stored separately in a restricted local configuration file, System Keychain, or this session, as selected in Settings.",
+  "富文本复制失败，请重试。": "Couldn't copy the rich text. Try again.",
   "对比源版本": "Compare Source Versions",
   "对比目标": "Compare Against",
   "对话内容保存在本机；API Key 使用你在设置中选择的独立保存位置。": "Conversations are stored on this Mac; the API key uses the separate storage location selected in Settings.",
@@ -5566,6 +5578,7 @@
   "尚未执行，等待你确认。": "Not run yet; awaiting your confirmation.",
   "尚未扫描仓库": "Repository not scanned yet",
   "尚未授权；测试连接和所有 AI 请求都会被阻止。": "Not authorized. Connection tests and all AI requests are blocked.",
+  "尚未接受任何修改。": "No changes have been accepted yet.",
   "尚未生成同步建议。请先扫描仓库，并确认当前分支已经设置 upstream。": {
     "en": "No sync recommendation is available yet. Scan the repository and confirm that the current branch has an upstream.",
     "zh-Hans": "尚未生成同步建议。请先扫描仓库，并确认当前分支已经设置 upstream。"
@@ -5644,11 +5657,13 @@
   "差异预览（最多 16 行）": "Diff preview (up to 16 lines)",
   "已上传到 iCloud": "Uploaded to iCloud",
   "已上线": "Live",
+  "已丢弃 AI 预览。": "AI preview discarded.",
   "已为当前站点复制配置，其他站点仍使用原连接。": "Settings copied for this site. Other sites still use the original connection.",
   "已为当前站点复制配置，请为副本单独保存 API Key。": "Settings copied for this site. Save an API key separately for the copy.",
   "已从开头继续查找。": "Search continued from the beginning.",
   "已从末尾继续查找。": "Search continued from the end.",
   "已从索引删除": "Removed from the index",
+  "已从资料库插入引用块。": "Inserted a quote block from the library.",
   "已从隐私设置快速隐藏工作台内容。": "Workbench content was hidden from Privacy Settings.",
   "已使用自定义网关": "Using a custom gateway",
   "已保存": "Saved",
@@ -5671,6 +5686,7 @@
   "已保存，可用于线上发布": "Saved and ready for remote publishing",
   "已保留本地冲突副本，并更新映射草稿。": "Kept a local conflict copy and updated the linked draft.",
   "已保留软件草稿恢复副本，并采用了当前项目版本。": "A recovery copy of the app draft was retained and the current project version was used.",
+  "已修复：%@": "Fixed: %@",
   "已停止": "Stopped",
   "已停止准备。安装可能已部分完成，请重新检测组件状态。": "Preparation stopped. Installation may be partially complete; detect the component status again.",
   "已停止映射；现有通用草稿保留在软件中。": "Mapping stopped. Existing general drafts remain in the app.",
@@ -5745,6 +5761,7 @@
     "zh-Hans": "已复制完整 Markdown 代码块。"
   },
   "已复制完整工具摘要。": "Full tool summary copied.",
+  "已复制微信公众号/知乎排版富文本，可直接粘贴！": "Copied rich text formatted for WeChat Official Accounts and Zhihu. Ready to paste.",
   "已复制未保存的 Front Matter 文档。": "Copied the unsaved Front Matter document.",
   "已复制本地预览启动命令。": "Local preview launch command copied.",
   "已复制社交预览 Meta HTML。": "Social preview Meta HTML copied.",
@@ -5763,6 +5780,7 @@
   "已存智能集合": "Saved Smart Collections",
   "已存组合": "Saved Combinations",
   "已完成": "Completed",
+  "已完成中英文排版规范化（盘古间距）。": "Normalized spacing between Chinese and Latin text (Pangu spacing).",
   "已完成发布前检查，发布准备已打开。": {
     "en": "Pre-publish checks are complete, and Publishing Readiness is now open.",
     "zh-Hans": "已完成发布前检查，发布准备已打开。"
@@ -5773,6 +5791,7 @@
   },
   "已定位到任务目标。": "Task target located.",
   "已定位到指定发布记录": "Located specified release record",
+  "已定位到第 %@ 行的%@。": "Moved to %2$@ on line %1$@.",
   "已导入 %@ 个订阅，正在读取最新文章。": "Imported %@ subscriptions. Loading the latest articles.",
   "已导出 %@ 个订阅到 %@%@。": "Exported %@ subscriptions to %@%@.",
   "已导出 %@ 张，跳过 %@ 项，失败 %@ 项。": {
@@ -5804,6 +5823,7 @@
   "已应用 %d 个字段，跳过 %d 个当前不支持的字段。": "Applied %d fields; skipped %d unsupported fields.",
   "已应用 %d 个字段；%d 个字段已在其他窗口变化，保留当前值：%@。": "Applied %d fields. Kept the current values of %d fields changed in another window: %@.",
   "已应用/已审阅": "Applied/reviewed",
+  "已应用接受的 AI 修改；可用撤销恢复。": "Applied the accepted AI changes. Use Undo to revert.",
   "已应用替换并保存可恢复版本，正在重新扫描。": "Replacements applied with recoverable versions saved; rescanning now.",
   "已建立本地语义索引": {
     "en": "Local Semantic Index Ready",
@@ -5869,8 +5889,11 @@
   "已插入 %@ 张图片，请完善图片信息。": "Inserted %@ images. Complete their image details.",
   "已插入 RSS 引用块。": "The RSS blockquote was inserted.",
   "已插入 RSS 脚注。": "The RSS footnote was inserted.",
+  "已插入%@。": "Inserted %@.",
+  "已插入%@：%@": "Inserted %@: %@",
   "已插入“%@”的摘要、摘录和来源；未复制全文。": "The summary, excerpt, and source for “%@” were inserted; the full text was not copied.",
   "已插入图片，当前格式保留原文件": "Image inserted; the original file was kept for this format",
+  "已插入站内链接：%@": "Inserted internal link: %@",
   "已收起": "Collapsed",
   "已放弃无效 Front Matter 修改并还原已保存版本。": "Discarded invalid Front Matter changes and restored the saved version.",
   "已断开的外部文件：%@": "Disconnected external file: %@",
@@ -6280,6 +6303,7 @@
     "en": "Preview errors in this article",
     "zh-Hans": "当前文章的预览错误"
   },
+  "当前文章还没有可应用的 AI 回复。": "This article has no AI response to apply yet.",
   "当前文章还没有图片附件。": "The current article has no image attachments yet.",
   "当前文章链接没有发现明显治理项。": {
     "en": "No obvious governance issues were found in the current article's links.",
@@ -6306,6 +6330,7 @@
     "en": "Current content uses parser v%lld and can be upgraded locally to v%lld.",
     "zh-Hans": "当前正文使用解析器 v%lld，可以在本机升级到 v%lld。"
   },
+  "当前正文排版已符合规范。": "The body text already follows the typography rules.",
   "当前没有可复用的 AI 连接。完成后可在设置中添加；这里不会创建或保存 API Key。": "No reusable AI connection is available. You can add one in Settings after setup; no API key is created or saved here.",
   "当前没有可导入的已选资料。": {
     "en": "No selected sources are currently available to import.",
@@ -6399,6 +6424,7 @@
     "zh-Hans": "当前连接档案没有 Base URL，点击下方档案即可快速切换到已配置服务。"
   },
   "当前连接能力": "Current Connection Capabilities",
+  "当前选区不能执行这项行操作。": "This line action can't be used on the current selection.",
   "当前选择只会保存在面板中。": "The current choice stays in this panel only.",
   "当前选择的%@文件": "Currently Selected %@ File",
   "当前配置无需 API Key": "The current configuration does not require an API key",
@@ -6871,6 +6897,7 @@
     "zh-Hans": "批量设置资料权限"
   },
   "批量转为通用草稿": "Convert Multiple to General Drafts",
+  "找不到刚插入的图片，请刷新图片详情栏后重试。": "Couldn't find the image you just inserted. Refresh the image inspector and try again.",
   "找不到当前文章，摘要未应用。": "The current article could not be found, so the summary was not applied.",
   "找不到这篇文章的本地正文。": "The local body for this article could not be found.",
   "找不到这篇文章的本机正文。": "The body for this article could not be found on this Mac.",
@@ -6976,6 +7003,7 @@
     "en": "Accept Changes",
     "zh-Hans": "接受修改"
   },
+  "接受的修改未改变正文。": "The accepted changes didn't change the body.",
   "接受远端删除": "Accept Remote Deletion",
   "接收方": {
     "en": "Recipient",
@@ -7348,6 +7376,7 @@
     "en": "The article no longer exists or has moved out of the site. Close this preview.",
     "zh-Hans": "文章已不存在或已移出站点，请关闭预览。"
   },
+  "文章已变化，AI 修改未应用；审阅内容仍保留。": "The article changed, so the AI changes were not applied. Your review is still available.",
   "文章已变化，未复制陈旧 AI Prompt；请重试。": "The article changed, so the stale AI prompt was not copied. Try again.",
   "文章已变化，请重新创建预览": "The article has changed. Create a new preview.",
   "文章已变化，这份 AI 修改预览未应用；请重新预览。": "The article changed, so this AI edit preview was not applied. Preview it again.",
@@ -8378,6 +8407,7 @@
   "正在完成另一项 RSS 操作，请稍候保存。": "Another RSS operation is finishing. Please wait before saving.",
   "正在导入": "Importing",
   "正在巡检": "Inspecting",
+  "正在应用已接受的 AI 修改…": "Applying the accepted AI changes…",
   "正在应用已确认的处理方式…": "Applying the confirmed resolution…",
   "正在建立索引": "Building Index",
   "正在执行全文与本地语义检索…": "Searching full text and the local semantic index…",
@@ -9293,6 +9323,7 @@
   "章节 %lld": "Section %lld",
   "章节上移": "Move Section Up",
   "章节下移": "Move Section Down",
+  "章节已变化，请刷新大纲后重试。": "The section has changed. Refresh the outline and try again.",
   "章节片段": "Section Excerpts",
   "笔记": "Note",
   "笔记 %@：%@": "Note %@: %@",
@@ -9303,6 +9334,7 @@
   "笔记来源地址": "Note Source Address",
   "笔记标签": "Note Tags",
   "笔记标题": "Note Title",
+  "笔记附件超过 128 MB。": "The note attachment is larger than 128 MB.",
   "第 %@ 步": {
     "en": "Step %@",
     "zh-Hans": "第 %@ 步"
@@ -9709,6 +9741,7 @@
   "行动队列": "Action Queue",
   "行变化": "line changes",
   "行号": "Line Number",
+  "行号超出正文范围。": "That line number is outside the body.",
   "行数": {
     "en": "Lines",
     "zh-Hans": "行数"
@@ -9719,6 +9752,7 @@
   },
   "行距": "Line Spacing",
   "补充元数据": "Additional Metadata",
+  "补全上下文已经变化，请重新输入触发词。": "The completion context has changed. Type the trigger again.",
   "表格": "Table",
   "表格、代码、图片、脚注补全": {
     "en": "Table, Code, Image, and Footnote Completion",
@@ -9897,6 +9931,7 @@
     "en": "Choose a site folder first",
     "zh-Hans": "请先选择站点文件夹"
   },
+  "请先选择要替换的正文。": "Select the body text to replace first.",
   "请先配置 API 基础地址。配置完成后，应用会判断数据只发送到本机，还是需要第三方授权。": "Configure the API Base URL first. The app will then determine whether data stays on this Mac or requires third-party authorization.",
   "请先配置仓库 Owner/Namespace 和 Repo/Project，或扫描包含 origin 的站点仓库。": "Configure the repository Owner/Namespace and Repo/Project, or scan a site repository with an origin.",
   "请先配置本地仓库与 origin，才能审阅完整工作区。": "Configure the local repository and origin before reviewing the complete worktree.",
@@ -9946,11 +9981,13 @@
   "请清除部分条件，或将搜索范围扩大到全部站点。": "Clear some criteria or expand the search to the entire site.",
   "请确认此备份与当前应用版本的兼容性。": "Confirm that this backup is compatible with the current app version.",
   "请确认远端、分支、发布方式和完整文件清单。确认后会立即写入远端。": "Confirm the remote repository, branches, publishing method, and full file list. Confirmation writes to the remote repository immediately.",
+  "请等待当前编辑操作完成后再应用 AI 修改。": "Wait for the current edit to finish before applying AI changes.",
   "请结束续跑并保留记录，或从这里新建对话。": {
     "en": "End the continuation and preserve its record, or start a new conversation here.",
     "zh-Hans": "请结束续跑并保留记录，或从这里新建对话。"
   },
   "请输入有效的 GitHub 或 GitLab HTTPS 仓库地址。": "Enter a valid GitHub or GitLab HTTPS repository URL.",
+  "请输入有效的 GitHub 或 GitLab HTTPS 仓库地址，例如 https://github.com/owner/repo。": "Enter a valid GitHub or GitLab HTTPS repository address, such as https://github.com/owner/repo.",
   "请输入目标语言。": "Enter a target language.",
   "请运行发布前检查。": "Run the pre-publish checks.",
   "请返回编辑器检查文件权限或外部修改冲突。": {
@@ -10335,6 +10372,7 @@
   "这里会汇总站点类型、内容目录、图片目录和 Git 状态。": "This area summarizes the site type, content and image directories, and Git status.",
   "这里只显示当前文章；发布前还会打开完整批次确认页。": "Only the current article is shown here. A complete batch confirmation opens before publishing.",
   "这里汇总内容检查；发布连接与账户权限请查看发布按钮旁的状态。": "Content checks are summarized here; see the status beside the Publish button for the publishing connection and account permissions.",
+  "这项诊断没有可自动应用的修复。": "This diagnostic has no automatic fix.",
   "进行中": "In Progress",
   "进行中 %@ · 失败 %@ · 等待处理 %@": "Running %@ · Failed %@ · Awaiting action %@",
   "进行中 %@ · 失败待处理 %@": {
@@ -10463,6 +10501,8 @@
   "选区已变化，请重新打开查找": "The selection changed. Reopen Find.",
   "选区已变化，请重新打开查找。": "The selection changed. Reopen Find.",
   "选区整理成结构": "Turn a Selection into Structure",
+  "选区有 %lld 项公开风险。": "The selection has %lld publishing risks.",
+  "选区未发现公开风险。": "No publishing risks found in the selection.",
   "选区润色改写": "Rewrite a Selection",
   "选择": "Choose",
   "选择 %@ 查看问题详情": {
@@ -10777,6 +10817,7 @@
     "zh-Hans": "链接需要修复"
   },
   "错误": "Errors",
+  "问题在 %@ 字段，右侧可直接处理。": "The issue is in the %@ field. You can fix it in the panel on the right.",
   "问题详情": "Issue Details",
   "问题队列": "Issue Queue",
   "阅读上一篇文章（⌃⌘←）": "Read Previous Article (⌃⌘←)",
@@ -10810,6 +10851,7 @@
   "阻止发布的站点问题": "Site Publishing Blockers",
   "阻止发布的问题": "Publishing Blockers",
   "附件": "Attachments",
+  "附件必须是一个普通文件。": "The attachment must be a regular file.",
   "附带 %lld 条资料引用": "%lld knowledge references included",
   "降低非当前段落的视觉干扰。": "Reduce visual distraction from paragraphs other than the current one.",
   "限制最大输出 Tokens": "Limit Maximum Output Tokens",

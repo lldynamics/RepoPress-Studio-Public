@@ -612,73 +612,75 @@ struct StorageManagementView: View {
 
   private func createSelectiveBackup() {
     Task { @MainActor in
-    let destination = backupDestination
-    let categories = selectedBackupCategories
-    let localURL: URL
-    let stagingDirectory: URL?
-    switch destination {
-    case .local:
+      let destination = backupDestination
+      let categories = selectedBackupCategories
+      let localURL: URL
+      let stagingDirectory: URL?
+      switch destination {
+      case .local:
         guard let selected = await WorkspaceBackupSelectionPanel.chooseSelectiveBackupDestination()
         else { return }
         localURL = selected
-      stagingDirectory = nil
-    case .iCloud:
-      let directory = FileManager.default.temporaryDirectory
-        .appendingPathComponent("WorkspaceBackupUpload-\(UUID().uuidString)", isDirectory: true)
-      let timestamp = DateFormatter()
-      timestamp.locale = Locale(identifier: "en_US_POSIX")
-      timestamp.dateFormat = "yyyyMMdd-HHmmss"
-      localURL = directory.appendingPathComponent(
-        "所选工作区备份-\(timestamp.string(from: Date())).psworkspacebackup",
-        isDirectory: true
-      )
-      stagingDirectory = directory
-    }
+        stagingDirectory = nil
+      case .iCloud:
+        let directory = FileManager.default.temporaryDirectory
+          .appendingPathComponent("WorkspaceBackupUpload-\(UUID().uuidString)", isDirectory: true)
+        let timestamp = DateFormatter()
+        timestamp.locale = Locale(identifier: "en_US_POSIX")
+        timestamp.dateFormat = "yyyyMMdd-HHmmss"
+        localURL = directory.appendingPathComponent(
+          "所选工作区备份-\(timestamp.string(from: Date())).psworkspacebackup",
+          isDirectory: true
+        )
+        stagingDirectory = directory
+      }
 
-    isCreatingSelectiveBackup = true
-    operationMessage = nil
-    operationError = nil
-    Task {
-      defer {
-        if let stagingDirectory {
-          DispatchQueue.global(qos: .utility).async {
-            try? FileManager.default.removeItem(at: stagingDirectory)
+      isCreatingSelectiveBackup = true
+      operationMessage = nil
+      operationError = nil
+      Task {
+        defer {
+          if let stagingDirectory {
+            DispatchQueue.global(qos: .utility).async {
+              try? FileManager.default.removeItem(at: stagingDirectory)
+            }
           }
+          isCreatingSelectiveBackup = false
         }
-        isCreatingSelectiveBackup = false
-      }
-      guard
-        let created = await workbenchStore.createWorkspaceBackup(
-          at: localURL,
-          selectedCategories: categories
-        )
-      else {
-        operationError = String(localized: "所选备份创建失败，请检查上方状态。")
-        return
-      }
-      guard let verified = await dataManagement.workspaceBackupPreview(from: created.backupURL) else {
-        operationError = String(localized: "备份已生成，但完整性复核失败；不能将其视为可用备份。")
-        return
-      }
-      if destination == .iCloud {
-        do {
-          let cloudURL = try await iCloudWorkspaceBackupStore().copyInspectedBackup(
-            from: verified.backupURL)
-          operationMessage = String(localized: "备份已通过本地复核并加入 iCloud 上传队列：\(cloudURL.lastPathComponent)。系统确认上传前会显示为上传中。")
-          refreshCloudBackups()
-        } catch {
-          operationError = error.localizedDescription
+        guard
+          let created = await workbenchStore.createWorkspaceBackup(
+            at: localURL,
+            selectedCategories: categories
+          )
+        else {
+          operationError = String(localized: "所选备份创建失败，请检查上方状态。")
+          return
         }
-      } else {
-        let formattedByteCount = ByteCountFormatter.string(
-          fromByteCount: verified.totalByteCount,
-          countStyle: .file
-        )
-        operationMessage = String(
-          localized: "所选 Mac 工作区备份已创建并通过完整性复核（\(formattedByteCount)）。"
-        )
+        guard
+          let verified = await dataManagement.workspaceBackupPreview(from: created.backupURL)
+        else {
+          operationError = String(localized: "备份已生成，但完整性复核失败；不能将其视为可用备份。")
+          return
+        }
+        if destination == .iCloud {
+          do {
+            let cloudURL = try await iCloudWorkspaceBackupStore().copyInspectedBackup(
+              from: verified.backupURL)
+            operationMessage = String(localized: "备份已通过本地复核并加入 iCloud 上传队列：\(cloudURL.lastPathComponent)。系统确认上传前会显示为上传中。")
+            refreshCloudBackups()
+          } catch {
+            operationError = error.localizedDescription
+          }
+        } else {
+          let formattedByteCount = ByteCountFormatter.string(
+            fromByteCount: verified.totalByteCount,
+            countStyle: .file
+          )
+          operationMessage = String(
+            localized: "所选 Mac 工作区备份已创建并通过完整性复核（\(formattedByteCount)）。"
+          )
+        }
       }
-    }
     }
   }
 

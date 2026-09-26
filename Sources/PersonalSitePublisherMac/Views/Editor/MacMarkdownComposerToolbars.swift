@@ -250,6 +250,9 @@ struct MacMarkdownEditorToolbar: View {
     }
     .frame(minWidth: 70, maxWidth: .infinity, alignment: .trailing)
     .frame(minHeight: 34, idealHeight: 34, maxHeight: 34)
+    .popover(isPresented: $isPublishAssetPickerPresented, arrowEdge: .bottom) {
+      publishAssetPickerPopover
+    }
     .accessibilityElement(children: .contain)
     .accessibilityLabel("写作工具栏")
     .accessibilityIdentifier("markdown-editor-toolbar")
@@ -400,18 +403,21 @@ struct MacMarkdownEditorToolbar: View {
     .help("AI 常用操作")
     .accessibilityLabel("AI 常用操作")
     .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
-    .popover(isPresented: $isPublishAssetPickerPresented) {
-      MacMarkdownPublishAssetPickerPopover(
-        selectedAssets: $selectedPublishAssets,
-        isGenerationEnabled: actions.articleAIActionAvailability(.draftPublishAssetPack).isEnabled,
-        onGenerate: {
-          actions.onPerformConvergedArticleAIAction(
-            .publishAssetPack(AIPublishingAssetPackConfiguration(assets: selectedPublishAssets))
-          )
-          isPublishAssetPickerPresented = false
-        }
-      )
-    }
+  }
+
+  /// Anchored to the whole toolbar row: at compact widths the AI menu lives in
+  /// the overflow menu, where a popover attached to it has no on-screen anchor.
+  private var publishAssetPickerPopover: some View {
+    MacMarkdownPublishAssetPickerPopover(
+      selectedAssets: $selectedPublishAssets,
+      isGenerationEnabled: actions.articleAIActionAvailability(.draftPublishAssetPack).isEnabled,
+      onGenerate: {
+        actions.onPerformConvergedArticleAIAction(
+          .publishAssetPack(AIPublishingAssetPackConfiguration(assets: selectedPublishAssets))
+        )
+        isPublishAssetPickerPresented = false
+      }
+    )
   }
 
   private func inlineAICompletionButton(showsTitle: Bool) -> some View {

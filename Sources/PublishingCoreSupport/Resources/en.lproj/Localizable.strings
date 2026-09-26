@@ -2441,3 +2441,7 @@
 "找不到要标注的文章。" = "The article to annotate could not be found.";
 "文章正文尚未写入本地数据库。" = "The article body has not been written to the local database.";
 "全文缓存需要可用的 SQLite 数据库。" = "The full-text cache requires an available SQLite database.";
+"图片无法由 ImageIO 识别" = "ImageIO can't recognize this image";
+"不支持的图片实际类型：%@" = "Unsupported actual image type: %@";
+"仅支持单帧 JPEG、PNG、HEIC/HEIF 图片。" = "Only single-frame JPEG, PNG, and HEIC/HEIF images are supported.";
+"图片无法解码" = "The image couldn't be decoded";

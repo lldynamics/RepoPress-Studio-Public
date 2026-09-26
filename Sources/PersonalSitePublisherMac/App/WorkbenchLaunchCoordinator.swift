@@ -515,6 +515,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
       }
     #endif
     workbenchStore.knowledge.reportStartupRestoreOutcome(preparation.restoreOutcome)
+    QuickHideUnlockCoordinator.restoreMaskIfNeeded(workbenchStore)
 
     self.store = workbenchStore
     self.rssStore = rssStore

@@ -381,10 +381,10 @@ struct KnowledgeNoteEditorView: View {
     }
     let values = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
     guard values.isRegularFile == true else {
-      throw KnowledgeLibraryError.invalidMetadata("附件必须是一个普通文件。")
+      throw KnowledgeLibraryError.invalidMetadata(String(localized: "附件必须是一个普通文件。"))
     }
     guard (values.fileSize ?? 0) <= 128 * 1_024 * 1_024 else {
-      throw KnowledgeLibraryError.sourceLimitExceeded("笔记附件超过 128 MB。")
+      throw KnowledgeLibraryError.sourceLimitExceeded(String(localized: "笔记附件超过 128 MB。"))
     }
     let data = try Data(contentsOf: url, options: .mappedIfSafe)
     let mimeType = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType

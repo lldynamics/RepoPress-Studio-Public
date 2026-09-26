@@ -81,6 +81,9 @@ public final class WorkbenchStore: ObservableObject {
     WorkbenchRootPresentationFeatureFacade(store: self)
   public lazy var commandPresentation: WorkbenchCommandPresentationFeatureFacade =
     WorkbenchCommandPresentationFeatureFacade(store: self)
+  /// Records older than this belong to earlier runs and must not reappear as
+  /// current task-center failures.
+  let sessionStartedAt = Date()
   public lazy var activityStatus: WorkbenchActivityStatusFacade = WorkbenchActivityStatusFacade(
     store: self)
   public lazy var operationLog: WorkbenchOperationLogFeatureFacade =

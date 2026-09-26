@@ -108,7 +108,7 @@ final class WorkspaceSceneCommandRouterTests: XCTestCase {
   func testClearAllReleasesRootAndContextActions() {
     let router = WorkspaceSceneCommandRouter()
     router.updateRoot(
-      publishDrawerCommandAction: PublishDrawerCommandAction { _ in },
+      publishDrawerCommandAction: PublishDrawerCommandAction { _, _ in },
       localSitePreviewCommandAction: LocalSitePreviewCommandAction {},
       workspaceCommandPaletteAction: WorkspaceCommandPaletteAction(
         open: {},

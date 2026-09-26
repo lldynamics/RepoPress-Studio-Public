@@ -549,7 +549,7 @@ struct QuickHideOverlay: View {
   @FocusState private var isUnlockButtonFocused: Bool
   @AccessibilityFocusState private var isOverlayFocused: Bool
   @State private var isUnlocking = false
-  @State private var authenticationMessage: String?
+  @ObservedObject private var unlockFeedback = QuickHideUnlockFeedback.shared
 
   var body: some View {
     let status = store.privacyProtectionStatus
@@ -580,7 +580,7 @@ struct QuickHideOverlay: View {
         }
       }
 
-      if let authenticationMessage {
+      if let authenticationMessage = unlockFeedback.message {
         AccessibleStatusMessage(message: authenticationMessage, severity: .error)
           .frame(maxWidth: 360)
       }
@@ -615,6 +615,7 @@ struct QuickHideOverlay: View {
       }
     }
     .onAppear {
+      QuickHideUnlockCoordinator.rememberActiveMaskIfNeeded()
       DispatchQueue.main.async {
         isUnlockButtonFocused = true
         isOverlayFocused = true
@@ -625,9 +626,8 @@ struct QuickHideOverlay: View {
   private func requestUnlock() {
     guard !isUnlocking else { return }
     isUnlocking = true
-    authenticationMessage = nil
     Task { @MainActor in
-      authenticationMessage = await QuickHideUnlockCoordinator.unlock(store)
+      await QuickHideUnlockCoordinator.unlockAndReport(store)
       isUnlocking = false
     }
   }

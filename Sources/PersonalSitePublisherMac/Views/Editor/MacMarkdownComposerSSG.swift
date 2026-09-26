@@ -111,6 +111,7 @@ extension MacMarkdownComposerView {
       id: UUID(),
       selectedRange: occurrence.sourceRange
     )
-    selectionActionMessage = "已定位到第 \(occurrence.lineNumber) 行的\(occurrence.title)。"
+    let lineNumber = occurrence.lineNumber.formatted()
+    selectionActionMessage = String(localized: "已定位到第 \(lineNumber) 行的\(occurrence.title)。")
   }
 }

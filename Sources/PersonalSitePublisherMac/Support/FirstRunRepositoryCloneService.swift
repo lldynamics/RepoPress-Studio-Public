@@ -10,13 +10,14 @@ enum FirstRunRepositoryCloneError: LocalizedError {
   var errorDescription: String? {
     switch self {
     case .invalidURL:
-      return String(localized: "请输入有效的 GitHub 或 GitLab HTTPS 仓库地址。")
+      return String(
+        localized: "请输入有效的 GitHub 或 GitLab HTTPS 仓库地址，例如 https://github.com/owner/repo。")
     case .destinationExists:
       return String(localized: "目标文件夹已存在，请更换保存位置或先连接已有仓库。")
     case .destinationUnavailable:
       return String(localized: "无法在所选位置创建仓库，请检查文件夹权限。")
     case .cloneFailed(let detail):
-      return String(localized: "克隆未完成：") + detail
+      return String(format: String(localized: "克隆未完成：%@"), detail)
     }
   }
 }
@@ -24,6 +25,11 @@ enum FirstRunRepositoryCloneError: LocalizedError {
 struct FirstRunRepositoryCloneSource: Equatable {
   let url: URL
   let folderName: String
+
+  private static let gitHubBrowserRoutes: Set<String> = [
+    "tree", "blob", "commits", "commit", "releases", "tags", "issues", "pulls", "pull",
+    "actions", "wiki",
+  ]
 
   init?(text: String) {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -40,14 +46,25 @@ struct FirstRunRepositoryCloneSource: Equatable {
       !components.percentEncodedPath.lowercased().contains("%5c")
     else { return nil }
 
-    let pathParts = components.path.split(separator: "/").map(String.init)
+    var pathParts = components.path.split(separator: "/").map(String.init)
+    // Accept addresses copied from the browser, e.g. `…/owner/repo/tree/main`
+    // on GitHub or `…/group/repo/-/tree/main` on GitLab.
+    if host == "github.com", pathParts.count > 2,
+      Self.gitHubBrowserRoutes.contains(pathParts[2])
+    {
+      pathParts = Array(pathParts.prefix(2))
+    } else if host == "gitlab.com", let marker = pathParts.firstIndex(of: "-") {
+      pathParts = Array(pathParts[..<marker])
+    }
+    var normalized = components
+    normalized.path = "/" + pathParts.joined(separator: "/")
     guard pathParts.count >= 2,
       host != "github.com" || pathParts.count == 2,
       pathParts.allSatisfy({ part in
         !part.isEmpty && part != "." && part != ".."
           && part.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || "-_.".contains($0)) }
       }),
-      let url = components.url
+      let url = normalized.url
     else { return nil }
 
     let repositoryName = pathParts[pathParts.count - 1]
@@ -81,8 +98,13 @@ enum FirstRunRepositoryCloneService {
     )
     defer { try? FileManager.default.removeItem(at: temporary) }
 
-    let result = await GitCommandRunner(timeout: 300, maximumOutputBytes: 32_768)
-      .runAsync(["clone", "--", source.url.absoluteString, temporary.path], rootURL: parent)
+    // Site themes are often submodules; without them preview and build fail.
+    // Repositories with many images need more than a few minutes on slow links.
+    let result = await GitCommandRunner(timeout: 900, maximumOutputBytes: 32_768)
+      .runAsync(
+        ["clone", "--recurse-submodules", "--", source.url.absoluteString, temporary.path],
+        rootURL: parent
+      )
     guard result.terminationStatus == 0, !result.didTimeOut else {
       let detail = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
       throw FirstRunRepositoryCloneError.cloneFailed(

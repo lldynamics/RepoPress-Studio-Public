@@ -73,7 +73,7 @@ extension MacMarkdownComposerView {
     store.runPreflight()
     let message = String(localized: "已完成发布前检查，发布准备已打开。")
     if let publishDrawerCommandAction {
-      publishDrawerCommandAction.open(message)
+      publishDrawerCommandAction.open(message, scope: .currentArticle)
     } else {
       store.setPublishActionMessage(message, status: .success)
     }

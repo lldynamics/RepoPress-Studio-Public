@@ -10,6 +10,7 @@ struct SettingsStoreActions {
 
   func quickHideFromSettings() {
     store.activateQuickHide(reason: String(localized: "已从隐私设置快速隐藏工作台内容。"))
+    QuickHideUnlockCoordinator.rememberActiveMaskIfNeeded()
   }
 
   func updatePrivacySettings(_ settings: PrivacyProtectionSettings) {

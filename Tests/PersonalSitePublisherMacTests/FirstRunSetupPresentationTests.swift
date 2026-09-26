@@ -125,6 +125,16 @@ final class FirstRunSetupPresentationTests: XCTestCase {
       FirstRunRepositoryCloneSource(text: "https://gitlab.com/group/project/site")?.folderName,
       "site"
     )
+    XCTAssertEqual(
+      FirstRunRepositoryCloneSource(text: "https://github.com/example/site/tree/main")?.url
+        .absoluteString,
+      "https://github.com/example/site"
+    )
+    let gitLabBrowserSource = FirstRunRepositoryCloneSource(
+      text: "https://gitlab.com/group/project/site/-/tree/main")
+    XCTAssertEqual(gitLabBrowserSource?.folderName, "site")
+    XCTAssertEqual(
+      gitLabBrowserSource?.url.absoluteString, "https://gitlab.com/group/project/site")
     for rejected in [
       "http://github.com/example/site",
       "https://github.com.evil.example/example/site",

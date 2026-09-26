@@ -89,6 +89,7 @@ struct ContentView: View {
   @StateObject private var repositoryContentChangeMonitor: RepositoryContentChangeMonitorCoordinator
   @State private var sceneCommandRouter = WorkspaceSceneCommandRouter()
   @StateObject private var windowSession: WorkspaceWindowSession
+  @ObservedObject private var windowOrdinals = WorkspaceWindowOrdinalRegistry.shared
   @State private var inspectorWidthState = WorkspaceInspectorWidthState(
     isAIAssistantPresented: false
   )
@@ -98,9 +99,9 @@ struct ContentView: View {
   private var presentationState: WorkbenchRootPresentationFeatureFacade { rootPresentation }
 
   private var mainWindowTitle: String {
-    let windowCode = windowSession.windowID.uuidString.prefix(4)
+    let windowSuffix = windowOrdinals.titleSuffix(for: windowSession.windowID)
     if shellState.isQuickHideActive {
-      return "\(String(localized: "RepoPress Studio — 已隐藏")) · \(windowCode)"
+      return String(localized: "RepoPress Studio — 已隐藏") + windowSuffix
     }
     let profileName = store.activeProfile.name.trimmingCharacters(in: .whitespacesAndNewlines)
     let workspaceName = profileName.isEmpty ? String(localized: "本地工作台") : profileName
@@ -116,7 +117,7 @@ struct ContentView: View {
     } else {
       contextName = WorkspaceNavigationRouteDescriptor.title(for: windowSession.selectedSection)
     }
-    return "\(contextName) — \(workspaceName) · \(windowCode)"
+    return "\(contextName) — \(workspaceName)\(windowSuffix)"
   }
 
   init(store: WorkbenchStore, rssStore: RSSReaderStore) {
@@ -234,6 +235,7 @@ struct ContentView: View {
   private var workspaceToolbarAndEnvironmentContent: some View {
     workspaceRootContent
       .navigationTitle(mainWindowTitle)
+      .modifier(WorkspaceWindowOrdinalModifier(windowID: windowSession.windowID))
       .environment(\.publishReadinessNavigationRequest, publishReadinessNavigationRequest)
       .environment(\.workspaceWindowID, windowSession.windowID)
       .environment(\.workspaceWindowSession, windowSession)
@@ -251,8 +253,8 @@ struct ContentView: View {
       }
       .environment(
         \.publishDrawerCommandAction,
-        PublishDrawerCommandAction { message in
-          openPublishDrawer(message: message)
+        PublishDrawerCommandAction { message, scope in
+          openPublishDrawer(message: message, preferredScope: scope)
         }
       )
       .environment(
@@ -630,8 +632,8 @@ struct ContentView: View {
   private func updateSceneCommandRouterRootActions() {
     let commandRouter = sceneCommandRouter
     sceneCommandRouter.updateRoot(
-      publishDrawerCommandAction: PublishDrawerCommandAction { message in
-        openPublishDrawer(message: message)
+      publishDrawerCommandAction: PublishDrawerCommandAction { message, scope in
+        openPublishDrawer(message: message, preferredScope: scope)
       },
       localSitePreviewCommandAction: LocalSitePreviewCommandAction {
         openLocalSitePreview()
@@ -1556,6 +1558,9 @@ struct ContentView: View {
     ) {
       modalPresentation.present(.publishDrawer)
     }
+    // Opening the drawer is often how people inspect a failed push; keep that
+    // failure (and its Git task row) instead of replacing it with a status note.
+    guard store.publishActionFeedback?.status != .failure else { return }
     store.setPublishActionMessage(
       message ?? String(localized: "发布流程已打开，请选择保存到本地或发布上线。"),
       status: .information

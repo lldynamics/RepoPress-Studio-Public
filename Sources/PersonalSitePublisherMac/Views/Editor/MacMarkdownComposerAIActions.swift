@@ -160,7 +160,7 @@ extension MacMarkdownComposerView {
     selectionAIActionRequestID = requestID
     isInlineSelectionAIAction = presentsInlineResult
     let actionName = convergence?.localizedDisplayName ?? kind.localizedDisplayName
-    selectionActionMessage = "\(actionName)处理中…"
+    selectionActionMessage = String(localized: "\(actionName)处理中…")
     if !presentsInlineResult {
       showWritingContextPanel(.selectionTools)
     }
@@ -257,7 +257,7 @@ extension MacMarkdownComposerView {
     activeSelectionAIAction = kind
     selectionAIActionRequestID = requestID
     let actionName = convergence?.localizedDisplayName ?? kind.localizedDisplayName
-    selectionActionMessage = "\(actionName)处理中…"
+    selectionActionMessage = String(localized: "\(actionName)处理中…")
     let previewRange = articleInsertionRange(for: kind)
     selectionEditPreview = nil
     selectionAIActionTask = Task { @MainActor in
@@ -378,13 +378,13 @@ extension MacMarkdownComposerView {
     let content: String
     if summary.isClear {
       content = "选中文本未命中密钥、私钥、内网地址或本机路径规则。"
-      selectionActionMessage = "选区未发现公开风险。"
+      selectionActionMessage = String(localized: "选区未发现公开风险。")
     } else {
       let issueLines = summary.issues.map {
         "- \($0.severity.localizedDisplayName)：\($0.title) - \($0.message)"
       }
       content = "选中文本公开风险：\n\(issueLines.joined(separator: "\n"))"
-      selectionActionMessage = "选区有 \(summary.issueCount) 项公开风险。"
+      selectionActionMessage = String(localized: "选区有 \(summary.issueCount) 项公开风险。")
     }
     aiActions.setActionResult(AIPublishingActionResult(kind: .privacyReview, content: content))
     aiActions.setActionMessage(selectionActionMessage)
@@ -392,13 +392,13 @@ extension MacMarkdownComposerView {
 
   func applyLatestAIReplyToSelection() {
     guard let message = latestAssistantMessageForCurrentDraft else {
-      selectionActionMessage = "当前文章还没有可应用的 AI 回复。"
+      selectionActionMessage = String(localized: "当前文章还没有可应用的 AI 回复。")
       return
     }
 
     let range = clamped(selectedRange, length: (editorBody as NSString).length)
     guard range.length > 0 else {
-      selectionActionMessage = "请先选择要替换的正文。"
+      selectionActionMessage = String(localized: "请先选择要替换的正文。")
       return
     }
 
@@ -413,7 +413,7 @@ extension MacMarkdownComposerView {
       mode: .replaceSelection,
       selectionRange: range
     ) else {
-      selectionActionMessage = "AI 回复为空或选区无效。"
+      selectionActionMessage = String(localized: "AI 回复为空或选区无效。")
       return
     }
 
@@ -485,7 +485,7 @@ extension MacMarkdownComposerView {
       selectionEditPreview = nil
       isInlineSelectionAIAction = false
       activeWritingContextPanel = hasSelectedText ? .selectionTools : nil
-      selectionActionMessage = "\(preview.kind.localizedDisplayName)已应用。"
+      selectionActionMessage = String(localized: "\(preview.kind.localizedDisplayName)已应用。")
     } catch {
       selectionActionMessage = error.localizedDescription
     }
@@ -495,7 +495,7 @@ extension MacMarkdownComposerView {
     selectionEditPreview = nil
     isInlineSelectionAIAction = false
     activeWritingContextPanel = hasSelectedText ? .selectionTools : nil
-    selectionActionMessage = "已丢弃 AI 预览。"
+    selectionActionMessage = String(localized: "已丢弃 AI 预览。")
   }
 
   private func recordKnowledgeCitations(
