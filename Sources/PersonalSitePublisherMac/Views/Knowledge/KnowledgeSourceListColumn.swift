@@ -2,6 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct KnowledgeSourceListColumn: View {
+  @Environment(\.workbenchAccentColor) var workbenchAccentColor
   @EnvironmentObject private var sceneCommandRouter: WorkspaceSceneCommandRouter
   @ObservedObject private var externalImport = ExternalKnowledgeImportCoordinator.shared
   @State private var sceneCommandOwnerID = UUID()

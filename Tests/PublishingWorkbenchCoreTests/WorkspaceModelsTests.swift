@@ -55,23 +55,22 @@ final class WorkspaceModelsTests: XCTestCase {
     XCTAssertEqual(WorkspaceNavigationPresentation.defaultSection, .writing)
     XCTAssertEqual(
       WorkspaceNavigationPresentation.commandMenuItems.map(\.section),
-      [.writing, .library, .rss, .sync, .contentHealth]
+      [.writing, .library, .rss, .sync, .contentHealth, .images]
     )
     XCTAssertEqual(
       WorkspaceNavigationPresentation.commandMenuItems.map(\.displayNameLocalizationKey),
       [
-        "workspace.writing.page", "workspace.library", "workspace.rss", "workspace.sync.page",
-        "workspace.contentHealth",
+        "workspace.writing", "workspace.library", "workspace.rss", "workspace.sync",
+        "workspace.contentHealth", "workspace.images",
       ]
     )
     XCTAssertEqual(
       WorkspaceNavigationPresentation.commandMenuItems.map(\.keyboardShortcutLabel),
-      ["⌘1", "⌘2", "⌘3", "⌘4", "⌘5"]
+      ["⌘1", "⌘2", "⌘3", "⌘4", "⌘5", "⌘6"]
     )
-    XCTAssertEqual(WorkspaceVisibilityPolicy.siteResourceSections, [.images])
     XCTAssertEqual(
       WorkspaceNavigationPresentation.commandPaletteSections,
-      [.writing, .library, .rss, .sync, .contentHealth]
+      [.writing, .library, .rss, .sync, .contentHealth, .images]
     )
   }
 
@@ -99,8 +98,8 @@ final class WorkspaceModelsTests: XCTestCase {
 
     XCTAssertEqual(sections, WorkspaceVisibilityPolicy.commandPaletteSections)
     XCTAssertEqual(Set(sections).count, sections.count)
-    XCTAssertFalse(sections.contains(.images))
-    XCTAssertTrue(Set(sections).isDisjoint(with: WorkspaceVisibilityPolicy.siteResourceSections))
+    XCTAssertTrue(sections.contains(.images))
+    XCTAssertEqual(sections, WorkspaceVisibilityPolicy.commandMenuPrimarySections)
   }
 
   func testEveryWorkspaceSectionHasAnExplicitCenterSurfaceRoute() {

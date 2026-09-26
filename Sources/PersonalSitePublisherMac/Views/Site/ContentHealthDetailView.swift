@@ -3,6 +3,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct ContentHealthDetailView: View {
+  @Environment(\.workbenchAccentColor) var workbenchAccentColor
   let store: WorkbenchStore
   @Binding var filter: ContentHealthContextFilter
   let sidebarProjection: ContentHealthSidebarProjection
@@ -285,7 +286,7 @@ struct ContentHealthDetailView: View {
       }
     }
     .pickerStyle(.segmented)
-    .tint(WorkbenchTheme.navigationSelection)
+    .tint(workbenchAccentColor)
     .labelsHidden()
     .frame(minWidth: 220, maxWidth: 280)
     .accessibilityLabel("严重级别筛选")

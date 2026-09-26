@@ -18,15 +18,15 @@ enum DraftListFilter: String, CaseIterable, Identifiable {
   var displayName: String {
     switch self {
     case .all:
-      return "全部任务"
+      return "全部文章"
     case .draft:
-      return "待写作"
+      return "草稿"
     case .checkFailed:
       return "检查失败"
     case .ready:
       return "待发布"
     case .published:
-      return "已上线"
+      return "已发布"
     case .privateArticles:
       return "私密文章"
     }

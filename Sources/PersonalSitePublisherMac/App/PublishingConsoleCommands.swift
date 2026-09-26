@@ -93,18 +93,33 @@ struct PublishingConsoleCommands: Commands {
       Menu(String(localized: "查找与搜索")) {
         findAndSearchCommands
       }
-
-      Menu(String(localized: "Markdown 编辑")) {
-        markdownEditingCommands
-      }
-      .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
     }
 
-    CommandGroup(after: .sidebar) {
+    PublishingConsoleMarkdownCommands(
+      store: store,
+      installSoftwareGuides: { installSoftwareGuidesFromHelp() },
+      exportRedactedDiagnostics: { exportRedactedDiagnostics() }
+    )
+
+    CommandGroup(replacing: .sidebar) {
+      Button(
+        commandRouter?.workspaceSidebarCommandAction?.title
+          ?? String(localized: "显示侧栏")
+      ) {
+        commandRouter?.workspaceSidebarCommandAction?.toggle()
+      }
+      .keyboardShortcut("s", modifiers: [.command, .control])
+      .disabled(
+        !canUseWorkspaceNavigation
+          || commandRouter?.workspaceSidebarCommandAction?.canToggle != true
+      )
+
+      Divider()
+
       Button(
         workspaceFocusModeCommandAction?.isActive == true
-          ? String(localized: "退出禅意专注")
-          : String(localized: "禅意专注写作")
+          ? String(localized: "退出专注模式")
+          : String(localized: "专注模式")
       ) {
         workspaceFocusModeCommandAction?.toggle()
       }
@@ -140,9 +155,11 @@ struct PublishingConsoleCommands: Commands {
           : String(localized: "快速隐藏")
       ) {
         if presentation.isQuickHideActive {
-          store.deactivateQuickHide()
+          Task { @MainActor in
+            _ = await QuickHideUnlockCoordinator.unlock(store)
+          }
         } else {
-          store.activateQuickHide(reason: "已手动快速隐藏工作台内容。")
+          store.activateQuickHide(reason: String(localized: "已手动快速隐藏工作台内容。"))
         }
       }
       .keyboardShortcut("l", modifiers: [.command, .control])
@@ -167,7 +184,7 @@ struct PublishingConsoleCommands: Commands {
         openWindow(id: "operation-log")
       }
       .keyboardShortcut("l", modifiers: [.command, .option])
-      .disabled(!canUseProtectedWorkbench)
+      .disabled(!canUseWorkspaceNavigation)
 
       Divider()
 
@@ -175,7 +192,7 @@ struct PublishingConsoleCommands: Commands {
         workspaceCommandPaletteAction?.open()
       }
       .keyboardShortcut("k", modifiers: [.command, .shift])
-      .disabled(!canUseProtectedWorkbench || workspaceCommandPaletteAction == nil)
+      .disabled(!canUseWorkspaceNavigation || workspaceCommandPaletteAction == nil)
 
       Menu(String(localized: "切换工作区")) {
         ForEach(WorkspaceNavigationPresentation.commandMenuItems) { item in
@@ -183,7 +200,7 @@ struct PublishingConsoleCommands: Commands {
             store.selectSection(item.section)
           }
           .keyboardShortcut(KeyEquivalent(item.keyboardShortcutKey), modifiers: [.command])
-          .disabled(!canUseProtectedWorkbench)
+          .disabled(!canUseWorkspaceNavigation)
         }
 
       }
@@ -198,17 +215,17 @@ struct PublishingConsoleCommands: Commands {
         workspaceCommandPaletteAction?.openMaintenance()
       }
       .keyboardShortcut("7")
-      .disabled(!canUseProtectedWorkbench || workspaceCommandPaletteAction == nil)
+      .disabled(!canUseWorkspaceNavigation || workspaceCommandPaletteAction == nil)
     }
 
     CommandMenu(String(localized: "发布")) {
       Button(String(localized: "发布所有变更…")) {
-        openPublishDrawerForCommandDraft(
+        openPublishDrawerForAllChanges(
           message: String(localized: "发布中心已打开；默认操作为发布所有变更，也可以仅发布当前文章。")
         )
       }
       .keyboardShortcut("p", modifiers: [.command, .option])
-      .disabled(!canUseProtectedWorkbench || commandDraftID == nil)
+      .disabled(!canUseWorkspaceNavigation || publishDrawerCommandAction == nil)
 
       Button(String(localized: "运行发布检查")) {
         runPreflightForCommandDraft()
@@ -239,7 +256,7 @@ struct PublishingConsoleCommands: Commands {
         workspaceCommandPaletteAction?.openReleaseHistory()
       }
       .keyboardShortcut("8")
-      .disabled(!canUseProtectedWorkbench || workspaceCommandPaletteAction == nil)
+      .disabled(!canUseWorkspaceNavigation || workspaceCommandPaletteAction == nil)
     }
 
     CommandMenu(String(localized: "AI")) {
@@ -267,30 +284,14 @@ struct PublishingConsoleCommands: Commands {
       .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
     }
 
-    CommandGroup(after: .help) {
-      Button(String(localized: "查看快捷键说明")) {
-        markdownEditorCommands?.showKeyboardShortcuts()
-      }
-      .keyboardShortcut("/", modifiers: [.command, .option])
-      .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
-
-      Divider()
-
-      Button(String(localized: "添加软件使用指南")) {
-        installSoftwareGuidesFromHelp()
-      }
-      .disabled(!canUseProtectedWorkbench)
-
-      Button(String(localized: "导出脱敏诊断包…")) {
-        exportRedactedDiagnostics()
-      }
-      .disabled(!canUseProtectedWorkbench)
-
-    }
   }
 
   private var canUseProtectedWorkbench: Bool {
     presentation.canUseProtectedWorkbench
+  }
+
+  private var canUseWorkspaceNavigation: Bool {
+    canUseProtectedWorkbench && settingsWorkspaceCommandAction?.isPresented != true
   }
 
   private var markdownEditorCommands: MarkdownEditorCommandActions? {
@@ -457,53 +458,6 @@ struct PublishingConsoleCommands: Commands {
   }
 
   @ViewBuilder
-  private var markdownEditingCommands: some View {
-    Button(String(localized: "Markdown 加粗")) {
-      markdownEditorCommands?.applyFormatting(.bold)
-    }
-    .keyboardShortcut("b", modifiers: [.command])
-
-    Button(String(localized: "Markdown 斜体")) {
-      markdownEditorCommands?.applyFormatting(.italic)
-    }
-    .keyboardShortcut("i", modifiers: [.command])
-
-    Button(String(localized: "插入 Markdown 链接")) {
-      markdownEditorCommands?.applyFormatting(.link)
-    }
-    .keyboardShortcut("k", modifiers: [.command])
-
-    Menu(String(localized: "Markdown 标题")) {
-      Button(String(localized: "一级标题")) {
-        markdownEditorCommands?.applyFormatting(.heading(level: 1))
-      }
-      .keyboardShortcut("1", modifiers: [.command, .option])
-
-      Button(String(localized: "二级标题")) {
-        markdownEditorCommands?.applyFormatting(.heading(level: 2))
-      }
-      .keyboardShortcut("2", modifiers: [.command, .option])
-
-      Button(String(localized: "三级标题")) {
-        markdownEditorCommands?.applyFormatting(.heading(level: 3))
-      }
-      .keyboardShortcut("3", modifiers: [.command, .option])
-    }
-
-    Divider()
-
-    Button(String(localized: "插入图片到当前文章")) {
-      markdownEditorCommands?.insertImages()
-    }
-    .keyboardShortcut("i", modifiers: [.command, .shift])
-
-    Button(String(localized: "模板与片段")) {
-      markdownEditorCommands?.showSnippets()
-    }
-    .keyboardShortcut("s", modifiers: [.command, .option])
-  }
-
-  @ViewBuilder
   private var articleNavigationCommands: some View {
     if let rssReaderCommands {
       Button(String(localized: "上一条 RSS 文章")) {
@@ -523,7 +477,7 @@ struct PublishingConsoleCommands: Commands {
       Button(String(localized: "收藏/取消收藏 RSS 文章")) {
         commandRouter?.rssReaderCommandActions?.toggleStarred()
       }
-      .keyboardShortcut("s", modifiers: [.command, .control])
+      .keyboardShortcut("b", modifiers: [.command, .control])
       .disabled(!rssReaderCommands.canActOnArticle)
 
       Button(String(localized: "标记 RSS 文章已读/未读")) {
@@ -629,13 +583,6 @@ struct PublishingConsoleCommands: Commands {
     WorkspaceInspectorPresentation.supportsInspector(for: presentation.selectedSection)
   }
 
-  private func focusCommandDraft(section: WorkspaceSection? = nil) {
-    guard let draftID = commandDraftID else {
-      return
-    }
-    _ = store.focusDraft(draftID, section: section)
-  }
-
   private func saveCurrentContent() {
     if let repositorySourceEditorCommands {
       repositorySourceEditorCommands.save()
@@ -662,10 +609,9 @@ struct PublishingConsoleCommands: Commands {
 
   private func chooseSiteRepository() {
     store.selectSection(.sync)
-    if let url = RepositorySelectionPanel.chooseDirectory() {
-      Task {
-        await store.repository.rememberRootAsync(url)
-      }
+    Task {
+      guard let url = await RepositorySelectionPanel.chooseDirectory() else { return }
+      await store.repository.rememberRootAsync(url)
     }
   }
 
@@ -701,15 +647,15 @@ struct PublishingConsoleCommands: Commands {
     alert.alertStyle = .informational
     alert.messageText = message
     alert.addButton(withTitle: String(localized: "关闭"))
-    alert.runModal()
+    Task { _ = await WindowSheetPresenter.response(to: alert) }
   }
 
   private func exportRedactedDiagnostics() {
-    guard let directoryURL = WorkbenchDiagnosticsSelectionPanel.chooseExportDirectory() else {
-      return
-    }
-    do {
-      let archiveURL = try store.exportRedactedDiagnostics(
+    Task {
+      guard let directoryURL = await WorkbenchDiagnosticsSelectionPanel.chooseExportDirectory()
+      else { return }
+      do {
+        let archiveURL = try store.exportRedactedDiagnostics(
         to: directoryURL,
         appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
           as? String
@@ -717,20 +663,21 @@ struct PublishingConsoleCommands: Commands {
         buildVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
           ?? "unknown"
       )
-      NSWorkspace.shared.activateFileViewerSelecting([archiveURL])
-      let alert = NSAlert()
-      alert.alertStyle = .informational
-      alert.messageText = String(localized: "脱敏诊断包已导出")
-      alert.informativeText = archiveURL.lastPathComponent
-      alert.addButton(withTitle: String(localized: "关闭"))
-      alert.runModal()
-    } catch {
-      let alert = NSAlert()
-      alert.alertStyle = .warning
-      alert.messageText = String(localized: "导出脱敏诊断包失败")
-      alert.informativeText = error.localizedDescription
-      alert.addButton(withTitle: String(localized: "关闭"))
-      alert.runModal()
+        NSWorkspace.shared.activateFileViewerSelecting([archiveURL])
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = String(localized: "脱敏诊断包已导出")
+        alert.informativeText = archiveURL.lastPathComponent
+        alert.addButton(withTitle: String(localized: "关闭"))
+        _ = await WindowSheetPresenter.response(to: alert)
+      } catch {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = String(localized: "导出脱敏诊断包失败")
+        alert.informativeText = error.localizedDescription
+        alert.addButton(withTitle: String(localized: "关闭"))
+        _ = await WindowSheetPresenter.response(to: alert)
+      }
     }
   }
 
@@ -776,16 +723,10 @@ struct PublishingConsoleCommands: Commands {
     }
   }
 
-  private func openPublishDrawerForCommandDraft(message: String) {
-    guard commandDraftID != nil else {
-      return
-    }
-    focusCommandDraft()
+  private func openPublishDrawerForAllChanges(message: String) {
+    guard canUseWorkspaceNavigation else { return }
     if let publishDrawerCommandAction {
       publishDrawerCommandAction.open(message)
-    } else {
-      store.runPreflight()
-      store.setPublishActionMessage(message, status: .information)
     }
   }
 
@@ -797,13 +738,116 @@ struct PublishingConsoleCommands: Commands {
       )
       return
     }
-    copyToPasteboard(plan.commandText, successMessage: "已复制同步建议命令。")
+    copyToPasteboard(plan.commandText, successMessage: String(localized: "已复制同步建议命令。"))
   }
 
   private func copyToPasteboard(_ value: String, successMessage: String) {
     ClipboardWriter.copy(value, successMessage: successMessage) { message, status in
       store.setPublishActionMessage(message, status: status)
     }
+  }
+}
+
+/// Kept in its own Commands value so the main scene command builder stays
+/// within SwiftUI's top-level command count limit.
+struct PublishingConsoleMarkdownCommands: Commands {
+  let store: WorkbenchStore
+  let installSoftwareGuides: () -> Void
+  let exportRedactedDiagnostics: () -> Void
+  @ObservedObject private var presentation: WorkbenchCommandPresentationFeatureFacade
+  @FocusedObject private var commandRouter: WorkspaceSceneCommandRouter?
+
+  init(
+    store: WorkbenchStore,
+    installSoftwareGuides: @escaping () -> Void,
+    exportRedactedDiagnostics: @escaping () -> Void
+  ) {
+    self.store = store
+    self.installSoftwareGuides = installSoftwareGuides
+    self.exportRedactedDiagnostics = exportRedactedDiagnostics
+    _presentation = ObservedObject(wrappedValue: store.commandPresentation)
+  }
+
+  var body: some Commands {
+    CommandMenu(String(localized: "格式")) {
+      markdownEditingCommands
+        .disabled(!presentation.canUseProtectedWorkbench || markdownEditorCommands == nil)
+    }
+
+    CommandGroup(after: .help) {
+      Button(String(localized: "查看快捷键说明")) {
+        if let showShortcutHelp = commandRouter?.showShortcutHelp {
+          showShortcutHelp()
+        } else {
+          markdownEditorCommands?.showKeyboardShortcuts()
+        }
+      }
+      .keyboardShortcut("/", modifiers: [.command, .option])
+      .disabled(commandRouter?.showShortcutHelp == nil && markdownEditorCommands == nil)
+
+      Divider()
+
+      Button(String(localized: "添加软件使用指南")) {
+        installSoftwareGuides()
+      }
+      .disabled(!presentation.canUseProtectedWorkbench)
+
+      Button(String(localized: "导出脱敏诊断包…")) {
+        exportRedactedDiagnostics()
+      }
+      .disabled(!presentation.canUseProtectedWorkbench)
+    }
+  }
+
+  private var markdownEditorCommands: MarkdownEditorCommandActions? {
+    commandRouter?.markdownEditorCommandActions
+  }
+
+  @ViewBuilder
+  private var markdownEditingCommands: some View {
+    Button(String(localized: "Markdown 加粗")) {
+      markdownEditorCommands?.applyFormatting(.bold)
+    }
+    .keyboardShortcut("b", modifiers: [.command])
+
+    Button(String(localized: "Markdown 斜体")) {
+      markdownEditorCommands?.applyFormatting(.italic)
+    }
+    .keyboardShortcut("i", modifiers: [.command])
+
+    Button(String(localized: "插入 Markdown 链接")) {
+      markdownEditorCommands?.applyFormatting(.link)
+    }
+    .keyboardShortcut("k", modifiers: [.command])
+
+    Menu(String(localized: "Markdown 标题")) {
+      Button(String(localized: "一级标题")) {
+        markdownEditorCommands?.applyFormatting(.heading(level: 1))
+      }
+      .keyboardShortcut("1", modifiers: [.command, .option])
+
+      Button(String(localized: "二级标题")) {
+        markdownEditorCommands?.applyFormatting(.heading(level: 2))
+      }
+      .keyboardShortcut("2", modifiers: [.command, .option])
+
+      Button(String(localized: "三级标题")) {
+        markdownEditorCommands?.applyFormatting(.heading(level: 3))
+      }
+      .keyboardShortcut("3", modifiers: [.command, .option])
+    }
+
+    Divider()
+
+    Button(String(localized: "插入图片到当前文章")) {
+      markdownEditorCommands?.insertImages()
+    }
+    .keyboardShortcut("i", modifiers: [.command, .shift])
+
+    Button(String(localized: "模板与片段")) {
+      markdownEditorCommands?.showSnippets()
+    }
+    .keyboardShortcut("s", modifiers: [.command, .option])
   }
 }
 

@@ -24,6 +24,7 @@ private struct RSSLibraryInspectorEntry: Identifiable {
 }
 
 struct RSSLibraryInspectorPanel: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @ObservedObject var rssStore: RSSReaderStore
   let workbenchStore: WorkbenchStore
   @State private var dragStyle: KnowledgeArticleInsertionStyle = .blockquote
@@ -139,7 +140,7 @@ struct RSSLibraryInspectorPanel: View {
             .foregroundStyle(
               entry.highlight == nil
                 ? WorkbenchTheme.warning
-                : WorkbenchTheme.navigationSelection
+                : workbenchAccentColor
             )
             .frame(width: 16)
 

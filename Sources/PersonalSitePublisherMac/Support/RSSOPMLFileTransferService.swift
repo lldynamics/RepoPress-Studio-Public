@@ -14,7 +14,7 @@ enum RSSOPMLFileTransferService {
     let excludedSubscriptionCount: Int
   }
 
-  static func importOPML(into store: RSSReaderStore) throws -> ImportResult? {
+  static func importOPML(into store: RSSReaderStore) async throws -> ImportResult? {
     let panel = NSOpenPanel()
     panel.allowedContentTypes = [
       .xml,
@@ -23,11 +23,13 @@ enum RSSOPMLFileTransferService {
     panel.allowsMultipleSelection = false
     panel.canChooseDirectories = false
     panel.canChooseFiles = true
-    guard panel.runModal() == .OK, let url = panel.url else { return nil }
+    guard await WindowSheetPresenter.response(to: panel) == .OK, let url = panel.url else {
+      return nil
+    }
 
     let values = try url.resourceValues(forKeys: [.fileSizeKey])
     guard (values.fileSize ?? 0) <= 5 * 1024 * 1024 else {
-      throw RSSReaderError.invalidOPML("文件超过 5 MB")
+      throw RSSReaderError.invalidOPML(String(localized: "文件超过 5 MB"))
     }
     let originalData = try Data(contentsOf: url)
     let subscriptions = try RSSOPMLParser.parse(data: originalData)
@@ -47,7 +49,7 @@ enum RSSOPMLFileTransferService {
       alert.addButton(withTitle: String(localized: "脱敏后导入"))
       alert.addButton(withTitle: String(localized: "排除后导入"))
       alert.addButton(withTitle: String(localized: "取消"))
-      switch alert.runModal() {
+      switch await WindowSheetPresenter.response(to: alert) {
       case .alertFirstButtonReturn:
         importData = try RSSOPMLWriter.prepareDocument(
           subscriptions: subscriptions,
@@ -69,7 +71,7 @@ enum RSSOPMLFileTransferService {
     for subscription in importedSubscriptions {
       if let siteURL = subscription.siteURL,
          RSSSubscriptionURLPrivacy.containsUserInfo(siteURL) {
-        throw RSSReaderError.invalidOPML("站点地址不得包含 URL 用户名或密码。")
+        throw RSSReaderError.invalidOPML(String(localized: "站点地址不得包含 URL 用户名或密码。"))
       }
     }
     let feedIDs = try importedSubscriptions.map { subscription in
@@ -82,9 +84,9 @@ enum RSSOPMLFileTransferService {
     return ImportResult(feedIDs: feedIDs)
   }
 
-  static func exportOPML(from store: RSSReaderStore) throws -> ExportResult? {
+  static func exportOPML(from store: RSSReaderStore) async throws -> ExportResult? {
     guard !store.feeds.isEmpty else {
-      throw RSSReaderError.invalidOPML("没有可导出的 RSS 订阅。")
+      throw RSSReaderError.invalidOPML(String(localized: "没有可导出的 RSS 订阅。"))
     }
 
     let subscriptions = store.feeds.map {
@@ -92,7 +94,9 @@ enum RSSOPMLFileTransferService {
     }
     let riskReport = RSSOPMLWriter.scanExportRisks(subscriptions: subscriptions)
     guard !riskReport.hasBlockingUserInfo else {
-      throw RSSReaderError.invalidOPML("订阅地址包含 URL 用户名或密码，请先修改地址。")
+      throw RSSReaderError.invalidOPML(
+        String(localized: "订阅地址包含 URL 用户名或密码，请先修改地址。")
+      )
     }
 
     let privacyAction: RSSOPMLExportPrivacyAction
@@ -109,7 +113,7 @@ enum RSSOPMLFileTransferService {
       alert.addButton(withTitle: String(localized: "脱敏导出"))
       alert.addButton(withTitle: String(localized: "排除风险订阅"))
       alert.addButton(withTitle: String(localized: "取消"))
-      switch alert.runModal() {
+      switch await WindowSheetPresenter.response(to: alert) {
       case .alertFirstButtonReturn:
         privacyAction = .redactCredentialQueryValues
       case .alertSecondButtonReturn:
@@ -134,7 +138,9 @@ enum RSSOPMLFileTransferService {
     panel.canCreateDirectories = true
     panel.isExtensionHidden = false
     panel.nameFieldStringValue = "rss-subscriptions.opml"
-    guard panel.runModal() == .OK, let selectedURL = panel.url else { return nil }
+    guard await WindowSheetPresenter.response(to: panel) == .OK, let selectedURL = panel.url else {
+      return nil
+    }
 
     let destinationURL = selectedURL.pathExtension.isEmpty
       ? selectedURL.appendingPathExtension("opml")

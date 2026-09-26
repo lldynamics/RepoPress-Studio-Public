@@ -10,7 +10,7 @@ extension UTType {
 
 enum NotesPackageSelectionPanel {
   @MainActor
-  static func chooseExportDestination() -> URL? {
+  static func chooseExportDestination() async -> URL? {
     let panel = NSSavePanel()
     panel.title = String(localized: "导出笔记")
     panel.prompt = String(localized: "导出")
@@ -23,11 +23,11 @@ enum NotesPackageSelectionPanel {
     formatter.locale = Locale(identifier: "zh_CN")
     formatter.dateFormat = "yyyy-MM-dd"
     panel.nameFieldStringValue = "RepoPress-笔记-\(formatter.string(from: Date())).rpnotes"
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 
   @MainActor
-  static func chooseImportPackage() -> URL? {
+  static func chooseImportPackage() async -> URL? {
     let panel = NSOpenPanel()
     panel.title = String(localized: "导入笔记")
     panel.prompt = String(localized: "验证并预览")
@@ -36,11 +36,11 @@ enum NotesPackageSelectionPanel {
     panel.canChooseFiles = true
     panel.canChooseDirectories = false
     panel.allowsMultipleSelection = false
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 
   @MainActor
-  static func chooseSnapshotPackage() -> URL? {
+  static func chooseSnapshotPackage() async -> URL? {
     let panel = NSOpenPanel()
     panel.title = String(localized: "选择要恢复的笔记快照")
     panel.prompt = String(localized: "预览恢复")
@@ -49,11 +49,11 @@ enum NotesPackageSelectionPanel {
     panel.canChooseFiles = true
     panel.canChooseDirectories = false
     panel.allowsMultipleSelection = false
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 
   @MainActor
-  static func chooseSnapshotDirectory() -> URL? {
+  static func chooseSnapshotDirectory() async -> URL? {
     let panel = NSOpenPanel()
     panel.title = String(localized: "选择笔记快照文件夹")
     panel.prompt = String(localized: "选择文件夹")
@@ -61,6 +61,6 @@ enum NotesPackageSelectionPanel {
     panel.canChooseFiles = false
     panel.canChooseDirectories = true
     panel.allowsMultipleSelection = false
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 }

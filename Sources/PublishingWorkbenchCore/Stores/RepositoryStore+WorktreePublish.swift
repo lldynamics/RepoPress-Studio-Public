@@ -16,7 +16,7 @@ extension RepositoryStore {
     commitMessage: String = "Publish all site changes"
   ) async -> RepositoryWorktreePublishConfirmation? {
     guard store.canUseProtectedWorkbench else {
-      store.setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
+      store.setGitActionMessage(store.quickHideOperationMessage, status: .warning)
       return nil
     }
     guard !isRemoteRepositoryPublishing,
@@ -24,7 +24,7 @@ extension RepositoryStore {
       !isLocalRepositoryBranchOperationRunning,
       !store.isLocalRepositoryMutationRunning
     else {
-      store.setPublishActionMessage(
+      store.setGitActionMessage(
         CoreL10n.text("已有仓库操作正在运行，请等待完成。"),
         status: .warning
       )
@@ -36,7 +36,7 @@ extension RepositoryStore {
       return nil
     }
     guard !Task.isCancelled, store.activeProfileID == profile.id else {
-      store.setPublishActionMessage(
+      store.setGitActionMessage(
         CoreL10n.text("站点已切换，请重新审阅全部文件。"),
         status: .warning
       )
@@ -44,7 +44,7 @@ extension RepositoryStore {
     }
     let service = RepositoryWorktreePublishService()
     let articleDraft = store.selectedDraft
-    store.setPublishActionMessage(
+    store.setGitActionMessage(
       CoreL10n.text("正在核对仓库全部待提交文件与远端分支…"),
       status: .inProgress
     )
@@ -53,13 +53,13 @@ extension RepositoryStore {
         try service.prepare(profile: profile, commitMessage: commitMessage, articleDraft: articleDraft)
       }.value
       guard store.activeProfileID == profile.id else {
-        store.setPublishActionMessage(
+        store.setGitActionMessage(
           CoreL10n.text("站点已切换，请重新审阅全部文件。"),
           status: .warning
         )
         return nil
       }
-      store.setPublishActionMessage(
+      store.setGitActionMessage(
         CoreL10n.format(
           "已冻结 %@ 个待推送文件，请确认完整清单。",
           String(confirmation.snapshot.entries.count)
@@ -68,7 +68,7 @@ extension RepositoryStore {
       )
       return confirmation
     } catch {
-      store.setPublishActionMessage(error.localizedDescription, status: .failure)
+      store.setGitActionMessage(error.localizedDescription, status: .failure)
       return nil
     }
   }
@@ -81,7 +81,7 @@ extension RepositoryStore {
     store: WorkbenchStore
   ) async -> RepositoryWorktreePublishResult? {
     guard store.canUseProtectedWorkbench else {
-      store.setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
+      store.setGitActionMessage(store.quickHideOperationMessage, status: .warning)
       return nil
     }
     guard !isRemoteRepositoryPublishing,
@@ -89,7 +89,7 @@ extension RepositoryStore {
       !isLocalRepositoryBranchOperationRunning,
       !store.isLocalRepositoryMutationRunning
     else {
-      store.setPublishActionMessage(
+      store.setGitActionMessage(
         CoreL10n.text("已有仓库操作正在运行，请等待完成。"),
         status: .warning
       )
@@ -98,7 +98,7 @@ extension RepositoryStore {
 
     let profile = store.activeProfile
     guard activeDraftFilesAreStable(store: store, profileID: profile.id) else {
-      store.setPublishActionMessage(
+      store.setGitActionMessage(
         CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。"),
         status: .warning
       )
@@ -106,7 +106,7 @@ extension RepositoryStore {
     }
     let service = RepositoryWorktreePublishService()
     isRemoteRepositoryPublishing = true
-    store.setPublishActionMessage(
+    store.setGitActionMessage(
       CoreL10n.format(
         "正在提交并推送 %@ 个已审阅文件…",
         String(confirmation.snapshot.entries.count)
@@ -120,7 +120,7 @@ extension RepositoryStore {
         try service.publish(profile: profile, confirmation: confirmation)
       }.value
       store.recordConfirmedWorktreePush(result, profile: profile, article: confirmation.articleVerificationTarget)
-      store.setPublishActionMessage(
+      store.setGitActionMessage(
         CoreL10n.format(
           "Git 推送已确认：仓库全部 %@ 个文件变更已到达 %@（提交 %@）。本次只确认仓库推送，网站部署与线上页面仍需另行验证。",
           String(confirmation.snapshot.entries.count),
@@ -140,13 +140,13 @@ extension RepositoryStore {
       } else {
         status = .failure
       }
-      store.setPublishActionMessage(error.localizedDescription, status: status)
+      store.setGitActionMessage(error.localizedDescription, status: status)
       if store.activeProfileID == profile.id {
         await scanRepositoryAsync(store: store)
       }
       return nil
     } catch {
-      store.setPublishActionMessage(error.localizedDescription, status: .failure)
+      store.setGitActionMessage(error.localizedDescription, status: .failure)
       return nil
     }
   }
@@ -176,7 +176,7 @@ extension RepositoryStore {
 
     if !dirtyDraftIDs.isEmpty {
       guard let repositoryRootURL = profile.localRepositoryRootURL else {
-        store.setPublishActionMessage(
+        store.setGitActionMessage(
           CoreL10n.text("未选择本地仓库。"),
           status: .failure
         )
@@ -200,7 +200,7 @@ extension RepositoryStore {
       }.value.sorted()
       guard !Task.isCancelled, store.activeProfileID == profile.id else { return false }
       guard externallyChangedPaths.isEmpty else {
-        store.setPublishActionMessage(
+        store.setGitActionMessage(
           CoreL10n.format(
             "检测到外部修改，已停止自动恢复并保留当前文件：%@",
             externallyChangedPaths.joined(separator: "、")
@@ -220,7 +220,7 @@ extension RepositoryStore {
       store.activeProfileID == profile.id,
       activeDraftFilesAreStable(store: store, profileID: profile.id)
     else {
-      store.setPublishActionMessage(
+      store.setGitActionMessage(
         CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。"),
         status: .warning
       )

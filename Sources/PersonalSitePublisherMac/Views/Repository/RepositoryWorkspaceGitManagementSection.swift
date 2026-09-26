@@ -2,6 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct RepositoryWorkspaceGitManagementSection: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let store: WorkbenchStore
   @ObservedObject private var workspaceObservation:
     WorkbenchRepositoryWorkspaceObservationFacade
@@ -156,7 +157,7 @@ struct RepositoryWorkspaceGitManagementSection: View {
       if branch.isCurrent {
         Label("当前", systemImage: "checkmark.circle.fill")
           .font(.caption)
-          .foregroundStyle(WorkbenchTheme.navigationSelection)
+          .foregroundStyle(workbenchAccentColor)
       } else {
         Button("切换") {
           Task {

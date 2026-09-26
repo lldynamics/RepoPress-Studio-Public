@@ -74,7 +74,7 @@ extension AIChatContextInspectorView {
         HStack(spacing: 6) {
           Image(systemName: "sparkles")
             .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(workbenchAccentColor)
 
           Text(conversationNavigationTitle)
             .font(.subheadline.weight(.semibold))

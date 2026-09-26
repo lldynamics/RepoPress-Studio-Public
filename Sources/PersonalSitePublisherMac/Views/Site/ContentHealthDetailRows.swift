@@ -36,7 +36,7 @@ extension ContentHealthDetailView {
         .fill(
           isSelected
             ? AnyShapeStyle(
-              WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.selectionBackground))
+              workbenchAccentColor.opacity(WorkbenchOpacity.selectionBackground))
             : WorkbenchBackgroundStyle.card
         )
     }
@@ -88,7 +88,7 @@ extension ContentHealthDetailView {
       }
       if isSelected {
         Image(systemName: "sidebar.right")
-          .foregroundStyle(WorkbenchTheme.navigationSelection)
+          .foregroundStyle(workbenchAccentColor)
           .font(.caption.weight(.semibold))
           .accessibilityHidden(true)
       }

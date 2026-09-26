@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsNavigationList: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let searchText: String
   let searchItems: [SettingsSearchItem]
   var groups: [SettingsTaskGroup] = SettingsTaskGroup.allCases
@@ -108,7 +109,7 @@ struct SettingsNavigationList: View {
     let needsAttention = tabsNeedingAttention.contains(tab)
     return HStack(spacing: WorkbenchSpacing.control) {
       Image(systemName: tab.systemImage)
-        .foregroundStyle(selection.tab == tab ? Color.accentColor : Color.secondary)
+        .foregroundStyle(selection.tab == tab ? workbenchAccentColor : Color.secondary)
         .frame(width: 18)
         .accessibilityHidden(true)
 

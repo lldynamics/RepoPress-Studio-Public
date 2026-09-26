@@ -280,7 +280,7 @@ public struct WorkspaceNavigationItem: Identifiable, Hashable, Sendable {
 
   public init(section: WorkspaceSection) {
     self.section = section
-    self.displayNameLocalizationKey = section.navigationPageLocalizationKey
+    self.displayNameLocalizationKey = section.displayNameLocalizationKey
     self.detailLocalizationKey = section.detailLocalizationKey
     self.systemImage = section.systemImage
     self.keyboardShortcutKey = section.keyboardShortcutKey
@@ -296,23 +296,10 @@ public enum WorkspaceVisibilityPolicy {
     .rss,
     .sync,
     .contentHealth,
+    .images,
   ]
 
-  /// Feature workspaces reached from their owning primary workspace rather
-  /// than presented as another top-level destination.
-  public static let siteResourceSections: [WorkspaceSection] = [
-    .images
-  ]
-
-  /// Keep this independent from `allCases`; context-only subpages are routed
-  /// by their owning workspace and are not command-palette workspaces.
-  public static let commandPaletteSections: [WorkspaceSection] = [
-    .writing,
-    .library,
-    .rss,
-    .sync,
-    .contentHealth,
-  ]
+  public static let commandPaletteSections = commandMenuPrimarySections
 }
 
 public enum WorkspaceNavigationPresentation {

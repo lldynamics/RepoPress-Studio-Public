@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct RemoteRepositoryCreationConfirmationView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let providerName: String
   let owner: String
   let repositoryName: String
@@ -60,7 +61,7 @@ struct RemoteRepositoryCreationConfirmationView: View {
             Text("公开").tag(false)
           }
           .pickerStyle(.segmented)
-          .tint(WorkbenchTheme.navigationSelection)
+          .tint(workbenchAccentColor)
 
           if !createsPrivateRepository {
             Label {

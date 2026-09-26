@@ -80,7 +80,7 @@ extension RepositoryWorkspaceView {
                           source: .remote,
                           file: file
                         )
-                        copy(lineDiff, message: "已复制远端 diff。")
+                        copy(lineDiff, message: String(localized: "已复制远端 diff。"))
                       } label: {
                         Label("复制远端 diff", systemImage: "doc.text.magnifyingglass")
                       }
@@ -199,7 +199,7 @@ extension RepositoryWorkspaceView {
 
       Button {
         changedFileSelection = RepositoryChangedFileSelection(source: .remote, file: file)
-        copy(file.displayPath, message: "已复制远端路径。")
+        copy(file.displayPath, message: String(localized: "已复制远端路径。"))
       } label: {
         Label("复制路径", systemImage: "doc.on.doc")
       }

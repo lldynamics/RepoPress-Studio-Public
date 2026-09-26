@@ -377,7 +377,7 @@ extension ReleaseHistoryDetailView {
   ) -> some View {
     HStack(spacing: 8) {
       Button {
-        copy(deploymentStatus.clipboardSummary, message: "已复制部署诊断。")
+        copy(deploymentStatus.clipboardSummary, message: String(localized: "已复制部署诊断。"))
       } label: {
         Label("复制诊断", systemImage: "doc.on.doc")
       }
@@ -492,7 +492,7 @@ extension ReleaseHistoryDetailView {
 
         if let commitSHA = record.deploymentCommitSHA ?? record.commitSHA {
           Button {
-            copy(commitSHA, message: "已复制 commit SHA。")
+            copy(commitSHA, message: String(localized: "已复制 commit SHA。"))
           } label: {
             releaseRecordActionLabel(
               record.deploymentCommitSHA == nil ? "复制 Commit" : "复制部署 Commit",
@@ -514,7 +514,7 @@ extension ReleaseHistoryDetailView {
 
         if let reviewURL = record.reviewURL {
           Button {
-            copy(reviewURL, message: "已复制 PR/MR 链接。")
+            copy(reviewURL, message: String(localized: "已复制 PR/MR 链接。"))
           } label: {
             releaseRecordActionLabel("复制 PR/MR", systemImage: "doc.on.doc")
           }

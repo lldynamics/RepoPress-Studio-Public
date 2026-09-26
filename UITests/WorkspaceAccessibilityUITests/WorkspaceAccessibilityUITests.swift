@@ -52,8 +52,10 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "workspace-sidebar-sync",
       "workspace-sidebar-contentHealth",
       "workspace-sidebar-writing",
+      "workspace-sidebar-images",
     ]
     let writingIdentifiers = [
+      "writing-create-article",
       "writing-create-menu",
       "writing-draft-search",
       "writing-draft-list",
@@ -75,7 +77,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     }
   }
 
-  func testFivePrimaryRoutesRevealTheirDestinationsDirectly() throws {
+  func testSixPrimaryRoutesRevealTheirDestinationsDirectly() throws {
     launchApplication(
       surface: "sync-api-publish",
       screenshotContentSize: CGSize(width: 1080, height: 720)
@@ -105,6 +107,10 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
         section: "workspace-sidebar-writing",
         destination: "writing-draft-list"
       ),
+      (
+        section: "workspace-sidebar-images",
+        destination: "image-workbench"
+      ),
     ]
 
     for route in routes {
@@ -112,7 +118,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     }
 
     // At 1080pt the Inspector can be revealed on demand. The full sidebar is
-    // replaced by the compact rail, whose five icon buttons must keep routing
+    // replaced by the compact rail, whose six icon buttons must keep routing
     // inside this same workbench window.
     let compactWindow = window
     let compactWindowIdentifier = compactWindow.identifier

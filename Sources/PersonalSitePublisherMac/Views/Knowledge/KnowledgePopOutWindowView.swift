@@ -7,6 +7,7 @@ import SwiftUI
 /// Its identity is the supplied document ID; it never uses or changes the
 /// library's global selection.
 struct KnowledgePopOutWindowView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let store: WorkbenchStore
   @ObservedObject var knowledge: KnowledgeStore
   let documentID: UUID
@@ -160,7 +161,7 @@ struct KnowledgePopOutWindowView: View {
         .padding(.leading, 14)
         .overlay(alignment: .leading) {
           Rectangle()
-            .fill(Color.accentColor.opacity(0.5))
+            .fill(workbenchAccentColor.opacity(0.5))
             .frame(width: 2)
         }
 

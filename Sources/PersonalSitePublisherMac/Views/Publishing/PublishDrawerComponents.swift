@@ -196,7 +196,7 @@ struct RemotePublishConfirmationView: View {
               Button {
                 ClipboardWriter.copy(
                   reviewDraft.body,
-                  successMessage: "已复制 PR/MR 描述。",
+                  successMessage: String(localized: "已复制 PR/MR 描述。"),
                   setMessage: { copyMessage = $0 }
                 )
               } label: {

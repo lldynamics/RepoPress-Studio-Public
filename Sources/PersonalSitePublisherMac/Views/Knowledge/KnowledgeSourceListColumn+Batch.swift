@@ -106,7 +106,7 @@ extension KnowledgeSourceListColumn {
     }
     .padding(.horizontal, 10)
     .padding(.vertical, 7)
-    .background(Color.accentColor.opacity(0.06))
+    .background(workbenchAccentColor.opacity(0.06))
     .accessibilityElement(children: .contain)
     .accessibilityLabel("批量操作，已选择 \(selectedDocumentIDs.count) 条资料")
   }
@@ -150,12 +150,11 @@ extension KnowledgeSourceListColumn {
   }
 
   private func exportBatchSelection() {
-    guard let destinationURL = KnowledgeBatchExportSelectionPanel.chooseDestinationDirectory()
-    else {
-      return
-    }
     let ids = selectedDocumentIDs
-    Task {
+    Task { @MainActor in
+      guard
+        let destinationURL = await KnowledgeBatchExportSelectionPanel.chooseDestinationDirectory()
+      else { return }
       _ = await knowledge.exportDocuments(ids, to: destinationURL)
     }
   }

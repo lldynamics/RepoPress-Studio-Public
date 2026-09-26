@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MacMarkdownToolbarCustomizationView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @Binding var configuration: MarkdownToolbarConfiguration
   let onDismiss: () -> Void
 
@@ -104,7 +105,7 @@ struct MacMarkdownToolbarCustomizationView: View {
             HStack(spacing: 8) {
               Image(systemName: item.systemImage)
                 .frame(width: 20)
-                .foregroundStyle(isPresent ? Color.accentColor : Color.secondary)
+                .foregroundStyle(isPresent ? workbenchAccentColor : Color.secondary)
               Text(item.title)
                 .font(.callout)
               if item.isMandatory {

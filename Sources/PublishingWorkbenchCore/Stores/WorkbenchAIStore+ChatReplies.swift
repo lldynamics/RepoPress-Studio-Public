@@ -100,7 +100,7 @@ extension WorkbenchAIStore {
     do {
       _ = try aiChatAvailableAPIKey(for: profile)
     } catch {
-      store.setAIChatMessage(CoreL10n.format("AI 讨论失败：%@", error.localizedDescription))
+      store.setAIChatFailureMessage(CoreL10n.format("AI 讨论失败：%@", error.localizedDescription))
       return nil
     }
     guard
@@ -160,7 +160,7 @@ extension WorkbenchAIStore {
       // Preflight availability without retaining a credential across authorization.
       _ = try aiChatAvailableAPIKey(for: profile)
     } catch {
-      store.setAIChatMessage("AI 讨论失败：\(error.localizedDescription)")
+      store.setAIChatFailureMessage(CoreL10n.format("AI 讨论失败：%@", error.localizedDescription))
       return nil
     }
     // Refresh locally derived request context before preview. There must be no
@@ -224,7 +224,7 @@ extension WorkbenchAIStore {
       )
       return nil
     } catch {
-      store.setAIChatMessage(error.localizedDescription)
+      store.setAIChatFailureMessage(error.localizedDescription)
       return nil
     }
     do {
@@ -277,7 +277,7 @@ extension WorkbenchAIStore {
         .messages.last { $0.role == .assistant }
     } catch let error as AIChatCompletionClientError {
       configureManualRetry(for: error, conversationIdentity: conversationIdentity)
-      store.setAIChatMessage("AI 讨论失败：\(error.localizedDescription)")
+      store.setAIChatFailureMessage(CoreL10n.format("AI 讨论失败：%@", error.localizedDescription))
       if error.didReceivePartialContent {
         return aiChatSessionState(for: conversationIdentity)?
           .messages.last { $0.role == .assistant }
@@ -290,7 +290,7 @@ extension WorkbenchAIStore {
       )
       return nil
     } catch {
-      store.setAIChatMessage("AI 讨论失败：\(error.localizedDescription)")
+      store.setAIChatFailureMessage(CoreL10n.format("AI 讨论失败：%@", error.localizedDescription))
       return nil
     }
   }

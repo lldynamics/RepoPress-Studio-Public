@@ -5,7 +5,7 @@ extension RepositoryStore {
     store: WorkbenchStore
   ) async -> RepositoryWorktreePushRetryConfirmation? {
     guard store.canUseProtectedWorkbench else {
-      store.setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
+      store.setGitActionMessage(store.quickHideOperationMessage, status: .warning)
       return nil
     }
     guard !isRemoteRepositoryPublishing,
@@ -13,7 +13,7 @@ extension RepositoryStore {
       !isLocalRepositoryBranchOperationRunning,
       !store.isLocalRepositoryMutationRunning
     else {
-      store.setPublishActionMessage(
+      store.setGitActionMessage(
         CoreL10n.text("已有仓库操作正在运行，请等待完成。"),
         status: .warning
       )
@@ -22,7 +22,7 @@ extension RepositoryStore {
 
     let profile = store.activeProfile
     let service = RepositoryWorktreePushRetryService()
-    store.setPublishActionMessage(
+    store.setGitActionMessage(
       CoreL10n.text("正在核对本地已提交但尚未推送的内容…"),
       status: .inProgress
     )
@@ -31,13 +31,13 @@ extension RepositoryStore {
         try service.prepare(profile: profile)
       }.value
       guard !Task.isCancelled, store.activeProfileID == profile.id else {
-        store.setPublishActionMessage(
+        store.setGitActionMessage(
           CoreL10n.text("站点已切换，请重新审阅全部文件。"),
           status: .warning
         )
         return nil
       }
-      store.setPublishActionMessage(
+      store.setGitActionMessage(
         CoreL10n.format(
           "已找到 %@ 个待重试推送的本地提交，请确认文件清单。",
           String(confirmation.snapshot.commitCount)
@@ -46,13 +46,13 @@ extension RepositoryStore {
       )
       return confirmation
     } catch RepositoryWorktreePublishError.noChanges {
-      store.setPublishActionMessage(
+      store.setGitActionMessage(
         CoreL10n.text("当前分支没有待重试推送的本地提交。"),
         status: .information
       )
       return nil
     } catch {
-      store.setPublishActionMessage(error.localizedDescription, status: .failure)
+      store.setGitActionMessage(error.localizedDescription, status: .failure)
       return nil
     }
   }
@@ -62,7 +62,7 @@ extension RepositoryStore {
     store: WorkbenchStore
   ) async -> RepositoryWorktreePublishResult? {
     guard store.canUseProtectedWorkbench else {
-      store.setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
+      store.setGitActionMessage(store.quickHideOperationMessage, status: .warning)
       return nil
     }
     guard !isRemoteRepositoryPublishing,
@@ -70,7 +70,7 @@ extension RepositoryStore {
       !isLocalRepositoryBranchOperationRunning,
       !store.isLocalRepositoryMutationRunning
     else {
-      store.setPublishActionMessage(
+      store.setGitActionMessage(
         CoreL10n.text("已有仓库操作正在运行，请等待完成。"),
         status: .warning
       )
@@ -80,7 +80,7 @@ extension RepositoryStore {
     let profile = store.activeProfile
     let service = RepositoryWorktreePushRetryService()
     isRemoteRepositoryPublishing = true
-    store.setPublishActionMessage(
+    store.setGitActionMessage(
       CoreL10n.format(
         "正在以非强制方式重试推送 %@ 个本地提交…",
         String(confirmation.snapshot.commitCount)
@@ -94,7 +94,7 @@ extension RepositoryStore {
         try service.push(profile: profile, confirmation: confirmation)
       }.value
       store.recordConfirmedWorktreePush(result, profile: profile, article: nil)
-      store.setPublishActionMessage(
+      store.setGitActionMessage(
         CoreL10n.format(
           "Git 推送已确认：本地提交 %@ 已到达 %@。网站部署与线上页面仍需另行验证。",
           String(result.commitSHA.prefix(8)),
@@ -113,13 +113,13 @@ extension RepositoryStore {
       } else {
         status = .failure
       }
-      store.setPublishActionMessage(error.localizedDescription, status: status)
+      store.setGitActionMessage(error.localizedDescription, status: status)
       if store.activeProfileID == profile.id {
         await scanRepositoryAsync(store: store)
       }
       return nil
     } catch {
-      store.setPublishActionMessage(error.localizedDescription, status: .failure)
+      store.setGitActionMessage(error.localizedDescription, status: .failure)
       return nil
     }
   }

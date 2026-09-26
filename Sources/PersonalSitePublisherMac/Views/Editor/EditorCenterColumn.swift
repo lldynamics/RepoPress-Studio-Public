@@ -109,7 +109,7 @@ struct EditorCenterColumn: View {
     } else {
       GuidedEmptyStateView(
         title: "创作你的首篇文章",
-        message: "随时新建草稿或从线上同步已有文章，在中央纯粹专注正文编辑。",
+        message: "新建草稿，或从本地站点文件夹导入已有文章。",
         systemImage: "square.and.pencil",
         actions: [
           GuidedEmptyStateAction(
@@ -122,9 +122,9 @@ struct EditorCenterColumn: View {
             }
           ),
           GuidedEmptyStateAction(
-            id: "sync-remote-drafts",
-            title: "从 GitHub/GitLab 同步文章",
-            subtitle: "连接线上 Git 仓库，同步并导入远端草稿",
+            id: "select-local-site-repository",
+            title: "选择本地站点仓库",
+            subtitle: "前往站点页选择本地文件夹，再导入已有文章",
             systemImage: "arrow.triangle.2.circlepath",
             action: {
               store.selectSection(.sync)

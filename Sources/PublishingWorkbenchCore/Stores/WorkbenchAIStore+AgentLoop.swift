@@ -145,7 +145,7 @@ extension WorkbenchAIStore {
           .joined(separator: "\n\n")
           .trimmedForPublishing
         guard !rawContent.isEmpty else {
-          store.setAIChatMessage("AI 讨论失败：AI 没有返回可显示的内容。")
+          store.setAIChatFailureMessage(CoreL10n.text("AI 讨论失败：AI 没有返回可显示的内容。"))
           return nil
         }
         try await validateAgentKnowledgeAuthorization(
@@ -186,7 +186,7 @@ extension WorkbenchAIStore {
               && $0.draftID == conversationIdentity.draftID
           })
         else {
-          store.setAIChatMessage("AI 讨论失败：未能生成可审阅的操作计划。")
+          store.setAIChatFailureMessage(CoreL10n.text("AI 讨论失败：未能生成可审阅的操作计划。"))
           return nil
         }
         let rawContent = result.assistantText
@@ -229,7 +229,7 @@ extension WorkbenchAIStore {
             initialRequest.knowledgeContext?.authorizationBindings ?? []
         )
         guard continuation.isValidForPersistence else {
-          store.setAIChatMessage("AI 讨论失败：无法安全保存待确认操作。")
+          store.setAIChatFailureMessage(CoreL10n.text("AI 讨论失败：无法安全保存待确认操作。"))
           return nil
         }
         var assistantMessage = AIPublishingChatMessage(
@@ -285,22 +285,22 @@ extension WorkbenchAIStore {
         return nil
 
       case .capabilityUnavailable, .rejected, .limitReached, .modelTransportFailed:
-        store.setAIChatMessage("AI 讨论失败：AI 操作回合未完成。")
+        store.setAIChatFailureMessage(CoreL10n.text("AI 讨论失败：AI 操作回合未完成。"))
         return nil
       }
     } catch let error as AIOutboundPayloadConfirmationError
       where error == .knowledgeAuthorizationChanged
     {
-      store.setAIChatMessage(error.localizedDescription)
+      store.setAIChatFailureMessage(error.localizedDescription)
       return nil
     } catch is CancellationError {
       store.setAIChatMessage("AI 回复已停止。")
       return nil
     } catch let error as AIChatCompletionClientError {
-      store.setAIChatMessage("AI 讨论失败：\(error.localizedDescription)")
+      store.setAIChatFailureMessage(CoreL10n.format("AI 讨论失败：%@", error.localizedDescription))
       return nil
     } catch {
-      store.setAIChatMessage("AI 讨论失败：\(error.localizedDescription)")
+      store.setAIChatFailureMessage(CoreL10n.format("AI 讨论失败：%@", error.localizedDescription))
       return nil
     }
   }

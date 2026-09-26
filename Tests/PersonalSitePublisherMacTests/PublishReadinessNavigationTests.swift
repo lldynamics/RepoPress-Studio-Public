@@ -4,9 +4,8 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class PublishReadinessNavigationTests: XCTestCase {
-  func testWritingEntryUsesCurrentArticleWhileProjectEntryUsesRepository() {
-    XCTAssertEqual(PublishScope.initialScope(for: .writing), .currentArticle)
-    XCTAssertEqual(PublishScope.initialScope(for: .sync), .repository)
+  func testPublishDrawerDefaultsToAllRepositoryChanges() {
+    XCTAssertEqual(PublishScope.defaultScope, .repository)
   }
 
   func testBodyImageIssuePreservesItsSearchTarget() {

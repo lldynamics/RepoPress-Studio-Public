@@ -124,6 +124,14 @@ final class WorkspaceTopBarPresentationTests: XCTestCase {
       .publishing
     )
     XCTAssertEqual(
+      WorkspaceToolbarContextPolicy.primaryActionContext(for: .library),
+      .knowledgeLibrary
+    )
+    XCTAssertEqual(
+      WorkspaceToolbarContextPolicy.primaryActionContext(for: .images),
+      .images
+    )
+    XCTAssertEqual(
       WorkspaceToolbarContextPolicy.primaryActionContext(for: .sync),
       .publishing
     )

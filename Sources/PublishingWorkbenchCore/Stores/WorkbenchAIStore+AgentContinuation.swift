@@ -683,7 +683,7 @@ extension WorkbenchAIStore {
         continuationID: continuationID,
         attemptID: attemptID
       )
-      store.setAIChatMessage(error.localizedDescription)
+      store.setAIChatFailureMessage(error.localizedDescription)
     } catch is CancellationError {
       if enteredSending {
         markAgentContinuationDeliveryUncertain(
@@ -723,7 +723,7 @@ extension WorkbenchAIStore {
           continuationID: continuationID,
           attemptID: attemptID
         )
-        store.setAIChatMessage(CoreL10n.text("AI 续跑失败，未请求模型。"))
+        store.setAIChatFailureMessage(CoreL10n.text("AI 续跑失败，未请求模型。"))
       }
     }
   }

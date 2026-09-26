@@ -327,12 +327,14 @@ extension WorkbenchAIStore {
       }
       if canPresentAIRequest(lane, generation: generation) {
         aiActionResult = result
-        aiActionMessage = "\(actionName)完成。"
+        aiActionMessage = CoreL10n.text("AI 操作已完成。")
       }
       return result
     } catch {
       if !(error is CancellationError), canPresentAIRequest(lane, generation: generation) {
-        aiActionMessage = "\(actionName)失败：\(error.localizedDescription)"
+        store.setAIActionFailureMessage(
+          CoreL10n.format("AI 操作失败：%@", error.localizedDescription)
+        )
       }
       return nil
     }
@@ -460,7 +462,9 @@ extension WorkbenchAIStore {
       return suggestion
     } catch {
       if !(error is CancellationError), canPresentAIRequest(lane, generation: generation) {
-        aiActionMessage = "AI 元数据建议生成失败：\(error.localizedDescription)"
+        store.setAIActionFailureMessage(
+          CoreL10n.format("AI 元数据建议生成失败：%@", error.localizedDescription)
+        )
       }
       return nil
     }
@@ -568,7 +572,9 @@ extension WorkbenchAIStore {
       return suggestions
     } catch {
       if !(error is CancellationError), canPresentAIRequest(lane, generation: generation) {
-        aiActionMessage = "图片文案生成失败：\(error.localizedDescription)"
+        store.setAIActionFailureMessage(
+          CoreL10n.format("图片文案生成失败：%@", error.localizedDescription)
+        )
         store.setImageActionMessage(aiActionMessage)
       }
       return []

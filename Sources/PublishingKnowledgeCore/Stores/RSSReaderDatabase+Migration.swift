@@ -1,11 +1,12 @@
 import Foundation
+import PublishingCoreSupport
 import SQLite3
 
 extension RSSReaderDatabase {
   func migrate(from version: Int) throws {
     guard version <= Self.currentSchemaVersion else {
       throw RSSReaderError.persistence(
-        "RSS SQLite 缓存版本 \(version) 高于当前支持版本 \(Self.currentSchemaVersion)"
+        CoreL10n.format("RSS SQLite 缓存版本 %d 高于当前支持版本 %d", version, Self.currentSchemaVersion)
       )
     }
     try withLock {
@@ -183,7 +184,7 @@ extension RSSReaderDatabase {
       "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN (\(tableList));"
     )
     guard tableCount == requiredTables.count else {
-      throw RSSReaderError.persistence("RSS 数据库结构不完整：缺少必需数据表")
+      throw RSSReaderError.persistence(CoreL10n.text("RSS 数据库结构不完整：缺少必需数据表"))
     }
 
     let requiredIndexes = [
@@ -199,7 +200,7 @@ extension RSSReaderDatabase {
       "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN (\(indexList));"
     )
     guard indexCount == requiredIndexes.count else {
-      throw RSSReaderError.persistence("RSS 数据库结构不完整：缺少必需索引")
+      throw RSSReaderError.persistence(CoreL10n.text("RSS 数据库结构不完整：缺少必需索引"))
     }
 
     let requiredColumns = [
@@ -223,7 +224,7 @@ extension RSSReaderDatabase {
     ]
     for (table, column) in requiredColumns
     where try !columnExistsUnlocked(table: table, column: column) {
-      throw RSSReaderError.persistence("RSS 数据库结构不完整：\(table) 缺少 \(column) 列")
+      throw RSSReaderError.persistence(CoreL10n.format("RSS 数据库结构不完整：%@ 缺少 %@ 列", table, column))
     }
   }
 
@@ -235,14 +236,14 @@ extension RSSReaderDatabase {
       sqlite3_step(quickCheck) == SQLITE_DONE
     else {
       throw RSSReaderError.persistence(
-        text(quickCheck, 0) ?? "RSS 数据库迁移后的 quick_check 未通过"
+        text(quickCheck, 0) ?? CoreL10n.text("RSS 数据库迁移后的 quick_check 未通过")
       )
     }
 
     let foreignKeyCheck = try prepareUnlocked("PRAGMA foreign_key_check;")
     defer { sqlite3_finalize(foreignKeyCheck) }
     guard sqlite3_step(foreignKeyCheck) == SQLITE_DONE else {
-      throw RSSReaderError.persistence("RSS 数据库迁移后存在外键约束错误")
+      throw RSSReaderError.persistence(CoreL10n.text("RSS 数据库迁移后存在外键约束错误"))
     }
   }
 }

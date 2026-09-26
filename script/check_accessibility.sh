@@ -897,17 +897,17 @@ require_literal \
   '.accessibilityIdentifier("workspace-sidebar-\(section.rawValue)")' \
   "workspace task navigation buttons must expose stable accessibility identifiers"
 
-for workspace_section in rss library sync contentHealth writing; do
+for workspace_section in rss library sync contentHealth writing images; do
   require_literal \
-    "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceNavigationRouteDescriptor.swift" \
+    "Sources/PublishingWorkbenchCore/Models/WorkspaceModels.swift" \
     ".$workspace_section" \
     "workspace task navigation must keep the $workspace_section entry"
 done
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceRailView.swift" \
-  "WorkspaceNavigationRouteDescriptor.primaryRows.enumerated()" \
-  "full navigation must render the shared primary route rows"
+  "WorkspaceNavigationRouteDescriptor.primarySections" \
+  "full navigation must render the shared primary route order"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCompactNavigationRail.swift" \
@@ -944,10 +944,10 @@ require_absent_literal \
   'Window("RSS 阅读器"' \
   "RSS must not declare a separate scene"
 
-require_absent_literal \
-  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceRailView.swift" \
-  "sectionButton(.images" \
-  "image resources must remain contextual to the site instead of returning to primary navigation"
+require_literal \
+  "Sources/PublishingWorkbenchCore/Models/WorkspaceModels.swift" \
+  "    .images," \
+  "image resources must have a direct primary route after the existing shortcuts"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspaceOverviewSections.swift" \
@@ -1267,13 +1267,18 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftColumn+Toolbar.swift" \
-  'Label("新建", systemImage: "plus")' \
-  "writing create menu must keep its visible title and icon"
+  'Label("新建文章", systemImage: "doc.badge.plus")' \
+  "writing create action must keep its visible title and icon"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftColumn+Toolbar.swift" \
   ".labelStyle(.titleAndIcon)" \
-  "writing create menu must not collapse to an icon-only label"
+  "writing create action must not collapse to an icon-only label"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftColumn+Toolbar.swift" \
+  ".accessibilityIdentifier(\"writing-create-article\")" \
+  "writing create action must expose a stable accessibility identifier"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftColumn+Toolbar.swift" \

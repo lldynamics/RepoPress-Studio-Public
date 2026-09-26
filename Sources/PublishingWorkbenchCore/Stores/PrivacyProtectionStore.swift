@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import PublishingCoreSupport
 
 @MainActor
 public final class PrivacyProtectionStore: ObservableObject {
@@ -22,7 +23,7 @@ public final class PrivacyProtectionStore: ObservableObject {
   }
 
   public var quickHideOperationMessage: String {
-    "快速隐藏已启用，请返回工作台后再继续。"
+    CoreL10n.text("快速隐藏已启用，请返回工作台后再继续。")
   }
 
   public var privacyProtectionStatus: PrivacyProtectionStatus {
@@ -42,7 +43,11 @@ public final class PrivacyProtectionStore: ObservableObject {
     guard draft.isPrivate, privacySettings.masksPrivateContent else {
       return PrivateContentDisplay(title: draft.title, summary: draft.summary, isMasked: false)
     }
-    return PrivateContentDisplay(title: draft.title, summary: "内容已遮挡", isMasked: true)
+    return PrivateContentDisplay(
+      title: draft.title,
+      summary: CoreL10n.text("内容已遮挡"),
+      isMasked: true
+    )
   }
 
   public func matchesPrivacyProtectedDraftSearch(
@@ -53,7 +58,7 @@ public final class PrivacyProtectionStore: ObservableObject {
     let trimmedQuery = query.trimmedForPublishing
     guard !trimmedQuery.isEmpty else { return true }
     if draft.isPrivate, privacySettings.masksPrivateContent {
-      let protectedHaystack = [draft.title, "私密文章", "内容已遮挡"]
+      let protectedHaystack = [draft.title, CoreL10n.text("私密文章"), CoreL10n.text("内容已遮挡")]
         .joined(separator: " ")
         .lowercased()
       return protectedHaystack.contains(trimmedQuery.lowercased())

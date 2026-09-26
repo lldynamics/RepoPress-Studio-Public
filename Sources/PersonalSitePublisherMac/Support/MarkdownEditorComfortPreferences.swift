@@ -7,6 +7,7 @@ enum MarkdownEditorComfortPreferences {
   static let bodyWidthKey = "markdownEditorBodyWidth"
   static let spellCheckEnabledKey = "markdownEditorSpellCheckEnabled"
   static let typewriterModeEnabledKey = "markdownEditorTypewriterModeEnabled"
+  static let focusToolbarFadeEnabledKey = "markdownEditorFocusToolbarFadeEnabled"
   static let currentParagraphHighlightEnabledKey = "markdownEditorCurrentParagraphHighlightEnabled"
   static let warmPaperBackgroundEnabledKey = "markdownEditorWarmPaperBackgroundEnabled"
   static let automaticPairingEnabledKey = "markdownEditorAutomaticPairingEnabled"

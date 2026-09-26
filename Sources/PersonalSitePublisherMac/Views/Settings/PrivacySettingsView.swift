@@ -2,6 +2,9 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct PrivacySettingsView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
+  @AppStorage("quickHideRequiresDeviceAuthenticationV1")
+  private var quickHideRequiresDeviceAuthentication = false
   let privacySettings: PrivacyProtectionSettings
   let status: PrivacyProtectionStatus
   let onQuickHide: () -> Void
@@ -9,6 +12,7 @@ struct PrivacySettingsView: View {
   var body: some View {
     Form {
       quickHideSection
+      quickHideAuthenticationSection
       PrivacySettingsVisibilitySection(
         masksPrivateContent: privacySettingBinding(keyPath: \.masksPrivateContent),
         subsectionAnchor: .privacyMasking
@@ -29,11 +33,11 @@ struct PrivacySettingsView: View {
       HStack(spacing: 10) {
         ZStack {
           Circle()
-            .fill(Color.accentColor.opacity(0.14))
+            .fill(workbenchAccentColor.opacity(0.14))
             .frame(width: 32, height: 32)
           Image(systemName: "keyboard")
             .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(workbenchAccentColor)
         }
         .accessibilityHidden(true)
 
@@ -63,6 +67,22 @@ struct PrivacySettingsView: View {
       }
       .padding(.vertical, 4)
       .settingsSubsectionAnchor(.privacyQuickHide)
+    }
+  }
+
+  private var quickHideAuthenticationSection: some View {
+    Section("解除快速隐藏") {
+      Toggle("使用 Touch ID 或登录密码解除", isOn: $quickHideRequiresDeviceAuthentication)
+        .disabled(!QuickHideUnlockCoordinator.isAvailable && !quickHideRequiresDeviceAuthentication)
+        .accessibilityIdentifier("quick-hide-requires-authentication-toggle")
+      Text("开启后，返回工作台前须通过此 Mac 的身份验证。未开启时可直接返回。")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      if !QuickHideUnlockCoordinator.isAvailable {
+        Text("此 Mac 当前无法使用系统身份验证。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
     }
   }
 

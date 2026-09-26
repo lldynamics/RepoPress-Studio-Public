@@ -55,6 +55,7 @@ final class MainWindowSizingView: NSView {
     if protectedWindow !== window {
       installCloseProtection(on: window)
     }
+    window.isDocumentEdited = sourceSession?.hasUnsavedChanges == true
   }
 
   override func viewWillMove(toWindow newWindow: NSWindow?) {
@@ -74,6 +75,7 @@ final class MainWindowSizingView: NSView {
       sourceSession: sourceSession,
       profileProvider: profileProvider
     )
+    protectedWindow?.isDocumentEdited = sourceSession.hasUnsavedChanges
   }
 
   private func applyMigrationIfNeeded(to window: NSWindow) {
@@ -112,11 +114,13 @@ final class MainWindowSizingView: NSView {
     closeProtectionProxy = proxy
     protectedWindow = window
     window.delegate = proxy
+    window.isDocumentEdited = sourceSession?.hasUnsavedChanges == true
   }
 
   private func uninstallCloseProtection() {
     if let protectedWindow, protectedWindow.delegate === closeProtectionProxy {
       protectedWindow.delegate = closeProtectionProxy?.originalDelegate
+      protectedWindow.isDocumentEdited = false
     }
     protectedWindow = nil
     closeProtectionProxy = nil
@@ -160,6 +164,8 @@ private final class MainWindowCloseProtectionProxy: NSObject, NSWindowDelegate {
   weak var originalDelegate: NSWindowDelegate?
   private weak var sourceSession: RepositoryHTMLSourceSession?
   private var profileProvider: () -> SiteProfile
+  private var isShowingCloseSheet = false
+  private var isConfirmedClose = false
 
   init(
     originalDelegate: NSWindowDelegate?,
@@ -180,10 +186,14 @@ private final class MainWindowCloseProtectionProxy: NSObject, NSWindowDelegate {
   }
 
   func windowShouldClose(_ sender: NSWindow) -> Bool {
+    if isConfirmedClose {
+      isConfirmedClose = false
+      return originalDelegate?.windowShouldClose?(sender) ?? true
+    }
     guard let sourceSession, sourceSession.hasUnsavedChanges else {
       return originalDelegate?.windowShouldClose?(sender) ?? true
     }
-    guard !sourceSession.isSaving else {
+    guard !sourceSession.isSaving, !isShowingCloseSheet else {
       NSSound.beep()
       return false
     }
@@ -196,39 +206,41 @@ private final class MainWindowCloseProtectionProxy: NSObject, NSWindowDelegate {
     alert.addButton(withTitle: String(localized: "继续编辑")).keyEquivalent = "\u{1b}"
     alert.addButton(withTitle: String(localized: "不保存并关闭"))
 
-    let choice: MainWindowUnsavedCloseChoice?
-    switch alert.runModal() {
-    case .alertFirstButtonReturn:
-      choice = .saveAndClose
-    case .alertSecondButtonReturn:
-      choice = .continueEditing
-    case .alertThirdButtonReturn:
-      choice = .discardAndClose
-    default:
-      choice = nil
+    isShowingCloseSheet = true
+    alert.beginSheetModal(for: sender) { [weak self, weak sourceSession, weak sender] response in
+      guard let self, let sourceSession, let sender else { return }
+      self.isShowingCloseSheet = false
+      let choice: MainWindowUnsavedCloseChoice?
+      switch response {
+      case .alertFirstButtonReturn: choice = .saveAndClose
+      case .alertSecondButtonReturn: choice = .continueEditing
+      case .alertThirdButtonReturn: choice = .discardAndClose
+      default: choice = nil
+      }
+      switch MainWindowClosePolicy.decide(
+        hasUnsavedChanges: sourceSession.hasUnsavedChanges,
+        isSaving: sourceSession.isSaving,
+        choice: choice,
+        save: { sourceSession.saveSynchronously(profile: self.profileProvider()) }
+      ) {
+      case .close:
+        self.isConfirmedClose = true
+        sender.performClose(nil)
+      case .keepEditing:
+        break
+      case .saveFailed:
+        sender.isDocumentEdited = true
+        let failureAlert = NSAlert()
+        failureAlert.messageText = String(localized: "未能保存 HTML 源文件")
+        failureAlert.informativeText =
+          sourceSession.errorMessage
+          ?? String(localized: "请返回编辑器检查文件权限或外部修改冲突。")
+        failureAlert.alertStyle = .warning
+        failureAlert.addButton(withTitle: String(localized: "继续编辑")).keyEquivalent = "\u{1b}"
+        failureAlert.beginSheetModal(for: sender) { _ in }
+      }
     }
-
-    switch MainWindowClosePolicy.decide(
-      hasUnsavedChanges: sourceSession.hasUnsavedChanges,
-      isSaving: sourceSession.isSaving,
-      choice: choice,
-      save: { sourceSession.saveSynchronously(profile: profileProvider()) }
-    ) {
-    case .close:
-      return originalDelegate?.windowShouldClose?(sender) ?? true
-    case .keepEditing:
-      return false
-    case .saveFailed:
-      let failureAlert = NSAlert()
-      failureAlert.messageText = String(localized: "未能保存 HTML 源文件")
-      failureAlert.informativeText =
-        sourceSession.errorMessage
-        ?? String(localized: "请返回编辑器检查文件权限或外部修改冲突。")
-      failureAlert.alertStyle = .warning
-      failureAlert.addButton(withTitle: String(localized: "继续编辑")).keyEquivalent = "\u{1b}"
-      failureAlert.runModal()
-      return false
-    }
+    return false
   }
 
   override func responds(to selector: Selector!) -> Bool {

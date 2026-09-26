@@ -130,6 +130,7 @@ enum DataManagementLayout {
 
 @MainActor
 struct DataManagementView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let store: WorkbenchStore
   let rssStore: RSSReaderStore?
   @ObservedObject var launchCoordinator: WorkbenchLaunchCoordinator
@@ -302,7 +303,7 @@ struct DataManagementView: View {
     HStack(alignment: .top, spacing: WorkbenchSpacing.card) {
       Image(systemName: systemImage)
         .font(.title3)
-        .foregroundStyle(WorkbenchTheme.navigationSelection)
+        .foregroundStyle(workbenchAccentColor)
         .frame(width: 24)
         .accessibilityHidden(true)
 
@@ -332,7 +333,7 @@ struct DataManagementView: View {
       HStack(alignment: .top, spacing: WorkbenchSpacing.card) {
         Image(systemName: task.systemImage)
           .font(.title3)
-          .foregroundStyle(WorkbenchTheme.navigationSelection)
+          .foregroundStyle(workbenchAccentColor)
           .frame(width: 24)
           .accessibilityHidden(true)
 
@@ -483,6 +484,7 @@ struct DataManagementView: View {
 
 @MainActor
 private struct DataManagementStorageTaskSheet: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let task: DataManagementTask
   let store: WorkbenchStore
   @ObservedObject var rssStore: RSSReaderStore
@@ -514,7 +516,7 @@ private struct DataManagementStorageTaskSheet: View {
     HStack(alignment: .top, spacing: WorkbenchSpacing.card) {
       Image(systemName: task.systemImage)
         .font(.title2)
-        .foregroundStyle(WorkbenchTheme.navigationSelection)
+        .foregroundStyle(workbenchAccentColor)
         .frame(width: 28)
         .accessibilityHidden(true)
 

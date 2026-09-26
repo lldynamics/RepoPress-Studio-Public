@@ -23,7 +23,7 @@ struct ZenModeToolbarVisibilityPolicy: Equatable, Sendable {
 
 @MainActor
 final class ZenModeController: ObservableObject {
-  @Published var isZenModeActive: Bool = false {
+  @Published private(set) var isZenModeActive: Bool = false {
     didSet { recalculateToolbarOpacity() }
   }
   @Published var isFormattingBarVisible: Bool = true
@@ -167,9 +167,10 @@ final class ZenModeController: ObservableObject {
     }
   }
 
-  func toggleZenMode() {
+  func setZenModeActive(_ active: Bool) {
+    guard isZenModeActive != active else { return }
     endKeyboardNavigation()
-    isZenModeActive.toggle()
+    isZenModeActive = active
   }
 
 }

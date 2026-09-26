@@ -99,12 +99,26 @@ struct MarkdownShortcutHelpPanel: View {
 
   private var shortcutGroups: [(String, [(String, String)])] {
     var groups: [(String, [(String, String)])] = [
-    (
+      (
+        String(localized: "工作区与窗口"),
+        [
+          (String(localized: "切换写作 / 资料库 / RSS / 站点 / 检查 / 图片"), "⌘1–6"),
+          (String(localized: "命令面板与快速打开"), "⇧⌘K"),
+          (String(localized: "跨文章全文搜索"), "⌥⌘F"),
+          (String(localized: "专注模式"), "⇧⌘F"),
+          (String(localized: "显示或隐藏侧栏"), "⌃⌘S"),
+          (String(localized: "显示或隐藏详情栏"), "⌥⌘I"),
+          (String(localized: "发布所有变更"), "⌥⌘P"),
+          (String(localized: "快速隐藏"), "⌃⌘L"),
+          (String(localized: "查看快捷键说明"), "⌥⌘/"),
+        ]
+      ),
+      (
       String(localized: "焦点导航"),
       [
-        (String(localized: "移到下一个控件"), "Control-Tab"),
-        (String(localized: "移到上一个控件"), "Control-Shift-Tab")
-      ]
+          (String(localized: "移到下一个控件"), "⌃⇥"),
+          (String(localized: "移到上一个控件"), "⌃⇧⇥"),
+        ]
     ),
     (
       String(localized: "编辑"),
@@ -112,8 +126,8 @@ struct MarkdownShortcutHelpPanel: View {
         (String(localized: "查找"), "⌘F"),
         (String(localized: "查找下一个"), "⌘G"),
         (String(localized: "查找上一个"), "⇧⌘G"),
-        (String(localized: "查找栏下一个 / 上一个"), "Return / Shift-Return"),
-        (String(localized: "关闭查找栏"), "Esc"),
+          (String(localized: "查找栏下一个 / 上一个"), "↩ / ⇧↩"),
+          (String(localized: "关闭查找栏"), "Esc"),
         (String(localized: "替换当前"), String(localized: "查找栏“替换”")),
         (String(localized: "全部替换"), "⌥⌘E"),
         (String(localized: "插入图片"), "⇧⌘I"),
@@ -137,9 +151,9 @@ struct MarkdownShortcutHelpPanel: View {
         (String(localized: "三级标题"), "⌥⌘3"),
         (String(localized: "续写列表或引用"), "Return"),
         (String(localized: "退出空列表项"), String(localized: "空项再按 Return")),
-        (String(localized: "增加列表层级"), "Tab"),
-        (String(localized: "减少列表层级"), "Shift-Tab"),
-        (String(localized: "表格、代码、图片、脚注补全"), "/表格、/代码、/图片、/脚注"),
+          (String(localized: "增加列表层级"), "⇥"),
+          (String(localized: "减少列表层级"), "⇧⇥"),
+          (String(localized: "表格、代码、图片、脚注补全"), "/表格、/代码、/图片、/脚注"),
         (String(localized: "文章链接补全"), "[[文章]]"),
         (String(localized: "代码语言补全"), "```swift")
       ]
@@ -150,11 +164,21 @@ struct MarkdownShortcutHelpPanel: View {
         String(localized: "AI 与工具"),
         [
           (String(localized: "请求 AI 续写"), "⌥\\"),
-          (String(localized: "采纳 AI 续写"), "Tab"),
+          (String(localized: "采纳 AI 续写"), "⇥"),
           (String(localized: "丢弃 AI 续写"), "Esc"),
           (String(localized: "改写选中文本"), "⌥⌘R"),
           (String(localized: "打开 AI 对话"), String(localized: "AI > 打开 AI 对话")),
           (String(localized: "复制上下文 Prompt"), String(localized: "AI > 复制上下文 Prompt")),
+        ]
+      )
+    )
+    groups.append(
+      (
+        String(localized: "RSS 阅读"),
+        [
+          (String(localized: "上一条 RSS 文章"), "⌃⌘←"),
+          (String(localized: "下一条 RSS 文章"), "⌃⌘→"),
+          (String(localized: "收藏/取消收藏 RSS 文章"), "⌃⌘B"),
         ]
       )
     )

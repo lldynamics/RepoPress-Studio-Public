@@ -5,6 +5,48 @@ import XCTest
 
 @MainActor
 final class DraftBodyEditorBufferTests: XCTestCase {
+  func testArticleWritingGoalRoundTripsAndLegacyDraftHasNoGoal() throws {
+    let profileID = SiteProfile.defaultProfile.id
+    let draft = ArticleDraft(
+      siteProfileID: profileID,
+      title: "有目标的文章",
+      targetWordCount: 1800
+    )
+    let encoded = try JSONEncoder().encode(draft)
+    XCTAssertEqual(
+      try JSONDecoder().decode(ArticleDraft.self, from: encoded).targetWordCount,
+      1800
+    )
+
+    var legacyObject = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+    )
+    legacyObject.removeValue(forKey: "targetWordCountStorage")
+    let legacy = try JSONDecoder().decode(
+      ArticleDraft.self,
+      from: JSONSerialization.data(withJSONObject: legacyObject)
+    )
+    XCTAssertNil(legacy.targetWordCount)
+  }
+
+  func testWritingGoalUpdateAffectsOnlyItsArticleAndAdvancesEditorRevision() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let original = try XCTUnwrap(store.selectedDraft)
+    store.createDraft()
+    let second = try XCTUnwrap(store.selectedDraft)
+    let initialListRevision = store.draftList.presentationRevision
+
+    var update = original
+    update.targetWordCount = 1250
+    XCTAssertTrue(store.updateDraftFromEditor(update))
+
+    let changed = try XCTUnwrap(store.draft(for: original.id))
+    XCTAssertEqual(changed.targetWordCount, 1250)
+    XCTAssertEqual(changed.editorMetadataRevision, original.editorMetadataRevision + 1)
+    XCTAssertEqual(store.draft(for: second.id)?.targetWordCount, nil)
+    XCTAssertEqual(store.draftList.presentationRevision, initialListRevision)
+  }
+
   func testArticleDraftWordCountPersistsAndLegacySnapshotDefaultsToDirty() throws {
     var draft = ArticleDraft(
       siteProfileID: SiteProfile.defaultProfile.id,

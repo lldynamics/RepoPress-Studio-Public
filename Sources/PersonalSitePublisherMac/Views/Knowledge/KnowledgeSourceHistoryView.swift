@@ -2,6 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct KnowledgeSourceHistoryView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @Environment(\.dismiss) private var dismiss
   @ObservedObject var knowledge: KnowledgeStore
   let documentID: UUID
@@ -183,7 +184,7 @@ struct KnowledgeSourceHistoryView: View {
       .foregroundStyle(.secondary)
     }
     .padding(14)
-    .background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+    .background(workbenchAccentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
   }
 
   private func refreshComparison(_ preview: KnowledgeSourceRefreshPreview) -> some View {
@@ -211,7 +212,7 @@ struct KnowledgeSourceHistoryView: View {
         .foregroundStyle(.secondary)
     }
     .padding(14)
-    .background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+    .background(workbenchAccentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
   }
 
   private var revisionHistory: some View {
@@ -225,8 +226,10 @@ struct KnowledgeSourceHistoryView: View {
         ForEach(knowledge.revisions) { revision in
           HStack(spacing: 10) {
             Image(systemName: revision.id == document?.currentRevisionID ? "checkmark.circle.fill" : "clock")
-              .foregroundStyle(revision.id == document?.currentRevisionID ? Color.accentColor : Color.secondary)
-              .accessibilityHidden(true)
+            .foregroundStyle(
+              revision.id == document?.currentRevisionID ? workbenchAccentColor : Color.secondary
+            )
+            .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
               Text(revision.importedAt.formatted(date: .abbreviated, time: .standard))
                 .font(.callout.weight(.medium))

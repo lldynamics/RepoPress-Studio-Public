@@ -16,9 +16,17 @@ extension WorkbenchStore {
 
   public func setPublishActionMessage(
     _ message: String?,
-    status: PublishActionMessageStatus = .information
+    status: PublishActionMessageStatus = .information,
+    source: PublishActionFeedbackSource = .general
   ) {
-    publishingStore.setPublishActionMessage(message, status: status)
+    publishingStore.setPublishActionMessage(message, status: status, source: source)
+  }
+
+  func setGitActionMessage(
+    _ message: String?,
+    status: PublishActionMessageStatus
+  ) {
+    setPublishActionMessage(message, status: status, source: .gitOperation)
   }
 
 }

@@ -8,9 +8,7 @@ enum PublishScope: String, CaseIterable, Identifiable {
 
   var id: String { rawValue }
 
-  static func initialScope(for section: WorkspaceSection) -> Self {
-    section == .writing ? .currentArticle : .repository
-  }
+  static let defaultScope: Self = .repository
   var title: String {
     switch self {
     case .repository: String(localized: "整个仓库")

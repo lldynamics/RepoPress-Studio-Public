@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 import SQLite3
 
 private let rssSQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
@@ -131,7 +132,11 @@ extension RSSReaderDatabase {
       try executeUnlocked("ROLLBACK;")
     } catch {
       throw RSSReaderError.persistence(
-        "RSS 数据库操作失败：\(primaryError.localizedDescription)；回滚失败：\(error.localizedDescription)"
+        CoreL10n.format(
+          "RSS 数据库操作失败：%@；回滚失败：%@",
+          primaryError.localizedDescription,
+          error.localizedDescription
+        )
       )
     }
     throw primaryError
@@ -208,7 +213,9 @@ extension RSSReaderDatabase {
   }
 
   func databaseErrorUnlocked() -> RSSReaderError {
-    RSSReaderError.persistence(handle.map { String(cString: sqlite3_errmsg($0)) } ?? "SQLite 操作失败")
+    RSSReaderError.persistence(
+      handle.map { String(cString: sqlite3_errmsg($0)) } ?? CoreL10n.text("SQLite 操作失败")
+    )
   }
 
   func bind(_ value: String, at index: Int32, to statement: OpaquePointer?) {
@@ -257,7 +264,7 @@ extension RSSReaderDatabase {
 
   func requiredURL(_ statement: OpaquePointer?, _ index: Int32, field: String) throws -> URL {
     guard let value = optionalURL(statement, index) else {
-      throw RSSReaderError.persistence("\(field) 缺少有效 URL")
+      throw RSSReaderError.persistence(CoreL10n.format("%@ 缺少有效 URL", field))
     }
     return value
   }
@@ -266,13 +273,13 @@ extension RSSReaderDatabase {
     -> UUID
   {
     guard let value = text(statement, index), let uuid = UUID(uuidString: value) else {
-      throw RSSReaderError.persistence("\(field) 缺少有效 UUID")
+      throw RSSReaderError.persistence(CoreL10n.format("%@ 缺少有效 UUID", field))
     }
     return uuid
   }
 
   func checkpointWALUnlocked(mode: RSSReaderDatabaseWALCheckpointMode = .passive) throws {
-    guard let handle else { throw RSSReaderError.persistence("数据库未打开") }
+    guard let handle else { throw RSSReaderError.persistence(CoreL10n.text("数据库未打开")) }
     var logSize: Int32 = 0
     var checkpointedCount: Int32 = 0
     let rc = sqlite3_wal_checkpoint_v2(handle, nil, mode.sqliteMode, &logSize, &checkpointedCount)

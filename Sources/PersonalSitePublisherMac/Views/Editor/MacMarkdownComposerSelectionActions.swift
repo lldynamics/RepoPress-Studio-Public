@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 import Darwin
 #endif
 struct SelectionActionBar: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let isSelectionAIActionRunning: Bool
   let activeSelectionActionName: String?
   let hasLatestAssistantMessage: Bool
@@ -26,7 +27,7 @@ struct SelectionActionBar: View {
       HStack(spacing: 4) {
         Image(systemName: "sparkles")
           .font(.workbenchMetadata)
-          .foregroundStyle(Color.accentColor)
+          .foregroundStyle(workbenchAccentColor)
         Text("AI 选区魔法")
           .font(.caption.weight(.semibold))
       }

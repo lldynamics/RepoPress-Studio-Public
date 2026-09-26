@@ -33,7 +33,12 @@ extension MacMarkdownComposerView {
       replaceAll: replaceAll,
       applyFormatting: applyMarkdownFormatting,
       insertImages: {
-        insertImageReferences(ImageSelectionPanel.chooseImages())
+        let requestedDraftID = draft.id
+        Task {
+          let urls = await ImageSelectionPanel.chooseImages()
+          guard draft.id == requestedDraftID, !urls.isEmpty else { return }
+          insertImageReferences(urls)
+        }
       },
       runPreflight: runPreflightForCurrentDraft,
       rewriteSelection: rewriteSelectedText,

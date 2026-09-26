@@ -36,6 +36,7 @@ struct KnowledgeFileDropImportRequest: Identifiable, Hashable {
 }
 
 struct KnowledgeFileDropImportModifier: ViewModifier {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @ObservedObject var knowledge: KnowledgeStore
   let isEnabled: Bool
 
@@ -77,13 +78,13 @@ struct KnowledgeFileDropImportModifier: ViewModifier {
       VStack(spacing: 16) {
         ZStack {
           Circle()
-            .fill(Color.accentColor.opacity(0.18))
+            .fill(workbenchAccentColor.opacity(0.18))
             .frame(width: 76, height: 76)
-            .shadow(color: Color.accentColor.opacity(0.35), radius: 14)
+            .shadow(color: workbenchAccentColor.opacity(0.35), radius: 14)
 
           Image(systemName: "square.and.arrow.down.on.square.fill")
             .font(.system(size: 34, weight: .semibold))
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(workbenchAccentColor)
         }
 
         VStack(spacing: 6) {
@@ -113,10 +114,10 @@ struct KnowledgeFileDropImportModifier: ViewModifier {
       .overlay {
         RoundedRectangle(cornerRadius: 18, style: .continuous)
           .stroke(
-            Color.accentColor,
+            workbenchAccentColor,
             style: StrokeStyle(lineWidth: 2, dash: [10, 6])
           )
-          .shadow(color: Color.accentColor.opacity(0.30), radius: 6)
+          .shadow(color: workbenchAccentColor.opacity(0.30), radius: 6)
       }
       .shadow(color: Color.black.opacity(0.20), radius: 20, y: 8)
     }

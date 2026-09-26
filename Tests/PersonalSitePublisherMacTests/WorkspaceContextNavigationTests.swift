@@ -1,4 +1,5 @@
 import Foundation
+import PublishingWorkbenchCore
 import XCTest
 
 @testable import PersonalSitePublisherMac
@@ -13,26 +14,27 @@ final class WorkspaceContextNavigationTests: XCTestCase {
     XCTAssertEqual(WorkspaceResponsiveLayoutSnapshot(width: 1_240).band, .htmlSourceInspector)
   }
 
-  func testCompactRailExposesTheFiveDirectWorkspaceRoutes() {
+  func testCompactRailExposesTheSixDirectWorkspaceRoutes() {
     XCTAssertEqual(
       WorkspaceCompactNavigationRail.primarySections,
-      [.writing, .library, .rss, .sync, .contentHealth]
+      [.writing, .library, .rss, .sync, .contentHealth, .images]
     )
   }
 
   func testFullAndCompactRailsShareTheCommandShortcutOrder() {
     XCTAssertEqual(
-      WorkspaceNavigationRouteDescriptor.primaryRows,
-      [[.writing, .library], [.rss, .sync], [.contentHealth]]
+      WorkspaceNavigationRouteDescriptor.primarySections,
+      WorkspaceNavigationPresentation.commandMenuItems.map(\.section)
     )
     XCTAssertEqual(
-      WorkspaceNavigationRouteDescriptor.primaryRows.flatMap { $0 },
+      WorkspaceNavigationRouteDescriptor.primarySections,
       WorkspaceCompactNavigationRail.primarySections
     )
     XCTAssertEqual(
       Set(WorkspaceCompactNavigationRail.primarySections).count,
-      5
+      6
     )
+    XCTAssertEqual(WorkspaceNavigationRouteDescriptor.primarySection(for: .images), .images)
   }
 
   func testSectionSwitchKeepsAnExistingDraftContextAvailableToTheWindowSession() {

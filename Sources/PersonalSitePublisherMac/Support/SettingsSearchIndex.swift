@@ -232,7 +232,7 @@ enum SettingsSearchIndex {
     SettingsSearchItem(
       id: "editor.comfort",
       tab: .editor,
-      sectionTitle: String(localized: "打字机模式与沉浸写作"),
+      sectionTitle: String(localized: "专注模式与写作辅助"),
       destination: .tab(.editor),
       keywords: ["打字机模式", "Typewriter", "段落聚光灯", "光标居中", "纸张背景", "Zen Mode", "专注模式", "高亮当前段落"],
       detail: String(localized: "启用打字机垂直居中滚动、当前段落聚光灯以及极简专注界面。"),

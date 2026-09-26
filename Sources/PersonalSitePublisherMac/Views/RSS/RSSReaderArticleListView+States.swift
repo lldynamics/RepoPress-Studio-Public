@@ -230,13 +230,13 @@ extension RSSArticleList {
                       .frame(maxWidth: .infinity, alignment: .leading)
                       .background(
                         selectedArticleID == article.id
-                          ? Color.accentColor.opacity(0.12)
+                          ? workbenchAccentColor.opacity(0.12)
                           : Color.clear
                       )
                       .overlay(alignment: .leading) {
                         if selectedArticleID == article.id {
                           Rectangle()
-                            .fill(Color.accentColor)
+                            .fill(workbenchAccentColor)
                             .frame(width: 3)
                             .frame(maxHeight: .infinity)
                             .allowsHitTesting(false)

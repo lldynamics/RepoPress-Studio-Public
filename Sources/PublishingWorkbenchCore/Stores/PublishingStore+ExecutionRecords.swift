@@ -69,7 +69,7 @@ extension PublishingStore {
       updatePublishExecution(
         id, state: .needsVerification,
         message: CoreL10n.text("远端已返回结果，本地记录保存失败。重新打开后请核对远端。"), releaseRecordID: record.id)
-      setPublishActionMessage(CoreL10n.text("远端已返回结果，本地记录保存失败。请保留当前窗口并重试保存。"), status: .warning)
+      setPublishingActionMessage(CoreL10n.text("远端已返回结果，本地记录保存失败。请保留当前窗口并重试保存。"), status: .warning)
     }
   }
 
@@ -96,7 +96,7 @@ extension PublishingStore {
       RemoteRepositoryPublishTargetSnapshot(profile: profile, preview: preview)
         == record.plan.target
     else {
-      setPublishActionMessage(CoreL10n.text("站点目标已变化，请恢复原仓库配置后核对该发布计划。"), status: .warning)
+      setPublishingActionMessage(CoreL10n.text("站点目标已变化，请恢复原仓库配置后核对该发布计划。"), status: .warning)
       return
     }
     guard let operation = beginRemoteRepositoryMutation(profile: profile, store: store) else {
@@ -111,10 +111,10 @@ extension PublishingStore {
       case .unchanged:
         let message = CoreL10n.text("已核实远端仍为原版本，可以重新审阅并发布。")
         updatePublishExecution(id, state: .verifiedUnchanged, message: message)
-        setPublishActionMessage(message, status: .success)
+        setPublishingActionMessage(message, status: .success)
       case .unresolved(let message):
         updatePublishExecution(id, state: .needsVerification, message: message)
-        setPublishActionMessage(message, status: .warning)
+        setPublishingActionMessage(message, status: .warning)
       case .accepted(let result):
         let pendingReview = result.mode == .reviewRequest && result.reviewURL == nil
         let message =
@@ -143,13 +143,13 @@ extension PublishingStore {
           id, state: .remoteAccepted, message: message, releaseRecordID: release.id)
         // The editor may have newer content. Verification records evidence;
         // it does not rewrite the live document or mark it published.
-        setPublishActionMessage(message, status: pendingReview ? .warning : .success)
+        setPublishingActionMessage(message, status: pendingReview ? .warning : .success)
       }
       _ = store.flushPendingChanges()
     } catch {
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return }
       updatePublishExecution(id, state: .needsVerification, message: error.localizedDescription)
-      setPublishActionMessage(error.localizedDescription, status: .warning)
+      setPublishingActionMessage(error.localizedDescription, status: .warning)
       _ = store.flushPendingChanges()
     }
   }

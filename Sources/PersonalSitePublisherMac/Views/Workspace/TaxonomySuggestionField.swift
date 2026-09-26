@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct TaxonomySuggestionField: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let title: String
   @Binding var values: [String]
   let suggestions: [String]
@@ -31,14 +32,14 @@ struct TaxonomySuggestionField: View {
               .padding(.horizontal, 8)
               .padding(.vertical, 4)
               .background(
-                selected ? Color.accentColor.opacity(0.18) : Color.primary.opacity(0.06),
+                selected ? workbenchAccentColor.opacity(0.18) : Color.primary.opacity(0.06),
                 in: Capsule()
               )
-              .foregroundStyle(selected ? Color.accentColor : Color.primary)
+              .foregroundStyle(selected ? workbenchAccentColor : Color.primary)
               .overlay(
                 Capsule()
                   .stroke(
-                    selected ? Color.accentColor.opacity(0.4) : Color.primary.opacity(0.12),
+                    selected ? workbenchAccentColor.opacity(0.4) : Color.primary.opacity(0.12),
                     lineWidth: 1)
               )
             }

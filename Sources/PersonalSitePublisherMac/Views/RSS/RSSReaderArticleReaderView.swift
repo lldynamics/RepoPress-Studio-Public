@@ -5,6 +5,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct RSSArticleReader: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let articleHeader: RSSArticleHeader?
   let article: RSSArticle?
   let isLoading: Bool
@@ -278,7 +279,7 @@ struct RSSArticleReader: View {
       }
       .padding(.horizontal, 8)
       .padding(.vertical, 5)
-      .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+      .background(workbenchAccentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
       .frame(maxWidth: .infinity, alignment: .leading)
       .accessibilityElement(children: .contain)
       .accessibilityLabel("当前文章不在筛选结果中")
@@ -336,13 +337,13 @@ struct RSSArticleReader: View {
         Capsule()
           .fill(Color.primary.opacity(0.12))
         LinearGradient(
-          colors: [Color.accentColor.opacity(0.85), Color.accentColor],
+          colors: [workbenchAccentColor.opacity(0.85), workbenchAccentColor],
           startPoint: .leading,
           endPoint: .trailing
         )
         .clipShape(Capsule())
         .frame(width: geometry.size.width * normalizedReadingProgress)
-        .shadow(color: Color.accentColor.opacity(0.4), radius: 2, x: 0, y: 1)
+        .shadow(color: workbenchAccentColor.opacity(0.4), radius: 2, x: 0, y: 1)
       }
     }
     .frame(height: 3)
@@ -361,7 +362,7 @@ struct RSSArticleReader: View {
   private var readingProgressLabel: some View {
     Text("已读 \(readingProgressPercentage)%")
       .font(.caption.weight(.medium))
-      .foregroundStyle(Color.accentColor)
+      .foregroundStyle(workbenchAccentColor)
       .help("阅读进度：已读 \(readingProgressPercentage)%")
       .accessibilityElement(children: .ignore)
       .accessibilityLabel("阅读进度")
@@ -441,7 +442,7 @@ struct RSSArticleReader: View {
       }
       .padding(.horizontal, 8)
       .padding(.vertical, 4)
-      .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+      .background(workbenchAccentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
       .frame(maxWidth: .infinity, alignment: .leading)
     } else if isShowingFullText {
       HStack(spacing: 6) {
@@ -775,7 +776,6 @@ struct RSSArticleReader: View {
       Label(title, systemImage: systemImage)
     }
     .buttonStyle(.bordered)
-    .keyboardShortcut("l", modifiers: [.command, .option])
     .help(isActive ? (speechController.isPaused ? "继续朗读" : "暂停朗读") : "朗读正文")
     .accessibilityLabel(title)
     .accessibilityIdentifier("rss-reader-speech-toggle")
@@ -837,7 +837,7 @@ struct RSSArticleReader: View {
       )
     }
     .buttonStyle(.bordered)
-    .keyboardShortcut("s", modifiers: [.command, .control])
+    .keyboardShortcut("b", modifiers: [.command, .control])
     .accessibilityLabel(article.isStarred ? "将文章移出稍后阅读" : "将文章加入稍后阅读")
     .accessibilityIdentifier("rss-reader-star")
   }

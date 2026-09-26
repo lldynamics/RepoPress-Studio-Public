@@ -35,7 +35,7 @@ extension PublishingStore {
       session.conflicts.count == 1
     else {
       let message = CoreL10n.text("必须先协调全部冲突文件，再统一应用；未执行任何写入。")
-      setPublishActionMessage(message, status: .warning)
+      setPublishingActionMessage(message, status: .warning)
       return .failed(message: message)
     }
     return await resolveRemoteRepositoryConflicts(
@@ -63,7 +63,7 @@ extension PublishingStore {
       reviewedSession.repositoryIdentity == DraftRepositoryIdentity(profile: store.activeProfile)
     else {
       let message = CoreL10n.text("远端冲突快照已失效，请重新发布以刷新冲突。")
-      setPublishActionMessage(message, status: .warning)
+      setPublishingActionMessage(message, status: .warning)
       return .sessionInvalidated(message: message)
     }
     guard reviewedSession.hasCompleteConflictSnapshot else {
@@ -72,12 +72,12 @@ extension PublishingStore {
         "检测到 %lld 个冲突，超过单次安全协调上限；请缩小发布批次后重试。",
         reviewedSession.totalConflictCount
       )
-      setPublishActionMessage(message, status: .warning)
+      setPublishingActionMessage(message, status: .warning)
       return .sessionInvalidated(message: message)
     }
     guard let decisionsByPath = plan.validatedDecisions(for: reviewedSession) else {
       let message = CoreL10n.text("必须为全部冲突文件提供唯一且有效的处理方式；未执行任何写入。")
-      setPublishActionMessage(message, status: .warning)
+      setPublishingActionMessage(message, status: .warning)
       return .failed(message: message)
     }
     guard remoteConflictResolutionOperationID == nil,
@@ -87,7 +87,7 @@ extension PublishingStore {
       !store.isRemoteRepositoryChecking
     else {
       let message = CoreL10n.text("已有仓库操作正在运行，请等待完成后再统一应用冲突协调。")
-      setPublishActionMessage(message, status: .warning)
+      setPublishingActionMessage(message, status: .warning)
       return .failed(message: message)
     }
 
@@ -99,7 +99,7 @@ extension PublishingStore {
       )
     else {
       let message = CoreL10n.text("发布包已变化，已停止冲突处理；请重新审阅发布清单。")
-      setPublishActionMessage(message, status: .warning)
+      setPublishingActionMessage(message, status: .warning)
       return .sessionInvalidated(message: message)
     }
 
@@ -125,7 +125,7 @@ extension PublishingStore {
     else {
       remoteRepositoryConflictSession = nil
       let message = CoreL10n.text("发布包已变化，已停止冲突处理；请重新审阅发布清单。")
-      setPublishActionMessage(message, status: .warning)
+      setPublishingActionMessage(message, status: .warning)
       return .sessionInvalidated(message: message)
     }
 
@@ -158,7 +158,7 @@ extension PublishingStore {
       else {
         remoteRepositoryConflictSession = nil
         let message = CoreL10n.text("本地草稿在协调期间已变化，未覆盖新编辑；请重新发布。")
-        setPublishActionMessage(message, status: .warning)
+        setPublishingActionMessage(message, status: .warning)
         return .sessionInvalidated(message: message)
       }
       guard remoteConflictSnapshotsMatch(
@@ -171,7 +171,7 @@ extension PublishingStore {
           currentSession.isEmpty
           ? CoreL10n.text("远端内容已变化且当前冲突不再存在，请重新审阅发布清单。")
           : CoreL10n.text("远端内容在冲突处理期间发生变化，已刷新三方对比；未执行写入。")
-        setPublishActionMessage(message, status: .warning)
+        setPublishingActionMessage(message, status: .warning)
         return currentSession.isEmpty
           ? .sessionInvalidated(message: message)
           : .sessionRefreshed(message: message)
@@ -188,7 +188,7 @@ extension PublishingStore {
         )
       else {
         let message = CoreL10n.text("至少一个协调结果无法安全转换为草稿；整批未修改，也未写入远端。")
-        setPublishActionMessage(message, status: .warning)
+        setPublishingActionMessage(message, status: .warning)
         return .failed(message: message)
       }
 
@@ -200,7 +200,7 @@ extension PublishingStore {
         )
       else {
         let message = CoreL10n.text("协调结果改变了未审阅的文件范围；整批未修改，也未写入远端。")
-        setPublishActionMessage(message, status: .warning)
+        setPublishingActionMessage(message, status: .warning)
         return .failed(message: message)
       }
 
@@ -222,7 +222,7 @@ extension PublishingStore {
         else {
           remoteRepositoryConflictSession = nil
           let message = CoreL10n.text("本地草稿在协调期间已变化，未覆盖新编辑；请重新发布。")
-          setPublishActionMessage(message, status: .warning)
+          setPublishingActionMessage(message, status: .warning)
           return .sessionInvalidated(message: message)
         }
         applyRemoteConflictDraftMutationPlan(mutationPlan, store: store)
@@ -235,7 +235,7 @@ extension PublishingStore {
           "已统一采用 %lld 个远端版本；没有写入远端。",
           mutationPlan.updatedDraftIDs.count
         )
-        setPublishActionMessage(message, status: .success)
+        setPublishingActionMessage(message, status: .success)
         return .completed(message: message)
       }
 
@@ -248,7 +248,7 @@ extension PublishingStore {
         payloadSnapshot = try await freezeRemoteConflictPayloads(in: resolvedPackage)
       } catch {
         let message = CoreL10n.format("无法冻结已审阅的媒体文件：%@", error.localizedDescription)
-        setPublishActionMessage(message, status: .warning)
+        setPublishingActionMessage(message, status: .warning)
         return .failed(message: message)
       }
       defer { payloadSnapshot.removeTemporaryFiles() }
@@ -261,7 +261,7 @@ extension PublishingStore {
         frozenPayloadMatches
       else {
         let message = CoreL10n.text("媒体文件在冻结期间发生变化，未写入远端。")
-        setPublishActionMessage(message, status: .warning)
+        setPublishingActionMessage(message, status: .warning)
         return .failed(message: message)
       }
 
@@ -318,7 +318,7 @@ extension PublishingStore {
         let message = CoreL10n.text(
           "PR/MR 已创建，但本地草稿在执行期间已变化；已保留新编辑，请重新同步。"
         )
-        setPublishActionMessage(message, status: .warning)
+        setPublishingActionMessage(message, status: .warning)
         return .completed(message: message)
       }
 
@@ -331,11 +331,11 @@ extension PublishingStore {
         publishResult.reviewURL == nil
         ? CoreL10n.text("全部冲突已统一应用；远端已是目标内容，无需新建 PR/MR。")
         : CoreL10n.text("全部冲突已统一应用，PR/MR 已准备，等待合并后进入部署。")
-      setPublishActionMessage(message, status: .success)
+      setPublishingActionMessage(message, status: .success)
       return .completed(message: message)
     } catch {
       let message = CoreL10n.format("刷新远端冲突失败：%@", error.localizedDescription)
-      setPublishActionMessage(message, status: .failure)
+      setPublishingActionMessage(message, status: .failure)
       return .failed(message: message)
     }
   }
@@ -656,7 +656,7 @@ extension PublishingStore {
           $0.id == draftID && $0.belongs(toSiteProfileID: store.activeProfileID)
         })
       else {
-        setPublishActionMessage(
+        setPublishingActionMessage(
           CoreL10n.text("没有可创建 PR/MR 的单篇发布包。"),
           status: .warning
         )
@@ -679,7 +679,7 @@ extension PublishingStore {
       guard let plan = batchPublishPlan,
         plan.remotePublishableItems.map(\.draftID) == reviewedDraftIDs
       else {
-        setPublishActionMessage(CoreL10n.text("没有可创建 PR/MR 的发布包。"), status: .warning)
+        setPublishingActionMessage(CoreL10n.text("没有可创建 PR/MR 的发布包。"), status: .warning)
         return nil
       }
       let profile = store.activeProfile

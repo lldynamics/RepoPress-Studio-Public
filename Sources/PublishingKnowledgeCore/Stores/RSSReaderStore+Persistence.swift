@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import PublishingCoreSupport
 
 extension RSSReaderStore {
   @discardableResult
@@ -64,7 +65,7 @@ extension RSSReaderStore {
     decoder.dateDecodingStrategy = .iso8601
     let snapshot = try decoder.decode(RSSReaderSnapshot.self, from: data)
     guard snapshot.schemaVersion <= RSSReaderSnapshot.currentSchemaVersion else {
-      throw RSSReaderError.persistence("缓存版本 \(snapshot.schemaVersion) 高于当前支持版本")
+      throw RSSReaderError.persistence(CoreL10n.format("缓存版本 %d 高于当前支持版本", snapshot.schemaVersion))
     }
     return snapshot
   }

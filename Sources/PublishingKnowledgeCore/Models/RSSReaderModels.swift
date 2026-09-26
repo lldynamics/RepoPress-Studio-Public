@@ -95,7 +95,7 @@ public struct RSSFeedIssue: Codable, Hashable, Sendable {
       stage: stage,
       category: .unknown,
       retryStrategy: .automatic,
-      userMessage: "订阅读取暂时失败，请稍后重试。",
+      userMessage: CoreL10n.text("订阅读取暂时失败，请稍后重试。"),
       technicalDetail: error.localizedDescription,
       occurredAt: occurredAt
     )
@@ -112,7 +112,7 @@ public struct RSSFeedIssue: Codable, Hashable, Sendable {
         stage: .validation,
         category: .invalidAddress,
         retryStrategy: .requiresAction,
-        userMessage: "订阅地址无效，请检查后重试。",
+        userMessage: CoreL10n.text("订阅地址无效，请检查后重试。"),
         technicalDetail: detail,
         occurredAt: occurredAt
       )
@@ -122,7 +122,7 @@ public struct RSSFeedIssue: Codable, Hashable, Sendable {
         stage: .transport,
         category: .offline,
         retryStrategy: .automatic,
-        userMessage: "当前无法连接网络；网络恢复后会自动重试。",
+        userMessage: CoreL10n.text("当前无法连接网络；网络恢复后会自动重试。"),
         technicalDetail: detail,
         occurredAt: occurredAt
       )
@@ -131,7 +131,7 @@ public struct RSSFeedIssue: Codable, Hashable, Sendable {
         stage: .transport,
         category: .dnsFailure,
         retryStrategy: .automatic,
-        userMessage: "暂时无法连接订阅服务器，请稍后重试。",
+        userMessage: CoreL10n.text("暂时无法连接订阅服务器，请稍后重试。"),
         technicalDetail: detail,
         occurredAt: occurredAt
       )
@@ -140,7 +140,7 @@ public struct RSSFeedIssue: Codable, Hashable, Sendable {
         stage: .transport,
         category: .timeout,
         retryStrategy: .automatic,
-        userMessage: "订阅服务器响应超时，请稍后重试。",
+        userMessage: CoreL10n.text("订阅服务器响应超时，请稍后重试。"),
         technicalDetail: detail,
         occurredAt: occurredAt
       )
@@ -152,7 +152,7 @@ public struct RSSFeedIssue: Codable, Hashable, Sendable {
         stage: .transport,
         category: .tlsFailure,
         retryStrategy: .requiresAction,
-        userMessage: "无法建立安全连接，请检查订阅网站的证书或地址。",
+        userMessage: CoreL10n.text("无法建立安全连接，请检查订阅网站的证书或地址。"),
         technicalDetail: detail,
         occurredAt: occurredAt
       )
@@ -163,7 +163,7 @@ public struct RSSFeedIssue: Codable, Hashable, Sendable {
         stage: .transport,
         category: .unknown,
         retryStrategy: .automatic,
-        userMessage: "订阅读取暂时失败，请稍后重试。",
+        userMessage: CoreL10n.text("订阅读取暂时失败，请稍后重试。"),
         technicalDetail: detail,
         occurredAt: occurredAt
       )
@@ -185,8 +185,8 @@ public struct RSSFeedIssue: Codable, Hashable, Sendable {
         retryStrategy: retryAt == nil ? .automatic : .afterDate,
         retryAt: retryAt,
         userMessage: retryAt == nil
-          ? "订阅服务器处理超时，稍后会自动重试。"
-          : "订阅服务器处理超时，将在服务器允许的时间后自动重试。",
+          ? CoreL10n.text("订阅服务器处理超时，稍后会自动重试。")
+          : CoreL10n.text("订阅服务器处理超时，将在服务器允许的时间后自动重试。"),
         technicalDetail: detail,
         occurredAt: occurredAt
       )
@@ -195,7 +195,7 @@ public struct RSSFeedIssue: Codable, Hashable, Sendable {
         stage: .response,
         category: .authenticationRequired,
         retryStrategy: .requiresAction,
-        userMessage: "该订阅需要登录或访问凭证。",
+        userMessage: CoreL10n.text("该订阅需要登录或访问凭证。"),
         technicalDetail: detail,
         occurredAt: occurredAt
       )
@@ -204,7 +204,7 @@ public struct RSSFeedIssue: Codable, Hashable, Sendable {
         stage: .response,
         category: .permissionDenied,
         retryStrategy: .requiresAction,
-        userMessage: "订阅服务器拒绝了访问，请检查地址或权限。",
+        userMessage: CoreL10n.text("订阅服务器拒绝了访问，请检查地址或权限。"),
         technicalDetail: detail,
         occurredAt: occurredAt
       )
@@ -213,7 +213,7 @@ public struct RSSFeedIssue: Codable, Hashable, Sendable {
         stage: .response,
         category: .notFound,
         retryStrategy: .requiresAction,
-        userMessage: "没有找到该订阅，请检查地址是否已经变更。",
+        userMessage: CoreL10n.text("没有找到该订阅，请检查地址是否已经变更。"),
         technicalDetail: detail,
         occurredAt: occurredAt
       )
@@ -222,7 +222,7 @@ public struct RSSFeedIssue: Codable, Hashable, Sendable {
         stage: .response,
         category: .gone,
         retryStrategy: .requiresAction,
-        userMessage: "该订阅已经停止提供，请查找新的订阅地址。",
+        userMessage: CoreL10n.text("该订阅已经停止提供，请查找新的订阅地址。"),
         technicalDetail: detail,
         occurredAt: occurredAt
       )
@@ -233,8 +233,8 @@ public struct RSSFeedIssue: Codable, Hashable, Sendable {
         retryStrategy: retryAt == nil ? .automatic : .afterDate,
         retryAt: retryAt,
         userMessage: retryAt == nil
-          ? "请求过于频繁，稍后会自动重试。"
-          : "请求过于频繁，将在服务器允许的时间后自动重试。",
+          ? CoreL10n.text("请求过于频繁，稍后会自动重试。")
+          : CoreL10n.text("请求过于频繁，将在服务器允许的时间后自动重试。"),
         technicalDetail: detail,
         occurredAt: occurredAt
       )
@@ -245,8 +245,8 @@ public struct RSSFeedIssue: Codable, Hashable, Sendable {
         retryStrategy: retryAt == nil ? .automatic : .afterDate,
         retryAt: retryAt,
         userMessage: retryAt == nil
-          ? "订阅服务器暂时不可用，稍后会自动重试。"
-          : "订阅服务器暂时不可用，将在服务器允许的时间后自动重试。",
+          ? CoreL10n.text("订阅服务器暂时不可用，稍后会自动重试。")
+          : CoreL10n.text("订阅服务器暂时不可用，将在服务器允许的时间后自动重试。"),
         technicalDetail: detail,
         occurredAt: occurredAt
       )
@@ -255,7 +255,7 @@ public struct RSSFeedIssue: Codable, Hashable, Sendable {
         stage: .response,
         category: .httpFailure,
         retryStrategy: .manual,
-        userMessage: "订阅服务器返回异常状态（HTTP \(statusCode)）。",
+        userMessage: CoreL10n.format("订阅服务器返回异常状态（HTTP %d）。", statusCode),
         technicalDetail: detail,
         occurredAt: occurredAt
       )
@@ -270,7 +270,7 @@ public struct RSSFeedIssue: Codable, Hashable, Sendable {
       stage: .transport,
       category: .cancelled,
       retryStrategy: .none,
-      userMessage: "订阅读取已取消。",
+      userMessage: CoreL10n.text("订阅读取已取消。"),
       technicalDetail: technicalDetail,
       occurredAt: occurredAt
     )
@@ -786,9 +786,9 @@ public struct RSSRefreshSummary: Equatable, Sendable {
 
   public var statusText: String {
     if skippedCount > 0 {
-      return "刷新完成：成功 \(successCount)、失败 \(failureCount)、暂缓 \(skippedCount)"
+      return CoreL10n.format("刷新完成：成功 %d、失败 %d、暂缓 %d", successCount, failureCount, skippedCount)
     }
-    return "刷新完成：成功 \(successCount)、失败 \(failureCount)"
+    return CoreL10n.format("刷新完成：成功 %d、失败 %d", successCount, failureCount)
   }
 }
 
@@ -859,27 +859,27 @@ public enum RSSReaderError: Error, Equatable, LocalizedError, Sendable {
   public var errorDescription: String? {
     switch self {
     case .invalidFeedURL:
-      return "订阅地址无效。"
+      return CoreL10n.text("订阅地址无效。")
     case .unsupportedFeedURL:
-      return "订阅地址必须使用 http 或 https。"
+      return CoreL10n.text("订阅地址必须使用 http 或 https。")
     case .privateNetworkAccessDenied:
-      return "已阻止访问本机或局域网地址。"
+      return CoreL10n.text("已阻止访问本机或局域网地址。")
     case .network(let message):
-      return "读取订阅失败：\(message)"
+      return CoreL10n.format("读取订阅失败：%@", message)
     case .invalidHTTPResponse:
-      return "订阅服务器返回了无法识别的响应。"
+      return CoreL10n.text("订阅服务器返回了无法识别的响应。")
     case .httpStatus(let statusCode):
-      return "订阅服务器返回 HTTP \(statusCode)。"
+      return CoreL10n.format("订阅服务器返回 HTTP %d。", statusCode)
     case .parseFailed(let message):
-      return "订阅内容无法解析：\(message)"
+      return CoreL10n.format("订阅内容无法解析：%@", message)
     case .emptyFeed:
-      return "订阅中没有可显示的文章。"
+      return CoreL10n.text("订阅中没有可显示的文章。")
     case .invalidOPML(let message):
-      return "OPML 文件无法导入：\(message)"
+      return CoreL10n.format("OPML 文件无法导入：%@", message)
     case .noOPMLFeeds:
-      return "OPML 文件中没有找到可导入的 RSS 或 Atom 订阅。"
+      return CoreL10n.text("OPML 文件中没有找到可导入的 RSS 或 Atom 订阅。")
     case .persistence(let message):
-      return "RSS 本地缓存保存失败：\(message)"
+      return CoreL10n.format("RSS 本地缓存保存失败：%@", message)
     case .issue(let issue):
       return issue.userMessage
     }
@@ -908,7 +908,7 @@ public enum RSSReaderError: Error, Equatable, LocalizedError, Sendable {
         stage: .validation,
         category: .permissionDenied,
         retryStrategy: .requiresAction,
-        userMessage: "已阻止访问本机或局域网地址；如确认订阅可信，可在 RSS 设置中允许局域网访问。",
+        userMessage: CoreL10n.text("已阻止访问本机或局域网地址；如确认订阅可信，可在 RSS 设置中允许局域网访问。"),
         technicalDetail: localizedDescription,
         occurredAt: occurredAt
       )
@@ -917,7 +917,7 @@ public enum RSSReaderError: Error, Equatable, LocalizedError, Sendable {
         stage: .transport,
         category: .unknown,
         retryStrategy: .automatic,
-        userMessage: "订阅读取暂时失败，请稍后重试。",
+        userMessage: CoreL10n.text("订阅读取暂时失败，请稍后重试。"),
         technicalDetail: message,
         occurredAt: occurredAt
       )
@@ -936,7 +936,7 @@ public enum RSSReaderError: Error, Equatable, LocalizedError, Sendable {
         stage: .parsing,
         category: .invalidContent,
         retryStrategy: .requiresAction,
-        userMessage: "订阅内容不是可识别的 RSS 或 Atom。",
+        userMessage: CoreL10n.text("订阅内容不是可识别的 RSS 或 Atom。"),
         technicalDetail: message,
         occurredAt: occurredAt
       )
@@ -970,7 +970,7 @@ public enum RSSReaderError: Error, Equatable, LocalizedError, Sendable {
         stage: .persistence,
         category: .storage,
         retryStrategy: .requiresAction,
-        userMessage: "RSS 本地缓存暂时无法保存，请检查磁盘空间或文件权限。",
+        userMessage: CoreL10n.text("RSS 本地缓存暂时无法保存，请检查磁盘空间或文件权限。"),
         technicalDetail: message,
         occurredAt: occurredAt
       )

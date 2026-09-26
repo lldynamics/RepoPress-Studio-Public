@@ -53,19 +53,26 @@ extension WritingDraftColumn {
       .help(String(localized: "集中管理版本、回收站、备份和迁移"))
       .accessibilityLabel("打开数据管理")
 
-      Menu {
-        Button {
-          isAIBatchMaintenancePresented = true
-        } label: {
-          Label("AI 批量维护", systemImage: "sparkles.rectangle.stack")
-        }
-        Divider()
-        Button {
-          store.createDraft()
-        } label: {
-          Label("新建站点文章", systemImage: "doc.badge.plus")
-        }
+      Button {
+        store.createDraft()
+      } label: {
+        Label("新建文章", systemImage: "doc.badge.plus")
+          .labelStyle(.titleAndIcon)
+          .font(.workbenchButtonLabel.weight(.bold))
+          .foregroundStyle(WorkbenchTheme.primaryActionForeground)
+          .padding(.horizontal, 10)
+          .frame(height: 28)
+          .background(
+            WorkbenchTheme.primaryActionFill,
+            in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+          )
+      }
+      .buttonStyle(.plain)
+      .help("新建站点文章")
+      .accessibilityLabel("新建站点文章")
+      .accessibilityIdentifier("writing-create-article")
 
+      Menu {
         Button {
           store.createGeneralDraft()
         } label: {
@@ -80,12 +87,10 @@ extension WritingDraftColumn {
           Label("从模板新建…", systemImage: "doc.text.image")
         }
       } label: {
-        Label("新建", systemImage: "plus")
-          .labelStyle(.titleAndIcon)
+        Image(systemName: "chevron.down")
           .font(.workbenchButtonLabel.weight(.bold))
           .foregroundStyle(WorkbenchTheme.primaryActionForeground)
-          .padding(.horizontal, 10)
-          .frame(height: 28)
+          .frame(width: 28, height: 28)
           .background(
             WorkbenchTheme.primaryActionFill,
             in: RoundedRectangle(cornerRadius: 7, style: .continuous)
@@ -95,8 +100,8 @@ extension WritingDraftColumn {
       .menuIndicator(.hidden)
       .controlSize(.regular)
       .fixedSize()
-      .help("新建文章或通用草稿")
-      .accessibilityLabel("新建文章或通用草稿")
+      .help("其他新建选项")
+      .accessibilityLabel("其他新建选项")
       .accessibilityIdentifier("writing-create-menu")
     }
   }
@@ -164,7 +169,7 @@ extension WritingDraftColumn {
         HStack(spacing: 6) {
           Image(systemName: "line.3.horizontal.decrease.circle.fill")
             .font(.caption)
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(workbenchAccentColor)
           Text(
             filter != .all
               ? String(format: String(localized: "已筛选：%@"), filter.localizedDisplayName)
@@ -186,7 +191,7 @@ extension WritingDraftColumn {
                 .font(.system(size: 8, weight: .bold))
             }
             .font(.workbenchMetadata)
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(workbenchAccentColor)
           }
           .buttonStyle(.plain)
           .help(String(localized: "重置所有筛选与搜索条件"))
@@ -194,7 +199,7 @@ extension WritingDraftColumn {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(
-          Color.accentColor.opacity(0.08),
+          workbenchAccentColor.opacity(0.08),
           in: RoundedRectangle(cornerRadius: 6)
         )
       }
@@ -233,7 +238,7 @@ extension WritingDraftColumn {
           filter = candidate
         }
         .buttonStyle(.bordered)
-        .tint(filter == candidate ? .accentColor : .secondary)
+        .tint(filter == candidate ? workbenchAccentColor : .secondary)
         .controlSize(.small)
         .accessibilityAddTraits(filter == candidate ? .isSelected : [])
       }
@@ -265,28 +270,16 @@ extension WritingDraftColumn {
         }
       }
       Section(String(localized: "排序")) {
-        ForEach(WritingDraftSortOrder.allCases) { option in
-          Button {
-            sortOrderRawValue = option.rawValue
-          } label: {
-            if sortOrder == option {
-              Label(option.localizedDisplayName, systemImage: "checkmark")
-            } else {
-              Text(option.localizedDisplayName)
-            }
+        Picker("排序", selection: $sortOrderRawValue) {
+          ForEach(WritingDraftSortOrder.allCases) { option in
+            Text(option.localizedDisplayName).tag(option.rawValue)
           }
         }
       }
       Section(String(localized: "文章分组方式")) {
-        ForEach(WritingDraftListDisplayMode.allCases) { option in
-          Button {
-            displayModeRawValue = option.rawValue
-          } label: {
-            if displayMode == option {
-              Label(writingDraftDisplayModeName(option), systemImage: "checkmark")
-            } else {
-              Text(writingDraftDisplayModeName(option))
-            }
+        Picker("文章分组方式", selection: $displayModeRawValue) {
+          ForEach(WritingDraftListDisplayMode.allCases) { option in
+            Text(writingDraftDisplayModeName(option)).tag(option.rawValue)
           }
         }
         if store.draftListContentScope == .general {

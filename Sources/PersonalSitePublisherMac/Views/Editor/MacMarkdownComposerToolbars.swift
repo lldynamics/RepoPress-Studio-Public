@@ -65,6 +65,7 @@ enum MarkdownArticleToolbarScope {
 }
 
 struct MacMarkdownEditorToolbar: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @Binding var title: String
   let store: WorkbenchStore
   let draftID: UUID
@@ -80,6 +81,7 @@ struct MacMarkdownEditorToolbar: View {
   let formattingToolbar: MacMarkdownFormattingToolbar
   @EnvironmentObject private var zenModeController: ZenModeController
   @State private var selectedPublishAssets = AIPublishingAssetKind.defaultSelection
+  @State private var isPublishAssetPickerPresented = false
   @AppStorage("workspace.customToolbarConfig") private var customToolbarConfigRawValue = ""
   @State private var isCustomizationSheetPresented = false
 
@@ -135,11 +137,13 @@ struct MacMarkdownEditorToolbar: View {
   }
 
   var body: some View {
-    HStack(spacing: 8) {
+    VStack(alignment: .leading, spacing: 10) {
       titleArea
-      formattingToolbar
-        .frame(minWidth: 80, idealWidth: 220, maxWidth: 280)
-      configuredIconToolbarControls
+      HStack(spacing: 8) {
+        formattingToolbar
+          .frame(minWidth: 80, idealWidth: 220, maxWidth: 280)
+        configuredIconToolbarControls
+      }
     }
     .padding(.horizontal, WorkbenchSpacing.section)
     .padding(.vertical, 9)
@@ -396,6 +400,18 @@ struct MacMarkdownEditorToolbar: View {
     .help("AI 常用操作")
     .accessibilityLabel("AI 常用操作")
     .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
+    .popover(isPresented: $isPublishAssetPickerPresented) {
+      MacMarkdownPublishAssetPickerPopover(
+        selectedAssets: $selectedPublishAssets,
+        isGenerationEnabled: actions.articleAIActionAvailability(.draftPublishAssetPack).isEnabled,
+        onGenerate: {
+          actions.onPerformConvergedArticleAIAction(
+            .publishAssetPack(AIPublishingAssetPackConfiguration(assets: selectedPublishAssets))
+          )
+          isPublishAssetPickerPresented = false
+        }
+      )
+    }
   }
 
   private func inlineAICompletionButton(showsTitle: Bool) -> some View {
@@ -433,7 +449,7 @@ struct MacMarkdownEditorToolbar: View {
       }
     }
     .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
-    .foregroundStyle(Color.accentColor)
+    .foregroundStyle(workbenchAccentColor)
     .disabled(!canOpenAIChat)
     .help(
       aiChatUnavailableReason
@@ -481,7 +497,11 @@ struct MacMarkdownEditorToolbar: View {
 
   private func writingToolDensityControl(showsTitle: Bool) -> some View {
     Menu {
-      writingToolDensityActions
+      Picker("写作工具密度", selection: writingToolDensitySelection) {
+        ForEach(MarkdownWritingToolDensity.allCases) { density in
+          Text(density.title).tag(density.rawValue)
+        }
+      }
     } label: {
       editorActionLabel(
         "写作工具密度",
@@ -511,19 +531,14 @@ struct MacMarkdownEditorToolbar: View {
     .accessibilityIdentifier("markdown-writing-context-panel-menu")
   }
 
-  @ViewBuilder
-  private var writingToolDensityActions: some View {
-    ForEach(MarkdownWritingToolDensity.allCases) { density in
-      Button {
+  private var writingToolDensitySelection: Binding<String> {
+    Binding(
+      get: { writingToolDensity.rawValue },
+      set: { rawValue in
+        guard let density = MarkdownWritingToolDensity(rawValue: rawValue) else { return }
         actions.onSetWritingToolDensity(density)
-      } label: {
-        if density == writingToolDensity {
-          Label(density.title, systemImage: "checkmark")
-        } else {
-          Label(density.title, systemImage: density.systemImage)
-        }
       }
-    }
+    )
   }
 
   @ViewBuilder
@@ -640,33 +655,13 @@ struct MacMarkdownEditorToolbar: View {
   }
 
   private var convergedPublishAssetPackAction: some View {
-    Menu {
-      Section("选择发布资产") {
-        ForEach(AIPublishingAssetKind.allCases) { asset in
-          Toggle(isOn: publishAssetBinding(for: asset)) {
-            Label(asset.localizedDisplayName, systemImage: "checkmark.square")
-          }
-        }
-      }
-
-      Divider()
-
-      Button {
-        actions.onPerformConvergedArticleAIAction(
-          .publishAssetPack(AIPublishingAssetPackConfiguration(assets: selectedPublishAssets))
-        )
-      } label: {
-        Label("生成已选择的 \(selectedPublishAssets.count) 项", systemImage: "play.fill")
-      }
-      .disabled(
-        selectedPublishAssets.isEmpty
-          || !actions.articleAIActionAvailability(.draftPublishAssetPack).isEnabled
-      )
+    Button {
+      isPublishAssetPickerPresented = true
     } label: {
       Label("发布资产包", systemImage: "shippingbox")
     }
     .help("勾选多个发布资产，一次生成完整发布包")
-    .accessibilityIdentifier("ai-converged-publish-asset-pack-menu")
+    .accessibilityIdentifier("ai-converged-publish-asset-pack")
   }
 
   private var convergedReviewAction: some View {
@@ -680,19 +675,6 @@ struct MacMarkdownEditorToolbar: View {
     .disabled(!actions.articleAIActionAvailability(.publishingReadiness).isEnabled)
     .help("一次检查内容缺口、事实边界、隐私、链接、SEO、可读性和技术准确性")
     .accessibilityIdentifier("ai-converged-content-review")
-  }
-
-  private func publishAssetBinding(for asset: AIPublishingAssetKind) -> Binding<Bool> {
-    Binding(
-      get: { selectedPublishAssets.contains(asset) },
-      set: { isSelected in
-        if isSelected {
-          selectedPublishAssets.insert(asset)
-        } else {
-          selectedPublishAssets.remove(asset)
-        }
-      }
-    )
   }
 
   @ViewBuilder
@@ -754,6 +736,64 @@ struct MacMarkdownEditorToolbar: View {
   }
 }
 
+private struct MacMarkdownPublishAssetPickerPopover: View {
+  @Binding var selectedAssets: Set<AIPublishingAssetKind>
+  let isGenerationEnabled: Bool
+  let onGenerate: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      VStack(alignment: .leading, spacing: 4) {
+        Text("选择发布资产")
+          .font(.headline)
+        Text("勾选后一次生成所选资产。")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+      }
+
+      ScrollView {
+        VStack(alignment: .leading, spacing: 8) {
+          ForEach(AIPublishingAssetKind.allCases) { asset in
+            Toggle(asset.localizedDisplayName, isOn: selectionBinding(for: asset))
+          }
+        }
+      }
+      .frame(maxHeight: 280)
+
+      HStack {
+        Text("已选择 \(selectedAssets.count) 项")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        Spacer()
+        Button("生成所选资产") {
+          onGenerate()
+        }
+        .workbenchProminentActionStyle()
+        .disabled(selectedAssets.isEmpty || !isGenerationEnabled)
+        .keyboardShortcut(.defaultAction)
+      }
+    }
+    .padding(16)
+    .frame(width: 320, alignment: .leading)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("选择发布资产")
+    .accessibilityIdentifier("ai-publish-asset-picker")
+  }
+
+  private func selectionBinding(for asset: AIPublishingAssetKind) -> Binding<Bool> {
+    Binding(
+      get: { selectedAssets.contains(asset) },
+      set: { isSelected in
+        if isSelected {
+          selectedAssets.insert(asset)
+        } else {
+          selectedAssets.remove(asset)
+        }
+      }
+    )
+  }
+}
+
 /// Keeps persistence-state invalidation inside the title area instead of
 /// rebuilding and remeasuring the complete adaptive toolbar.
 private struct MacMarkdownEditorTitleArea: View {
@@ -785,18 +825,27 @@ private struct MacMarkdownEditorTitleArea: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 2) {
       TextField(
-        text: $title,
-        prompt: Text("未命名文章").italic().foregroundColor(.secondary)
-      ) {
-        EmptyView()
-      }
+        "文章标题",
+        text: Binding(
+          get: { title },
+          set: { value in
+            // The field may wrap visually, while article metadata remains a single title.
+            title = value.replacingOccurrences(of: "\r\n", with: " ")
+              .replacingOccurrences(of: "\n", with: " ")
+              .replacingOccurrences(of: "\r", with: " ")
+          }
+        ),
+        prompt: Text("未命名文章").italic().foregroundColor(.secondary),
+        axis: .vertical
+      )
       .textFieldStyle(.plain)
-      .font(.headline)
+      .labelsHidden()
+      .font(.title2.weight(.semibold))
       // Unsaved state is shown by the save-status control; recoloring the
       // title duplicated it and made the heading flicker while typing.
       .accessibilityLabel("文章标题")
       .accessibilityValue(title.nilIfEmpty ?? String(localized: "未命名文章"))
-      .lineLimit(1)
+      .lineLimit(1...3)
       .help(title.nilIfEmpty ?? String(localized: "未命名文章"))
 
       HStack(spacing: 10) {
@@ -836,7 +885,7 @@ private struct MacMarkdownEditorTitleArea: View {
         .accessibilityIdentifier("markdown-editor-save-failure")
       }
     }
-    .frame(minWidth: 155, idealWidth: 250, maxWidth: 300, alignment: .leading)
+    .frame(maxWidth: .infinity, alignment: .leading)
     .onChange(of: draftID) { _, updatedDraftID in
       saveStatus.trackDraft(updatedDraftID)
     }
@@ -882,8 +931,9 @@ private struct MacMarkdownEditorSaveStatusIcon: View {
       }
       .font(.caption)
       .foregroundStyle(
-        saveStatus.saveFailure != nil || saveStatus.hasUnsavedChanges
-          ? WorkbenchTheme.warning : WorkbenchTheme.success
+        saveStatus.saveFailure != nil
+          ? WorkbenchTheme.warning
+          : (saveStatus.hasUnsavedChanges ? Color.secondary : WorkbenchTheme.success)
       )
     }
     .buttonStyle(.borderless)
@@ -936,6 +986,7 @@ private struct MacMarkdownEditorSaveStatusIcon: View {
 }
 
 struct MarkdownEditorToolbarButtonStyle: ButtonStyle {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let showsTitle: Bool
   var isSelected = false
 
@@ -949,7 +1000,7 @@ struct MarkdownEditorToolbarButtonStyle: ButtonStyle {
       .fixedSize(horizontal: showsTitle, vertical: false)
       .background(
         isSelected
-          ? WorkbenchTheme.navigationSelection.opacity(configuration.isPressed ? 0.18 : 0.10)
+          ? workbenchAccentColor.opacity(configuration.isPressed ? 0.18 : 0.10)
           : Color.primary.opacity(configuration.isPressed ? 0.10 : 0.04),
         in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
       )
@@ -957,9 +1008,9 @@ struct MarkdownEditorToolbarButtonStyle: ButtonStyle {
         RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
           .stroke(
             isFocused
-              ? Color.accentColor
+              ? workbenchAccentColor
               : (isSelected
-                ? WorkbenchTheme.navigationSelection.opacity(0.70)
+                ? workbenchAccentColor.opacity(0.70)
                 : Color.clear),
             lineWidth: isFocused ? 2 : (isSelected ? 1 : 0)
           )

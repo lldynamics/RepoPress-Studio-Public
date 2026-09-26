@@ -3,6 +3,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct MacMarkdownComposerView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @Binding var draft: ArticleDraft
   let store: WorkbenchStore
   let aiActions: WorkbenchAIFeatureFacade
@@ -22,6 +23,9 @@ struct MacMarkdownComposerView: View {
   /// observes this model, not the complete composer hierarchy.
   @State var editorStatisticsState = MarkdownComposerStatisticsState()
   @StateObject var zenModeController = ZenModeController()
+  @SceneStorage("workspace.focusMode") var isFocusModeActive = false
+  @AppStorage(MarkdownEditorComfortPreferences.focusToolbarFadeEnabledKey)
+  var isFocusToolbarFadeEnabled = true
   @State var attachmentState = MarkdownComposerAttachmentState()
   @State var selectionActionState = MarkdownComposerSelectionActionState()
   @State var selectionBubblePresentationState = MarkdownSelectionBubblePresentationState()
@@ -590,10 +594,17 @@ struct MacMarkdownComposerView: View {
   var body: some View {
     editorWorkspaceDocumentLifecycle
       .onAppear {
+        syncFocusToolbarVisibility()
         zenModeController.refreshAccessibilityState(
           voiceOverEnabled: accessibilityVoiceOverEnabled,
           reduceMotionEnabled: accessibilityReduceMotion
         )
+      }
+      .onChange(of: isFocusModeActive) { _, _ in
+        syncFocusToolbarVisibility()
+      }
+      .onChange(of: isFocusToolbarFadeEnabled) { _, _ in
+        syncFocusToolbarVisibility()
       }
       .onChange(of: accessibilityReduceMotion) { _, shouldReduceMotion in
         zenModeController.refreshAccessibilityState(
@@ -899,7 +910,7 @@ struct MacMarkdownComposerView: View {
 
         if isImageDropTargeted {
           ZStack {
-            Color.accentColor.opacity(0.10)
+            workbenchAccentColor.opacity(0.10)
             VStack(spacing: 8) {
               Image(systemName: "photo.badge.plus")
                 .font(.system(size: 30, weight: .semibold))
@@ -910,7 +921,7 @@ struct MacMarkdownComposerView: View {
           }
           .overlay {
             RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-              .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [7, 5]))
+              .stroke(workbenchAccentColor, style: StrokeStyle(lineWidth: 2, dash: [7, 5]))
           }
           .allowsHitTesting(false)
           .accessibilityHidden(true)
@@ -950,6 +961,7 @@ struct MacMarkdownComposerView: View {
 
       Divider()
       MacMarkdownEditorStatusBar(
+        draft: $draft,
         statisticsState: editorStatisticsState,
         cursorPosition: markdownCursorPosition,
         fenceMatch: activeMarkdownFenceMatch,
@@ -1167,9 +1179,14 @@ extension MarkdownFrontMatterEditingIssue {
 }
 
 extension MacMarkdownComposerView {
+  private func syncFocusToolbarVisibility() {
+    zenModeController.setZenModeActive(isFocusModeActive && isFocusToolbarFadeEnabled)
+  }
+
   private var integratedFormattingToolbar: MacMarkdownFormattingToolbar {
     MacMarkdownFormattingToolbar(
       writingToolDensity: writingToolDensity,
+      isFocusModeActive: $isFocusModeActive,
       onApplyMarkdownFormatting: applyMarkdownFormatting,
       onApplyAdvancedFormatting: applyAdvancedMarkdownFormatting,
       onEditLines: applyMarkdownLineEditing,
@@ -1194,11 +1211,21 @@ extension MacMarkdownComposerView {
       diagnosticCount: inlineDiagnostics.count,
       onInsertImage: {
         guard requireBodyEditingContext() else { return }
-        insertImageReferences(ImageSelectionPanel.chooseImages())
+        let requestedDraftID = draft.id
+        Task {
+          let urls = await ImageSelectionPanel.chooseImages()
+          guard draft.id == requestedDraftID, !urls.isEmpty else { return }
+          insertImageReferences(urls)
+        }
       },
       onInsertVideo: {
         guard requireBodyEditingContext() else { return }
-        insertVideoReferences(VideoSelectionPanel.chooseVideos())
+        let requestedDraftID = draft.id
+        Task {
+          let urls = await VideoSelectionPanel.chooseVideos()
+          guard draft.id == requestedDraftID, !urls.isEmpty else { return }
+          insertVideoReferences(urls)
+        }
       },
       onFormatChineseTypography: formatChineseTypography,
       presentation: .integrated

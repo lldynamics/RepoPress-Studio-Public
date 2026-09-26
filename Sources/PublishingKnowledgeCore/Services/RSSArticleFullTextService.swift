@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import PublishingCoreSupport
 
 /// Coordinates page download, DOM extraction, quality validation, and the
 /// durable full-text record written by `RSSReaderStore`.
@@ -62,7 +63,7 @@ public struct RSSArticleFullTextService: Sendable {
       let scheme = url.scheme?.lowercased(),
       scheme == "http" || scheme == "https"
     else {
-      throw RSSReaderError.persistence("该文章没有有效的原文网页链接。")
+      throw RSSReaderError.persistence(CoreL10n.text("该文章没有有效的原文网页链接。"))
     }
 
     // Validators and cached bodies are reusable only for the exact source URL
@@ -91,13 +92,13 @@ public struct RSSArticleFullTextService: Sendable {
 
     if download.notModified {
       guard let cachedRecord = reusableCachedRecord else {
-        throw RSSReaderError.persistence("原文未变更，但本地没有可用的全文缓存。")
+        throw RSSReaderError.persistence(CoreL10n.text("原文未变更，但本地没有可用的全文缓存。"))
       }
       switch cachedRecord.status {
       case .ready:
         guard !cachedRecord.contentHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else {
-          throw RSSReaderError.persistence("原文未变更，但本地全文缓存为空。")
+          throw RSSReaderError.persistence(CoreL10n.text("原文未变更，但本地全文缓存为空。"))
         }
         return .ready(
           articleID: article.id,
@@ -205,7 +206,7 @@ public struct RSSArticleFullTextService: Sendable {
     )
     guard record.status == .ready else {
       throw RSSReaderError.persistence(
-        record.failureMessage ?? "提取结果未通过正文质量校验。"
+        record.failureMessage ?? CoreL10n.text("提取结果未通过正文质量校验。")
       )
     }
     return articleByApplying(record, to: article)

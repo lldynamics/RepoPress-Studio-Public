@@ -15,6 +15,7 @@ enum MarkdownOutlineSectionAction {
   case copyAnchorLink
 }
 struct MarkdownOutlinePopover: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let items: [MarkdownOutlineItem]
   let activeItemID: String?
   @Binding var collapsedItemIDs: Set<String>
@@ -124,7 +125,7 @@ struct MarkdownOutlinePopover: View {
         .background {
           if item.id == activeItemID {
             RoundedRectangle(cornerRadius: 6)
-              .fill(Color.accentColor.opacity(0.18))
+              .fill(workbenchAccentColor.opacity(0.18))
           }
         }
       }

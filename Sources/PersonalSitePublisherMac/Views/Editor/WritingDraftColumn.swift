@@ -326,6 +326,7 @@ struct WritingDraftListCache {
 }
 
 struct WritingDraftColumn: View {
+  @Environment(\.workbenchAccentColor) var workbenchAccentColor
   let store: WorkbenchStore
   let isCompact: Bool
   /// The draft selected by this window. This is deliberately not derived from

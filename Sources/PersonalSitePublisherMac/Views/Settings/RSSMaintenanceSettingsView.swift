@@ -257,17 +257,17 @@ struct RSSMaintenanceSettingsView: View {
 
       Group {
         Section {
-          Text("低频的 OPML 导入和导出放在这里；文件只包含订阅名称与地址，不包含文章缓存或阅读状态。")
+          Text(String(localized: "低频的 OPML 导入和导出放在这里；文件只包含订阅名称与地址，不包含文章缓存或阅读状态。"))
             .font(.callout)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
 
           HStack {
-            Button("导入 OPML", systemImage: "square.and.arrow.down") {
+            Button(String(localized: "导入 OPML"), systemImage: "square.and.arrow.down") {
               importOPML()
             }
 
-            Button("导出 OPML", systemImage: "square.and.arrow.up") {
+            Button(String(localized: "导出 OPML"), systemImage: "square.and.arrow.up") {
               exportOPML()
             }
             .disabled(store.feeds.isEmpty)
@@ -526,37 +526,58 @@ struct RSSMaintenanceSettingsView: View {
   }
 
   private func importOPML() {
-    opmlFeedback = nil
-    opmlFeedbackIsError = false
-    do {
-      guard let result = try RSSOPMLFileTransferService.importOPML(into: store) else { return }
-      opmlFeedback = "已导入 " + result.feedIDs.count.formatted() + " 个订阅，正在读取最新文章。"
-      Task { @MainActor in
+    Task { @MainActor in
+      opmlFeedback = nil
+      opmlFeedbackIsError = false
+      do {
+        guard let result = try await RSSOPMLFileTransferService.importOPML(into: store) else {
+          return
+        }
+        opmlFeedback = String(
+          format: String(localized: "已导入 %@ 个订阅，正在读取最新文章。"),
+          result.feedIDs.count.formatted()
+        )
+        Task { @MainActor in
         for feedID in result.feedIDs {
           await store.refresh(feedID: feedID)
         }
       }
-    } catch {
+      } catch {
       opmlFeedback = error.localizedDescription
       opmlFeedbackIsError = true
+      }
     }
   }
 
   private func exportOPML() {
-    opmlFeedback = nil
-    opmlFeedbackIsError = false
-    do {
-      guard let result = try RSSOPMLFileTransferService.exportOPML(from: store) else { return }
-      let excludedSuffix =
+    Task { @MainActor in
+      opmlFeedback = nil
+      opmlFeedbackIsError = false
+      do {
+        guard let result = try await RSSOPMLFileTransferService.exportOPML(from: store) else {
+          return
+        }
+        let excludedSuffix =
         result.excludedSubscriptionCount > 0
-        ? "，已排除 " + result.excludedSubscriptionCount.formatted() + " 个风险订阅"
-        : ""
+          ? String(
+            format: String(localized: "，已排除 %@ 个风险订阅"),
+            result.excludedSubscriptionCount.formatted()
+          )
+          : ""
       opmlFeedback =
-        "已导出 " + result.exportedSubscriptionCount.formatted()
-        + " 个订阅到 " + result.destinationURL.lastPathComponent + excludedSuffix + "。"
-    } catch {
-      opmlFeedback = "OPML 导出失败：" + error.localizedDescription
-      opmlFeedbackIsError = true
+          String(
+            format: String(localized: "已导出 %@ 个订阅到 %@%@。"),
+            result.exportedSubscriptionCount.formatted(),
+            result.destinationURL.lastPathComponent,
+            excludedSuffix
+          )
+      } catch {
+        opmlFeedback = String(
+          format: String(localized: "OPML 导出失败：%@"),
+          error.localizedDescription
+        )
+        opmlFeedbackIsError = true
+      }
     }
   }
 

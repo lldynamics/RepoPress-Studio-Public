@@ -48,7 +48,7 @@ extension PublishingStore {
   @discardableResult
   func blockPublishingIfGeneralDraftSelected(store: WorkbenchStore) -> Bool {
     guard store.selectedDraft?.isGeneralDraft == true else { return false }
-    setPublishActionMessage(generalDraftPublishingIssue.message, status: .warning)
+    setPublishingActionMessage(generalDraftPublishingIssue.message, status: .warning)
     return true
   }
 
@@ -176,7 +176,7 @@ extension PublishingStore {
       markdownFile.operation == .upsert,
       let markdownContent = markdownFile.content
     else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。"),
         status: .warning
       )
@@ -186,11 +186,11 @@ extension PublishingStore {
     let expectedContentDigest = ArticleDraft.repositoryDocumentDigest(markdownContent)
     let draftID = package.draftID
     guard let draft = drafts.first(where: { $0.id == draftID }), !draft.isGeneralDraft else {
-      setPublishActionMessage(CoreL10n.text("找不到要加入项目的草稿。"), status: .warning)
+      setPublishingActionMessage(CoreL10n.text("找不到要加入项目的草稿。"), status: .warning)
       return false
     }
     guard draft.renderedRepositoryContentDigest(profile: profile) == expectedContentDigest else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。"),
         status: .warning
       )
@@ -222,7 +222,7 @@ extension PublishingStore {
     guard let refreshed = drafts.first(where: { $0.id == draftID }),
       refreshed.renderedRepositoryContentDigest(profile: profile) == expectedContentDigest
     else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。"),
         status: .warning
       )
@@ -240,7 +240,7 @@ extension PublishingStore {
       )
     else {
       if didWrite {
-        setPublishActionMessage(
+        setPublishingActionMessage(
           CoreL10n.format(
             "站点草稿写入项目失败：%@",
             CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。")

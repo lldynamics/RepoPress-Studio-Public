@@ -92,6 +92,7 @@ extension PreflightIssue {
 }
 
 struct ArticleInspectorTabs: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @Environment(\.publishReadinessNavigationRequest) private var publishNavigationRequest
 
   @Binding var selectedTab: ArticleInspectorTab
@@ -208,7 +209,7 @@ struct ArticleInspectorTabs: View {
       }
     }
     .pickerStyle(.segmented)
-    .tint(WorkbenchTheme.navigationSelection)
+    .tint(workbenchAccentColor)
     .labelsHidden()
     .padding(10)
     .accessibilityLabel("文章详情栏标签")

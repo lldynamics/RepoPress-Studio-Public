@@ -32,7 +32,9 @@ extension WorkbenchAIStore {
       )
       _ = try aiChatAvailableAPIKey(for: initialProfile)
     } catch {
-      aiActionMessage = CoreL10n.format("无法提炼写作风格：%@", error.localizedDescription)
+      store.setAIActionFailureMessage(
+        CoreL10n.format("无法提炼写作风格：%@", error.localizedDescription)
+      )
       return nil
     }
 
@@ -157,7 +159,9 @@ extension WorkbenchAIStore {
       guard !(error is CancellationError), canPresentAIRequest(lane, generation: generation) else {
         return nil
       }
-      aiActionMessage = CoreL10n.format("写作风格提炼失败：%@", error.localizedDescription)
+      store.setAIActionFailureMessage(
+        CoreL10n.format("写作风格提炼失败：%@", error.localizedDescription)
+      )
       return nil
     }
   }

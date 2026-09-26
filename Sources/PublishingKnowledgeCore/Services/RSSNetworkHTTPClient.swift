@@ -56,11 +56,11 @@ package enum RSSNetworkURLPolicy {
       do {
         addresses = try resolver(normalizedHost)
       } catch {
-        throw RSSReaderError.network("无法安全解析订阅地址。")
+        throw RSSReaderError.network(CoreL10n.text("无法安全解析订阅地址。"))
       }
     }
     guard !addresses.isEmpty else {
-      throw RSSReaderError.network("无法安全解析订阅地址。")
+      throw RSSReaderError.network(CoreL10n.text("无法安全解析订阅地址。"))
     }
     // Packet-tunnel proxies such as Shadowrocket commonly synthesize
     // 198.18.0.0/15 DNS answers for otherwise public hostnames. Permit that
@@ -255,7 +255,7 @@ enum RSSHTTPContentDecoder {
           maximumByteCount: maximumByteCount
         )
       } catch is InflateError {
-        throw RSSReaderError.network("订阅响应的 gzip 压缩内容已损坏或不完整。")
+        throw RSSReaderError.network(CoreL10n.text("订阅响应的 gzip 压缩内容已损坏或不完整。"))
       }
     case "deflate":
       do {
@@ -275,11 +275,11 @@ enum RSSHTTPContentDecoder {
             maximumByteCount: maximumByteCount
           )
         } catch is InflateError {
-          throw RSSReaderError.network("订阅响应的 deflate 压缩内容已损坏或不完整。")
+          throw RSSReaderError.network(CoreL10n.text("订阅响应的 deflate 压缩内容已损坏或不完整。"))
         }
       }
     default:
-      throw RSSReaderError.network("订阅响应使用了不支持的压缩格式。")
+      throw RSSReaderError.network(CoreL10n.text("订阅响应使用了不支持的压缩格式。"))
     }
   }
 
@@ -411,7 +411,7 @@ package enum RSSNetworkHTTPClient {
         let location = received.header("location"),
         let destination = URL(string: location, relativeTo: endpoint.url)?.absoluteURL
       else {
-        throw RSSReaderError.network("网页重定向地址无法安全验证。")
+        throw RSSReaderError.network(CoreL10n.text("网页重定向地址无法安全验证。"))
       }
 
       currentURL = destination
@@ -425,6 +425,6 @@ package enum RSSNetworkHTTPClient {
       request.setValue(nil, forHTTPHeaderField: "Cookie")
       request.setValue(nil, forHTTPHeaderField: "Authorization")
     }
-    throw RSSReaderError.network("网页重定向次数过多。")
+    throw RSSReaderError.network(CoreL10n.text("网页重定向次数过多。"))
   }
 }

@@ -123,7 +123,7 @@ enum WorkbenchInformationEmphasis: Equatable {
   case critical
   case selected
 
-  fileprivate var color: Color {
+  fileprivate func color(accentColor: Color) -> Color {
     switch self {
     case .standard:
       return .secondary
@@ -132,16 +132,16 @@ enum WorkbenchInformationEmphasis: Equatable {
     case .critical:
       return WorkbenchTheme.risk
     case .selected:
-      return WorkbenchTheme.navigationSelection
+      return accentColor
     }
   }
 
-  fileprivate var background: Color {
+  fileprivate func background(accentColor: Color) -> Color {
     switch self {
     case .standard:
       return .clear
     case .warning, .critical, .selected:
-      return color.opacity(WorkbenchOpacity.noticeBackground)
+      return color(accentColor: accentColor).opacity(WorkbenchOpacity.noticeBackground)
     }
   }
 }
@@ -196,6 +196,7 @@ struct WorkbenchSectionGroup<Content: View>: View {
 
 /// A reusable list-style information row. Wrap it in a plain button for navigation.
 struct WorkbenchInformationRow<Accessory: View>: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let title: LocalizedStringKey
   let detail: Text?
   let detailIdentityValue: String?
@@ -223,7 +224,7 @@ struct WorkbenchInformationRow<Accessory: View>: View {
     HStack(alignment: .center, spacing: WorkbenchSpacing.card) {
       if let systemImage {
         Image(systemName: systemImage)
-          .foregroundStyle(emphasis.color)
+          .foregroundStyle(emphasis.color(accentColor: workbenchAccentColor))
           .frame(width: 18)
           .accessibilityHidden(true)
       }
@@ -253,7 +254,7 @@ struct WorkbenchInformationRow<Accessory: View>: View {
     .padding(.vertical, WorkbenchSpacing.control)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
-      emphasis.background,
+      emphasis.background(accentColor: workbenchAccentColor),
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
     )
     .accessibilityElement(children: .combine)
@@ -547,6 +548,8 @@ struct QuickHideOverlay: View {
   @ObservedObject var store: WorkbenchStore
   @FocusState private var isUnlockButtonFocused: Bool
   @AccessibilityFocusState private var isOverlayFocused: Bool
+  @State private var isUnlocking = false
+  @State private var authenticationMessage: String?
 
   var body: some View {
     let status = store.privacyProtectionStatus
@@ -577,12 +580,23 @@ struct QuickHideOverlay: View {
         }
       }
 
+      if let authenticationMessage {
+        AccessibleStatusMessage(message: authenticationMessage, severity: .error)
+          .frame(maxWidth: 360)
+      }
+
       Button {
-        store.deactivateQuickHide()
+        requestUnlock()
       } label: {
-        Label("返回工作台", systemImage: "eye")
+        Label(
+          QuickHideUnlockCoordinator.requiresAuthentication
+            ? String(localized: "验证身份并返回工作台")
+            : String(localized: "返回工作台"),
+          systemImage: QuickHideUnlockCoordinator.requiresAuthentication ? "lock.open" : "eye"
+        )
       }
       .keyboardShortcut(.return, modifiers: [])
+      .disabled(isUnlocking)
       .focused($isUnlockButtonFocused)
       .accessibilityFocused($isOverlayFocused)
     }
@@ -597,7 +611,7 @@ struct QuickHideOverlay: View {
     .accessibilityHint(status.detail)
     .background {
       QuickHideReturnKeyCapture {
-        store.deactivateQuickHide()
+        requestUnlock()
       }
     }
     .onAppear {
@@ -605,6 +619,16 @@ struct QuickHideOverlay: View {
         isUnlockButtonFocused = true
         isOverlayFocused = true
       }
+    }
+  }
+
+  private func requestUnlock() {
+    guard !isUnlocking else { return }
+    isUnlocking = true
+    authenticationMessage = nil
+    Task { @MainActor in
+      authenticationMessage = await QuickHideUnlockCoordinator.unlock(store)
+      isUnlocking = false
     }
   }
 }
@@ -736,6 +760,7 @@ struct GuidedEmptyStateAction: Identifiable {
 }
 
 struct GuidedEmptyStateView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let title: LocalizedStringKey
   let message: LocalizedStringKey
   let systemImage: String
@@ -747,12 +772,12 @@ struct GuidedEmptyStateView: View {
       VStack(spacing: 12) {
         ZStack {
           Circle()
-            .fill(Color.accentColor.opacity(0.12))
+            .fill(workbenchAccentColor.opacity(0.12))
             .frame(width: 72, height: 72)
 
           Image(systemName: systemImage)
             .font(.system(size: 32, weight: .medium))
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(workbenchAccentColor)
         }
 
         VStack(spacing: 4) {
@@ -795,7 +820,7 @@ struct GuidedEmptyStateView: View {
     HStack(spacing: 14) {
       Image(systemName: item.systemImage)
         .font(.system(size: 18, weight: .medium))
-        .foregroundStyle(Color.accentColor)
+        .foregroundStyle(workbenchAccentColor)
         .frame(width: 28, height: 28)
 
       VStack(alignment: .leading, spacing: 2) {
@@ -811,18 +836,19 @@ struct GuidedEmptyStateView: View {
 
       Image(systemName: "chevron.right")
         .font(.caption.weight(.semibold))
-        .foregroundStyle(isHovered ? Color.accentColor : Color.secondary.opacity(0.5))
+        .foregroundStyle(isHovered ? workbenchAccentColor : Color.secondary.opacity(0.5))
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 12)
     .background(
       RoundedRectangle(cornerRadius: 12, style: .continuous)
-        .fill(isHovered ? Color.accentColor.opacity(0.06) : Color.primary.opacity(0.03))
+        .fill(isHovered ? workbenchAccentColor.opacity(0.06) : Color.primary.opacity(0.03))
     )
     .overlay(
       RoundedRectangle(cornerRadius: 12, style: .continuous)
         .strokeBorder(
-          isHovered ? Color.accentColor.opacity(0.45) : Color.primary.opacity(0.08), lineWidth: 1)
+          isHovered ? workbenchAccentColor.opacity(0.45) : Color.primary.opacity(0.08), lineWidth: 1
+        )
     )
   }
 }

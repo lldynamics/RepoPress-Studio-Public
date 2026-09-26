@@ -35,21 +35,21 @@ struct WorkspaceRSSReadingToolbar: View {
 
       WorkspaceToolbarActionButton(
         title: String(localized: "上一篇文章"),
-        systemImage: "chevron.up",
+        systemImage: "arrow.left",
         accessibilityIdentifier: "workspace-rss-previous-article",
         isEnabled: isEnabled
           && (commandRouter.rssReaderCommandActions?.canNavigatePrevious ?? false),
-        help: String(localized: "阅读上一篇文章（Control-Command-左箭头）")
+        help: String(localized: "阅读上一篇文章（⌃⌘←）")
       ) {
         commandRouter.rssReaderCommandActions?.navigatePrevious()
       }
 
       WorkspaceToolbarActionButton(
         title: String(localized: "下一篇文章"),
-        systemImage: "chevron.down",
+        systemImage: "arrow.right",
         accessibilityIdentifier: "workspace-rss-next-article",
         isEnabled: isEnabled && (commandRouter.rssReaderCommandActions?.canNavigateNext ?? false),
-        help: String(localized: "阅读下一篇文章（Control-Command-右箭头）")
+        help: String(localized: "阅读下一篇文章（⌃⌘→）")
       ) {
         commandRouter.rssReaderCommandActions?.navigateNext()
       }
@@ -59,7 +59,7 @@ struct WorkspaceRSSReadingToolbar: View {
         systemImage: "checkmark.circle",
         accessibilityIdentifier: "workspace-rss-toggle-read",
         isEnabled: isEnabled && (commandRouter.rssReaderCommandActions?.canActOnArticle ?? false),
-        help: String(localized: "切换当前文章的已读状态（Control-Command-U）")
+        help: String(localized: "切换当前文章的已读状态（⌃⌘U）")
       ) {
         commandRouter.rssReaderCommandActions?.toggleRead()
       }

@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 public enum RSSOPMLExportPrivacyAction: Equatable, Sendable {
   /// Keeps credential-like query values unchanged for compatibility with existing exports.
@@ -62,7 +63,7 @@ public enum RSSOPMLWriter {
     let riskReport = scanExportRisks(subscriptions: candidates)
     guard !riskReport.hasBlockingUserInfo else {
       throw RSSReaderError.invalidOPML(
-        "无法导出订阅：订阅地址不得包含 URL 用户名或密码。"
+        CoreL10n.text("无法导出订阅：订阅地址不得包含 URL 用户名或密码。")
       )
     }
 
@@ -109,19 +110,19 @@ public enum RSSOPMLWriter {
       let feedURL = subscription.url
       guard !RSSSubscriptionURLPrivacy.containsUserInfo(feedURL) else {
         throw RSSReaderError.invalidOPML(
-          "无法导出订阅：订阅地址不得包含 URL 用户名或密码。"
+          CoreL10n.text("无法导出订阅：订阅地址不得包含 URL 用户名或密码。")
         )
       }
       guard isSupported(feedURL) else {
         throw RSSReaderError.invalidOPML(
-          "无法导出订阅：地址必须是包含站点域名的 http 或 https URL。"
+          CoreL10n.text("无法导出订阅：地址必须是包含站点域名的 http 或 https URL。")
         )
       }
       if let siteURL = subscription.siteURL,
         RSSSubscriptionURLPrivacy.containsUserInfo(siteURL)
       {
         throw RSSReaderError.invalidOPML(
-          "无法导出订阅：站点地址不得包含 URL 用户名或密码。"
+          CoreL10n.text("无法导出订阅：站点地址不得包含 URL 用户名或密码。")
         )
       }
       let fallbackTitle = feedURL.host ?? feedURL.absoluteString
@@ -144,7 +145,7 @@ public enum RSSOPMLWriter {
         in: subscription.url
       )
     else {
-      throw RSSReaderError.invalidOPML("无法安全脱敏订阅地址。")
+      throw RSSReaderError.invalidOPML(CoreL10n.text("无法安全脱敏订阅地址。"))
     }
     let siteURL: URL?
     if let originalSiteURL = subscription.siteURL {
@@ -153,7 +154,7 @@ public enum RSSOPMLWriter {
           in: originalSiteURL
         )
       else {
-        throw RSSReaderError.invalidOPML("无法安全脱敏站点地址。")
+        throw RSSReaderError.invalidOPML(CoreL10n.text("无法安全脱敏站点地址。"))
       }
       siteURL = redactedSiteURL
     } else {

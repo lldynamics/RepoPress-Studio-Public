@@ -378,10 +378,8 @@ private struct ProjectFileConflictReviewView: View {
       alert.informativeText = String(localized: "合并后的完整 Markdown 已保存。")
     }
     alert.addButton(withTitle: String(localized: "关闭"))
-    if let panel = NSApp.keyWindow {
-      alert.beginSheetModal(for: panel) { _ in close() }
-    } else {
-      alert.runModal()
+    Task { @MainActor in
+      _ = await WindowSheetPresenter.response(to: alert)
       close()
     }
   }

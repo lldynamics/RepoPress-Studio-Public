@@ -25,6 +25,28 @@ final class CoreLocalizationTests: XCTestCase {
     )
   }
 
+  func testEnglishErrorAndQuickHideCopyResolvesFromCoreResources() {
+    let english = Locale(identifier: "en")
+    XCTAssertEqual(
+      CoreL10n.format(
+        "资料导入失败：%@", locale: english, arguments: ["disk full"]
+      ),
+      "Knowledge import failed: disk full"
+    )
+    XCTAssertEqual(
+      CoreL10n.format(
+        "AI 请求失败：HTTP %d\n%@%@%@",
+        locale: english,
+        arguments: [429, "Rate limited", "", ""]
+      ),
+      "AI request failed: HTTP 429\nRate limited"
+    )
+    XCTAssertEqual(
+      CoreL10n.text("快速隐藏已启用", locale: english),
+      "Quick Hide is enabled"
+    )
+  }
+
   func testEmbeddedHTMLDiagnosticsResolveInEnglish() {
     let english = Locale(identifier: "en")
 

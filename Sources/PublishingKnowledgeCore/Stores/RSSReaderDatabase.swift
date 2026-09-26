@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 import SQLite3
 
 final class RSSSQLiteCancellationProgressContext {
@@ -87,7 +88,7 @@ final class RSSReaderDatabase: @unchecked Sendable {
     else {
       let message =
         database.flatMap { sqlite3_errmsg($0) }.map(String.init(cString:))
-        ?? "无法打开 RSS SQLite 数据库"
+        ?? CoreL10n.text("无法打开 RSS SQLite 数据库")
       if let database { sqlite3_close(database) }
       throw RSSReaderError.persistence(message)
     }
@@ -99,7 +100,7 @@ final class RSSReaderDatabase: @unchecked Sendable {
       let version = try scalarInt("PRAGMA user_version;")
       guard version <= Self.currentSchemaVersion else {
         throw RSSReaderError.persistence(
-          "RSS SQLite 缓存版本 \(version) 高于当前支持版本 \(Self.currentSchemaVersion)"
+          CoreL10n.format("RSS SQLite 缓存版本 %d 高于当前支持版本 %d", version, Self.currentSchemaVersion)
         )
       }
       try migrate(from: version)
@@ -134,7 +135,7 @@ final class RSSReaderDatabase: @unchecked Sendable {
       let version = try scalarInt("PRAGMA user_version;")
       guard version == Self.currentSchemaVersion else {
         throw RSSReaderError.persistence(
-          "RSS 只读数据库版本 \(version) 与当前版本 \(Self.currentSchemaVersion) 不一致"
+          CoreL10n.format("RSS 只读数据库版本 %d 与当前版本 %d 不一致", version, Self.currentSchemaVersion)
         )
       }
       try withLock { try validateSchemaContractUnlocked() }

@@ -12,6 +12,7 @@ struct KnowledgeAdvancedSettingsExpansionState: Equatable {
 }
 
 struct KnowledgeSettingsView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @Environment(\.dismiss) private var dismiss
   @Environment(\.openSettings) private var openSettings
   @Environment(\.settingsWorkspaceCommandAction) private var settingsWorkspaceCommandAction
@@ -191,7 +192,7 @@ struct KnowledgeSettingsView: View {
   ) -> some View {
     HStack(spacing: 10) {
       Image(systemName: systemImage)
-        .foregroundStyle(WorkbenchTheme.navigationSelection)
+        .foregroundStyle(workbenchAccentColor)
         .frame(width: 20)
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 2) {

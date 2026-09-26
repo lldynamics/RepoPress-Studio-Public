@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 import SQLite3
 
 extension RSSReaderDatabase {
@@ -221,7 +222,7 @@ extension RSSReaderDatabase {
 
   func decodeMediaAsset(_ statement: OpaquePointer?) throws -> RSSMediaAsset {
     guard let remoteURL = optionalURL(statement, 1) else {
-      throw RSSReaderError.persistence("RSS 媒体缓存包含无效远程地址")
+      throw RSSReaderError.persistence(CoreL10n.text("RSS 媒体缓存包含无效远程地址"))
     }
     return RSSMediaAsset(
       articleID: text(statement, 0) ?? "",
@@ -253,7 +254,7 @@ extension RSSReaderDatabase {
     encoder.dateEncodingStrategy = .millisecondsSince1970
     let data = try encoder.encode(issue)
     guard let value = String(data: data, encoding: .utf8) else {
-      throw RSSReaderError.persistence("RSS 错误状态无法编码")
+      throw RSSReaderError.persistence(CoreL10n.text("RSS 错误状态无法编码"))
     }
     return value
   }

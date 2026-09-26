@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct AppLanguageSettingsView: View {
@@ -72,6 +73,12 @@ struct AppLanguageSettingsView: View {
           .foregroundStyle(WorkbenchTheme.brand)
       }
       .font(.callout)
+
+      Button("立即重启") {
+        (NSApp.delegate as? PersonalSitePublisherMacAppDelegate)?.requestRestart()
+      }
+      .disabled(Bundle.main.bundleURL.pathExtension != "app")
+      .accessibilityIdentifier("settings-restart-for-language")
     }
   }
 

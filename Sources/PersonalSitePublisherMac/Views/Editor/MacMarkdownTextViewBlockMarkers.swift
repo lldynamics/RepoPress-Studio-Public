@@ -315,7 +315,7 @@ extension DroppableMarkdownTextView {
       yRadius: 3
     )
     if isChecked {
-      WorkbenchThemeNSColor.primary.setFill()
+      markdownAccentColor.setFill()
       path.fill()
       NSColor.white.setStroke()
       let check = NSBezierPath()
@@ -329,7 +329,7 @@ extension DroppableMarkdownTextView {
       check.line(to: NSPoint(x: checkboxFrame.maxX - 2.5, y: topY))
       check.stroke()
     } else {
-      NSColor.controlAccentColor.withAlphaComponent(0.78).setStroke()
+      markdownAccentColor.withAlphaComponent(0.78).setStroke()
       path.lineWidth = 1.25
       path.stroke()
     }

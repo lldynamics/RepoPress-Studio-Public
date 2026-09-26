@@ -1072,7 +1072,10 @@ struct WorkspaceTaskSEOSection: View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(spacing: 8) {
         Button {
-          copy(snapshot.socialShareChecklistMarkdown, message: "已复制 SEO / Social 检查清单。")
+          copy(
+            snapshot.socialShareChecklistMarkdown,
+            message: String(localized: "已复制 SEO / Social 检查清单。")
+          )
         } label: {
           Label("复制清单", systemImage: "doc.on.doc")
         }
@@ -1081,7 +1084,7 @@ struct WorkspaceTaskSEOSection: View {
         .accessibilityLabel("复制 SEO Social 检查清单")
 
         Button {
-          copy(snapshot.metaTags.htmlBlock, message: "已复制社交预览 Meta HTML。")
+          copy(snapshot.metaTags.htmlBlock, message: String(localized: "已复制社交预览 Meta HTML。"))
         } label: {
           Label("复制 Meta", systemImage: "curlybraces")
         }
@@ -1134,7 +1137,13 @@ struct WorkspaceTaskSEOSection: View {
               .font(.caption.weight(.semibold))
             Spacer()
             Button {
-              copy(item.clipboardText, message: "已复制 \(item.kind.localizedDisplayName) 分享文案。")
+              copy(
+                item.clipboardText,
+                message: String(
+                  format: String(localized: "已复制 %@ 分享文案。"),
+                  item.kind.localizedDisplayName
+                )
+              )
             } label: {
               Image(systemName: "doc.on.doc")
             }
@@ -1179,7 +1188,10 @@ struct WorkspaceTaskSEOSection: View {
       HStack {
         Spacer(minLength: 0)
         Button {
-          copy(links.map(\.clipboardLine).joined(separator: "\n"), message: "已复制外部社交调试链接。")
+          copy(
+            links.map(\.clipboardLine).joined(separator: "\n"),
+            message: String(localized: "已复制外部社交调试链接。")
+          )
         } label: {
           Label("复制全部", systemImage: "doc.on.doc")
         }
@@ -1197,7 +1209,13 @@ struct WorkspaceTaskSEOSection: View {
               .font(.caption.weight(.semibold))
             Spacer()
             Button {
-              copy(link.urlText, message: "已复制 \(link.title) 链接。")
+              copy(
+                link.urlText,
+                message: String(
+                  format: String(localized: "已复制 %@ 链接。"),
+                  link.title
+                )
+              )
             } label: {
               Image(systemName: "doc.on.doc")
             }
@@ -1397,6 +1415,7 @@ struct WorkspaceTaskChecksSection: View {
 }
 
 private struct IssueCompactRow: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let issue: PreflightIssue
   var body: some View {
     HStack(alignment: .top, spacing: 8) {
@@ -1412,7 +1431,7 @@ private struct IssueCompactRow: View {
       Spacer(minLength: 8)
       Label("定位到\(issue.contentHealthFocusTargetTitle)", systemImage: "arrow.right.circle")
         .font(.caption)
-        .foregroundStyle(Color.accentColor)
+        .foregroundStyle(workbenchAccentColor)
         .fixedSize(horizontal: true, vertical: false)
     }
   }
@@ -1532,6 +1551,7 @@ struct WorkspaceTaskImageSection: View {
 }
 
 private struct ImageMetadataEditorRow: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let attachment: DraftAttachment
   let item: ImageWorkbenchItem?
   @Binding var altText: String
@@ -1581,13 +1601,13 @@ private struct ImageMetadataEditorRow: View {
     }
     .padding(8)
     .background(
-      isFocused ? Color.accentColor.opacity(0.10) : Color.clear,
+      isFocused ? workbenchAccentColor.opacity(0.10) : Color.clear,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
     )
     .overlay {
       if isFocused {
         RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-          .stroke(Color.accentColor.opacity(0.45), lineWidth: 1)
+          .stroke(workbenchAccentColor.opacity(0.45), lineWidth: 1)
       }
     }
     .onAppear {

@@ -5,6 +5,7 @@ import SwiftUI
 /// Inspector replaces the full sidebar. It intentionally has no contextual
 /// lists, so changing a workspace continues through the window session owner.
 struct WorkspaceCompactNavigationRail: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   static let primarySections = WorkspaceNavigationRouteDescriptor.primarySections
 
   let selectedSection: WorkspaceSection
@@ -41,13 +42,13 @@ struct WorkspaceCompactNavigationRail: View {
       Image(systemName: section.systemImage)
         .font(.body.weight(.semibold))
         .frame(width: 32, height: 32)
-        .foregroundStyle(isSelected ? WorkbenchTheme.navigationSelection : Color.secondary)
+        .foregroundStyle(isSelected ? workbenchAccentColor : Color.secondary)
         .background {
           RoundedRectangle(cornerRadius: 7, style: .continuous)
             .fill(
               isSelected
                 ? AnyShapeStyle(
-                  WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.accentBackground)
+                  workbenchAccentColor.opacity(WorkbenchOpacity.accentBackground)
                 )
                 : AnyShapeStyle(Color.clear)
             )

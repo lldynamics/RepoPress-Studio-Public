@@ -47,11 +47,12 @@ struct RSSArticleListSkeleton: View {
 
 /// 刷新期间只保留轻量的顶部进度线，避免把正文列表推下去。
 struct RSSArticleRefreshProgressLine: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   var body: some View {
     // A stable accent line communicates the refresh state without a custom
     // indefinitely-running animation or another state update on every frame.
     Rectangle()
-      .fill(Color.accentColor.opacity(0.9))
+      .fill(workbenchAccentColor.opacity(0.9))
       .frame(maxWidth: .infinity)
       .frame(height: 2)
       .accessibilityElement(children: .ignore)
@@ -70,6 +71,7 @@ struct RSSArticleRefreshProgressLine: View {
 #endif
 
 struct RSSArticleRow: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let article: RSSArticleHeader
   let translatedTitle: String?
   let feed: RSSFeed?
@@ -104,7 +106,7 @@ struct RSSArticleRow: View {
           .accessibilityValue(isBatchSelected ? "已选择" : "未选择")
         }
         Circle()
-          .fill(article.isRead ? Color.clear : Color.accentColor)
+          .fill(article.isRead ? Color.clear : workbenchAccentColor)
           .frame(width: 7, height: 7)
           .overlay {
             Circle()
@@ -175,9 +177,9 @@ struct RSSArticleRow: View {
         GeometryReader { geometry in
           ZStack(alignment: .leading) {
             Rectangle()
-              .fill(Color.accentColor.opacity(0.12))
+              .fill(workbenchAccentColor.opacity(0.12))
             Rectangle()
-              .fill(Color.accentColor)
+              .fill(workbenchAccentColor)
               .frame(width: geometry.size.width * normalizedReadingProgress)
           }
         }

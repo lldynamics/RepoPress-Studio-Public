@@ -44,12 +44,15 @@ struct KnowledgeImageBatchExportSheet: View {
             .textSelection(.enabled)
           Spacer(minLength: 8)
           Button("选择文件夹…") {
-            guard
-              let selected = KnowledgeBatchExportSelectionPanel.chooseImageDestinationDirectory()
-            else { return }
-            destinationDirectory = selected
-            report = nil
-            exportFailure = nil
+            Task { @MainActor in
+              guard
+                let selected =
+                  await KnowledgeBatchExportSelectionPanel.chooseImageDestinationDirectory()
+              else { return }
+              destinationDirectory = selected
+              report = nil
+              exportFailure = nil
+            }
           }
           .disabled(isExporting)
           .accessibilityIdentifier("knowledge-image-export-choose-directory")

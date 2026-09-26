@@ -149,6 +149,7 @@ struct WorkspaceQuickSearchSnapshot {
 }
 
 struct WorkspaceQuickSearchView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let store: WorkbenchStore
   let scope: WorkspaceQuickSearchScope
   @ObservedObject private var contentHealthSidebarProjection: ContentHealthSidebarProjection
@@ -316,14 +317,14 @@ struct WorkspaceQuickSearchView: View {
       }
       // Source-list rows: unselected rows are plain, the selected row carries
       // the only fill. No borders or trailing checkmark compete with content.
-      .foregroundStyle(isSelected ? WorkbenchTheme.navigationSelection : Color.primary)
+      .foregroundStyle(isSelected ? workbenchAccentColor : Color.primary)
       .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
       .padding(.horizontal, 10)
       .background {
         RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
           .fill(
             isSelected
-              ? WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.accentBackground)
+              ? workbenchAccentColor.opacity(WorkbenchOpacity.accentBackground)
               : Color.clear
           )
       }

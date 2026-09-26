@@ -4,6 +4,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct RepositoryWorkspaceView: View {
+  @Environment(\.workbenchAccentColor) var workbenchAccentColor
   let store: WorkbenchStore
   @ObservedObject private var workspaceObservation: WorkbenchRepositoryWorkspaceObservationFacade
   @StateObject var externalBrowserPreviewCoordinator: ExternalBrowserPreviewCoordinator

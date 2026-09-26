@@ -17,6 +17,7 @@ struct HTMLSourceFindRequest: Equatable {
 /// SwiftUI owns the source text and find-request identity. AppKit owns the
 /// native text system, undo manager, find bar, syntax colors, and line ruler.
 struct MacHTMLSourceTextView: NSViewRepresentable {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @Binding var text: String
   var isEditable = true
   var findRequest: HTMLSourceFindRequest? = nil
@@ -120,7 +121,7 @@ struct MacHTMLSourceTextView: NSViewRepresentable {
     textView.isGrammarCheckingEnabled = false
     textView.font = sourceFont
     textView.textColor = .labelColor
-    textView.insertionPointColor = .controlAccentColor
+    textView.insertionPointColor = NSColor(workbenchAccentColor)
     textView.drawsBackground = true
     textView.backgroundColor = .textBackgroundColor
     textView.textContainerInset = NSSize(width: 12, height: 12)

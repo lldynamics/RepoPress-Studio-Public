@@ -1047,7 +1047,14 @@ final class DroppableMarkdownTextView: NSTextView {
       }
     }
   }
-  var markdownParagraphHighlightColor = NSColor.controlAccentColor.withAlphaComponent(0.07)
+  var markdownAccentColor = NSColor.controlAccentColor {
+    didSet {
+      if !oldValue.isEqual(markdownAccentColor) { needsDisplay = true }
+    }
+  }
+  var markdownParagraphHighlightColor: NSColor {
+    markdownAccentColor.withAlphaComponent(0.07)
+  }
   /// Paint-only current hunk decoration.  This is intentionally not a text
   /// storage attribute, so review state cannot leak into saved Markdown.
   var markdownInlineAIReviewRange: NSRange? {
@@ -1153,7 +1160,7 @@ final class DroppableMarkdownTextView: NSTextView {
       let rect = MarkdownTextKit2RangeAdapter.rect(for: range, in: self),
       rect.intersects(dirtyRect)
     {
-      NSColor.controlAccentColor.withAlphaComponent(0.16).setFill()
+      markdownAccentColor.withAlphaComponent(0.16).setFill()
       var decorationRect = rect.insetBy(dx: -2, dy: -1)
       if decorationRect.width < 4 { decorationRect.size.width = 4 }
       NSBezierPath(roundedRect: decorationRect, xRadius: 4, yRadius: 4).fill()
@@ -1320,24 +1327,11 @@ final class DroppableMarkdownTextView: NSTextView {
       return
     }
 
-    // Keyboard line operations: Move, Duplicate, Delete, Comment
-    if event.keyCode == 126 {  // Up arrow
-      if modifiers == .option {
-        if markdownLineEditingHandler?(self, .moveUp) == true { return }
-      } else if modifiers == [.shift, .option] {
-        if markdownLineEditingHandler?(self, .duplicateAbove) == true { return }
-      }
-    } else if event.keyCode == 125 {  // Down arrow
-      if modifiers == .option {
-        if markdownLineEditingHandler?(self, .moveDown) == true { return }
-      } else if modifiers == [.shift, .option] {
-        if markdownLineEditingHandler?(self, .duplicateBelow) == true { return }
-      }
-    } else if event.keyCode == 40 {  // 'K' key
-      if modifiers == [.command, .shift] {
-        if markdownLineEditingHandler?(self, .deleteLine) == true { return }
-      }
-    } else if event.keyCode == 44 || event.characters == "/" {  // '/' key
+    // Keep modified arrow navigation and Shift-Command-K in AppKit. They are
+    // native text navigation and the workspace command palette shortcut;
+    // intercepting them here breaks paragraph movement/selection and causes
+    // destructive edits in draft windows.
+    if event.keyCode == 44 || event.characters == "/" {  // '/' key
       if modifiers == .command {
         if markdownLineEditingHandler?(self, .toggleComment) == true { return }
       }

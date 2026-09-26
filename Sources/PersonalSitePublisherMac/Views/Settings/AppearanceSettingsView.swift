@@ -9,6 +9,8 @@ struct AppearanceSettingsView: View {
   private var appearanceModeRawValue = WorkbenchAppearanceMode.system.rawValue
   @AppStorage(WorkbenchInterfaceDensity.storageKey)
   private var interfaceDensityRawValue = WorkbenchInterfaceDensity.comfortable.rawValue
+  @AppStorage("menuBarQuickCaptureVisibleV1")
+  private var isMenuBarQuickCaptureVisible = true
 
   private var selectedPalette: WorkbenchAccentPalette {
     WorkbenchAccentPalette.resolved(rawValue: accentPaletteRawValue)
@@ -109,6 +111,16 @@ struct AppearanceSettingsView: View {
         .controlSize(.regular)
         .frame(width: 240)
         .accessibilityIdentifier("settings-interface-density-picker")
+      }
+
+      Divider()
+
+      appearancePreferenceRow(
+        title: "菜单栏速记",
+        subtitle: "在菜单栏显示速记入口；关闭后仍可在工作台中写笔记。"
+      ) {
+        Toggle("显示菜单栏图标", isOn: $isMenuBarQuickCaptureVisible)
+          .accessibilityIdentifier("settings-menu-bar-quick-capture-toggle")
       }
     }
   }

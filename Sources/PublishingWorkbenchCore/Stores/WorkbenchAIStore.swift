@@ -688,7 +688,9 @@ struct AIChatConversationIdentity: Equatable, Sendable {
       guard !(error is CancellationError), canPresentAIRequest(lane, generation: generation) else {
         return nil
       }
-      aiActionMessage = "AI 连接测试失败：\(error.localizedDescription)"
+      store.setAIActionFailureMessage(
+        CoreL10n.format("AI 连接测试失败：%@", error.localizedDescription)
+      )
       return nil
     }
   }

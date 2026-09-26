@@ -2,6 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct KnowledgeRelatedChaptersSection: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @StateObject private var state: KnowledgeRelatedChaptersFeatureFacade
   var showsHeader = true
   var maximumVisibleRecommendations: Int?
@@ -117,7 +118,7 @@ struct KnowledgeRelatedChaptersSection: View {
             .foregroundStyle(.tint)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(Color.accentColor.opacity(0.09), in: Capsule())
+            .background(workbenchAccentColor.opacity(0.09), in: Capsule())
         }
       }
     }

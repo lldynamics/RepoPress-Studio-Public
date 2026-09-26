@@ -69,7 +69,7 @@ enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiabl
     case .unorderedList: return "无序列表"
     case .orderedList: return "有序列表"
     case .taskList: return "任务列表"
-    case .link: return "链接"
+    case .link: return String(localized: "Markdown 链接")
     case .image: return "插图"
     case .moreInsertions: return "更多插入选项"
     case .diagnostics: return "正文诊断"

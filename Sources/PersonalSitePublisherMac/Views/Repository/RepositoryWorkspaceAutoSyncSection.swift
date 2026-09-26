@@ -211,7 +211,7 @@ extension RepositoryWorkspaceView {
   private var repositoryAutoSyncHeaderActions: some View {
     HStack(spacing: 8) {
       Button {
-        copy(store.repositoryAutoSyncReviewMarkdown, message: "已复制远端自动检查审阅摘要。")
+        copy(store.repositoryAutoSyncReviewMarkdown, message: String(localized: "已复制远端自动检查审阅摘要。"))
       } label: {
         Label("复制摘要", systemImage: "doc.on.doc")
       }
@@ -267,7 +267,7 @@ extension RepositoryWorkspaceView {
       }
     }
     .pickerStyle(.segmented)
-    .tint(WorkbenchTheme.navigationSelection)
+    .tint(workbenchAccentColor)
     .frame(maxWidth: 360)
     .disabled(!store.repositoryAutoSyncSettings.isEnabled)
     .accessibilityLabel("远端自动检查最短间隔")
@@ -317,7 +317,7 @@ extension RepositoryWorkspaceView {
   private func repositoryAutoSyncPathActions(_ path: String) -> some View {
     let identifierToken = RepositoryAccessibilityIdentifier.token(for: path)
     return Button {
-      copy(path, message: "已复制远端自动检查发现的路径。")
+      copy(path, message: String(localized: "已复制远端自动检查发现的路径。"))
     } label: {
       Label("复制路径", systemImage: "doc.on.doc")
     }

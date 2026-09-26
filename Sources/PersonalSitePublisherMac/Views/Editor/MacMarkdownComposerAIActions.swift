@@ -102,7 +102,7 @@ extension MacMarkdownComposerView {
       }
       ClipboardWriter.copy(
         prompt,
-        successMessage: "已复制 AI Prompt。"
+        successMessage: String(localized: "已复制 AI Prompt。")
       ) { message, status in
         store.setPublishActionMessage(message, status: status)
       }

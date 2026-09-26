@@ -29,56 +29,62 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
   public var errorDescription: String? {
     switch self {
     case .invalidBaseURL(let value):
-      return "AI Base URL 无效：\(value)"
+      return CoreL10n.format("AI Base URL 无效：%@", value)
     case .invalidProxyURL:
-      return "AI 代理地址无效或协议不受支持；本次未发起直连请求。"
+      return CoreL10n.text("AI 代理地址无效或协议不受支持；本次未发起直连请求。")
     case .insecureCredentialURL:
-      return "AI 请求仅允许 HTTPS，或无 API Key 时的本机回环 HTTP 端点；本次未发起请求。"
+      return CoreL10n.text("AI 请求仅允许 HTTPS，或无 API Key 时的本机回环 HTTP 端点；本次未发起请求。")
     case .invalidResponse:
-      return "AI 服务返回了无效响应。"
+      return CoreL10n.text("AI 服务返回了无效响应。")
     case .incompleteStream:
-      return "AI 流式响应不完整：服务未返回完成标志；为避免重复生成和重复计费，未自动重试。"
+      return CoreL10n.text("AI 流式响应不完整：服务未返回完成标志；为避免重复生成和重复计费，未自动重试。")
     case .streamingUnsupported:
-      return "当前 AI 连接不支持流式回复。"
+      return CoreL10n.text("当前 AI 连接不支持流式回复。")
     case .preparedRequestModeMismatch:
-      return "准备好的 AI 请求与当前传输模式不匹配。"
+      return CoreL10n.text("准备好的 AI 请求与当前传输模式不匹配。")
     case .preparedRequestAlreadyConsumed:
-      return "准备好的 AI 请求已经发送或正在发送，不能再次使用。"
+      return CoreL10n.text("准备好的 AI 请求已经发送或正在发送，不能再次使用。")
     case .preparedRequestConfigurationMismatch:
-      return "AI 连接配置已变化，需要重新准备请求；本次未发送。"
+      return CoreL10n.text("AI 连接配置已变化，需要重新准备请求；本次未发送。")
     case .preparedRequestCapabilityExpired:
-      return "AI 能力探测证据已过期，需要重新探测；本次未发送。"
+      return CoreL10n.text("AI 能力探测证据已过期，需要重新探测；本次未发送。")
     case .preparedRequestAuthorizationExpired:
-      return "AI 请求授权已过期，请重试；本次未发送。"
+      return CoreL10n.text("AI 请求授权已过期，请重试；本次未发送。")
     case .httpStatus(let status, let body, let retryAfterSeconds):
       let retryHint =
         retryAfterSeconds.map {
-          "\n服务器建议等待 \(Self.durationText($0))后再手动重试。"
+          CoreL10n.format("\n服务器建议等待 %@后再手动重试。", Self.durationText($0))
         } ?? ""
       let recoveryHint = recoverySuggestion.map { CoreL10n.format("\n建议：%@", $0) } ?? ""
-      return "AI 请求失败：HTTP \(status)\n\(body)\(retryHint)\(recoveryHint)"
+      return CoreL10n.format("AI 请求失败：HTTP %d\n%@%@%@", status, body, retryHint, recoveryHint)
     case .firstByteTimedOut(let timeout):
-      return "等待 AI 返回首字节超过 \(Self.durationText(timeout))，请求已停止。可以检查网络后手动重试。"
+      return CoreL10n.format("等待 AI 返回首字节超过 %@，请求已停止。可以检查网络后手动重试。", Self.durationText(timeout))
     case .resourceTimedOut(let timeout):
-      return "AI 请求超过 \(Self.durationText(timeout))的资源时限，已停止读取。可以检查网络后手动重试。"
+      return CoreL10n.format("AI 请求超过 %@的资源时限，已停止读取。可以检查网络后手动重试。", Self.durationText(timeout))
     case .responseTooLarge(let maximumBytes):
-      return "AI 响应超过 \(maximumBytes) 字节的安全上限，已停止读取。"
+      return CoreL10n.format("AI 响应超过 %d 字节的安全上限，已停止读取。", maximumBytes)
     case .requestContextWindowExceeded(let contextWindow):
-      return "AI 请求无法压缩到模型的 \(contextWindow) Token 上下文窗口内；本次未发送。请缩短必要指令、工具定义或图片输入后重试。"
+      return CoreL10n.format(
+        "AI 请求无法压缩到模型的 %d Token 上下文窗口内；本次未发送。请缩短必要指令、工具定义或图片输入后重试。",
+        contextWindow
+      )
     case .partialTextRecoveryContextTooLarge(let maximumBytes):
-      return "AI 续接上下文超过 \(maximumBytes) 字节的安全上限，已停止续接。请缩短上下文后重试。"
+      return CoreL10n.format("AI 续接上下文超过 %d 字节的安全上限，已停止续接。请缩短上下文后重试。", maximumBytes)
     case .networkFailure(let message):
-      return "AI 网络连接中断：\(message)\n可以检查网络后手动重试。"
+      return CoreL10n.format("AI 网络连接中断：%@\n可以检查网络后手动重试。", message)
     case .streamInterruptedAfterPartialContent(let message):
-      return "流式回复在返回部分内容后中断。已保留现有内容；自动续接不可用或未能完成，为避免继续重复生成和重复计费，已停止。请确认后再手动继续。\n\(message)"
+      return CoreL10n.format(
+        "流式回复在返回部分内容后中断。已保留现有内容；自动续接不可用或未能完成，为避免继续重复生成和重复计费，已停止。请确认后再手动继续。\n%@",
+        message
+      )
     case .unsupportedToolHistory:
-      return "当前连接尚未证明支持工具调用，未发送工具历史。"
+      return CoreL10n.text("当前连接尚未证明支持工具调用，未发送工具历史。")
     case .imageContentRequiresVisionCapability:
-      return "当前连接尚未证明支持视觉输入，未发送仅图片消息。"
+      return CoreL10n.text("当前连接尚未证明支持视觉输入，未发送仅图片消息。")
     case .unsupportedAnthropicStructuredOutput:
-      return "Anthropic 原生 Messages 暂不支持当前结构化输出约束；本次未发送请求。"
+      return CoreL10n.text("Anthropic 原生 Messages 暂不支持当前结构化输出约束；本次未发送请求。")
     case .emptyContent:
-      return "AI 服务没有返回可用内容。"
+      return CoreL10n.text("AI 服务没有返回可用内容。")
     }
   }
 
@@ -148,9 +154,9 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
 
   private static func durationText(_ seconds: TimeInterval) -> String {
     if seconds < 1 {
-      return String(format: "%.1f 秒", seconds)
+      return CoreL10n.format("%.1f 秒", seconds)
     }
-    return "\(Int(ceil(seconds))) 秒"
+    return CoreL10n.format("%d 秒", Int(ceil(seconds)))
   }
 
   private static func hasExplicitBalanceError(in body: String) -> Bool {

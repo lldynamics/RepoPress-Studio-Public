@@ -94,11 +94,11 @@ struct SiteMaintenanceDetailView: View {
   }
 
   private func copySprintPlan(_ report: SiteMaintenanceReport) {
-    copy(report.maintenanceSprintPlanMarkdown, message: "已复制站点维护冲刺计划。")
+    copy(report.maintenanceSprintPlanMarkdown, message: String(localized: "已复制站点维护冲刺计划。"))
   }
 
   private func copyChecklist(_ report: SiteMaintenanceReport) {
-    copy(report.maintenanceChecklistMarkdown, message: "已复制站点维护清单。")
+    copy(report.maintenanceChecklistMarkdown, message: String(localized: "已复制站点维护清单。"))
   }
 
   private func openDraft(_ draftID: UUID) {
@@ -107,7 +107,7 @@ struct SiteMaintenanceDetailView: View {
   }
 
   private func copyItem(_ item: MaintenanceActionItem) {
-    copy(item.clipboardMarkdown, message: "已复制维护任务。")
+    copy(item.clipboardMarkdown, message: String(localized: "已复制维护任务。"))
   }
 
   private func recordItem(_ item: MaintenanceActionItem) {

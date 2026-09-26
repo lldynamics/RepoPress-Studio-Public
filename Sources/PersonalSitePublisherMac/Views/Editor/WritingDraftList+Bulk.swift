@@ -70,7 +70,7 @@ extension WritingDraftColumn {
     .padding(.horizontal, 8)
     .padding(.vertical, 6)
     .background(
-      Color.accentColor.opacity(WorkbenchOpacity.accentBackground),
+      workbenchAccentColor.opacity(WorkbenchOpacity.accentBackground),
       in: RoundedRectangle(cornerRadius: 8))
   }
 
@@ -84,13 +84,14 @@ extension WritingDraftColumn {
       )
       return
     }
-    do {
+    Task { @MainActor in
+      do {
       let document = try GeneralDraftExportService().document(
         for: currentDraft,
         profile: store.profile(for: currentDraft)
       )
-      guard let destinationURL = try GeneralDraftExportPanel.export(document) else {
-        return
+        guard let destinationURL = try await GeneralDraftExportPanel.export(document) else {
+          return
       }
       store.setPublishActionMessage(
         String(
@@ -99,7 +100,7 @@ extension WritingDraftColumn {
         ),
         status: .success
       )
-    } catch {
+      } catch {
       store.setPublishActionMessage(
         String(
           format: String(localized: "通用草稿导出失败：%@"),
@@ -107,6 +108,7 @@ extension WritingDraftColumn {
         ),
         status: .failure
       )
+      }
     }
   }
 

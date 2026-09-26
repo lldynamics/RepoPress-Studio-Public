@@ -64,16 +64,18 @@ struct KnowledgeSearchResultRow: View {
 }
 
 struct KnowledgeHighlightedText: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let text: String
   let terms: [String]
 
   var body: some View {
-    Self.highlightedText(text, terms: terms)
+    Self.highlightedText(text, terms: terms, accentColor: workbenchAccentColor)
   }
 
   static func highlightedText(
     _ source: String,
-    terms: [String]
+    terms: [String],
+    accentColor: Color
   ) -> Text {
     var matches: [Range<String.Index>] = []
     for term in terms where !term.isEmpty {
@@ -103,7 +105,7 @@ struct KnowledgeHighlightedText: View {
       }
       output = output + Text(verbatim: String(source[match]))
         .bold()
-        .foregroundColor(.accentColor)
+        .foregroundColor(accentColor)
         .underline(true, color: .yellow)
       cursor = match.upperBound
     }

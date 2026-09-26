@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import ImageIO
+import PublishingCoreSupport
 import Vision
 
 public struct KnowledgeImageMetadata: Codable, Hashable, Sendable {
@@ -49,7 +50,7 @@ package struct KnowledgeImageOCRService: Sendable {
   package func extract(data: Data, performsOCR: Bool) throws -> KnowledgeImageExtraction {
     try Task.checkCancellation()
     guard data.count <= Self.maximumByteCount else {
-      throw KnowledgeLibraryError.sourceLimitExceeded("图片超过 25 MB。")
+      throw KnowledgeLibraryError.sourceLimitExceeded(CoreL10n.text("图片超过 25 MB。"))
     }
     guard
       let source = CGImageSourceCreateWithData(
@@ -76,7 +77,7 @@ package struct KnowledgeImageOCRService: Sendable {
       width <= Self.maximumDimension, height <= Self.maximumDimension,
       width <= Self.maximumPixelCount / height
     else {
-      throw KnowledgeLibraryError.sourceLimitExceeded("图片尺寸超过 16384 边长或 4000 万像素限制。")
+      throw KnowledgeLibraryError.sourceLimitExceeded(CoreL10n.text("图片尺寸超过 16384 边长或 4000 万像素限制。"))
     }
     guard performsOCR else {
       return KnowledgeImageExtraction(

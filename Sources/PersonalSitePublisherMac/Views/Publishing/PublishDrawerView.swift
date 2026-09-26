@@ -38,6 +38,7 @@ final class PublishDrawerOperationController: ObservableObject {
 }
 
 struct PublishDrawerView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @Environment(\.openSettings) private var openSettings
   @Environment(\.settingsWorkspaceCommandAction) private var settingsWorkspaceCommandAction
   @ObservedObject var publishingFacade: WorkbenchPublishingFeatureFacade
@@ -82,7 +83,6 @@ struct PublishDrawerView: View {
         if store.remoteRepositoryConflictSession?.isEmpty == false {
           isRemoteConflictResolverPresented = true
         }
-        publishingFacade.ensureEditableDraftSelected()
         publishingFacade.runPreflight()
         if let draft = publishingFacade.selectedDraft {
           store.prepareSEOSocialPreview(for: draft)
@@ -113,7 +113,7 @@ struct PublishDrawerView: View {
               pendingWorktreeReview = nil
             }
           },
-          feedback: store.publishActionFeedback,
+          feedback: store.publishDrawerFeedback,
           reviewAgainAction: prepareRepositoryWorktreePublish
         )
       }
@@ -128,7 +128,7 @@ struct PublishDrawerView: View {
               pendingWorktreePushRetryReview = nil
             }
           },
-          feedback: store.publishActionFeedback,
+          feedback: store.publishDrawerFeedback,
           reviewAgainAction: prepareRepositoryWorktreePushRetry
         )
       }
@@ -447,7 +447,7 @@ struct PublishDrawerView: View {
           .disabled(!store.canCheckDeploymentStatus(for: record) || operationController.isRunning)
           .help(store.deploymentStatusReadiness(for: record).nextStep)
           .accessibilityIdentifier("publish-result-check-deployment")
-          Button("查看发布记录") { showsReleaseHistory = true }
+          Button("查看发布历史") { showsReleaseHistory = true }
             .accessibilityIdentifier("publish-result-open-records")
         }
         if !store.canCheckDeploymentStatus(for: record) {
@@ -594,7 +594,7 @@ struct PublishDrawerView: View {
             readiness: localReadiness
           ),
           systemImage: "folder.badge.plus",
-          tint: WorkbenchTheme.navigationSelection,
+          tint: workbenchAccentColor,
           isEnabled: canSaveLocally,
           isPrimary: false,
           actionStyle: .localSave,
@@ -897,7 +897,7 @@ struct PublishDrawerView: View {
             .foregroundStyle(.secondary)
             .lineLimit(2)
         }
-      } else if let feedback = store.publishActionFeedback {
+      } else if let feedback = store.publishDrawerFeedback {
         VStack(alignment: .leading, spacing: 3) {
           Label(
             feedback.status.publishDrawerTitle,

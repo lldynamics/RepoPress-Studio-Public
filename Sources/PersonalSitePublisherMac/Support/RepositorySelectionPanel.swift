@@ -5,33 +5,34 @@ import UniformTypeIdentifiers
 
 enum RepositorySelectionPanel {
   @MainActor
-  static func chooseDirectory() -> URL? {
+  static func chooseDirectory() async -> URL? {
     let panel = NSOpenPanel()
     panel.title = String(localized: "选择本地站点仓库")
     panel.prompt = String(localized: "选择")
     panel.canChooseFiles = false
     panel.canChooseDirectories = true
     panel.allowsMultipleSelection = false
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
+
 }
 
 enum ExternalDraftFolderSelectionPanel {
   @MainActor
-  static func chooseDirectory() -> URL? {
+  static func chooseDirectory() async -> URL? {
     let panel = NSOpenPanel()
     panel.title = String(localized: "选择 Obsidian、Logseq 或 Markdown 草稿文件夹")
     panel.prompt = String(localized: "映射文件夹")
     panel.canChooseFiles = false
     panel.canChooseDirectories = true
     panel.allowsMultipleSelection = false
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 }
 
 enum ImageSelectionPanel {
   @MainActor
-  static func chooseImages() -> [URL] {
+  static func chooseImages() async -> [URL] {
     let panel = NSOpenPanel()
     panel.title = String(localized: "选择要插入的图片")
     panel.prompt = String(localized: "插入")
@@ -39,13 +40,13 @@ enum ImageSelectionPanel {
     panel.canChooseDirectories = false
     panel.allowsMultipleSelection = true
     panel.allowedContentTypes = [.png, .jpeg, .gif, .webP, .heic, .tiff]
-    return panel.runModal() == .OK ? panel.urls : []
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.urls : []
   }
 }
 
 enum VideoSelectionPanel {
   @MainActor
-  static func chooseVideos() -> [URL] {
+  static func chooseVideos() async -> [URL] {
     let panel = NSOpenPanel()
     panel.title = String(localized: "选择要插入的视频")
     panel.prompt = String(localized: "插入视频")
@@ -55,14 +56,14 @@ enum VideoSelectionPanel {
     panel.allowedContentTypes = VideoFileSupport.supportedExtensions.compactMap {
       UTType(filenameExtension: $0)
     }
-    guard panel.runModal() == .OK else { return [] }
+    guard await WindowSheetPresenter.response(to: panel) == .OK else { return [] }
     return VideoFileSupport.supportedVideoURLs(in: panel.urls)
   }
 }
 
 enum ContentMigrationSelectionPanel {
   @MainActor
-  static func chooseSource() -> URL? {
+  static func chooseSource() async -> URL? {
     let panel = NSOpenPanel()
     panel.title = String(localized: "选择博客导出包或 Markdown 文件夹")
     panel.prompt = String(localized: "生成迁移预览")
@@ -71,16 +72,16 @@ enum ContentMigrationSelectionPanel {
     panel.canChooseDirectories = true
     panel.allowsMultipleSelection = false
     panel.allowedContentTypes = [.xml, .json, .plainText, .folder]
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 
   @MainActor
-  static func chooseRedirectTableDestination() -> URL? {
+  static func chooseRedirectTableDestination() async -> URL? {
     let panel = NSSavePanel()
     panel.title = String(localized: "导出重定向表")
     panel.prompt = String(localized: "导出 CSV")
     panel.nameFieldStringValue = "redirects.csv"
     panel.allowedContentTypes = [.commaSeparatedText]
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 }

@@ -9,6 +9,11 @@ extension WorkbenchStore {
     aiWorkspaceStore.aiActionMessage = message
   }
 
+  func setAIActionFailureMessage(_ message: String) {
+    aiWorkspaceStore.aiActionMessage = message
+    aiWorkspaceStore.aiActionMessageIsFailure = true
+  }
+
   func setAITokenAvailability(_ availability: KeychainTokenAvailability) {
     aiWorkspaceStore.aiTokenAvailability = availability
   }
@@ -32,6 +37,11 @@ extension WorkbenchStore {
 
   public func setAIChatMessage(_ message: String?) {
     aiWorkspaceStore.aiChatMessage = message
+  }
+
+  func setAIChatFailureMessage(_ message: String) {
+    aiWorkspaceStore.aiChatMessage = message
+    aiWorkspaceStore.aiChatMessageIsFailure = true
   }
 
   func setAIChatMessages(_ messages: [AIPublishingChatMessage]) {

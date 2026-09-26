@@ -124,3 +124,14 @@ enum WorkbenchAccentPalette: String, CaseIterable, Identifiable {
     )
   }
 }
+
+private struct WorkbenchAccentColorKey: EnvironmentKey {
+  static let defaultValue = WorkbenchAccentPalette.selected().color
+}
+
+extension EnvironmentValues {
+  var workbenchAccentColor: Color {
+    get { self[WorkbenchAccentColorKey.self] }
+    set { self[WorkbenchAccentColorKey.self] = newValue }
+  }
+}

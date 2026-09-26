@@ -363,13 +363,14 @@ struct KnowledgeNoteEditorView: View {
     panel.allowsMultipleSelection = true
     panel.canChooseFiles = true
     panel.canChooseDirectories = false
-    guard panel.runModal() == .OK else { return }
-
-    do {
-      let newAttachments = try panel.urls.map(readAttachment(at:))
-      attachments.append(contentsOf: newAttachments)
-    } catch {
-      attachmentErrorMessage = error.localizedDescription
+    Task { @MainActor in
+      guard await WindowSheetPresenter.response(to: panel) == .OK else { return }
+      do {
+        let newAttachments = try panel.urls.map(readAttachment(at:))
+        attachments.append(contentsOf: newAttachments)
+      } catch {
+        attachmentErrorMessage = error.localizedDescription
+      }
     }
   }
 

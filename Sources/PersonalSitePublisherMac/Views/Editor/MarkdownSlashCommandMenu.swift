@@ -13,6 +13,7 @@ struct SlashCommandItem: Identifiable, Equatable {
 }
 
 struct MarkdownSlashCommandMenu: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let filterText: String
   let items: [SlashCommandItem]
   @Binding var selectedIndex: Int
@@ -64,7 +65,7 @@ struct MarkdownSlashCommandMenu: View {
                     Image(systemName: item.systemImage)
                       .font(.system(size: 13, weight: .medium))
                       .frame(width: 24, height: 24)
-                      .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                      .foregroundStyle(isSelected ? workbenchAccentColor : Color.secondary)
 
                     VStack(alignment: .leading, spacing: 1) {
                       Text(item.title)

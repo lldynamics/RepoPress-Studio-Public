@@ -3,6 +3,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct AIKeychainSection: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let aiAPIKeyInput: Binding<String>
   let shouldFocusInput: Bool
   let navigationRequestID: UUID
@@ -163,7 +164,7 @@ struct AIKeychainSection: View {
       HStack(spacing: 6) {
         Image(systemName: storageModeSystemImage)
           .font(.caption)
-          .foregroundStyle(Color.accentColor)
+          .foregroundStyle(workbenchAccentColor)
         Text(storageModeExplanation)
           .font(.workbenchMetadata)
           .foregroundStyle(.secondary)

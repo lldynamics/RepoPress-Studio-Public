@@ -10,7 +10,7 @@ extension UTType {
 
 enum KnowledgeLibraryBackupSelectionPanel {
   @MainActor
-  static func chooseBackupDestination() -> URL? {
+  static func chooseBackupDestination() async -> URL? {
     let panel = NSSavePanel()
     panel.title = String(localized: "备份资料库")
     panel.prompt = String(localized: "创建备份")
@@ -23,11 +23,11 @@ enum KnowledgeLibraryBackupSelectionPanel {
     formatter.locale = Locale(identifier: "zh_CN")
     formatter.dateFormat = "yyyy-MM-dd"
     panel.nameFieldStringValue = "资料库备份-\(formatter.string(from: Date())).pslibrarybackup"
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 
   @MainActor
-  static func chooseBackupForRestore() -> URL? {
+  static func chooseBackupForRestore() async -> URL? {
     let panel = NSOpenPanel()
     panel.title = String(localized: "选择资料库备份")
     panel.prompt = String(localized: "验证备份")
@@ -36,6 +36,6 @@ enum KnowledgeLibraryBackupSelectionPanel {
     panel.canChooseFiles = true
     panel.canChooseDirectories = false
     panel.allowsMultipleSelection = false
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 }

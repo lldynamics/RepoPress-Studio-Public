@@ -134,7 +134,7 @@ extension RepositoryWorkspaceView {
             .lineLimit(3)
 
           Button {
-            copy(plan.command, message: "已复制本地预览启动命令。")
+            copy(plan.command, message: String(localized: "已复制本地预览启动命令。"))
           } label: {
             Label("复制启动命令", systemImage: "terminal")
           }

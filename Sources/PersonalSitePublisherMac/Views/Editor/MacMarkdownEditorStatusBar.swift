@@ -1,11 +1,13 @@
 import PublishingDomainContracts
 import PublishingMarkdownCore
+import PublishingWorkbenchCore
 import SwiftUI
 
 /// Quiet status line under the writing surface. Cursor position and document
 /// statistics live here instead of in the formatting toolbar so the toolbar
 /// holds only editing commands and the text starts closer to the title.
 struct MacMarkdownEditorStatusBar: View {
+  @Binding var draft: ArticleDraft
   @ObservedObject var statisticsState: MarkdownComposerStatisticsState
   let cursorPosition: MarkdownCursorPosition?
   let fenceMatch: MarkdownFenceMatch?
@@ -34,6 +36,7 @@ struct MacMarkdownEditorStatusBar: View {
       Spacer(minLength: 8)
 
       MarkdownEditorStatisticsControl(
+        draft: $draft,
         statisticsState: statisticsState,
         onFormatChineseTypography: onFormatChineseTypography,
         onCopyForWeChatAndZhihu: onCopyForWeChatAndZhihu
@@ -50,11 +53,21 @@ struct MacMarkdownEditorStatusBar: View {
 }
 
 private struct MarkdownEditorStatisticsControl: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
+  @Binding var draft: ArticleDraft
   @ObservedObject var statisticsState: MarkdownComposerStatisticsState
   let onFormatChineseTypography: (() -> Void)?
   let onCopyForWeChatAndZhihu: (() -> Void)?
-  @AppStorage("workspace.editorTargetWordCount") private var targetWordCount: Int = 0
   @State private var isStatsPopoverPresented = false
+  @State private var customGoalText = ""
+
+  private var targetWordCount: Int { draft.targetWordCount ?? 0 }
+  private var customGoal: Int? {
+    guard let value = Int(customGoalText.trimmingCharacters(in: .whitespacesAndNewlines)),
+      (1...1_000_000).contains(value)
+    else { return nil }
+    return value
+  }
 
   private var characterCount: Int { statisticsState.value.characterCount }
   private var hanCharacterCount: Int { statisticsState.value.hanCharacterCount }
@@ -69,6 +82,7 @@ private struct MarkdownEditorStatisticsControl: View {
 
   private var statisticsLabel: some View {
     Button {
+      customGoalText = draft.targetWordCount.map(String.init) ?? ""
       isStatsPopoverPresented.toggle()
     } label: {
       HStack(spacing: 5) {
@@ -102,6 +116,9 @@ private struct MarkdownEditorStatisticsControl: View {
     .accessibilityValue(statisticsAccessibilityValue)
     .popover(isPresented: $isStatsPopoverPresented, arrowEdge: .top) {
       statisticsDetailPopover
+    }
+    .onChange(of: draft.id) { _, _ in
+      customGoalText = draft.targetWordCount.map(String.init) ?? ""
     }
   }
 
@@ -169,7 +186,7 @@ private struct MarkdownEditorStatisticsControl: View {
         HStack(spacing: 5) {
           ForEach([0, 500, 1000, 2000, 3000, 5000], id: \.self) { goal in
             Button {
-              targetWordCount = goal
+              setTargetWordCount(goal)
             } label: {
               Text(goal == 0 ? "无" : "\(goal)")
                 .font(.workbenchMetadata)
@@ -179,12 +196,24 @@ private struct MarkdownEditorStatisticsControl: View {
                   RoundedRectangle(cornerRadius: 4)
                     .fill(
                       targetWordCount == goal
-                        ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08))
+                        ? workbenchAccentColor.opacity(0.18) : Color.secondary.opacity(0.08))
                 )
-                .foregroundStyle(targetWordCount == goal ? Color.accentColor : Color.primary)
+                .foregroundStyle(targetWordCount == goal ? workbenchAccentColor : Color.primary)
             }
             .buttonStyle(.plain)
           }
+        }
+
+        HStack(spacing: 8) {
+          TextField("自定义字数", text: $customGoalText)
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 120)
+            .onSubmit(applyCustomGoal)
+            .accessibilityLabel("自定义目标字数")
+          Button("设定") {
+            applyCustomGoal()
+          }
+          .disabled(customGoal == nil)
         }
       }
 
@@ -197,7 +226,7 @@ private struct MarkdownEditorStatisticsControl: View {
               isStatsPopoverPresented = false
               onFormatChineseTypography()
             } label: {
-              Label("排版优化", systemImage: "character.textbox")
+              Label("中英文排版", systemImage: "character.textbox")
                 .font(.caption)
             }
           }
@@ -227,6 +256,16 @@ private struct MarkdownEditorStatisticsControl: View {
         .font(.callout.monospacedDigit().weight(.semibold))
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private func setTargetWordCount(_ count: Int) {
+    draft.targetWordCount = count == 0 ? nil : count
+    customGoalText = draft.targetWordCount.map(String.init) ?? ""
+  }
+
+  private func applyCustomGoal() {
+    guard let customGoal else { return }
+    setTargetWordCount(customGoal)
   }
 
   // Explicit %lld templates keep the catalog key identical to the runtime

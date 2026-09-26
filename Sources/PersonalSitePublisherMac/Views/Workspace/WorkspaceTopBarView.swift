@@ -151,6 +151,7 @@ struct WorkspaceToolbarMenuLabel: View {
 }
 
 struct WorkspaceTaskCenterToolbarButton: View {
+  @Environment(\.colorScheme) private var colorScheme
   @ObservedObject private var activityStatus: WorkbenchActivityStatusFacade
   let store: WorkbenchStore
   let isCompact: Bool
@@ -181,11 +182,11 @@ struct WorkspaceTaskCenterToolbarButton: View {
     .frame(width: 30, height: 28)
     .overlay(alignment: .topTrailing) {
       if activityStatus.failedTaskCount > 0 {
-        Text("\(min(activityStatus.failedTaskCount, 9))")
+        Text(activityStatus.failedTaskCount > 9 ? "9+" : "\(activityStatus.failedTaskCount)")
           .font(.workbenchMetadata.weight(.bold).monospacedDigit())
-          .foregroundStyle(.white)
-          .frame(width: 14, height: 14)
-          .background(WorkbenchTheme.risk, in: Circle())
+          .foregroundStyle(colorScheme == .dark ? .black : .white)
+          .frame(width: activityStatus.failedTaskCount > 9 ? 19 : 14, height: 14)
+          .background(WorkbenchTheme.risk, in: Capsule())
           .offset(x: -1, y: 2)
           .allowsHitTesting(false)
       }
@@ -240,16 +241,12 @@ struct OmniCommandSearchBar: View {
         if density != .minimal {
           Spacer(minLength: 4)
 
-          HStack(spacing: 2) {
-            Text("⌘")
-              .font(.workbenchMetadata.weight(.bold))
-            Text("P")
-              .font(.workbenchMetadata.weight(.bold))
-          }
-          .padding(.horizontal, 4)
-          .padding(.vertical, 1)
-          .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
-          .foregroundStyle(.tertiary)
+          Text("⇧⌘K")
+            .font(.workbenchMetadata.weight(.bold))
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
+            .foregroundStyle(.tertiary)
         }
       }
       .padding(.horizontal, 8)
@@ -277,6 +274,7 @@ enum WorkspaceToolbarButtonProminence: Equatable {
 }
 
 struct WorkspaceToolbarIconButtonStyle: ButtonStyle {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let isActive: Bool
   let showsTitle: Bool
   let prominence: WorkspaceToolbarButtonProminence
@@ -317,7 +315,7 @@ struct WorkspaceToolbarIconButtonStyle: ButtonStyle {
       .overlay {
         RoundedRectangle(cornerRadius: 6, style: .continuous)
           .strokeBorder(
-            isFocused ? Color.accentColor : Color.clear,
+            isFocused ? workbenchAccentColor : Color.clear,
             lineWidth: isFocused ? 1.5 : 0
           )
       }
@@ -337,7 +335,7 @@ struct WorkspaceToolbarIconButtonStyle: ButtonStyle {
     guard isEnabled else { return Color(nsColor: .tertiaryLabelColor) }
     switch prominence {
     case .standard:
-      return isActive ? WorkbenchTheme.navigationSelection : Color.secondary
+      return isActive ? workbenchAccentColor : Color.secondary
     case .primaryAction:
       return WorkbenchTheme.primaryActionForeground
     }
@@ -354,7 +352,7 @@ struct WorkspaceToolbarIconButtonStyle: ButtonStyle {
       return Color.primary.opacity(0.08)
     }
     if isActive {
-      return WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.selectionBackground)
+      return workbenchAccentColor.opacity(WorkbenchOpacity.selectionBackground)
     }
     return .clear
   }
@@ -432,6 +430,29 @@ struct WorkspaceToolbarActionButton: View {
     .help(help)
     .accessibilityLabel(title)
     .accessibilityIdentifier(accessibilityIdentifier)
+  }
+}
+
+struct WorkspaceKnowledgeToolbar: View {
+  @ObservedObject var commandRouter: WorkspaceSceneCommandRouter
+  let isEnabled: Bool
+
+  var body: some View {
+    WorkspaceToolbarActionButton(
+      title: String(localized: "导入资料"),
+      systemImage: "square.and.arrow.down",
+      accessibilityIdentifier: "workspace-library-import",
+      isEnabled: isEnabled && commandRouter.knowledgeLibraryCommandActions != nil,
+      action: { commandRouter.knowledgeLibraryCommandActions?.importSources() }
+    )
+
+    WorkspaceToolbarActionButton(
+      title: String(localized: "新建笔记"),
+      systemImage: "note.text.badge.plus",
+      accessibilityIdentifier: "workspace-library-new-note",
+      isEnabled: isEnabled && commandRouter.knowledgeLibraryCommandActions != nil,
+      action: { commandRouter.knowledgeLibraryCommandActions?.createNote() }
+    )
   }
 }
 
@@ -538,15 +559,15 @@ struct WorkspaceToolbarLeadingContent: View {
 
   var body: some View {
     Menu {
-      ForEach(shell.publishingProfiles) { profile in
-        Button {
-          store.selectProfile(profile.id)
-        } label: {
-          if profile.id == shell.activeProfileID {
-            Label(profile.name, systemImage: "checkmark")
-          } else {
-            Text(profile.name)
-          }
+      Picker(
+        String(localized: "切换个人网站"),
+        selection: Binding(
+          get: { shell.activeProfileID },
+          set: { store.selectProfile($0) }
+        )
+      ) {
+        ForEach(shell.publishingProfiles) { profile in
+          Text(profile.name).tag(profile.id)
         }
       }
       Divider()
@@ -592,7 +613,7 @@ private enum PublishingStatusArea {
     case .draft:
       return String(localized: "当前文章")
     case .deployment:
-      return String(localized: "部署历史")
+      return String(localized: "发布历史")
     }
   }
 
@@ -623,6 +644,7 @@ private struct PublishingStatusPopoverItem: Identifiable {
 private enum PublishingStatusSeverity: Int {
   case ready
   case pending
+  case information
   case active
   case warning
   case error
@@ -633,6 +655,8 @@ private enum PublishingStatusSeverity: Int {
       return "checkmark.circle.fill"
     case .pending:
       return "clock.fill"
+    case .information:
+      return "info.circle.fill"
     case .active:
       return "arrow.triangle.2.circlepath.circle.fill"
     case .warning:
@@ -879,8 +903,8 @@ struct PublishingStatusToolbarControl: View {
         value: String(localized: "远端有 \(count) 项变化"),
         detail: String(localized: "同步前请审阅远端变更队列。"),
         statusImage: "arrow.down.doc",
-        color: WorkbenchTheme.risk,
-        severity: .error
+        color: WorkbenchTheme.info,
+        severity: .information
       )
     case .localChanges(let count):
       return PublishingStatusPopoverItem(

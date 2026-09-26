@@ -4,6 +4,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct KnowledgeLibraryDetailView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @ObservedObject var knowledge: KnowledgeStore
   @Binding var inspectorPresentation: KnowledgeLibraryInspectorPresentationState
   @State private var isImportPresented = false
@@ -355,7 +356,10 @@ struct KnowledgeLibraryDetailView: View {
     let citation = "> \(block.text.trimmedForPublishing)\n\n— \(source)，\(location)"
     _ = ClipboardWriter.copy(
       citation,
-      successMessage: "已复制“\(document.title)”的引用片段。"
+      successMessage: String(
+        format: String(localized: "已复制“%@”的引用片段。"),
+        document.title
+      )
     ) { message in
       EditorAccessibilityAnnouncementCenter.announce(message, priority: .low)
     }
@@ -466,7 +470,7 @@ struct KnowledgeLibraryDetailView: View {
     }
     .padding(10)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+    .background(workbenchAccentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
     .accessibilityElement(children: .combine)
     .accessibilityLabel(
       "已跳转到命中段落，\(hit.locationLabel ?? "正文")，"
@@ -715,6 +719,7 @@ private struct KnowledgeReaderScrollTarget: Hashable {
 }
 
 private struct KnowledgeDocumentReader: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let blocks: [KnowledgeDocumentBlock]
   let isLoading: Bool
   let errorMessage: String?
@@ -768,7 +773,7 @@ private struct KnowledgeDocumentReader: View {
                   .fill(Color.yellow.opacity(0.13))
                   .overlay {
                     RoundedRectangle(cornerRadius: 8)
-                      .stroke(Color.accentColor.opacity(0.45), lineWidth: 1)
+                      .stroke(workbenchAccentColor.opacity(0.45), lineWidth: 1)
                   }
               }
             }
@@ -788,7 +793,7 @@ private struct KnowledgeDocumentReader: View {
             .id(block.id)
         }
       }
-      .tint(.accentColor)
+      .tint(workbenchAccentColor)
       .textSelection(.enabled)
       .frame(maxWidth: .infinity, alignment: .leading)
       .accessibilityElement(children: .contain)
@@ -821,7 +826,7 @@ private struct KnowledgeDocumentReader: View {
       .padding(.leading, 12)
       .overlay(alignment: .leading) {
         Rectangle()
-          .fill(Color.accentColor.opacity(0.45))
+          .fill(workbenchAccentColor.opacity(0.45))
           .frame(width: 2)
           .accessibilityHidden(true)
       }
@@ -904,7 +909,8 @@ private struct KnowledgeDocumentReader: View {
     guard isHighlighted else { return Text(attributed) }
     return KnowledgeHighlightedText.highlightedText(
       String(attributed.characters),
-      terms: highlightTerms
+      terms: highlightTerms,
+      accentColor: workbenchAccentColor
     )
   }
 
@@ -939,7 +945,8 @@ private struct KnowledgeDocumentReader: View {
     language: String?
   ) -> Text {
     if block.id == highlightedBlockID, !highlightTerms.isEmpty {
-      return KnowledgeHighlightedText.highlightedText(block.text, terms: highlightTerms)
+      return KnowledgeHighlightedText.highlightedText(
+        block.text, terms: highlightTerms, accentColor: workbenchAccentColor)
     }
     return Text(
       ReaderCodeSyntaxHighlighter.attributedString(

@@ -97,22 +97,66 @@ final class FirstRunSetupPresentationTests: XCTestCase {
     )
   }
 
-  func testFirstRunOffersRepositoryConnectionAndLocalDraftPaths() {
+  func testFirstRunOffersExistingCloneAndLocalDraftPaths() {
     XCTAssertEqual(
       FirstRunSetupPath.allCases.map(\.rawValue),
       [
         "connectExistingRepository",
+        "cloneRemoteRepository",
         "localDrafts",
       ]
     )
     XCTAssertEqual(
       FirstRunSetupPath.allCases.map(\.title),
-      ["连接已有仓库", "暂不配置站点"]
+      ["连接已有仓库", "从 GitHub/GitLab 克隆", "暂不配置站点"]
     )
     XCTAssertEqual(
       FirstRunSetupPath.allCases.map(\.destination),
-      [.repositoryWizard, .localDrafts]
+      [.repositoryWizard, .repositoryWizard, .localDrafts]
     )
+  }
+
+  func testCloneSourceAcceptsOnlyCanonicalGitHubAndGitLabHTTPSRepositories() {
+    XCTAssertEqual(
+      FirstRunRepositoryCloneSource(text: "https://github.com/example/my-site.git")?.folderName,
+      "my-site"
+    )
+    XCTAssertEqual(
+      FirstRunRepositoryCloneSource(text: "https://gitlab.com/group/project/site")?.folderName,
+      "site"
+    )
+    for rejected in [
+      "http://github.com/example/site",
+      "https://github.com.evil.example/example/site",
+      "https://user:secret@github.com/example/site",
+      "https://github.com/example/site?token=secret",
+      "https://github.com/example/site#fragment",
+      "https://github.com/example/%2e%2e/site",
+      "https://github.com/example%2Fother/site",
+      "https://github.com/example/site/extra",
+    ] {
+      XCTAssertNil(FirstRunRepositoryCloneSource(text: rejected), rejected)
+    }
+  }
+
+  @MainActor
+  func testCloneRefusesAnExistingDestinationWithoutChangingItsContents() async throws {
+    let parent = FileManager.default.temporaryDirectory
+      .appendingPathComponent("FirstRunCloneCollision-\(UUID().uuidString)", isDirectory: true)
+    let destination = parent.appendingPathComponent("site", isDirectory: true)
+    let marker = destination.appendingPathComponent("keep.txt")
+    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: parent) }
+    try "keep".write(to: marker, atomically: true, encoding: .utf8)
+    let source = try XCTUnwrap(
+      FirstRunRepositoryCloneSource(text: "https://github.com/example/site"))
+
+    do {
+      _ = try await FirstRunRepositoryCloneService.clone(source, in: parent)
+      XCTFail("Existing destination must reject clone")
+    } catch FirstRunRepositoryCloneError.destinationExists {
+      XCTAssertEqual(try String(contentsOf: marker, encoding: .utf8), "keep")
+    }
   }
 
   func testOnlyRepositoryPathCarriesAStagedProfileToTheFinalCommit() {

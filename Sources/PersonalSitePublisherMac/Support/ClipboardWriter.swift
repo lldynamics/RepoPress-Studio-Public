@@ -6,13 +6,15 @@ enum ClipboardWriter {
   static func copy(
     _ value: String,
     successMessage: String,
-    failureMessage: String = "复制失败，请重试。",
+    failureMessage: String = String(localized: "复制失败，请重试。"),
     setMessage: (String, PublishActionMessageStatus) -> Void
   ) -> Bool {
     NSPasteboard.general.clearContents()
     let didCopy = NSPasteboard.general.setString(value, forType: .string)
     setMessage(
-      didCopy ? successMessage : failureMessage,
+      didCopy
+        ? String(localized: String.LocalizationValue(successMessage))
+        : String(localized: String.LocalizationValue(failureMessage)),
       didCopy ? .success : .failure
     )
     return didCopy
@@ -22,7 +24,7 @@ enum ClipboardWriter {
   static func copy(
     _ value: String,
     successMessage: String,
-    failureMessage: String = "复制失败，请重试。",
+    failureMessage: String = String(localized: "复制失败，请重试。"),
     setMessage: (String) -> Void
   ) -> Bool {
     copy(

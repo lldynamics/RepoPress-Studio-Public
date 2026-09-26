@@ -2,6 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct WorkspaceTaskNavigation: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let store: WorkbenchStore
   let selectedSection: WorkspaceSection
   @Binding var contentHealthFilter: ContentHealthContextFilter
@@ -20,16 +21,9 @@ struct WorkspaceTaskNavigation: View {
   }
 
   var body: some View {
-    // Compact 2+2+1 grid: the navigation must not push the article list below
-    // the fold, so rows are 28 pt with 6 pt gutters.
-    VStack(spacing: 6) {
-      ForEach(Array(WorkspaceNavigationRouteDescriptor.primaryRows.enumerated()), id: \.offset) {
-        row in
-        HStack(spacing: 6) {
-          ForEach(row.element) { section in
-            sectionButton(section, prominence: row.offset == 0 ? .primary : .compact)
-          }
-        }
+    HStack(spacing: 4) {
+      ForEach(WorkspaceNavigationRouteDescriptor.primarySections) { section in
+        sectionButton(section)
       }
     }
     .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
@@ -39,10 +33,7 @@ struct WorkspaceTaskNavigation: View {
     .accessibilityIdentifier("workspace-task-navigation")
   }
 
-  private func sectionButton(
-    _ section: WorkspaceSection,
-    prominence: NavigationButtonProminence
-  ) -> some View {
+  private func sectionButton(_ section: WorkspaceSection) -> some View {
     let title = WorkspaceNavigationRouteDescriptor.title(for: section)
     let isSelected =
       WorkspaceNavigationRouteDescriptor.primarySection(for: selectedSection) == section
@@ -53,40 +44,30 @@ struct WorkspaceTaskNavigation: View {
       }
       onSelectSection(section)
     } label: {
-      HStack(spacing: prominence.labelSpacing) {
-        Image(systemName: section.systemImage)
-          .font(.system(size: prominence.iconSize, weight: .medium))
-          .frame(width: prominence.iconWidth)
-          .accessibilityHidden(true)
-
-        Text(title)
-          .font(prominence.font)
-          .lineLimit(2)
-          .multilineTextAlignment(.leading)
-      }
-      .foregroundStyle(isSelected ? WorkbenchTheme.navigationSelection : Color.primary)
-      .frame(maxWidth: .infinity, minHeight: 28)
-      .padding(.horizontal, prominence.horizontalPadding)
-      .background {
-        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-          .fill(
-            isSelected
-              ? AnyShapeStyle(
-                WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.accentBackground)
-              )
-              : WorkbenchBackgroundStyle.control
-          )
-      }
-      .overlay {
-        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-          .strokeBorder(
-            isSelected
-              ? WorkbenchTheme.navigationSelection.opacity(0.30)
-              : Color.primary.opacity(0.08),
-            lineWidth: 1
-          )
-      }
-      .contentShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+      Image(systemName: section.systemImage)
+        .font(.system(size: 15, weight: .medium))
+        .frame(maxWidth: .infinity, minHeight: 32)
+        .foregroundStyle(isSelected ? workbenchAccentColor : Color.primary)
+        .background {
+          RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+            .fill(
+              isSelected
+                ? AnyShapeStyle(
+                  workbenchAccentColor.opacity(WorkbenchOpacity.accentBackground)
+                )
+                : WorkbenchBackgroundStyle.control
+            )
+        }
+        .overlay {
+          RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+            .strokeBorder(
+              isSelected
+                ? workbenchAccentColor.opacity(0.30)
+                : Color.primary.opacity(0.08),
+              lineWidth: 1
+            )
+        }
+        .contentShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
     }
     .buttonStyle(WorkbenchFocusRingButtonStyle())
     .help(title + shortcutHint(for: section))
@@ -105,30 +86,5 @@ struct WorkspaceTaskNavigation: View {
       return ""
     }
     return "（\(section.keyboardShortcutLabel)）"
-  }
-}
-
-private enum NavigationButtonProminence {
-  case primary
-  case compact
-
-  var font: Font {
-    .workbenchButtonLabel
-  }
-
-  var iconSize: CGFloat {
-    self == .primary ? 14 : 12
-  }
-
-  var iconWidth: CGFloat {
-    self == .primary ? 16 : 13
-  }
-
-  var labelSpacing: CGFloat {
-    self == .primary ? 6 : 4
-  }
-
-  var horizontalPadding: CGFloat {
-    self == .primary ? 8 : 4
   }
 }

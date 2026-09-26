@@ -77,6 +77,8 @@ public struct WorkspaceExchangeDraft: Codable, Equatable, Sendable {
   public var visibility: String
   public var summary: String
   public var bodyMarkdown: String
+  /// Optional so packages created before article writing goals still decode.
+  public var targetWordCount: Int?
   public var coverAttachmentID: UUID?
   public var createdAt: Date
   public var updatedAt: Date
@@ -85,7 +87,8 @@ public struct WorkspaceExchangeDraft: Codable, Equatable, Sendable {
   public init(
     id: UUID, scope: String, sourceProfileID: UUID? = nil, title: String, date: Date,
     slug: String, tags: [String], categories: [String], authors: [String], visibility: String,
-    summary: String, bodyMarkdown: String, coverAttachmentID: UUID? = nil,
+    summary: String, bodyMarkdown: String, targetWordCount: Int? = nil,
+    coverAttachmentID: UUID? = nil,
     createdAt: Date, updatedAt: Date, attachments: [WorkspaceExchangeAttachment]
   ) {
     self.id = id
@@ -100,6 +103,7 @@ public struct WorkspaceExchangeDraft: Codable, Equatable, Sendable {
     self.visibility = visibility
     self.summary = summary
     self.bodyMarkdown = bodyMarkdown
+    self.targetWordCount = targetWordCount
     self.coverAttachmentID = coverAttachmentID
     self.createdAt = createdAt
     self.updatedAt = updatedAt

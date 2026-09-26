@@ -2,7 +2,7 @@ import AppKit
 
 enum KnowledgeBatchExportSelectionPanel {
   @MainActor
-  static func chooseDestinationDirectory() -> URL? {
+  static func chooseDestinationDirectory() async -> URL? {
     let panel = NSOpenPanel()
     panel.title = String(localized: "选择资料导出文件夹")
     panel.prompt = String(localized: "导出到此处")
@@ -11,11 +11,11 @@ enum KnowledgeBatchExportSelectionPanel {
     panel.canChooseDirectories = true
     panel.canCreateDirectories = true
     panel.allowsMultipleSelection = false
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 
   @MainActor
-  static func chooseImageDestinationDirectory() -> URL? {
+  static func chooseImageDestinationDirectory() async -> URL? {
     let panel = NSOpenPanel()
     panel.title = String(localized: "选择图片导出文件夹")
     panel.prompt = String(localized: "导出到此处")
@@ -24,6 +24,6 @@ enum KnowledgeBatchExportSelectionPanel {
     panel.canChooseDirectories = true
     panel.canCreateDirectories = true
     panel.allowsMultipleSelection = false
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 }

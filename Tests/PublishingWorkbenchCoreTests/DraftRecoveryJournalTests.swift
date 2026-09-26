@@ -67,6 +67,27 @@ final class DraftRecoveryJournalTests: XCTestCase {
     XCTAssertEqual(loaded.first?.recoveredBodyMarkdown, "新恢复")
   }
 
+  func testJournalPreservesDraftWordGoalForRecoveryCopy() throws {
+    let directoryURL = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "DraftRecoveryWordGoal")
+    defer { try? FileManager.default.removeItem(at: directoryURL) }
+    let journal = DraftRecoveryJournal(
+      fileURL: directoryURL.appendingPathComponent("draft-recovery.json"))
+    let original = ArticleDraft(
+      siteProfileID: SiteProfile.defaultProfile.id,
+      title: "有独立目标的草稿",
+      bodyMarkdown: "已保存正文",
+      targetWordCount: 1750)
+    try journal.save([
+      DraftRecoveryRecord(
+        draft: original, recoveredBodyMarkdown: "尚未保存的正文")
+    ])
+
+    let recovered = try XCTUnwrap(journal.load().first)
+    XCTAssertEqual(recovered.targetWordCount, 1750)
+    XCTAssertEqual(recovered.makeDraft().targetWordCount, 1750)
+  }
+
   func testUnreadableJournalIsReportedAndQuarantinedOnLaunch() throws {
     let persistenceURL = try TestWorkbenchFactory.temporaryPersistenceURL(
       prefix: "DraftRecoveryUnreadable"

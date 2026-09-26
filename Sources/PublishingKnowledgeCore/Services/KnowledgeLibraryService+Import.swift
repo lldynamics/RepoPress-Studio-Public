@@ -152,7 +152,7 @@ extension KnowledgeLibraryService {
     } catch KnowledgeWebDownloadError.invalidURL {
       throw KnowledgeLibraryError.invalidWebURL
     } catch KnowledgeWebDownloadError.byteLimitExceeded {
-      throw KnowledgeLibraryError.sourceLimitExceeded("网页内容超过 12 MB，下载已停止，请改用文件导入。")
+      throw KnowledgeLibraryError.sourceLimitExceeded(CoreL10n.text("网页内容超过 12 MB，下载已停止，请改用文件导入。"))
     } catch {
       throw KnowledgeLibraryError.networkFailure(error.localizedDescription)
     }
@@ -253,7 +253,7 @@ extension KnowledgeLibraryService {
       throw KnowledgeLibraryError.noImportableSources("请拖入本机文件或文件夹。")
     }
     guard uniqueSourceURLs.count <= 100 else {
-      throw KnowledgeLibraryError.sourceLimitExceeded("一次最多拖入 100 个文件或文件夹，请分批导入。")
+      throw KnowledgeLibraryError.sourceLimitExceeded(CoreL10n.text("一次最多拖入 100 个文件或文件夹，请分批导入。"))
     }
 
     var candidates: [KnowledgeImportCandidate] = []
@@ -293,10 +293,10 @@ extension KnowledgeLibraryService {
 
         totalOriginalBytes += candidate.originalData?.count ?? 0
         guard candidates.count < 500 else {
-          throw KnowledgeLibraryError.sourceLimitExceeded("一次最多导入 500 个资料文件，请分批重试。")
+          throw KnowledgeLibraryError.sourceLimitExceeded(CoreL10n.text("一次最多导入 500 个资料文件，请分批重试。"))
         }
         guard totalOriginalBytes <= 100 * 1_024 * 1_024 else {
-          throw KnowledgeLibraryError.sourceLimitExceeded("拖入资料总量超过 100 MB，请分批导入。")
+          throw KnowledgeLibraryError.sourceLimitExceeded(CoreL10n.text("拖入资料总量超过 100 MB，请分批导入。"))
         }
         candidates.append(candidate)
       }
@@ -346,7 +346,9 @@ extension KnowledgeLibraryService {
       try Task.checkCancellation()
       guard supportedExtensions.contains(fileURL.pathExtension.lowercased()) else { continue }
       guard candidates.count < 500 else {
-        throw KnowledgeLibraryError.sourceLimitExceeded("一次最多导入 500 个资料文件，请拆分文件夹后重试。")
+        throw KnowledgeLibraryError.sourceLimitExceeded(
+          CoreL10n.text("一次最多导入 500 个资料文件，请拆分文件夹后重试。")
+        )
       }
 
       let canonicalFile = fileURL.standardizedFileURL.resolvingSymlinksInPath()
@@ -362,7 +364,7 @@ extension KnowledgeLibraryService {
       let fileBytes = values.fileSize ?? 0
       totalBytes += fileBytes
       guard totalBytes <= 100 * 1_024 * 1_024 else {
-        throw KnowledgeLibraryError.sourceLimitExceeded("文件夹资料总量超过 100 MB，请分批导入。")
+        throw KnowledgeLibraryError.sourceLimitExceeded(CoreL10n.text("文件夹资料总量超过 100 MB，请分批导入。"))
       }
 
       do {
@@ -386,13 +388,17 @@ extension KnowledgeLibraryService {
     let values = try sourceURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
     let fileSize = values.fileSize ?? 0
     guard fileSize <= 50 * 1_024 * 1_024 else {
-      throw KnowledgeLibraryError.sourceLimitExceeded("文件超过 50 MB：\(sourceURL.lastPathComponent)")
+      throw KnowledgeLibraryError.sourceLimitExceeded(
+        CoreL10n.format("文件超过 50 MB：%@", sourceURL.lastPathComponent)
+      )
     }
     let lowerExtension = sourceURL.pathExtension.lowercased()
     let imageExtensions: Set<String> = ["jpg", "jpeg", "png", "heic", "heif", "webp"]
     let isImage = imageExtensions.contains(lowerExtension)
     if isImage, fileSize > 25 * 1_024 * 1_024 {
-      throw KnowledgeLibraryError.sourceLimitExceeded("图片超过 25 MB：\(sourceURL.lastPathComponent)")
+      throw KnowledgeLibraryError.sourceLimitExceeded(
+        CoreL10n.format("图片超过 25 MB：%@", sourceURL.lastPathComponent)
+      )
     }
     // Store the bytes read here unchanged. Image extraction below validates the
     // actual type, frame count and pixel budget and generates OCR separately.

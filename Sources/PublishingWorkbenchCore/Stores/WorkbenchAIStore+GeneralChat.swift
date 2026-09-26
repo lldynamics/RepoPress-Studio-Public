@@ -550,7 +550,7 @@ extension WorkbenchAIStore {
       // the outbound payload sheet is awaiting a decision.
       _ = try aiChatAvailableAPIKey(for: connection)
     } catch {
-      store.setAIChatMessage("AI 通用对话失败：\(error.localizedDescription)")
+      store.setAIChatFailureMessage(CoreL10n.format("AI 通用对话失败：%@", error.localizedDescription))
       return nil
     }
     guard !Task.isCancelled else { return nil }
@@ -768,7 +768,7 @@ extension WorkbenchAIStore {
       )
       return nil
     } catch {
-      store.setAIChatMessage(error.localizedDescription)
+      store.setAIChatFailureMessage(error.localizedDescription)
       return nil
     }
     do {
@@ -812,7 +812,7 @@ extension WorkbenchAIStore {
         conversationID: conversationID,
         operationID: operationID
       )
-      store.setAIChatMessage("AI 通用对话失败：\(error.localizedDescription)")
+      store.setAIChatFailureMessage(CoreL10n.format("AI 通用对话失败：%@", error.localizedDescription))
       if error.didReceivePartialContent {
         return aiConversations.first(where: { $0.id == conversationID })?.messages.last {
           $0.role == .assistant
@@ -826,7 +826,7 @@ extension WorkbenchAIStore {
       )
       return nil
     } catch {
-      store.setAIChatMessage("AI 通用对话失败：\(error.localizedDescription)")
+      store.setAIChatFailureMessage(CoreL10n.format("AI 通用对话失败：%@", error.localizedDescription))
       return nil
     }
   }
@@ -988,7 +988,7 @@ extension WorkbenchAIStore {
           .joined(separator: "\n\n")
           .trimmedForPublishing
         guard !rawContent.isEmpty else {
-          store.setAIChatMessage("AI 通用对话失败：AI 没有返回可显示的内容。")
+          store.setAIChatFailureMessage(CoreL10n.text("AI 通用对话失败：AI 没有返回可显示的内容。"))
           return nil
         }
         let extraction = AIChatFollowUpSuggestionService.extractOrInferSuggestions(
@@ -1032,17 +1032,17 @@ extension WorkbenchAIStore {
 
       case .capabilityUnavailable, .rejected, .limitReached, .awaitingReview,
         .modelTransportFailed:
-        store.setAIChatMessage("AI 通用对话失败：AI 操作回合未完成。")
+        store.setAIChatFailureMessage(CoreL10n.text("AI 通用对话失败：AI 操作回合未完成。"))
         return nil
       }
     } catch is CancellationError {
       store.setAIChatMessage("AI 回复已停止。")
       return nil
     } catch let error as AIChatCompletionClientError {
-      store.setAIChatMessage("AI 通用对话失败：\(error.localizedDescription)")
+      store.setAIChatFailureMessage(CoreL10n.format("AI 通用对话失败：%@", error.localizedDescription))
       return nil
     } catch {
-      store.setAIChatMessage("AI 通用对话失败：\(error.localizedDescription)")
+      store.setAIChatFailureMessage(CoreL10n.format("AI 通用对话失败：%@", error.localizedDescription))
       return nil
     }
   }
@@ -1390,7 +1390,7 @@ extension WorkbenchAIStore {
     do {
       _ = try aiChatAvailableAPIKey(for: connection)
     } catch {
-      store.setAIChatMessage("AI 通用对话失败：\(error.localizedDescription)")
+      store.setAIChatFailureMessage(CoreL10n.format("AI 通用对话失败：%@", error.localizedDescription))
       return nil
     }
     guard

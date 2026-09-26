@@ -40,19 +40,19 @@ enum KnowledgeArticleInsertionService {
       let imageURL = await knowledge.originalFileURL(documentID: document.id)
     else {
       store.setPublishActionMessage(
-        "资料库图片副本不可读，请先运行资料库健康检查。",
+        String(localized: "资料库图片副本不可读，请先运行资料库健康检查。"),
         status: .warning
       )
       return false
     }
     guard let selectedDraft = store.selectedDraft ?? store.ensureEditableDraftSelected() else {
-      store.setPublishActionMessage("请先创建或选择一篇当前文章。", status: .warning)
+      store.setPublishActionMessage(String(localized: "请先创建或选择一篇当前文章。"), status: .warning)
       return false
     }
 
     store.flushDraftBodyEditorBuffer(for: selectedDraft.id)
     guard let baselineDraft = store.drafts.first(where: { $0.id == selectedDraft.id }) else {
-      store.setPublishActionMessage("当前文章已变化，请重新选择后再插入。", status: .warning)
+      store.setPublishActionMessage(String(localized: "当前文章已变化，请重新选择后再插入。"), status: .warning)
       return false
     }
 
@@ -66,11 +66,11 @@ enum KnowledgeArticleInsertionService {
       )
       attachment.altText = document.title
     } catch is CancellationError {
-      store.setPublishActionMessage("已取消插入图片。", status: .warning)
+      store.setPublishActionMessage(String(localized: "已取消插入图片。"), status: .warning)
       return false
     } catch {
       store.setPublishActionMessage(
-        "无法把资料图片复制到当前文章：\(error.localizedDescription)",
+        String(format: String(localized: "无法把资料图片复制到当前文章：%@"), error.localizedDescription),
         status: .failure
       )
       return false
@@ -79,7 +79,7 @@ enum KnowledgeArticleInsertionService {
     guard store.selectedDraftID == baselineDraft.id else {
       discardManagedAttachment(attachment, fileStore: fileStore)
       store.setPublishActionMessage(
-        "当前文章在图片复制期间已切换，未写入新文章。",
+        String(localized: "当前文章在图片复制期间已切换，未写入新文章。"),
         status: .warning
       )
       return false
@@ -88,7 +88,7 @@ enum KnowledgeArticleInsertionService {
     store.flushDraftBodyEditorBuffer(for: baselineDraft.id)
     guard var currentDraft = store.drafts.first(where: { $0.id == baselineDraft.id }) else {
       discardManagedAttachment(attachment, fileStore: fileStore)
-      store.setPublishActionMessage("当前文章已不存在，图片未插入。", status: .warning)
+      store.setPublishActionMessage(String(localized: "当前文章已不存在，图片未插入。"), status: .warning)
       return false
     }
 
@@ -111,7 +111,7 @@ enum KnowledgeArticleInsertionService {
     else {
       discardManagedAttachment(attachment, fileStore: fileStore)
       store.setPublishActionMessage(
-        "当前文章在插入前已被其他窗口修改，请重新尝试。",
+        String(localized: "当前文章在插入前已被其他窗口修改，请重新尝试。"),
         status: .warning
       )
       return false
@@ -129,7 +129,7 @@ enum KnowledgeArticleInsertionService {
     )
     store.scheduleImageWorkbenchCachesRefresh(for: currentDraft)
     store.setPublishActionMessage(
-      "已将“\(document.title)”复制到当前文章附件并插入。",
+      String(format: String(localized: "已将“%@”复制到当前文章附件并插入。"), document.title),
       status: .success
     )
 
@@ -165,7 +165,7 @@ enum KnowledgeArticleInsertionService {
     let content = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !content.isEmpty else {
       store.setPublishActionMessage(
-        "当前资料正文尚未加载完成，请稍后再试。",
+        String(localized: "当前资料正文尚未加载完成，请稍后再试。"),
         status: .warning
       )
       return false
@@ -173,11 +173,20 @@ enum KnowledgeArticleInsertionService {
 
     let maximumLength = 100_000
     let truncatedContent = String(content.prefix(maximumLength))
-    let truncationNotice = content.count > maximumLength
-      ? "\n\n>（资料内容较长，已截取前 \(maximumLength) 个字符。）"
+    let truncationNotice =
+      content.count > maximumLength
+      ? "\n\n>"
+        + String(
+          format: String(localized: "（资料内容较长，已截取前 %@ 个字符。）"),
+          String(maximumLength)
+        )
       : ""
     let fragment = "## \(document.title)\n\n\(truncatedContent)\(truncationNotice)"
-    return insert(fragment, message: "已将“\(document.title)”插入当前文章。", into: store)
+    return insert(
+      fragment,
+      message: String(format: String(localized: "已将“%@”插入当前文章。"), document.title),
+      into: store
+    )
   }
 
   @discardableResult
@@ -194,7 +203,7 @@ enum KnowledgeArticleInsertionService {
       fallbackText: fallbackText
     ) else {
       store.setPublishActionMessage(
-        "当前资料没有可插入的引用片段。",
+        String(localized: "当前资料没有可插入的引用片段。"),
         status: .warning
       )
       return false
@@ -213,8 +222,8 @@ enum KnowledgeArticleInsertionService {
     let inserted = insert(
       fragment,
       message: style == .footnote
-        ? "已将“\(document.title)”作为脚手架参考插入当前文章。"
-        : "已将“\(document.title)”的引用插入当前文章。",
+        ? String(format: String(localized: "已将“%@”作为脚手架参考插入当前文章。"), document.title)
+        : String(format: String(localized: "已将“%@”的引用插入当前文章。"), document.title),
       into: store,
       postProcess: postProcess
     )
@@ -286,7 +295,10 @@ enum KnowledgeArticleInsertionService {
       : nil
     let inserted = insert(
       fragment,
-      message: "已插入“\(article.title)”的摘要、摘录和来源；未复制全文。",
+      message: String(
+        format: String(localized: "已插入“%@”的摘要、摘录和来源；未复制全文。"),
+        article.title
+      ),
       targeting: target,
       into: store,
       postProcess: postProcess
@@ -342,7 +354,7 @@ enum KnowledgeArticleInsertionService {
     )
     guard !fragment.isEmpty else {
       store.setPublishActionMessage(
-        "当前 RSS 收藏没有可插入的正文片段。",
+        String(localized: "当前 RSS 收藏没有可插入的正文片段。"),
         status: .warning
       )
       return false
@@ -359,7 +371,9 @@ enum KnowledgeArticleInsertionService {
       : nil
     return insert(
       fragment,
-      message: style == .footnote ? "已插入 RSS 脚注。" : "已插入 RSS 引用块。",
+      message: style == .footnote
+        ? String(localized: "已插入 RSS 脚注。")
+        : String(localized: "已插入 RSS 引用块。"),
       targeting: target,
       into: store,
       postProcess: postProcess
@@ -581,13 +595,13 @@ enum KnowledgeArticleInsertionService {
     in store: WorkbenchStore
   ) -> RSSDraftInsertionTarget? {
     guard let selectedDraft = store.selectedDraft ?? store.ensureEditableDraftSelected() else {
-      store.setPublishActionMessage("请先创建或选择一篇当前文章。", status: .warning)
+      store.setPublishActionMessage(String(localized: "请先创建或选择一篇当前文章。"), status: .warning)
       return nil
     }
     let editorSelection = store.activeEditorSelection
     store.flushDraftBodyEditorBuffer(for: selectedDraft.id)
     guard let draft = store.drafts.first(where: { $0.id == selectedDraft.id }) else {
-      store.setPublishActionMessage("当前文章已变化，请重新选择后再插入。", status: .warning)
+      store.setPublishActionMessage(String(localized: "当前文章已变化，请重新选择后再插入。"), status: .warning)
       return nil
     }
     let buffer = store.draftBodyEditorBuffer(for: draft.id)

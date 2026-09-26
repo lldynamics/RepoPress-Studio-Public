@@ -19,8 +19,8 @@ struct SettingsTokenTabFactory {
       repositoryTokenFocusRequestID: context.healthNavigationRequestID,
       localRepositoryPath: context.store.activeProfile.localRepositoryRootPath,
       chooseLocalRepository: {
-        guard let url = RepositorySelectionPanel.chooseDirectory() else { return }
         Task {
+          guard let url = await RepositorySelectionPanel.chooseDirectory() else { return }
           await context.store.repository.rememberRootAsync(url)
         }
       },

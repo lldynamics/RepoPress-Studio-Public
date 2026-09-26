@@ -3,12 +3,23 @@ import Foundation
 import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 
+struct WorkspaceSidebarCommandAction {
+  let isPresented: Bool
+  let canToggle: Bool
+  let toggle: () -> Void
+
+  var title: String {
+    isPresented ? String(localized: "隐藏侧栏") : String(localized: "显示侧栏")
+  }
+}
+
 @MainActor
 final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
   struct RootUpdateKey: Equatable {
     let selectedSection: WorkspaceSection
     let isFocusModeActive: Bool
     let canToggleFocusMode: Bool
+    let isSidebarPresented: Bool
     let isInspectorPresented: Bool
     let canToggleInspector: Bool
     let repositorySourceHasUnsavedChanges: Bool
@@ -43,7 +54,9 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
   private(set) var settingsWorkspaceCommandAction: SettingsWorkspaceCommandAction?
   private(set) var draftFullTextSearchAction: DraftFullTextSearchAction?
   private(set) var workspaceFocusModeCommandAction: WorkspaceFocusModeCommandAction?
+  private(set) var workspaceSidebarCommandAction: WorkspaceSidebarCommandAction?
   private(set) var workspaceInspectorCommandAction: WorkspaceInspectorCommandAction?
+  private(set) var showShortcutHelp: (() -> Void)?
   private(set) var repositorySourceSessionCommandActions: RepositorySourceSessionCommandActions?
 
   private(set) var markdownEditorCommandActions: MarkdownEditorCommandActions?
@@ -67,7 +80,9 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
     settingsWorkspaceCommandAction: SettingsWorkspaceCommandAction,
     draftFullTextSearchAction: DraftFullTextSearchAction,
     workspaceFocusModeCommandAction: WorkspaceFocusModeCommandAction,
+    workspaceSidebarCommandAction: WorkspaceSidebarCommandAction? = nil,
     workspaceInspectorCommandAction: WorkspaceInspectorCommandAction,
+    showShortcutHelp: (() -> Void)? = nil,
     repositorySourceSessionCommandActions: RepositorySourceSessionCommandActions
   ) {
     mutatePresentation {
@@ -78,7 +93,9 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
       self.settingsWorkspaceCommandAction = settingsWorkspaceCommandAction
       self.draftFullTextSearchAction = draftFullTextSearchAction
       self.workspaceFocusModeCommandAction = workspaceFocusModeCommandAction
+      self.workspaceSidebarCommandAction = workspaceSidebarCommandAction
       self.workspaceInspectorCommandAction = workspaceInspectorCommandAction
+      self.showShortcutHelp = showShortcutHelp
       self.repositorySourceSessionCommandActions = repositorySourceSessionCommandActions
     }
   }
@@ -92,7 +109,9 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
       settingsWorkspaceCommandAction = nil
       draftFullTextSearchAction = nil
       workspaceFocusModeCommandAction = nil
+      workspaceSidebarCommandAction = nil
       workspaceInspectorCommandAction = nil
+      showShortcutHelp = nil
       repositorySourceSessionCommandActions = nil
 
       markdownOwner = nil
@@ -199,6 +218,8 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
       isSettingsWorkspacePresented: settingsWorkspaceCommandAction?.isPresented,
       focusModeIsActive: workspaceFocusModeCommandAction?.isActive,
       focusModeCanToggle: workspaceFocusModeCommandAction?.canToggle,
+      sidebarIsPresented: workspaceSidebarCommandAction?.isPresented,
+      sidebarCanToggle: workspaceSidebarCommandAction?.canToggle,
       inspectorIsPresented: workspaceInspectorCommandAction?.isPresented,
       inspectorCanToggle: workspaceInspectorCommandAction?.canToggle,
       repositorySourceHasUnsavedChanges: repositorySourceSessionCommandActions?.hasUnsavedChanges,
@@ -212,6 +233,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
       },
       writingOwner: writingOwner,
       hasWritingDraftActions: writingDraftCommandActions != nil,
+      hasShortcutHelp: showShortcutHelp != nil,
       knowledgeOwner: knowledgeOwner,
       hasKnowledgeLibraryActions: knowledgeLibraryCommandActions != nil,
       repositorySourceOwner: repositorySourceOwner,
@@ -244,6 +266,8 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
     let isSettingsWorkspacePresented: Bool?
     let focusModeIsActive: Bool?
     let focusModeCanToggle: Bool?
+    let sidebarIsPresented: Bool?
+    let sidebarCanToggle: Bool?
     let inspectorIsPresented: Bool?
     let inspectorCanToggle: Bool?
     let repositorySourceHasUnsavedChanges: Bool?
@@ -251,6 +275,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
     let markdown: MarkdownPresentation?
     let writingOwner: UUID?
     let hasWritingDraftActions: Bool
+    let hasShortcutHelp: Bool
     let knowledgeOwner: UUID?
     let hasKnowledgeLibraryActions: Bool
     let repositorySourceOwner: UUID?

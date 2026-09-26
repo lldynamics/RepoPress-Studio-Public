@@ -503,8 +503,8 @@ extension RepositoryWorkspaceView {
 
   func chooseRepository() {
     guard !store.isLocalRepositoryBranchOperationRunning else { return }
-    guard let url = RepositorySelectionPanel.chooseDirectory() else { return }
     Task {
+      guard let url = await RepositorySelectionPanel.chooseDirectory() else { return }
       await store.repository.rememberRootAsync(url)
     }
   }

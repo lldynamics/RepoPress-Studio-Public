@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 /// Shares in-flight extraction work across the interactive reader and offline
 /// prefetch, while keeping origin traffic deliberately conservative.
@@ -38,7 +39,7 @@ public actor RSSArticleFullTextRequestBroker {
     service: RSSArticleFullTextService = RSSArticleFullTextService()
   ) async throws -> RSSArticleFullTextRecord {
     guard let host = article.link?.host?.lowercased(), !host.isEmpty else {
-      throw RSSReaderError.persistence("该文章没有有效的原文网页链接。")
+      throw RSSReaderError.persistence(CoreL10n.text("该文章没有有效的原文网页链接。"))
     }
     return try await perform(
       articleID: article.id,

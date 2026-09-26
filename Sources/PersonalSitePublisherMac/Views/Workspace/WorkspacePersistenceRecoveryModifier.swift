@@ -64,16 +64,23 @@ private struct WorkspacePersistenceRecoveryModifier: ViewModifier {
   private func persistenceRecoveryAlertActions() -> some View {
     if shellState.isPersistenceRecoveryWriteProtected {
       Button(String(localized: "恢复其他备份…")) {
-        guard let sourceURL = WorkbenchRecoverySelectionPanel.chooseSnapshot() else { return }
-        if store.installPersistenceRecoverySnapshot(from: sourceURL) {
-          NSApp.terminate(nil)
+        Task { @MainActor in
+          guard let sourceURL = await WorkbenchRecoverySelectionPanel.chooseSnapshot() else {
+            return
+          }
+          if store.installPersistenceRecoverySnapshot(from: sourceURL) {
+            NSApp.terminate(nil)
+          }
         }
       }
       Button(String(localized: "导出故障文件…")) {
-        guard let directoryURL = WorkbenchRecoverySelectionPanel.chooseExportDirectory() else {
-          return
+        Task { @MainActor in
+          guard let directoryURL = await WorkbenchRecoverySelectionPanel.chooseExportDirectory()
+          else {
+            return
+          }
+          _ = store.exportPersistenceRecoveryFiles(to: directoryURL)
         }
-        _ = store.exportPersistenceRecoveryFiles(to: directoryURL)
       }
       Button(String(localized: "重置为空白工作台"), role: .destructive) {
         isPersistenceResetConfirmationPresented = true

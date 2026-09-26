@@ -3,6 +3,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct SettingsView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let store: WorkbenchStore
   @ObservedObject private var settingsState: WorkbenchSettingsFeatureFacade
   @ObservedObject private var persistenceStatus: WorkbenchPersistenceFeatureFacade
@@ -236,7 +237,7 @@ struct SettingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(Color.accentColor)
+        .foregroundStyle(workbenchAccentColor)
         .padding(.horizontal, WorkbenchSpacing.content)
         .padding(.bottom, WorkbenchSpacing.card)
         .accessibilityIdentifier("settings-return-to-search-results")
@@ -269,7 +270,7 @@ struct SettingsView: View {
           .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(Color.accentColor)
+        .foregroundStyle(workbenchAccentColor)
         .padding(.horizontal, WorkbenchSpacing.content)
         .padding(.vertical, WorkbenchSpacing.card)
         .accessibilityIdentifier("settings-open-other-scope")

@@ -517,7 +517,7 @@ struct ContentMigrationAssistantView: View {
       Button("复制 CSV") {
         let didCopy = ClipboardWriter.copy(
           plan.redirectTableCSV,
-          successMessage: "已复制重定向 CSV。",
+          successMessage: String(localized: "已复制重定向 CSV。"),
           setMessage: { _ in }
         )
         notice = didCopy ? .copiedRedirectCSV : .copyFailed
@@ -626,10 +626,10 @@ struct ContentMigrationAssistantView: View {
   }
 
   private func selectSource() {
-    guard let url = ContentMigrationSelectionPanel.chooseSource() else { return }
-    isAnalyzing = true
-    notice = .analyzing
     Task {
+      guard let url = await ContentMigrationSelectionPanel.chooseSource() else { return }
+      isAnalyzing = true
+      notice = .analyzing
       defer {
         isAnalyzing = false
       }
@@ -748,12 +748,15 @@ struct ContentMigrationAssistantView: View {
   }
 
   private func exportRedirects(_ plan: ContentMigrationPlan) {
-    guard let url = ContentMigrationSelectionPanel.chooseRedirectTableDestination() else { return }
-    do {
-      try plan.redirectTableCSV.write(to: url, atomically: true, encoding: .utf8)
-      notice = .exportedRedirectCSV(url.lastPathComponent)
-    } catch {
-      notice = .exportFailed(error.localizedDescription)
+    Task {
+      guard let url = await ContentMigrationSelectionPanel.chooseRedirectTableDestination()
+      else { return }
+      do {
+        try plan.redirectTableCSV.write(to: url, atomically: true, encoding: .utf8)
+        notice = .exportedRedirectCSV(url.lastPathComponent)
+      } catch {
+        notice = .exportFailed(error.localizedDescription)
+      }
     }
   }
 

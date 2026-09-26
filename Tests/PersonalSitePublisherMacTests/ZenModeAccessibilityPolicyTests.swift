@@ -61,7 +61,7 @@ final class ZenModeControllerAccessibilityTests: XCTestCase {
       voiceOverEnabled: false,
       reduceMotionEnabled: true
     )
-    controller.toggleZenMode()
+    controller.setZenModeActive(true)
     controller.beginKeyboardNavigation()
     controller.isRecentlyTyped = true
 
@@ -76,9 +76,9 @@ final class ZenModeControllerAccessibilityTests: XCTestCase {
       voiceOverEnabled: false,
       reduceMotionEnabled: true
     )
-    controller.toggleZenMode()
+    controller.setZenModeActive(true)
     controller.beginKeyboardNavigation()
-    controller.toggleZenMode()
+    controller.setZenModeActive(false)
 
     XCTAssertFalse(controller.isZenModeActive)
     XCTAssertFalse(controller.isKeyboardNavigationActive)
@@ -90,7 +90,7 @@ final class ZenModeControllerAccessibilityTests: XCTestCase {
       voiceOverEnabled: true,
       reduceMotionEnabled: true
     )
-    controller.toggleZenMode()
+    controller.setZenModeActive(true)
     controller.isRecentlyTyped = true
 
     XCTAssertTrue(controller.isVoiceOverEnabled)

@@ -16,6 +16,8 @@ struct PersonalSitePublisherMacApp: App {
   private var appearanceModeRawValue = WorkbenchAppearanceMode.system.rawValue
   @AppStorage(WorkbenchInterfaceDensity.storageKey)
   private var interfaceDensityRawValue = WorkbenchInterfaceDensity.comfortable.rawValue
+  @AppStorage("menuBarQuickCaptureVisibleV1")
+  private var isMenuBarQuickCaptureVisible = true
 
   init() {
     // Git can close stdin before a background writer finishes. EPIPE must be
@@ -121,6 +123,7 @@ struct PersonalSitePublisherMacApp: App {
           }
         )
         .tint(selectedAccentPalette.color)
+        .environment(\.workbenchAccentColor, selectedAccentPalette.color)
         .preferredColorScheme(selectedAppearanceMode.colorScheme)
         .controlSize(selectedInterfaceDensity.controlSize)
     }
@@ -128,7 +131,7 @@ struct PersonalSitePublisherMacApp: App {
       width: WorkbenchLayoutMode.defaultWindowWidth,
       height: WorkbenchLayoutMode.defaultWindowHeight
     )
-    .windowToolbarStyle(.unifiedCompact(showsTitle: false))
+    .windowToolbarStyle(.unifiedCompact(showsTitle: true))
     .commands {
       AppUpdateCommands(controller: appUpdateController)
       if let store = launchCoordinator.store {
@@ -136,13 +139,17 @@ struct PersonalSitePublisherMacApp: App {
       }
     }
 
-    MenuBarExtra("RepoPress Studio", systemImage: "square.and.pencil") {
+    MenuBarExtra(
+      "RepoPress Studio", systemImage: "square.and.pencil",
+      isInserted: $isMenuBarQuickCaptureVisible
+    ) {
       MenuBarQuickCaptureView(
         coordinator: launchCoordinator,
         capture: menuBarCapture,
         openWorkbench: { appDelegate.openWorkbenchFromMenuBar() }
       )
       .tint(selectedAccentPalette.color)
+      .environment(\.workbenchAccentColor, selectedAccentPalette.color)
       .preferredColorScheme(selectedAppearanceMode.colorScheme)
     }
     .menuBarExtraStyle(.window)
@@ -169,6 +176,7 @@ struct PersonalSitePublisherMacApp: App {
         }
       }
       .tint(selectedAccentPalette.color)
+      .environment(\.workbenchAccentColor, selectedAccentPalette.color)
       .preferredColorScheme(selectedAppearanceMode.colorScheme)
       .controlSize(selectedInterfaceDensity.controlSize)
       .task {
@@ -206,6 +214,7 @@ struct PersonalSitePublisherMacApp: App {
         }
       }
       .tint(selectedAccentPalette.color)
+      .environment(\.workbenchAccentColor, selectedAccentPalette.color)
       .preferredColorScheme(selectedAppearanceMode.colorScheme)
       .controlSize(selectedInterfaceDensity.controlSize)
     }
@@ -231,6 +240,7 @@ struct PersonalSitePublisherMacApp: App {
         }
       }
       .tint(selectedAccentPalette.color)
+      .environment(\.workbenchAccentColor, selectedAccentPalette.color)
       .preferredColorScheme(selectedAppearanceMode.colorScheme)
       .controlSize(selectedInterfaceDensity.controlSize)
     }
@@ -418,6 +428,12 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
   var workbenchStore: WorkbenchStore?
   private var isWaitingForTerminationLedgerFlush = false
   private var didConfirmTerminationLedgerFlush = false
+  private var restartRequested = false
+
+  func requestRestart() {
+    restartRequested = true
+    NSApp.terminate(nil)
+  }
   var openMainWindowAction: (() -> Void)? {
     didSet {
       guard openMainWindowAction != nil,
@@ -726,47 +742,47 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
     if isWaitingForTerminationLedgerFlush {
       return .terminateLater
     }
-    if RepositoryHTMLSourceSessionRegistry.shared.hasUnsavedChanges {
-      let alert = NSAlert()
-      alert.messageText = String(localized: "HTML 源文件尚未保存")
-      alert.informativeText = String(localized: "保存后退出可保留源码更改；也可以返回编辑器继续处理。")
-      alert.alertStyle = .warning
-      alert.addButton(withTitle: String(localized: "保存并退出"))
-      alert.addButton(withTitle: String(localized: "继续编辑")).keyEquivalent = "\u{1b}"
-      alert.addButton(withTitle: String(localized: "不保存并退出"))
-      switch alert.runModal() {
-      case .alertFirstButtonReturn:
-        guard RepositoryHTMLSourceSessionRegistry.shared.saveBeforeTermination() else {
-          let failureAlert = NSAlert()
-          failureAlert.messageText = String(localized: "未能保存 HTML 源文件")
-          failureAlert.informativeText =
-            RepositoryHTMLSourceSessionRegistry.shared.lastErrorMessage
-            ?? String(localized: "请返回编辑器检查文件权限或外部修改冲突。")
-          failureAlert.alertStyle = .warning
-          failureAlert.addButton(withTitle: String(localized: "继续编辑"))
-          failureAlert.runModal()
-          return .terminateCancel
-        }
-      case .alertSecondButtonReturn:
-        return .terminateCancel
-      case .alertThirdButtonReturn:
-        break
-      default:
-        return .terminateCancel
-      }
-    }
-
-    guard let workbenchStore else {
-      return .terminateNow
-    }
-
-    MacMarkdownEditorTerminationFlushRegistry.flushPendingWritesForTermination()
     isWaitingForTerminationLedgerFlush = true
-    Task { @MainActor [weak self, weak workbenchStore] in
-      guard let self, let workbenchStore else {
+    Task { @MainActor [weak self] in
+      guard let self else {
         sender.reply(toApplicationShouldTerminate: false)
         return
       }
+      if RepositoryHTMLSourceSessionRegistry.shared.hasUnsavedChanges {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "HTML 源文件尚未保存")
+        alert.informativeText = String(localized: "保存后退出可保留源码更改；也可以返回编辑器继续处理。")
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: String(localized: "保存并退出"))
+        alert.addButton(withTitle: String(localized: "继续编辑")).keyEquivalent = "\u{1b}"
+        alert.addButton(withTitle: String(localized: "不保存并退出"))
+        switch await WindowSheetPresenter.response(to: alert) {
+        case .alertFirstButtonReturn:
+          guard RepositoryHTMLSourceSessionRegistry.shared.saveBeforeTermination() else {
+            let failureAlert = NSAlert()
+            failureAlert.messageText = String(localized: "未能保存 HTML 源文件")
+            failureAlert.informativeText =
+              RepositoryHTMLSourceSessionRegistry.shared.lastErrorMessage
+              ?? String(localized: "请返回编辑器检查文件权限或外部修改冲突。")
+            failureAlert.alertStyle = .warning
+            failureAlert.addButton(withTitle: String(localized: "继续编辑"))
+            _ = await WindowSheetPresenter.response(to: failureAlert)
+            finishTerminationRequest(sender, mayExit: false)
+            return
+          }
+        case .alertThirdButtonReturn:
+          break
+        default:
+          finishTerminationRequest(sender, mayExit: false)
+          return
+        }
+      }
+
+      guard let workbenchStore = self.workbenchStore else {
+        finishTerminationRequest(sender, mayExit: true)
+        return
+      }
+      MacMarkdownEditorTerminationFlushRegistry.flushPendingWritesForTermination()
       let result = await workbenchStore.prepareForSafeTermination()
       var mayExit = false
       var usedRecoveryExport = false
@@ -790,10 +806,9 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
           alert.addButton(withTitle: String(localized: "查看冲突"))
         }
         alert.addButton(withTitle: String(localized: "继续编辑")).keyEquivalent = "\u{1b}"
-        let choice = alert.runModal()
+        let choice = await WindowSheetPresenter.response(to: alert)
         if !hasExternalDraftPendingWrites && choice == .alertSecondButtonReturn {
-          isWaitingForTerminationLedgerFlush = false
-          sender.reply(toApplicationShouldTerminate: false)
+          finishTerminationRequest(sender, mayExit: false)
           if let failure = workbenchStore.siteDraftFileSaveFailureGroups
             .first(where: { $0.reason == .externalChange })?.failures.first
           {
@@ -811,12 +826,12 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
         alert.alertStyle = .warning
         alert.addButton(withTitle: String(localized: "另存恢复包…"))
         alert.addButton(withTitle: String(localized: "继续编辑")).keyEquivalent = "\u{1b}"
-        if alert.runModal() == .alertFirstButtonReturn {
+        if await WindowSheetPresenter.response(to: alert) == .alertFirstButtonReturn {
           let panel = NSSavePanel()
           panel.title = String(localized: "另存退出恢复包")
           panel.nameFieldStringValue = "RepoPress-Recovery.psworkspacebackup"
           panel.canCreateDirectories = true
-          if panel.runModal() == .OK, let url = panel.url {
+          if await WindowSheetPresenter.response(to: panel) == .OK, let url = panel.url {
             do {
               let savedURL = try await workbenchStore.exportSafeTerminationRecovery(at: url)
               let confirmation = NSAlert()
@@ -825,14 +840,15 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
                 String(localized: "原保存位置仍有问题。下次打开软件后，可从工作区备份中导入此恢复包继续编辑。") + "\n" + savedURL.path
               confirmation.addButton(withTitle: String(localized: "退出"))
               confirmation.addButton(withTitle: String(localized: "继续编辑"))
-              mayExit = confirmation.runModal() == .alertFirstButtonReturn
+              mayExit =
+                await WindowSheetPresenter.response(to: confirmation) == .alertFirstButtonReturn
               usedRecoveryExport = mayExit
             } catch {
               let failure = NSAlert()
               failure.messageText = String(localized: "恢复包未能完成")
               failure.informativeText = error.localizedDescription
               failure.addButton(withTitle: String(localized: "继续编辑"))
-              failure.runModal()
+              _ = await WindowSheetPresenter.response(to: failure)
             }
           }
         }
@@ -843,20 +859,41 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
         changed.messageText = String(localized: "确认期间内容发生变化")
         changed.informativeText = String(localized: "最新内容仍保留在软件中，请再次退出以保存这些修改。")
         changed.addButton(withTitle: String(localized: "继续编辑"))
-        changed.runModal()
+        _ = await WindowSheetPresenter.response(to: changed)
       }
-      isWaitingForTerminationLedgerFlush = false
       // An emergency export must not mark the broken primary data root clean.
       didConfirmTerminationLedgerFlush = mayExit && !usedRecoveryExport
-      sender.reply(toApplicationShouldTerminate: mayExit)
+      finishTerminationRequest(sender, mayExit: mayExit)
     }
     return .terminateLater
+  }
+
+  private func finishTerminationRequest(_ sender: NSApplication, mayExit: Bool) {
+    isWaitingForTerminationLedgerFlush = false
+    if !mayExit { restartRequested = false }
+    sender.reply(toApplicationShouldTerminate: mayExit)
   }
 
   func applicationWillTerminate(_ notification: Notification) {
     workbenchStore?.stopLocalSitePreviewImmediately()
     if didConfirmTerminationLedgerFlush || workbenchStore == nil {
       WorkbenchSessionRecovery.shared.markCleanExit()
+    }
+    if restartRequested {
+      let launcher = Process()
+      launcher.executableURL = URL(fileURLWithPath: "/bin/sh")
+      launcher.arguments = [
+        "-c",
+        "while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; exec /usr/bin/open -n -a \"$2\"",
+        "repopress-restart",
+        String(getpid()),
+        Bundle.main.bundlePath,
+      ]
+      do {
+        try launcher.run()
+      } catch {
+        NSLog("RepoPress restart helper failed to start: %@", error.localizedDescription)
+      }
     }
   }
 

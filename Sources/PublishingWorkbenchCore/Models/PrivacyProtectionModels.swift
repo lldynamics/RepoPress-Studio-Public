@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 public struct PrivacyProtectionSettings: Codable, Hashable, Sendable {
   public var masksPrivateContent: Bool
@@ -71,13 +72,13 @@ public enum PrivacyProtectionEventKind: String, Codable, CaseIterable, Hashable,
   public var displayName: String {
     switch self {
     case .lockedOnLaunch:
-      return "启动显示遮罩"
+      return CoreL10n.text("启动显示遮罩")
     case .manualLock:
-      return "手动显示遮罩"
+      return CoreL10n.text("手动显示遮罩")
     case .unlocked:
-      return "已移除遮罩"
+      return CoreL10n.text("已移除遮罩")
     case .settingsUpdated:
-      return "设置已更新"
+      return CoreL10n.text("设置已更新")
     }
   }
 
@@ -143,12 +144,14 @@ public struct PrivacyProtectionStatus: Hashable, Sendable {
   ) -> PrivacyProtectionStatus {
     var protections: [String] = []
     if settings.masksPrivateContent {
-      protections.append("私密内容遮挡")
+      protections.append(CoreL10n.text("私密内容遮挡"))
     }
 
     return PrivacyProtectionStatus(
       isQuickHideActive: isQuickHideActive,
-      title: isQuickHideActive ? "快速隐藏已启用" : "快速隐藏未启用",
+      title: isQuickHideActive
+        ? CoreL10n.text("快速隐藏已启用")
+        : CoreL10n.text("快速隐藏未启用"),
       detail: isQuickHideActive
         ? quickHideDetail(reason: reason)
         : unlockedDetail,
@@ -157,30 +160,33 @@ public struct PrivacyProtectionStatus: Hashable, Sendable {
   }
 
   private static func quickHideDetail(reason: String?) -> String {
-    let reasonText = reason?.nilIfEmpty ?? "返回工作台后可继续查看文章、仓库和发布信息。"
-    return "\(reasonText) 快速隐藏仅遮挡当前界面，不加密本地数据。"
+    let reasonText = reason?.nilIfEmpty ?? CoreL10n.text("返回工作台后可继续查看文章、仓库和发布信息。")
+    return CoreL10n.format("%@ 快速隐藏仅遮挡当前界面，不加密本地数据。", reasonText)
   }
 
   private static var unlockedDetail: String {
-    return "当前可查看工作台内容；离席或共享屏幕时可按 ⌃⌘L 快速隐藏。快速隐藏仅遮挡当前界面，不加密本地数据。"
+    return CoreL10n.text("当前可查看工作台内容；离席或共享屏幕时可按 ⌃⌘L 快速隐藏。快速隐藏仅遮挡当前界面，不加密本地数据。")
   }
 
   public var checklistMarkdown: String {
     var lines: [String] = [
-      "# 快速隐藏和私密内容遮挡",
+      CoreL10n.text("# 快速隐藏和私密内容遮挡"),
       "",
-      "- 当前状态：\(title)",
-      "- 说明：\(detail)",
-      "- 已启用的遮挡设置：\(activeProtections.isEmpty ? "未启用" : activeProtections.joined(separator: "、"))",
+      CoreL10n.format("- 当前状态：%@", title),
+      CoreL10n.format("- 说明：%@", detail),
+      CoreL10n.format(
+        "- 已启用的遮挡设置：%@",
+        activeProtections.isEmpty ? CoreL10n.text("未启用") : activeProtections.joined(separator: "、")
+      ),
       "",
-      "## 行为确认",
+      CoreL10n.text("## 行为确认"),
     ]
 
-    lines.append("- [ ] 手动快速隐藏后，主窗口和设置窗口都遮挡工作台内容。")
-    lines.append("- [ ] 工作台隐藏时，设置项以及写作、AI、同步和发布操作不可用。")
-    lines.append("- [ ] 私密内容遮挡开启时，标题仍可辨认，但列表、搜索和概览不暴露摘要、正文或路径。")
-    lines.append("- [ ] 快速隐藏只遮挡当前界面，不提供 Touch ID/密码验证或数据加密。")
-    lines.append("- [ ] 截图、支持页和隐私政策文案不得包含本地路径、Token、授权头或私密正文。")
+    lines.append(CoreL10n.text("- [ ] 手动快速隐藏后，主窗口和设置窗口都遮挡工作台内容。"))
+    lines.append(CoreL10n.text("- [ ] 工作台隐藏时，设置项以及写作、AI、同步和发布操作不可用。"))
+    lines.append(CoreL10n.text("- [ ] 私密内容遮挡开启时，标题仍可辨认，但列表、搜索和概览不暴露摘要、正文或路径。"))
+    lines.append(CoreL10n.text("- [ ] 快速隐藏只遮挡当前界面，不提供 Touch ID/密码验证或数据加密。"))
+    lines.append(CoreL10n.text("- [ ] 截图、支持页和隐私政策文案不得包含本地路径、Token、授权头或私密正文。"))
 
     return lines.joined(separator: "\n")
   }

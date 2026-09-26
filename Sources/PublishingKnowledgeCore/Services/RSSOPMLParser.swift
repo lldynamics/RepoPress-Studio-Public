@@ -20,9 +20,9 @@ public enum RSSOPMLParser {
   private static let maximumOutlineCount = 10_000
 
   public static func parse(data: Data) throws -> [RSSOPMLSubscription] {
-    guard !data.isEmpty else { throw RSSReaderError.invalidOPML("文件为空") }
+    guard !data.isEmpty else { throw RSSReaderError.invalidOPML(CoreL10n.text("文件为空")) }
     guard data.count <= maximumDocumentSize else {
-      throw RSSReaderError.invalidOPML("文件超过 5 MB")
+      throw RSSReaderError.invalidOPML(CoreL10n.text("文件超过 5 MB"))
     }
     do {
       try UntrustedXMLParserGuard.validate(
@@ -35,13 +35,13 @@ public enum RSSOPMLParser {
     } catch let failure as UntrustedXMLParserGuard.Failure {
       switch failure {
       case .forbiddenDeclaration:
-        throw RSSReaderError.invalidOPML("文件包含不安全的 DTD 或实体声明")
+        throw RSSReaderError.invalidOPML(CoreL10n.text("文件包含不安全的 DTD 或实体声明"))
       case .characterLimitExceeded:
-        throw RSSReaderError.invalidOPML("文件展开后的字符数超过安全上限")
+        throw RSSReaderError.invalidOPML(CoreL10n.text("文件展开后的字符数超过安全上限"))
       case .elementDepthExceeded:
-        throw RSSReaderError.invalidOPML("文件元素嵌套深度超过安全上限")
+        throw RSSReaderError.invalidOPML(CoreL10n.text("文件元素嵌套深度超过安全上限"))
       case .cancelled:
-        throw RSSReaderError.invalidOPML("文件解析已取消")
+        throw RSSReaderError.invalidOPML(CoreL10n.text("文件解析已取消"))
       }
     }
     let delegate = ParserDelegate()
@@ -50,10 +50,12 @@ public enum RSSOPMLParser {
     parser.shouldResolveExternalEntities = false
     guard parser.parse() else {
       if let failure = delegate.failure { throw failure }
-      throw RSSReaderError.invalidOPML(parser.parserError?.localizedDescription ?? "XML 格式不正确")
+      throw RSSReaderError.invalidOPML(
+        parser.parserError?.localizedDescription ?? CoreL10n.text("XML 格式不正确")
+      )
     }
     guard delegate.isValidOPMLDocument else {
-      throw RSSReaderError.invalidOPML("文件不是有效的 OPML 文档")
+      throw RSSReaderError.invalidOPML(CoreL10n.text("文件不是有效的 OPML 文档"))
     }
     guard !delegate.subscriptions.isEmpty else {
       throw RSSReaderError.noOPMLFeeds

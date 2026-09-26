@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 #if canImport(FoundationNetworking)
   import FoundationNetworking
@@ -60,16 +61,16 @@ public struct RSSArticleCoverImageLoader: Sendable {
       allowsPrivateNetworkAccess
     )
     guard (200..<300).contains(response.statusCode) else {
-      throw RSSReaderError.network("文章封面服务器返回 HTTP (response.statusCode)")
+      throw RSSReaderError.network(CoreL10n.format("文章封面服务器返回 HTTP %d", response.statusCode))
     }
     if let mimeType = response.mimeType?.lowercased(),
       !mimeType.isEmpty,
       !mimeType.hasPrefix("image/")
     {
-      throw RSSReaderError.network("远端内容不是图片")
+      throw RSSReaderError.network(CoreL10n.text("远端内容不是图片"))
     }
     guard !data.isEmpty else {
-      throw RSSReaderError.network("文章封面响应为空")
+      throw RSSReaderError.network(CoreL10n.text("文章封面响应为空"))
     }
     return data
   }

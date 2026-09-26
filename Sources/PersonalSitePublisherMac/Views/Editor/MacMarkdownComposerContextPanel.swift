@@ -96,7 +96,12 @@ extension MacMarkdownComposerView {
           onApplyLatestAIReply: applyLatestAIReplyToSelection,
           onRetryCitationBacklink: retryPendingKnowledgeCitationBacklinks,
           onInsertImages: {
-            insertImageReferences(ImageSelectionPanel.chooseImages())
+            let requestedDraftID = draft.id
+            Task {
+              let urls = await ImageSelectionPanel.chooseImages()
+              guard draft.id == requestedDraftID, !urls.isEmpty else { return }
+              insertImageReferences(urls)
+            }
           },
           onCheckSelectedPublicRisk: checkSelectedPublicRisk,
           onOpenAITemplateLibrary: {

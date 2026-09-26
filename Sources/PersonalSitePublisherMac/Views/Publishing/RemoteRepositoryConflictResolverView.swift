@@ -3,6 +3,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct RemoteRepositoryConflictResolverView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let session: RemoteRepositoryConflictSession
   let resolve:
     (RemoteRepositoryConflictResolutionPlan) async
@@ -215,14 +216,14 @@ struct RemoteRepositoryConflictResolverView: View {
         Label(title, systemImage: systemImage)
         Spacer(minLength: 4)
         Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-          .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+          .foregroundStyle(isSelected ? workbenchAccentColor : Color.secondary)
           .accessibilityHidden(true)
       }
       .frame(maxWidth: .infinity, minHeight: 30)
     }
     .buttonStyle(.bordered)
     .controlSize(.large)
-    .tint(isSelected ? .accentColor : nil)
+    .tint(isSelected ? workbenchAccentColor : nil)
     .disabled(!enabled || isResolving)
     .help(choiceAvailabilityHelp(choice, item: item, enabled: enabled))
     .accessibilityValue(isSelected ? "已选择" : "未选择")

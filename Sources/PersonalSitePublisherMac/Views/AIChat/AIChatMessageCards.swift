@@ -3,6 +3,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct AIChatMessageSurface<Content: View>: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let role: AIPublishingChatRole
   let timestamp: Date?
   @ViewBuilder let content: () -> Content
@@ -36,7 +37,7 @@ struct AIChatMessageSurface<Content: View>: View {
           Spacer(minLength: 0)
         }
       }
-      .foregroundStyle(isUser ? Color.accentColor : WorkbenchTheme.primary)
+      .foregroundStyle(isUser ? workbenchAccentColor : WorkbenchTheme.primary)
       .padding(.horizontal, 4)
 
       content()
@@ -54,7 +55,7 @@ struct AIChatMessageSurface<Content: View>: View {
           .fill(isUser ? AnyShapeStyle(.thinMaterial) : WorkbenchBackgroundStyle.card)
           if isUser {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-              .fill(Color.accentColor.opacity(0.08))
+              .fill(workbenchAccentColor.opacity(0.08))
           }
         }
         .overlay {
@@ -63,7 +64,7 @@ struct AIChatMessageSurface<Content: View>: View {
             style: .continuous
           )
           .stroke(
-            isUser ? Color.accentColor.opacity(0.18) : Color.primary.opacity(0.08),
+            isUser ? workbenchAccentColor.opacity(0.18) : Color.primary.opacity(0.08),
             lineWidth: 1
           )
         }

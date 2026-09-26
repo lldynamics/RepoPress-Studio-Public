@@ -101,6 +101,7 @@ enum WorkspaceExchangeTransferService {
         visibility: draft.visibility.rawValue,
         summary: draft.summary,
         bodyMarkdown: draft.bodyMarkdown,
+        targetWordCount: draft.targetWordCount,
         coverAttachmentID: draft.coverAttachmentID,
         createdAt: draft.createdAt,
         updatedAt: draft.updatedAt,
@@ -215,7 +216,8 @@ enum WorkspaceExchangeTransferService {
           summary: sourceDraft.summary,
           coverAttachmentID: coverID,
           bodyMarkdown: sourceDraft.bodyMarkdown,
-          attachments: importedAttachments,
+            targetWordCount: sourceDraft.targetWordCount,
+            attachments: importedAttachments,
           status: .draft,
           createdAt: sourceDraft.createdAt,
           updatedAt: sourceDraft.updatedAt

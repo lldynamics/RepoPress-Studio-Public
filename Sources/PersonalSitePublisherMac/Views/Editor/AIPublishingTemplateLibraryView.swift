@@ -2,6 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct AIPublishingTemplateLibraryView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let draft: ArticleDraft
   let selectedText: String
   let availabilityForAction: (AIPublishingActionKind) -> AIPublishingActionAvailabilityPresentation
@@ -74,10 +75,10 @@ struct AIPublishingTemplateLibraryView: View {
     HStack(alignment: .top, spacing: 14) {
       Image(systemName: "sparkles.rectangle.stack")
         .font(.title2)
-        .foregroundStyle(WorkbenchTheme.navigationSelection)
+        .foregroundStyle(workbenchAccentColor)
         .frame(width: 34, height: 34)
         .background(
-          WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.selectionBackground),
+          workbenchAccentColor.opacity(WorkbenchOpacity.selectionBackground),
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
         )
         .accessibilityHidden(true)
@@ -220,10 +221,10 @@ struct AIPublishingTemplateLibraryView: View {
     HStack(spacing: 12) {
       Image(systemName: systemImage)
         .font(.system(size: 14, weight: .medium))
-        .foregroundStyle(WorkbenchTheme.navigationSelection)
+        .foregroundStyle(workbenchAccentColor)
         .frame(width: 28, height: 28)
         .background(
-          WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.selectionBackground),
+          workbenchAccentColor.opacity(WorkbenchOpacity.selectionBackground),
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
         )
         .accessibilityHidden(true)

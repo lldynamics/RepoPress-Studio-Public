@@ -3,7 +3,18 @@ import PublishingWorkbenchCore
 
 @MainActor
 enum ProjectFileSaveRecoveryPanel {
+  private static var isPresenting = false
+
   static func present(for store: WorkbenchStore) {
+    guard !isPresenting else { return }
+    isPresenting = true
+    Task { @MainActor in
+      defer { isPresenting = false }
+      await presentFlow(for: store)
+    }
+  }
+
+  private static func presentFlow(for store: WorkbenchStore) async {
     guard !store.isRetryingProjectFileWrites else { return }
     while true {
       let groups = store.siteDraftFileSaveFailureGroups
@@ -23,29 +34,30 @@ enum ProjectFileSaveRecoveryPanel {
       alert.buttons[2].isEnabled =
         !groups.isEmpty && !store.persistenceStatus.isRecoveryWriteProtected
       alert.buttons[3].isEnabled = !groups.isEmpty
-      let response = alert.runModal()
+      let response = await WindowSheetPresenter.response(to: alert)
       switch response {
       case .alertSecondButtonReturn:
         retry(store: store)
         return
       case .alertThirdButtonReturn:
-        guard let profileID = chooseProfile(from: groups),
+        guard let profileID = await chooseProfile(from: groups),
           let profile = store.profiles.first(where: { $0.id == profileID }),
-          let url = chooseDirectory(for: profile)
+          let url = await chooseDirectory(for: profile)
         else { continue }
         do {
           try store.changeRepositoryRootForSaveRecovery(profileID: profileID, to: url)
           retry(store: store, profileID: profileID)
           return
         } catch {
-          showMessage(title: String(localized: "无法使用此项目目录"), message: error.localizedDescription)
+          await showMessage(
+            title: String(localized: "无法使用此项目目录"), message: error.localizedDescription)
         }
       case NSApplication.ModalResponse(
         rawValue: NSApplication.ModalResponse.alertFirstButtonReturn.rawValue + 3):
-        showDetails(groups)
+        await showDetails(groups)
       case NSApplication.ModalResponse(
         rawValue: NSApplication.ModalResponse.alertFirstButtonReturn.rawValue + 4):
-        guard let draftID = chooseExternalChangeDraft(from: groups) else { continue }
+        guard let draftID = await chooseExternalChangeDraft(from: groups) else { continue }
         ProjectFileConflictReviewPanel.present(for: store, draftID: draftID)
         return
       default:
@@ -76,13 +88,13 @@ enum ProjectFileSaveRecoveryPanel {
       if !store.siteDraftFileSaveFailureGroups.isEmpty {
         present(for: store)
       } else if succeeded {
-        showMessage(
+        await showMessage(
           title: String(localized: "重新保存完成"),
           message: String(localized: "项目文件和工作台修改已保存。应用将保持打开。"),
           style: .informational
         )
       } else {
-        showMessage(
+        await showMessage(
           title: String(localized: "未能保存工作台修改"),
           message: store.lastSaveError
             ?? String(localized: "请修复保存位置或权限后重新检查。应用将保持打开。")
@@ -91,7 +103,7 @@ enum ProjectFileSaveRecoveryPanel {
     }
   }
 
-  private static func chooseProfile(from groups: [SiteDraftFileSaveFailureGroup]) -> UUID? {
+  private static func chooseProfile(from groups: [SiteDraftFileSaveFailureGroup]) async -> UUID? {
     var seen = Set<UUID>()
     let sites = groups.filter { seen.insert($0.profileID).inserted }
     guard let first = sites.first else { return nil }
@@ -106,13 +118,13 @@ enum ProjectFileSaveRecoveryPanel {
     alert.accessoryView = picker
     alert.addButton(withTitle: String(localized: "选择目录…"))
     alert.addButton(withTitle: String(localized: "取消"))
-    guard alert.runModal() == .alertFirstButtonReturn,
+    guard await WindowSheetPresenter.response(to: alert) == .alertFirstButtonReturn,
       sites.indices.contains(picker.indexOfSelectedItem)
     else { return nil }
     return sites[picker.indexOfSelectedItem].profileID
   }
 
-  private static func chooseDirectory(for profile: SiteProfile) -> URL? {
+  private static func chooseDirectory(for profile: SiteProfile) async -> URL? {
     let panel = NSOpenPanel()
     panel.title = String(localized: "更改项目目录") + " · " + profile.name
     panel.message = String(localized: "选择该站点的新项目根目录。随后会重试待写入草稿，外部修改不会被强制覆盖。")
@@ -122,12 +134,12 @@ enum ProjectFileSaveRecoveryPanel {
     panel.canCreateDirectories = false
     panel.allowsMultipleSelection = false
     panel.directoryURL = profile.localRepositoryRootURL
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 
   private static func chooseExternalChangeDraft(
     from groups: [SiteDraftFileSaveFailureGroup]
-  ) -> UUID? {
+  ) async -> UUID? {
     let failures = groups
       .filter { $0.reason == .externalChange }
       .flatMap(\.failures)
@@ -148,13 +160,13 @@ enum ProjectFileSaveRecoveryPanel {
     alert.accessoryView = picker
     alert.addButton(withTitle: String(localized: "处理冲突"))
     alert.addButton(withTitle: String(localized: "取消"))
-    guard alert.runModal() == .alertFirstButtonReturn,
+    guard await WindowSheetPresenter.response(to: alert) == .alertFirstButtonReturn,
       failures.indices.contains(picker.indexOfSelectedItem)
     else { return nil }
     return failures[picker.indexOfSelectedItem].draftID
   }
 
-  private static func showDetails(_ groups: [SiteDraftFileSaveFailureGroup]) {
+  private static func showDetails(_ groups: [SiteDraftFileSaveFailureGroup]) async {
     let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 540, height: 280))
     scrollView.hasVerticalScroller = true
     scrollView.borderType = .bezelBorder
@@ -176,15 +188,17 @@ enum ProjectFileSaveRecoveryPanel {
     alert.messageText = String(localized: "项目文件写入详情")
     alert.accessoryView = scrollView
     alert.addButton(withTitle: String(localized: "返回"))
-    alert.runModal()
+    _ = await WindowSheetPresenter.response(to: alert)
   }
 
-  private static func showMessage(title: String, message: String, style: NSAlert.Style = .warning) {
+  private static func showMessage(title: String, message: String, style: NSAlert.Style = .warning)
+    async
+  {
     let alert = NSAlert()
     alert.messageText = title
     alert.informativeText = message
     alert.alertStyle = style
     alert.addButton(withTitle: String(localized: "继续编辑"))
-    alert.runModal()
+    _ = await WindowSheetPresenter.response(to: alert)
   }
 }

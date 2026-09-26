@@ -13,6 +13,7 @@ public struct DraftRecoveryRecord: Codable, Hashable, Identifiable, Sendable {
   public let draft: Bool
   public let visibility: ArticleVisibility
   public let summary: String
+  public let targetWordCount: Int?
   public let repositoryPath: String?
   public let baselineBodyMarkdown: String
   public let recoveredBodyMarkdown: String
@@ -32,6 +33,7 @@ public struct DraftRecoveryRecord: Codable, Hashable, Identifiable, Sendable {
     draft: Bool,
     visibility: ArticleVisibility,
     summary: String,
+    targetWordCount: Int? = nil,
     repositoryPath: String?,
     baselineBodyMarkdown: String,
     recoveredBodyMarkdown: String,
@@ -48,6 +50,7 @@ public struct DraftRecoveryRecord: Codable, Hashable, Identifiable, Sendable {
     self.draft = draft
     self.visibility = visibility
     self.summary = summary
+    self.targetWordCount = targetWordCount
     self.repositoryPath = repositoryPath
     self.baselineBodyMarkdown = baselineBodyMarkdown
     self.recoveredBodyMarkdown = recoveredBodyMarkdown
@@ -67,6 +70,7 @@ public struct DraftRecoveryRecord: Codable, Hashable, Identifiable, Sendable {
       draft: draft.draft,
       visibility: draft.visibility,
       summary: draft.summary,
+      targetWordCount: draft.targetWordCount,
       repositoryPath: draft.repositoryPath,
       baselineBodyMarkdown: draft.bodyMarkdown,
       recoveredBodyMarkdown: recoveredBodyMarkdown,
@@ -88,6 +92,7 @@ public struct DraftRecoveryRecord: Codable, Hashable, Identifiable, Sendable {
       visibility: visibility,
       summary: summary,
       bodyMarkdown: recoveredBodyMarkdown,
+      targetWordCount: targetWordCount,
       repositoryPath: repositoryPath
     )
   }

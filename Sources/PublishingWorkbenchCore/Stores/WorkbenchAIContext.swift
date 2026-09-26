@@ -94,6 +94,8 @@ protocol WorkbenchAIStateCapability: AnyObject {
   func flushPendingChanges() -> Bool
   func recordAutomationRun(_ record: WorkbenchAutomationRunRecord)
   func setAIChatMessage(_ message: String?)
+  func setAIChatFailureMessage(_ message: String)
+  func setAIActionFailureMessage(_ message: String)
   func setAIChatMessages(_ messages: [AIPublishingChatMessage])
   func setAIChatRunning(_ isRunning: Bool)
   func setImageActionMessage(_ message: String?)
@@ -232,6 +234,8 @@ final class WorkbenchAIContextAdapter: WorkbenchAIContext {
     root.recordAutomationRun(record)
   }
   func setAIChatMessage(_ message: String?) { root.setAIChatMessage(message) }
+  func setAIChatFailureMessage(_ message: String) { root.setAIChatFailureMessage(message) }
+  func setAIActionFailureMessage(_ message: String) { root.setAIActionFailureMessage(message) }
   func setAIChatMessages(_ messages: [AIPublishingChatMessage]) {
     root.setAIChatMessages(messages)
   }

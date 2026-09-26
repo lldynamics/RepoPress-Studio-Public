@@ -77,6 +77,7 @@ enum MarkdownSyntaxViewportRepaintReason: Equatable, Sendable {
 }
 
 struct MacMarkdownTextView: NSViewRepresentable {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @Binding var text: String
   var bodyMarkdown: String
   var bodyUTF16Offset: Int
@@ -235,7 +236,9 @@ struct MacMarkdownTextView: NSViewRepresentable {
     textView.usesFindBar = true
     textView.isIncrementalSearchingEnabled = true
     textView.textColor = NSColor.labelColor
-    textView.insertionPointColor = NSColor.controlAccentColor
+    let accentColor = NSColor(workbenchAccentColor)
+    textView.insertionPointColor = accentColor
+    textView.markdownAccentColor = accentColor
     textView.backgroundColor = editorBackgroundColor
     textView.drawsBackground = true
     context.coordinator.applyCachedSyntaxAppearance(in: textView)
@@ -276,6 +279,9 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
   func updateNSView(_ nsView: NSScrollView, context: Context) {
     guard let textView = nsView.documentView as? NSTextView else { return }
+    let accentColor = NSColor(workbenchAccentColor)
+    textView.insertionPointColor = accentColor
+    (textView as? DroppableMarkdownTextView)?.markdownAccentColor = accentColor
     context.coordinator.setReportsScrollSourceLine(reportsScrollSourceLine)
     context.coordinator.isFrontMatterFolded = isFrontMatterFolded
     (nsView as? MarkdownEditorScrollView)?.foldedFrontMatterBodyOffset =

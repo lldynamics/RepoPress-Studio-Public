@@ -65,7 +65,7 @@ extension PublishingStore {
       return nil
     }
 
-    setPublishActionMessage(
+    setPublishingActionMessage(
       CoreL10n.format("正在核对并下线「%@」…", request.draftTitle.nilIfEmpty ?? CoreL10n.text("未命名文章")),
       status: .inProgress
     )
@@ -168,7 +168,7 @@ extension PublishingStore {
         locallyCleanedCount == 1
         ? CoreL10n.text("本地 Markdown 已清理")
         : CoreL10n.text("本地 Markdown 仍在待清理队列")
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.format("%@；%@。图片资源未自动删除。", remoteSummary, localSummary),
         status: locallyCleanedCount == 1 ? .success : .warning
       )
@@ -247,7 +247,7 @@ extension PublishingStore {
       locallyCleanedCount > 0
       ? CoreL10n.text("本地 Markdown 已清理")
       : CoreL10n.text("本地 Markdown 仍在待清理队列")
-    setPublishActionMessage(
+    setPublishingActionMessage(
       CoreL10n.format("%@；%@。可在发布抽屉重试，图片资源未删除。", remoteFailureMessage, localSummary),
       status: .warning
     )

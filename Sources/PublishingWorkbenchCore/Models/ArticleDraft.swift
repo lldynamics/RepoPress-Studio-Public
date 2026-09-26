@@ -45,6 +45,9 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   private var wordCountStorage: Int?
   /// Missing legacy values are dirty so the next body commit refreshes the count.
   private var wordCountNeedsRefreshStorage: Bool?
+  /// A writing goal belongs to this article, not to an application preference.
+  /// Optional storage keeps snapshots created before article goals compatible.
+  private var targetWordCountStorage: Int?
   public var attachments: [DraftAttachment]
   public var status: DraftStatus
   public var createdAt: Date
@@ -98,6 +101,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     coverAttachmentID: UUID? = nil,
     bodyMarkdown: String = "",
     wordCount: Int? = nil,
+    targetWordCount: Int? = nil,
     attachments: [DraftAttachment] = [],
     status: DraftStatus = .draft,
     createdAt: Date = Date(),
@@ -138,6 +142,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     self.bodyMarkdown = bodyMarkdown
     self.wordCountStorage = wordCount.map { max(0, $0) }
     self.wordCountNeedsRefreshStorage = wordCount == nil
+    self.targetWordCountStorage = Self.validTargetWordCount(targetWordCount)
     self.attachments = attachments
     self.status = status
     self.createdAt = createdAt
@@ -165,6 +170,16 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
 
   public var wordCountNeedsRefresh: Bool {
     wordCountNeedsRefreshStorage ?? true
+  }
+
+  public var targetWordCount: Int? {
+    get { Self.validTargetWordCount(targetWordCountStorage) }
+    set { targetWordCountStorage = Self.validTargetWordCount(newValue) }
+  }
+
+  private static func validTargetWordCount(_ value: Int?) -> Int? {
+    guard let value, (1...1_000_000).contains(value) else { return nil }
+    return value
   }
 
   /// Stable metadata timestamp for list ordering. Legacy drafts retain their

@@ -108,7 +108,7 @@ enum WorkbenchTheme {
 
   static let `default` = jiangnanSpring
 
-  /// 产品识别色与主要操作色；导航选中态继续使用用户的系统强调色。
+  /// 产品识别色与主要操作色；导航选中态使用用户选定的强调色。
   static var brand: Color { `default`.primary }
   static var primary: Color { brand }
   static var success: Color { `default`.success }
@@ -145,8 +145,6 @@ enum WorkbenchTheme {
   )
   /// 语义主要填充色上的前景色；这些填充色在所有外观下都刻意保持较深。
   static var primaryActionForeground: Color { .white }
-  /// 导航与选中态遵循用户的应用强调色偏好；品牌绿仅用于操作和状态。
-  static var navigationSelection: Color { WorkbenchAccentPalette.selected().color }
   static var documentForeground: Color { `default`.documentForeground }
   static var inventoryForeground: Color { `default`.inventoryForeground }
 
@@ -502,6 +500,7 @@ struct WorkbenchListDisclosureFooter: View {
 /// 让自定义或普通按钮在 macOS 全键盘导航路径中保持可见。
 /// 视图提供自定义背景时很容易丢失原生焦点环，因此由共享按钮样式绘制焦点环。
 struct WorkbenchFocusRingButtonStyle: ButtonStyle {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   var cornerRadius: CGFloat = WorkbenchCornerRadius.control
   var lineWidth: CGFloat = 1.5
 
@@ -516,7 +515,7 @@ struct WorkbenchFocusRingButtonStyle: ButtonStyle {
       .overlay {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
           .strokeBorder(
-            isFocused ? Color.accentColor : Color.clear,
+            isFocused ? workbenchAccentColor : Color.clear,
             lineWidth: isFocused ? lineWidth : 0
           )
       }

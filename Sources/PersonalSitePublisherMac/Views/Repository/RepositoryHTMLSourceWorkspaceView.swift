@@ -3,6 +3,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct RepositoryHTMLSourceWorkspaceView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   private let store: WorkbenchStore
   @ObservedObject private var shell: WorkbenchShellFeatureFacade
   @ObservedObject var session: RepositoryHTMLSourceSession
@@ -188,8 +189,8 @@ struct RepositoryHTMLSourceWorkspaceView: View {
         List(displayedFiles, selection: $selectedRepositoryPath) { file in
           HStack(spacing: 9) {
             Image(systemName: file.isEditable ? "chevron.left.forwardslash.chevron.right" : "exclamationmark.triangle")
-              .foregroundStyle(file.isEditable ? WorkbenchTheme.navigationSelection : WorkbenchTheme.warning)
-              .frame(width: 18)
+            .foregroundStyle(file.isEditable ? workbenchAccentColor : WorkbenchTheme.warning)
+            .frame(width: 18)
             VStack(alignment: .leading, spacing: 3) {
               Text(URL(fileURLWithPath: file.repositoryPath).lastPathComponent)
                 .font(.callout.weight(.medium))

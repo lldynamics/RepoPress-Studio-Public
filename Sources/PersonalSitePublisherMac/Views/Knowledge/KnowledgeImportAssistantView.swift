@@ -2,6 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct KnowledgeImportAssistantView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @ObservedObject var knowledge: KnowledgeStore
   let initialSourceURLs: [URL]
   let importDestination: KnowledgeImportDestination
@@ -102,7 +103,7 @@ struct KnowledgeImportAssistantView: View {
         HStack(spacing: 10) {
           Image(systemName: isFileDropTargeted ? "tray.and.arrow.down.fill" : "arrow.down.doc")
             .font(.title3)
-            .foregroundStyle(isFileDropTargeted ? Color.accentColor : Color.secondary)
+            .foregroundStyle(isFileDropTargeted ? workbenchAccentColor : Color.secondary)
           VStack(alignment: .leading, spacing: 2) {
             Text(
               isFileDropTargeted
@@ -120,14 +121,14 @@ struct KnowledgeImportAssistantView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
           isFileDropTargeted
-            ? AnyShapeStyle(Color.accentColor.opacity(0.12))
+            ? AnyShapeStyle(workbenchAccentColor.opacity(0.12))
             : WorkbenchBackgroundStyle.card,
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
         )
         .overlay {
           RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
             .stroke(
-              isFileDropTargeted ? Color.accentColor : Color.secondary.opacity(0.22),
+              isFileDropTargeted ? workbenchAccentColor : Color.secondary.opacity(0.22),
               style: StrokeStyle(lineWidth: isFileDropTargeted ? 2 : 1, dash: [6, 4])
             )
         }
@@ -366,7 +367,8 @@ struct KnowledgeImportAssistantView: View {
         Spacer()
         Text(candidate.disposition.localizedDisplayNameKey)
           .font(.caption.weight(.medium))
-          .foregroundStyle(candidate.disposition == .duplicate ? Color.secondary : Color.accentColor)
+          .foregroundStyle(
+            candidate.disposition == .duplicate ? Color.secondary : workbenchAccentColor)
       }
     }
     .toggleStyle(.checkbox)
@@ -489,9 +491,11 @@ struct KnowledgeImportAssistantView: View {
   }
 
   private func chooseFileSource() {
-    let urls = KnowledgeSelectionPanel.chooseSources()
-    guard !urls.isEmpty else { return }
-    analyzeFileSources(urls)
+    Task { @MainActor in
+      let urls = await KnowledgeSelectionPanel.chooseSources()
+      guard !urls.isEmpty else { return }
+      analyzeFileSources(urls)
+    }
   }
 
   @discardableResult

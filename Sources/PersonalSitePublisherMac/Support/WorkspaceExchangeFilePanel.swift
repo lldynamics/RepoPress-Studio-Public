@@ -22,7 +22,7 @@ enum WorkspaceExchangeFilePanel {
   private static let fileExtension = "rpworkspaceexchange"
 
   @MainActor
-  static func chooseExportDestination() -> URL? {
+  static func chooseExportDestination() async -> URL? {
     let panel = NSSavePanel()
     panel.title = String(localized: "导出跨端交换文件")
     panel.prompt = String(localized: "导出")
@@ -33,11 +33,11 @@ enum WorkspaceExchangeFilePanel {
     panel.canCreateDirectories = true
     panel.isExtensionHidden = false
     panel.nameFieldStringValue = "RepoPress-Workspace-\(Self.timestamp()).rpworkspaceexchange"
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 
   @MainActor
-  static func chooseImportSource() -> URL? {
+  static func chooseImportSource() async -> URL? {
     let panel = NSOpenPanel()
     panel.title = String(localized: "选择跨端交换文件")
     panel.prompt = String(localized: "验证并预览")
@@ -48,7 +48,7 @@ enum WorkspaceExchangeFilePanel {
     panel.canChooseFiles = true
     panel.canChooseDirectories = false
     panel.allowsMultipleSelection = false
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 
   static func readPackageData(from url: URL, fileManager: FileManager = .default) throws -> Data {

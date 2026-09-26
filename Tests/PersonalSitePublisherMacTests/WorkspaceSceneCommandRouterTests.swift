@@ -206,6 +206,7 @@ final class WorkspaceSceneCommandRouterTests: XCTestCase {
     KnowledgeLibraryCommandActions(
       focusSearch: {},
       importSources: {},
+      createNote: {},
       selectPreviousDocument: {},
       selectNextDocument: {}
     )

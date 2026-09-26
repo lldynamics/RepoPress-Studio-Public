@@ -79,6 +79,9 @@ extension WorkbenchStore {
   public var publishActionFeedback: PublishActionFeedback? {
     publishingStore.publishActionFeedback
   }
+  public var publishDrawerFeedback: PublishActionFeedback? {
+    publishingStore.publishDrawerFeedback
+  }
   public var publishActionMessage: String? { publishingStore.publishActionMessage }
   public var isLocalRepositoryMutationRunning: Bool {
     publishingStore.isLocalRepositoryMutationRunning

@@ -1,13 +1,14 @@
 import SwiftUI
 
 struct WorkbenchDataRootSetupView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @ObservedObject var coordinator: WorkbenchLaunchCoordinator
 
   var body: some View {
     VStack(spacing: 22) {
       Image(systemName: "externaldrive.fill.badge.plus")
         .font(.system(size: 42, weight: .medium))
-        .foregroundStyle(WorkbenchTheme.navigationSelection)
+        .foregroundStyle(workbenchAccentColor)
         .accessibilityHidden(true)
 
       VStack(spacing: 8) {

@@ -224,15 +224,32 @@ struct AIWritingStyleSection: View {
 
   private var commonRulePills: some View {
     VStack(alignment: .leading, spacing: 6) {
-      Text("常用语气预设：").font(.workbenchMetadata).foregroundStyle(.secondary)
+      Text(String(localized: "常用语气预设："))
+        .font(.workbenchMetadata)
+        .foregroundStyle(.secondary)
       HStack(spacing: 6) {
-        ForEach(["专业严谨", "极简干货", "幽默风趣", "亲切随笔"], id: \.self) { pill in
+        ForEach(
+          [
+            String(localized: "专业严谨"),
+            String(localized: "极简干货"),
+            String(localized: "幽默风趣"),
+            String(localized: "亲切随笔"),
+          ], id: \.self
+        ) { pill in
           Button(pill) { append(pill, to: toneText) }.buttonStyle(.bordered)
         }
       }
-      Text("常用读者预设：").font(.workbenchMetadata).foregroundStyle(.secondary)
+      Text(String(localized: "常用读者预设："))
+        .font(.workbenchMetadata)
+        .foregroundStyle(.secondary)
       HStack(spacing: 6) {
-        ForEach(["开发者与程序员", "技术小白与初学者", "独立博主与创作者"], id: \.self) { pill in
+        ForEach(
+          [
+            String(localized: "开发者与程序员"),
+            String(localized: "技术小白与初学者"),
+            String(localized: "独立博主与创作者"),
+          ], id: \.self
+        ) { pill in
           Button(pill) { append(pill, to: audienceText) }.buttonStyle(.bordered)
         }
       }

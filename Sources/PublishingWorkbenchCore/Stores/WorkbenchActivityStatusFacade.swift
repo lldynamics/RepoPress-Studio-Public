@@ -36,6 +36,8 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
     observe(store.aiWorkspaceStore.$isAIImageTextRunning)
     observeAIMessage(store.aiWorkspaceStore.$aiChatMessage)
     observeAIMessage(store.aiWorkspaceStore.$aiActionMessage)
+    observe(store.aiWorkspaceStore.$aiChatMessageIsFailure)
+    observe(store.aiWorkspaceStore.$aiActionMessageIsFailure)
     observe(store.aiStore.$aiChatManualRetryState)
     observe(store.aiStore.$aiGeneralChatManualRetryState)
     observe(store.knowledge.$isImporting)
@@ -342,9 +344,16 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
     } else {
       retryIntent = nil
     }
-    guard let failure = failureReason(in: message) ?? (
-      retryIntent == nil ? nil : CoreL10n.text("AI 请求失败，请重试。")
-    ) else { return nil }
+    let explicitFailure =
+      ai.aiChatMessageIsFailure
+      ? ai.aiChatMessage : (ai.aiActionMessageIsFailure ? ai.aiActionMessage : nil)
+    guard
+      let failure = explicitFailure?.trimmedForPublishing.nilIfEmpty
+        ?? (retryIntent == nil
+          ? nil
+          : message?.trimmedForPublishing.nilIfEmpty
+            ?? CoreL10n.text("AI 请求失败，请重试。"))
+    else { return nil }
     return WorkbenchTaskItem(
       id: "ai-request",
       kind: .aiRequest,
@@ -372,7 +381,7 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
       id: "knowledge-import",
       kind: .knowledgeImport,
       title: store.knowledge.importOperationTitle ?? WorkbenchTaskKind.knowledgeImport.title,
-      detail: "资料导入失败：\(failure)",
+      detail: CoreL10n.format("资料导入失败：%@", failure),
       state: .failed,
       failureReason: failure
     )
@@ -401,7 +410,7 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
       return WorkbenchTaskItem(
         id: "image-summary",
         kind: .imageProcessing,
-        title: "图片资源扫描",
+        title: CoreL10n.text("图片资源扫描"),
         detail: CoreL10n.text("正在汇总当前站点图片资源…"),
         state: .running,
         target: .siteProfilePage(profileID: store.activeProfileID, section: .images)
@@ -412,7 +421,7 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
         id: "image-processing",
         kind: .imageProcessing,
         title: image.lastBatchOperation?.progressTitle ?? WorkbenchTaskKind.imageProcessing.title,
-        detail: "图片处理失败：\(failure)",
+        detail: CoreL10n.format("图片处理失败：%@", failure),
         state: .failed,
         failureReason: failure,
         target: batchTarget
@@ -430,8 +439,8 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
       return WorkbenchTaskItem(
         id: "image-summary",
         kind: .imageProcessing,
-        title: "图片资源扫描",
-        detail: "图片资源扫描失败：\(failure)",
+        title: CoreL10n.text("图片资源扫描"),
+        detail: CoreL10n.format("图片资源扫描失败：%@", failure),
         state: .failed,
         failureReason: failure,
         retryIntent: retryIntent,
@@ -522,10 +531,15 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
       || repository.isRemoteRepositoryChecking
       || publishing.isLocalRepositoryMutationRunning
     if isRunning {
+      let gitFeedback = publishing.publishActionFeedback.flatMap { feedback in
+        feedback.source == .gitOperation ? feedback.message : nil
+      }
       let detail =
         (progress?.stage == .failed ? nil : progress?.statusDescription)
-        ?? publishing.publishActionMessage
-        ?? (repository.isRemoteRepositoryChecking ? "正在检查远端仓库权限…" : "正在执行 Git 操作…")
+        ?? gitFeedback
+        ?? (repository.isRemoteRepositoryChecking
+          ? CoreL10n.text("正在检查远端仓库权限…")
+          : CoreL10n.text("正在执行 Git 操作…"))
       return WorkbenchTaskItem(
         id: "git-push",
         kind: .gitPush,
@@ -534,33 +548,32 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
         state: .running
       )
     }
+    // `publishActionFeedback` is shared by preview, file-write, and publish
+    // flows. A failure there does not establish that a Git operation failed,
+    // particularly after an earlier Git operation left a retry intent behind.
+    // Only an explicit Git source, a failed remote Git progress update, or its
+    // persisted failure record is allowed to create the Git task row.
+    let failureReason: String
     if lastGitOperationKind != .local, let progress, progress.stage == .failed {
-      let reason = currentGitFailureRecord?.summary ?? progress.detail ?? progress.message
-      let retryIntent = failedGitRetryIntent
-      return WorkbenchTaskItem(
-        id: currentGitFailureRecord?.id.uuidString ?? "git-\(gitOperationID)",
-        kind: .gitPush,
-        title: currentGitFailureRecord?.title,
-        detail: gitFailureDetail(reason),
-        state: .failed,
-        failureReason: reason,
-        canRetry: retryIntent != nil,
-        retryIntent: retryIntent,
-        target: currentGitFailureRecord.map { .releaseRecord($0.id) }
-          ?? retryIntent.flatMap(taskTarget(for:))
-      )
-    }
-    guard let feedback = publishing.publishActionFeedback,
+      failureReason = currentGitFailureRecord?.summary ?? progress.detail ?? progress.message
+    } else if let record = currentGitFailureRecord {
+      failureReason = record.summary
+    } else if let feedback = publishing.publishActionFeedback,
+      feedback.source == .gitOperation,
       feedback.status == .failure
-    else { return nil }
+    {
+      failureReason = feedback.message
+    } else {
+      return nil
+    }
     let retryIntent = failedGitRetryIntent
     return WorkbenchTaskItem(
       id: currentGitFailureRecord?.id.uuidString ?? "git-\(gitOperationID)",
       kind: .gitPush,
       title: currentGitFailureRecord?.title,
-      detail: gitFailureDetail(currentGitFailureRecord?.summary ?? feedback.message),
+      detail: gitFailureDetail(failureReason),
       state: .failed,
-      failureReason: currentGitFailureRecord?.summary ?? feedback.message,
+      failureReason: failureReason,
       canRetry: retryIntent != nil,
       retryIntent: retryIntent,
       target: currentGitFailureRecord.map { .releaseRecord($0.id) }
@@ -693,12 +706,6 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
     case .remote:
       return .gitRemoteDraft(profileID: store.activeProfileID, draftID: draftID)
     }
-  }
-
-  private func failureReason(in message: String?) -> String? {
-    guard let message = message?.trimmedForPublishing.nilIfEmpty else { return nil }
-    let markers = ["失败", "错误", "超时", "拒绝", "无法", "不可用", "未配置", "未保存"]
-    return markers.contains(where: message.contains) ? message : nil
   }
 
   private func observe<P: Publisher>(_ publisher: P) where P.Failure == Never {

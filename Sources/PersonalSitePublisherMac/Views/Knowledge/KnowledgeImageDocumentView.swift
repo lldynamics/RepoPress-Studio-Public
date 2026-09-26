@@ -104,6 +104,7 @@ private struct ThumbnailRequestID: Hashable {
 }
 
 struct KnowledgeImageDocumentView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let imageURL: URL?
   let title: String
   let sourceName: String
@@ -302,10 +303,10 @@ struct KnowledgeImageDocumentView: View {
 
           if let highlightedAnchor {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
-              .fill(Color.accentColor.opacity(0.16))
+              .fill(workbenchAccentColor.opacity(0.16))
               .overlay {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                  .stroke(Color.accentColor, lineWidth: 3)
+                  .stroke(workbenchAccentColor, lineWidth: 3)
               }
               .frame(
                 width: scaledSize.width * CGFloat(highlightedAnchor.width),

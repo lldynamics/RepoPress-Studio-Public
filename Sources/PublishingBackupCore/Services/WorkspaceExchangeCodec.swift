@@ -124,7 +124,8 @@ public enum WorkspaceExchangeCodec {
     for draft in payload.drafts {
       guard draft.scope == "site" || draft.scope == "general",
         ArticleVisibility(rawValue: draft.visibility) != nil,
-        !containsControlCharacters(draft.slug)
+        !containsControlCharacters(draft.slug),
+        draft.targetWordCount.map({ (1...1_000_000).contains($0) }) ?? true
       else { throw WorkspaceExchangeError.invalidFormat }
       if draft.scope == "site" {
         guard draft.sourceProfileID != nil else {
@@ -190,7 +191,9 @@ public enum WorkspaceExchangeCodec {
         "id", "scope", "title", "date", "slug", "tags", "categories", "authors",
         "visibility", "summary", "bodyMarkdown", "createdAt", "updatedAt", "attachments",
       ]
-      let optionalDraftKeys: Set<String> = ["sourceProfileID", "coverAttachmentID"]
+      let optionalDraftKeys: Set<String> = [
+        "sourceProfileID", "coverAttachmentID", "targetWordCount",
+      ]
       guard Set(draft.keys).isSubset(of: draftKeys.union(optionalDraftKeys)),
         draftKeys.isSubset(of: Set(draft.keys))
       else { throw WorkspaceExchangeError.invalidFormat }

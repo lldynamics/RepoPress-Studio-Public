@@ -130,7 +130,7 @@ enum RepositoryContextStage: String, Identifiable {
     case .source:
       return "源码"
     case .history:
-      return "发布记录"
+      return "发布历史"
     }
   }
 
@@ -143,7 +143,7 @@ enum RepositoryContextStage: String, Identifiable {
     case .source:
       return String(localized: "源码")
     case .history:
-      return String(localized: "发布记录")
+      return String(localized: "发布历史")
     }
   }
 

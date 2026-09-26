@@ -136,7 +136,10 @@ extension MacMarkdownComposerView {
       }
       ClipboardWriter.copy(
         anchorLink,
-        successMessage: "已复制锚点链接：\(anchorLink)"
+        successMessage: String(
+          format: String(localized: "已复制锚点链接：%@"),
+          anchorLink
+        )
       ) { selectionActionMessage = $0 }
     }
   }

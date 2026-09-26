@@ -134,6 +134,7 @@ extension WorkspaceBackupService {
             summary: draft.summary,
             coverAttachmentID: coverID,
             bodyMarkdown: draft.bodyMarkdown,
+            targetWordCount: draft.targetWordCount,
             attachments: attachments
           )
         )

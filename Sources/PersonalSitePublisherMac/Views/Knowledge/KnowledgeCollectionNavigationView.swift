@@ -2,6 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct KnowledgeCollectionNavigationView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @ObservedObject var knowledge: KnowledgeStore
   let onCreateFolder: () -> Void
   let onRenameFolder: (KnowledgeFolder) -> Void
@@ -166,7 +167,9 @@ struct KnowledgeCollectionNavigationView: View {
       HStack(spacing: 7) {
         Image(systemName: item.systemImage)
           .font(.system(size: 14, weight: .medium))
-          .foregroundStyle(knowledge.folderScope == item.scope ? Color.accentColor : Color.secondary)
+          .foregroundStyle(
+            knowledge.folderScope == item.scope ? workbenchAccentColor : Color.secondary
+          )
           .frame(width: 18)
           .accessibilityHidden(true)
         Text(item.title)
@@ -192,7 +195,7 @@ struct KnowledgeCollectionNavigationView: View {
         RoundedRectangle(cornerRadius: 6)
           .fill(
             knowledge.folderScope == item.scope
-              ? Color.accentColor.opacity(0.12)
+              ? workbenchAccentColor.opacity(0.12)
               : (isHovered ? Color.primary.opacity(0.05) : Color.clear)
           )
       }

@@ -1,5 +1,6 @@
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD
   import Foundation
+  import PublishingCoreSupport
   import PublishingKnowledgeCore
   import PublishingDomainContracts
 
@@ -957,7 +958,7 @@
       case .quickHide:
         store.selectSection(.writing)
         store.setInspectorPresented(true)
-        store.activateQuickHide(reason: "工作台已手动隐藏，私密内容已遮挡。")
+        store.activateQuickHide(reason: CoreL10n.text("工作台已手动隐藏，私密内容已遮挡。"))
       case .knowledgeLibrary:
         store.selectSection(.library)
         store.setInspectorPresented(false)

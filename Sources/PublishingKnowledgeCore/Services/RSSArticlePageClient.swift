@@ -143,11 +143,11 @@ public struct RSSArticlePageClient: Sendable {
     let mimeType = response.mimeType?.lowercased() ?? ""
     guard Self.allowedMIMETypes.contains(mimeType) else {
       throw RSSReaderError.network(
-        "原文网页返回了不支持的内容类型：\(mimeType.nilIfEmpty ?? "未知")。"
+        CoreL10n.format("原文网页返回了不支持的内容类型：%@。", mimeType.nilIfEmpty ?? CoreL10n.text("未知"))
       )
     }
     guard !data.isEmpty else {
-      throw RSSReaderError.network("原文网页响应为空。")
+      throw RSSReaderError.network(CoreL10n.text("原文网页响应为空。"))
     }
 
     return RSSArticlePageDownload(

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsSearchHighlightOverlay: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let highlight: SettingsSearchHighlight?
   let anchorFrames: [SettingsSubsection: CGRect]
   @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
@@ -12,11 +13,11 @@ struct SettingsSearchHighlightOverlay: View {
         viewport: CGRect(origin: .zero, size: geometry.size)
       ) {
         RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-          .fill(Color.accentColor.opacity(0.08))
+          .fill(workbenchAccentColor.opacity(0.08))
           .overlay {
             RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
               .strokeBorder(
-                differentiateWithoutColor ? Color.primary : Color.accentColor,
+                differentiateWithoutColor ? Color.primary : workbenchAccentColor,
                 lineWidth: 2
               )
           }

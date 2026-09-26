@@ -208,7 +208,9 @@ struct KnowledgeNoteTransferSheet: View {
       do {
         let package = try await knowledge.exportNotePackage(selectedIDs: selectedNoteIDs)
         guard !package.notes.isEmpty else { throw NoteTransferError.noNotes }
-        guard let destination = NotesPackageSelectionPanel.chooseExportDestination() else { return }
+        guard let destination = await NotesPackageSelectionPanel.chooseExportDestination() else {
+          return
+        }
         try await Task.detached(priority: .userInitiated) {
           let wrapper = try RPNotesPackageCodec.encode(package)
           try wrapper.write(to: destination, options: .atomic, originalContentsURL: nil)
@@ -222,11 +224,11 @@ struct KnowledgeNoteTransferSheet: View {
 
   private func importNotes() {
     guard !isWorking else { return }
-    guard let source = NotesPackageSelectionPanel.chooseImportPackage() else { return }
     isWorking = true
     previewKind = .packageImport
     Task {
       defer { isWorking = false }
+      guard let source = await NotesPackageSelectionPanel.chooseImportPackage() else { return }
       do {
         let package = try await Task.detached(priority: .userInitiated) {
           let wrapper = try FileWrapper(url: source, options: .immediate)
@@ -240,10 +242,14 @@ struct KnowledgeNoteTransferSheet: View {
   }
 
   private func createSnapshot() {
-    guard !isWorking, let directory = NotesPackageSelectionPanel.chooseSnapshotDirectory() else { return }
-    let didStartAccess = directory.startAccessingSecurityScopedResource()
+    guard !isWorking else { return }
     isWorking = true
     Task {
+      guard let directory = await NotesPackageSelectionPanel.chooseSnapshotDirectory() else {
+        isWorking = false
+        return
+      }
+      let didStartAccess = directory.startAccessingSecurityScopedResource()
       defer {
         if didStartAccess { directory.stopAccessingSecurityScopedResource() }
         isWorking = false
@@ -322,11 +328,15 @@ struct KnowledgeNoteTransferSheet: View {
   }
 
   private func restoreSnapshot() {
-    guard !isWorking, let source = NotesPackageSelectionPanel.chooseSnapshotPackage() else { return }
-    let didStartAccess = source.startAccessingSecurityScopedResource()
+    guard !isWorking else { return }
     isWorking = true
     previewKind = .snapshotRestore
     Task {
+      guard let source = await NotesPackageSelectionPanel.chooseSnapshotPackage() else {
+        isWorking = false
+        return
+      }
+      let didStartAccess = source.startAccessingSecurityScopedResource()
       defer {
         if didStartAccess { source.stopAccessingSecurityScopedResource() }
         isWorking = false

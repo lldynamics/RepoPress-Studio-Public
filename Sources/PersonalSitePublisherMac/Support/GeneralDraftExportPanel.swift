@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 enum GeneralDraftExportPanel {
   @MainActor
-  static func export(_ document: GeneralDraftExportDocument) throws -> URL? {
+  static func export(_ document: GeneralDraftExportDocument) async throws -> URL? {
     let panel = NSSavePanel()
     panel.title = String(localized: "导出通用草稿")
     panel.prompt = String(localized: "导出")
@@ -14,7 +14,8 @@ enum GeneralDraftExportPanel {
     panel.isExtensionHidden = false
     panel.nameFieldStringValue = document.suggestedFilename
 
-    guard panel.runModal() == .OK, let destinationURL = panel.url else {
+    guard await WindowSheetPresenter.response(to: panel) == .OK, let destinationURL = panel.url
+    else {
       return nil
     }
     try document.markdown.write(to: destinationURL, atomically: true, encoding: .utf8)

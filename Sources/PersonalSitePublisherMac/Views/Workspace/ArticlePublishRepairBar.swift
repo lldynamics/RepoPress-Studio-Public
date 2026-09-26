@@ -50,7 +50,6 @@ struct ArticlePublishRepairBar: View {
         )
       }
       .workbenchProminentActionStyle()
-      .keyboardShortcut("r", modifiers: [.command, .option])
       .disabled(isReturningToPublishChecks)
       .accessibilityIdentifier("article-publish-repair-return")
       .accessibilityLabel("返回发布检查")

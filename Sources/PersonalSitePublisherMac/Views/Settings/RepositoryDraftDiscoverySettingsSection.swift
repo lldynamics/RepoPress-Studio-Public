@@ -222,15 +222,17 @@ struct RepositoryDraftDiscoverySettingsSection: View {
   }
 
   private func chooseExternalFolder() {
-    guard let url = ExternalDraftFolderSelectionPanel.chooseDirectory() else { return }
-    externalScanTask?.cancel()
-    externalScanTask = nil
-    guard store.connectExternalDraftFolder(url) else {
-      externalStatusMessage = String(localized: "文件夹不可读取，或仍在写回文件，请稍后重新选择。")
-      externalStatusSeverity = .error
-      return
+    Task {
+      guard let url = await ExternalDraftFolderSelectionPanel.chooseDirectory() else { return }
+      externalScanTask?.cancel()
+      externalScanTask = nil
+      guard store.connectExternalDraftFolder(url) else {
+        externalStatusMessage = String(localized: "文件夹不可读取，或仍在写回文件，请稍后重新选择。")
+        externalStatusSeverity = .error
+        return
+      }
+      scanExternalFolder()
     }
-    scanExternalFolder()
   }
 
   private func scanExternalFolder() {

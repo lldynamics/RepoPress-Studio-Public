@@ -8,6 +8,7 @@ enum MarkdownFormattingToolbarPresentation {
 
 struct MacMarkdownFormattingToolbar: View {
   let writingToolDensity: MarkdownWritingToolDensity
+  @Binding var isFocusModeActive: Bool
   let onApplyMarkdownFormatting: (MarkdownFormattingCommand) -> Void
   let onApplyAdvancedFormatting: (MarkdownAdvancedFormattingCommand) -> Void
   let onEditLines: (MarkdownLineEditingCommand) -> Void
@@ -25,10 +26,18 @@ struct MacMarkdownFormattingToolbar: View {
   var onFormatChineseTypography: (() -> Void)? = nil
   var presentation: MarkdownFormattingToolbarPresentation = .standalone
   @AppStorage("workspace.customToolbarConfig") private var customToolbarConfigRawValue = ""
+  @State private var isCustomizationSheetPresented = false
   @EnvironmentObject private var zenModeController: ZenModeController
 
   private var toolbarConfiguration: MarkdownToolbarConfiguration {
     MarkdownToolbarConfiguration.decodeFromJSON(customToolbarConfigRawValue)
+  }
+
+  private var toolbarConfigurationBinding: Binding<MarkdownToolbarConfiguration> {
+    Binding(
+      get: { toolbarConfiguration },
+      set: { customToolbarConfigRawValue = $0.normalized.encodeToJSON() }
+    )
   }
 
   private var configuredFormattingItemIDs: [MarkdownToolbarItemID] {
@@ -58,7 +67,7 @@ struct MacMarkdownFormattingToolbar: View {
 
   var body: some View {
     HStack(spacing: 4) {
-      ScrollView(.horizontal, showsIndicators: false) {
+      ScrollView(.horizontal, showsIndicators: true) {
         Group {
           if writingToolDensity == .basic {
             formattingRow(itemIDs: basicFormattingItemIDs, showsTitle: false)
@@ -70,11 +79,7 @@ struct MacMarkdownFormattingToolbar: View {
         .padding(.horizontal, 4)
       }
 
-      if presentation == .integrated {
-        integratedFormattingOverflowMenu
-      } else if writingToolDensity == .professional {
-        professionalFormattingOverflowMenu
-      }
+      formattingToolbarOptions
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .frame(minHeight: 34)
@@ -89,6 +94,12 @@ struct MacMarkdownFormattingToolbar: View {
     .accessibilityElement(children: .contain)
     .accessibilityLabel("格式工具栏")
     .accessibilityIdentifier("markdown-formatting-toolbar")
+    .sheet(isPresented: $isCustomizationSheetPresented) {
+      MacMarkdownToolbarCustomizationView(
+        configuration: toolbarConfigurationBinding,
+        onDismiss: { isCustomizationSheetPresented = false }
+      )
+    }
     .onKeyPress(.tab) {
       zenModeController.beginKeyboardNavigation()
       return .ignored
@@ -130,38 +141,31 @@ struct MacMarkdownFormattingToolbar: View {
     }
   }
 
-  private var professionalFormattingOverflowMenu: some View {
+  private var formattingToolbarOptions: some View {
     Menu {
-      ForEach(configuredFormattingItemIDs) { item in
-        formattingItem(item, showsTitle: true)
+      Section("全部格式") {
+        ForEach(configuredFormattingItemIDs) { item in
+          formattingItem(item, showsTitle: true)
+        }
+      }
+      Divider()
+      fixedTrailingControls(showsTitle: true)
+      Divider()
+      Button {
+        isCustomizationSheetPresented = true
+      } label: {
+        Label("自定义工具栏…", systemImage: "slider.horizontal.3")
       }
     } label: {
-      Label("全部格式", systemImage: "ellipsis.circle")
+      Label("格式与自定义", systemImage: "ellipsis.circle")
         .font(.workbenchButtonLabel)
         .frame(minHeight: 30)
     }
     .menuIndicator(.hidden)
     .buttonStyle(WorkbenchFocusRingButtonStyle())
-    .help("打开全部专业格式与插入操作")
-    .accessibilityLabel("全部格式")
-    .accessibilityIdentifier("markdown-professional-format-overflow")
-  }
-
-  private var integratedFormattingOverflowMenu: some View {
-    Menu {
-      ForEach(configuredFormattingItemIDs) { item in
-        formattingItem(item, showsTitle: true)
-      }
-      Divider()
-      fixedTrailingControls(showsTitle: true)
-    } label: {
-      Image(systemName: "textformat")
-        .frame(width: 28, height: 28)
-    }
-    .menuIndicator(.hidden)
-    .help("全部格式与写作显示选项")
-    .accessibilityLabel("全部格式与写作显示选项")
-    .accessibilityIdentifier("markdown-integrated-format-overflow")
+    .help("打开全部格式与自定义工具栏")
+    .accessibilityLabel("格式与自定义工具栏")
+    .accessibilityIdentifier("markdown-formatting-options")
   }
 
   @ViewBuilder
@@ -217,8 +221,8 @@ struct MacMarkdownFormattingToolbar: View {
         onApplyAdvancedFormatting(.taskList)
       }
     case .link:
-      toolbarButton(title: "链接", systemName: "link", showsTitle: showsTitle) {
-        onInsertInternalLink()
+      toolbarButton(title: "Markdown 链接", systemName: "link", showsTitle: showsTitle) {
+        onApplyMarkdownFormatting(.link)
       }
     case .image:
       toolbarButton(title: "插图", systemName: "photo", showsTitle: showsTitle) {
@@ -257,6 +261,11 @@ struct MacMarkdownFormattingToolbar: View {
         onInsertHorizontalRule()
       } label: {
         Label("分隔线", systemImage: "minus")
+      }
+      Button {
+        onInsertInternalLink()
+      } label: {
+        Label("站内文章链接", systemImage: "doc.on.doc")
       }
       Button {
         onShowSnippets()
@@ -314,7 +323,7 @@ struct MacMarkdownFormattingToolbar: View {
 
   @ViewBuilder
   private func fixedTrailingControls(showsTitle: Bool) -> some View {
-    ZenModeToggleButton(showsTitle: showsTitle)
+    FocusModeMenu(isActive: $isFocusModeActive, showsTitle: showsTitle)
     MarkdownEditorComfortControl(showsTitle: showsTitle)
   }
 
@@ -436,30 +445,42 @@ struct MacMarkdownFormattingToolbar: View {
 
 }
 
-private struct ZenModeToggleButton: View {
-  @EnvironmentObject private var zenModeController: ZenModeController
+private struct FocusModeMenu: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
+  @Binding var isActive: Bool
+  @AppStorage(MarkdownEditorComfortPreferences.focusToolbarFadeEnabledKey)
+  private var isFocusToolbarFadeEnabled = true
+  @AppStorage(MarkdownEditorComfortPreferences.typewriterModeEnabledKey)
+  private var isTypewriterModeEnabled = MarkdownEditorComfortConfiguration
+    .defaultTypewriterModeEnabled
+  @AppStorage(MarkdownEditorComfortPreferences.paragraphSpotlightEnabledKey)
+  private var isParagraphSpotlightEnabled = MarkdownEditorComfortConfiguration
+    .defaultParagraphSpotlightEnabled
   let showsTitle: Bool
 
   var body: some View {
-    Button {
-      zenModeController.toggleZenMode()
+    Menu {
+      Toggle("专注模式", isOn: $isActive)
+      Divider()
+      Toggle("打字时淡出工具栏", isOn: $isFocusToolbarFadeEnabled)
+      Toggle("打字机模式", isOn: $isTypewriterModeEnabled)
+      Toggle("段落聚光灯", isOn: $isParagraphSpotlightEnabled)
     } label: {
       if showsTitle {
         Label(
-          zenModeController.isZenModeActive ? "退出沉浸" : "沉浸模式",
-          systemImage: zenModeController.isZenModeActive ? "leaf.fill" : "leaf"
+          "专注模式",
+          systemImage: isActive ? "leaf.fill" : "leaf"
         )
       } else {
-        Image(systemName: zenModeController.isZenModeActive ? "leaf.fill" : "leaf")
+        Image(systemName: isActive ? "leaf.fill" : "leaf")
           .frame(width: 28, height: 28)
       }
     }
-    .foregroundStyle(
-      zenModeController.isZenModeActive ? WorkbenchTheme.navigationSelection : Color.secondary
-    )
-    .help(zenModeController.isZenModeActive ? "退出沉浸模式" : "开启沉浸模式（打字时自动淡出工具栏）")
-    .accessibilityLabel("沉浸模式")
-    .accessibilityValue(zenModeController.isZenModeActive ? "已开启" : "未开启")
-    .accessibilityIdentifier("markdown-zen-mode-toggle")
+    .menuIndicator(.hidden)
+    .foregroundStyle(isActive ? workbenchAccentColor : Color.secondary)
+    .help("专注模式与选项（⇧⌘F）")
+    .accessibilityLabel("专注模式与选项")
+    .accessibilityValue(isActive ? "已开启" : "未开启")
+    .accessibilityIdentifier("markdown-focus-mode-menu")
   }
 }

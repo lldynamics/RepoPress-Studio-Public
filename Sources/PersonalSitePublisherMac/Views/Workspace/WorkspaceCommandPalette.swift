@@ -3,6 +3,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct WorkspaceCommandPalette: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @Environment(\.dismiss) private var dismiss
   @Environment(\.openSettings) private var openSettings
   @Environment(\.settingsWorkspaceCommandAction) private var settingsWorkspaceCommandAction
@@ -293,7 +294,7 @@ struct WorkspaceCommandPalette: View {
       } : []
     let promptItems = scope.includesCommands ? matchingAIPrompts(for: normalized) : []
     let matchingSections = WorkspaceUnifiedSearchPresentation.matchingSections(
-      WorkspaceNavigationPresentation.commandPaletteSections + [.images],
+      WorkspaceNavigationPresentation.commandPaletteSections,
       query: normalized,
       scope: scope
     )
@@ -454,11 +455,12 @@ struct WorkspaceCommandPalette: View {
       },
       PaletteCommand(
         id: "workspace:focus-mode",
-        title: String(localized: "禅意专注写作"),
+        title: String(localized: "专注模式"),
         detail: "⇧⌘F",
         systemImage: "scope",
         shortcut: "⇧⌘F"
       ) {
+        onSelectSection(.writing)
         onToggleFocusMode()
         dismiss()
       },
@@ -560,8 +562,7 @@ struct WorkspaceCommandPalette: View {
         systemImage: "bubble.left",
         shortcut: "⌥⌘A"
       ) {
-        guard let draftID = contextDraftID else { return }
-        onOpenAI(draftID, nil)
+        onOpenAI(contextDraftID, nil)
         dismiss()
       },
       at: min(3, items.count)
@@ -757,7 +758,7 @@ struct WorkspaceCommandPalette: View {
       HStack(spacing: 11) {
         Image(systemName: systemImage)
           .frame(width: 22)
-          .foregroundStyle(isSelected ? WorkbenchTheme.navigationSelection : WorkbenchTheme.primary)
+          .foregroundStyle(isSelected ? workbenchAccentColor : WorkbenchTheme.primary)
         VStack(alignment: .leading, spacing: 2) {
           Text(title)
             .foregroundStyle(.primary)
@@ -781,7 +782,7 @@ struct WorkspaceCommandPalette: View {
       .contentShape(Rectangle())
       .background(
         isSelected
-          ? WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.selectionBackground)
+          ? workbenchAccentColor.opacity(WorkbenchOpacity.selectionBackground)
           : Color.clear,
         in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
       )

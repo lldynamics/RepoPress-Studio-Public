@@ -4,6 +4,7 @@ import SwiftUI
 /// Shared by the inline resolver and its maximized sheet so both surfaces edit
 /// the exact same parent-owned `RepositoryMergeConflictSemanticDraft`.
 struct RepositoryMergeConflictSemanticWorkspace: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let state: RepositoryMergeConflictSemanticDraft
   let isDisabled: Bool
   let selectMode: (RepositoryMergeConflictSemanticMode) -> Void
@@ -47,7 +48,7 @@ struct RepositoryMergeConflictSemanticWorkspace: View {
       Label(title, systemImage: image).frame(maxWidth: .infinity)
     }
     .buttonStyle(.bordered)
-    .tint(selected ? .accentColor : nil)
+    .tint(selected ? workbenchAccentColor : nil)
     .disabled(isDisabled || !enabled)
     .accessibilityValue(selected ? "已选择" : "未选择")
     .accessibilityIdentifier("repository-merge-semantic-mode-\(mode.rawValue)")
@@ -83,7 +84,7 @@ struct RepositoryMergeConflictSemanticWorkspace: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .background(workbenchAccentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
 
         ForEach(plan.frontMatterConflicts) { frontMatterCard($0) }
         ForEach(plan.bodyConflicts) { bodyCard($0) }
@@ -130,7 +131,7 @@ struct RepositoryMergeConflictSemanticWorkspace: View {
         .frame(maxWidth: .infinity)
     }
     .buttonStyle(.bordered)
-    .tint(selected ? .accentColor : nil)
+    .tint(selected ? workbenchAccentColor : nil)
     .disabled(isDisabled)
   }
 
@@ -174,7 +175,7 @@ struct RepositoryMergeConflictSemanticWorkspace: View {
         .frame(maxWidth: .infinity)
     }
     .buttonStyle(.bordered)
-    .tint(selected ? .accentColor : nil)
+    .tint(selected ? workbenchAccentColor : nil)
     .disabled(isDisabled)
   }
 

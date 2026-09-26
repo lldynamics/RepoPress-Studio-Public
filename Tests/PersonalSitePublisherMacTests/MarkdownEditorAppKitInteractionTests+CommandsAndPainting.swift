@@ -166,6 +166,38 @@ final class MarkdownEditorAppKitInteractionCommandAndPaintingTests:
     )
   }
 
+  func testNativeModifiedNavigationAndCommandPaletteShortcutsBypassLineEditing() throws {
+    let textView = makeTextView()
+    textView.string = "第一段\n第二段"
+    var receivedCommands: [MarkdownLineEditingCommand] = []
+    textView.markdownLineEditingHandler = { _, command in
+      receivedCommands.append(command)
+      return true
+    }
+
+    let events = [
+      try XCTUnwrap(makeKeyEvent(keyCode: 126, modifiers: [.option])),
+      try XCTUnwrap(makeKeyEvent(keyCode: 125, modifiers: [.option])),
+      try XCTUnwrap(makeKeyEvent(keyCode: 126, modifiers: [.shift, .option])),
+      try XCTUnwrap(makeKeyEvent(keyCode: 125, modifiers: [.shift, .option])),
+      try XCTUnwrap(
+        makeKeyEvent(
+          keyCode: 40,
+          modifiers: [.command, .shift],
+          characters: "K",
+          charactersIgnoringModifiers: "k"
+        )
+      ),
+    ]
+
+    for event in events {
+      textView.keyDown(with: event)
+    }
+
+    XCTAssertTrue(receivedCommands.isEmpty)
+    XCTAssertEqual(textView.string, "第一段\n第二段")
+  }
+
   func testInlineAIRequestShortcutInvokesHandlerAndConsumesOptionBackslash() throws {
     let textView = makeTextView()
     textView.string = "原文"

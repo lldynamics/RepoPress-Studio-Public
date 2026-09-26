@@ -3,12 +3,12 @@ import UniformTypeIdentifiers
 
 enum KnowledgeSelectionPanel {
   @MainActor
-  static func chooseSource() -> URL? {
-    chooseSources().first
+  static func chooseSource() async -> URL? {
+    (await chooseSources()).first
   }
 
   @MainActor
-  static func chooseSources() -> [URL] {
+  static func chooseSources() async -> [URL] {
     let panel = NSOpenPanel()
     panel.title = String(localized: "选择要加入资料库的文件或文件夹")
     panel.prompt = String(localized: "生成导入预览")
@@ -27,6 +27,6 @@ enum KnowledgeSelectionPanel {
       .html,
       .folder,
     ]
-    return panel.runModal() == .OK ? panel.urls : []
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.urls : []
   }
 }

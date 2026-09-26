@@ -1216,6 +1216,7 @@ final class WorkspaceBackupServiceTests: XCTestCase {
       summary: "保留摘要",
       coverAttachmentID: coveredAttachment.id,
       bodyMarkdown: "![本地路径](/images/source.png)\n\n正文保持不变。",
+      targetWordCount: 1800,
       attachments: [coveredAttachment, unresolvedAttachment],
       status: .published,
       repositoryPath: "content/selected-article.md",
@@ -1262,6 +1263,7 @@ final class WorkspaceBackupServiceTests: XCTestCase {
     XCTAssertTrue(restored.draft)
     XCTAssertEqual(restored.title, sourceDraft.title)
     XCTAssertEqual(restored.bodyMarkdown, sourceDraft.bodyMarkdown)
+    XCTAssertEqual(restored.targetWordCount, sourceDraft.targetWordCount)
     XCTAssertEqual(restored.visibility, .private)
     XCTAssertEqual(restored.summary, sourceDraft.summary)
     XCTAssertEqual(restored.aliases, [])
@@ -1856,6 +1858,33 @@ final class WorkspaceExchangeCodecTests: XCTestCase {
     let roundTrip = try WorkspaceExchangeCodec.decode(encoded)
     XCTAssertEqual(roundTrip.payload, decoded.payload)
     XCTAssertEqual(roundTrip.manifest.payloadSHA256, decoded.manifest.payloadSHA256)
+  }
+
+  func testCustomWordGoalSurvivesExchangeEncodingAndImport() throws {
+    let decoded = try WorkspaceExchangeCodec.decode(fixture())
+    XCTAssertNil(decoded.payload.drafts.first?.targetWordCount)
+    var payload = decoded.payload
+    payload.drafts[0].targetWordCount = 2300
+    let encoded = try WorkspaceExchangeCodec.encode(
+      payload, createdAt: decoded.manifest.createdAt)
+    let roundTrip = try WorkspaceExchangeCodec.decode(encoded)
+    XCTAssertEqual(roundTrip.payload.drafts.first?.targetWordCount, 2300)
+
+    let temporaryRoot = FileManager.default.temporaryDirectory
+      .appendingPathComponent("WorkspaceExchangeWordGoal-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+    try FileManager.default.createDirectory(at: temporaryRoot, withIntermediateDirectories: true)
+    let sourceProfileID = try XCTUnwrap(roundTrip.payload.profiles.first?.id)
+    let destinationProfileID = UUID()
+    let imported = try WorkspaceExchangeTransferService.prepareImport(
+      package: roundTrip,
+      profileMappings: [sourceProfileID: .existing(destinationProfileID)],
+      activeProfileID: destinationProfileID,
+      attachmentStore: ManagedAttachmentFileStore(
+        rootDirectoryURL: temporaryRoot.appendingPathComponent("managed")),
+      temporaryDirectory: temporaryRoot
+    )
+    XCTAssertEqual(imported.drafts.first?.targetWordCount, 2300)
   }
 
   func testImportPreparationAssignsNewIDsAndStagesAttachmentBytes() throws {

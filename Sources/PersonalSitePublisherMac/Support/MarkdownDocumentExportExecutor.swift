@@ -90,14 +90,14 @@ enum MarkdownDocumentExportExecutor {
   ) async throws -> MarkdownDocumentExportExecutionResult {
     switch plan.operation {
     case .writeUTF8File:
-      guard let destinationURL = chooseDestination(for: plan) else {
+      guard let destinationURL = await chooseDestination(for: plan) else {
         return .cancelled
       }
       try fileData(for: plan).write(to: destinationURL, options: .atomic)
       return .saved(destinationURL)
 
     case .renderHTMLToPDF:
-      guard let destinationURL = chooseDestination(for: plan) else {
+      guard let destinationURL = await chooseDestination(for: plan) else {
         return .cancelled
       }
       let webView = try await renderedWebView(for: plan)
@@ -145,7 +145,7 @@ enum MarkdownDocumentExportExecutor {
 
   private static func chooseDestination(
     for plan: MarkdownDocumentExportPlan
-  ) -> URL? {
+  ) async -> URL? {
     let panel = NSSavePanel()
     panel.title = exportPanelTitle(for: plan.format)
     panel.prompt = String(localized: "导出")
@@ -160,7 +160,7 @@ enum MarkdownDocumentExportExecutor {
     {
       panel.allowedContentTypes = [contentType]
     }
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 
   private static func exportPanelTitle(

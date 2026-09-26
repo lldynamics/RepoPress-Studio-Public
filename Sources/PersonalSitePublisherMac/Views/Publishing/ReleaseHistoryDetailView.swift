@@ -4,6 +4,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct ReleaseHistoryDetailView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let store: WorkbenchStore
   let focusedRecordID: UUID?
   @ObservedObject private var historyObservation: WorkbenchReleaseHistoryObservationFacade
@@ -137,7 +138,7 @@ struct ReleaseHistoryDetailView: View {
 
   private var releaseHistoryHeaderIntroduction: some View {
     VStack(alignment: .leading, spacing: 4) {
-      Text("发布记录")
+      Text("发布历史")
         .font(.title2.weight(.semibold))
         .accessibilityAddTraits(.isHeader)
       Text("追踪本地写入、Review、线上提交、部署状态和回滚计划。")
@@ -156,7 +157,7 @@ struct ReleaseHistoryDetailView: View {
         .accessibilityIdentifier("release-history-show-all-records")
       }
       Button {
-        copy(ledger.operationLogMarkdown, message: "已复制发布记录。")
+        copy(ledger.operationLogMarkdown, message: String(localized: "已复制发布记录。"))
       } label: {
         releaseHistoryActionLabel("复制发布记录", systemImage: "doc.on.doc")
       }
@@ -509,7 +510,7 @@ struct ReleaseHistoryDetailView: View {
     ) {
       if !item.commandLines.isEmpty {
         Button {
-          copy(item.commandLines.joined(separator: "\n"), message: "已复制发布处理命令。")
+          copy(item.commandLines.joined(separator: "\n"), message: String(localized: "已复制发布处理命令。"))
         } label: {
           releaseHistoryActionLabel("复制命令", systemImage: "doc.on.doc")
         }
@@ -718,7 +719,7 @@ struct ReleaseHistoryDetailView: View {
         Button {
           copy(
             store.deploymentPollingState.followUpChecklistMarkdown,
-            message: "已复制远端发布状态后续清单。"
+            message: String(localized: "已复制远端发布状态后续清单。")
           )
         } label: {
           releaseHistoryActionLabel("复制清单", systemImage: "checklist")
@@ -754,7 +755,7 @@ struct ReleaseHistoryDetailView: View {
           }
         }
         .pickerStyle(.segmented)
-        .tint(WorkbenchTheme.navigationSelection)
+        .tint(workbenchAccentColor)
         .frame(maxWidth: 320)
         .disabled(!store.deploymentPollingSettings.isEnabled || store.isDeploymentStatusChecking)
         .accessibilityLabel("远端发布状态自动检查最短间隔")
@@ -1056,7 +1057,7 @@ struct ReleaseHistoryDetailView: View {
     }
     blocks.append(contentsOf: draft.commandLines)
     let text = blocks.joined(separator: "\n")
-    copy(text, message: "已复制回滚计划。")
+    copy(text, message: String(localized: "已复制回滚计划。"))
   }
 
   func copyRollbackReviewDraft(_ draft: ReleaseRollbackDraft) {
@@ -1067,11 +1068,11 @@ struct ReleaseHistoryDetailView: View {
     ]
     .compactMap { $0?.trimmedForPublishing.nilIfEmpty }
     .joined(separator: "\n\n")
-    copy(text, message: "已复制回滚 PR/MR 草稿。")
+    copy(text, message: String(localized: "已复制回滚 PR/MR 草稿。"))
   }
 
   func copyRecoveryPackage(_ package: ReleaseRecoveryPackage) {
-    copy(package.clipboardMarkdown, message: "已复制发布恢复包。")
+    copy(package.clipboardMarkdown, message: String(localized: "已复制发布恢复包。"))
   }
 
 }

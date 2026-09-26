@@ -23,6 +23,7 @@ struct RSSPreparedPresentationSnapshot: Equatable, Sendable {
   let indexByArticleID: [String: Int]
 }
 struct RSSArticleList: View {
+  @Environment(\.workbenchAccentColor) var workbenchAccentColor
   @ObservedObject var store: RSSReaderStore
   @ObservedObject var ai: WorkbenchRSSListTitleTranslationFeatureFacade
   let aiConfiguration: () -> AIProviderConfig

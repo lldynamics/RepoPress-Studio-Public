@@ -8,7 +8,7 @@ public enum RSSFeedParser {
 
   public static func parse(data: Data, feedURL: URL) throws -> RSSParsedFeed {
     guard !data.isEmpty else {
-      throw RSSReaderError.parseFailed("响应为空")
+      throw RSSReaderError.parseFailed(CoreL10n.text("响应为空"))
     }
 
     do {
@@ -22,13 +22,13 @@ public enum RSSFeedParser {
     } catch let failure as UntrustedXMLParserGuard.Failure {
       switch failure {
       case .forbiddenDeclaration:
-        throw RSSReaderError.parseFailed("XML 文档包含不安全的 DTD 或实体声明")
+        throw RSSReaderError.parseFailed(CoreL10n.text("XML 文档包含不安全的 DTD 或实体声明"))
       case .characterLimitExceeded:
-        throw RSSReaderError.parseFailed("XML 文档展开后的字符数超过安全上限")
+        throw RSSReaderError.parseFailed(CoreL10n.text("XML 文档展开后的字符数超过安全上限"))
       case .elementDepthExceeded:
-        throw RSSReaderError.parseFailed("XML 文档元素嵌套深度超过安全上限")
+        throw RSSReaderError.parseFailed(CoreL10n.text("XML 文档元素嵌套深度超过安全上限"))
       case .cancelled:
-        throw RSSReaderError.parseFailed("XML 文档解析已取消")
+        throw RSSReaderError.parseFailed(CoreL10n.text("XML 文档解析已取消"))
       }
     }
 
@@ -42,10 +42,12 @@ public enum RSSFeedParser {
     parser.shouldResolveExternalEntities = false
     guard parser.parse() else {
       if delegate.didExceedArticleLimit {
-        throw RSSReaderError.parseFailed("订阅文章记录超过 \(maximumArticleCount) 条")
+        throw RSSReaderError.parseFailed(
+          CoreL10n.format("订阅文章记录超过 %d 条", maximumArticleCount)
+        )
       }
       throw RSSReaderError.parseFailed(
-        parser.parserError?.localizedDescription ?? "XML 文档格式不正确"
+        parser.parserError?.localizedDescription ?? CoreL10n.text("XML 文档格式不正确")
       )
     }
 
@@ -55,7 +57,7 @@ public enum RSSFeedParser {
           stage: .parsing,
           category: .invalidContent,
           retryStrategy: .requiresAction,
-          userMessage: "订阅内容不是可识别的 RSS 或 Atom。",
+          userMessage: CoreL10n.text("订阅内容不是可识别的 RSS 或 Atom。"),
           technicalDetail: "XML 根结构不是 rss/channel 或带 Atom 命名空间的 feed"
         )
       )

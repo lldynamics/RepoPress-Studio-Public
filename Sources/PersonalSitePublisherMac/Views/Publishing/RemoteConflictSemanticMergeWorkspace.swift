@@ -2,6 +2,7 @@ import PublishingMarkdownCore
 import SwiftUI
 
 struct RemoteConflictSemanticMergeWorkspace: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let state: RemoteConflictMergeDraft
   let isDisabled: Bool
   let selectMode: (RemoteConflictMergeMode) -> Void
@@ -59,7 +60,7 @@ struct RemoteConflictSemanticMergeWorkspace: View {
         .frame(maxWidth: .infinity)
     }
     .buttonStyle(.bordered)
-    .tint(isSelected ? .accentColor : nil)
+    .tint(isSelected ? workbenchAccentColor : nil)
     .disabled(isDisabled || !enabled)
     .accessibilityValue(isSelected ? "已选择" : "未选择")
     .accessibilityIdentifier("remote-conflict-merge-mode-\(mode.rawValue)")
@@ -110,7 +111,7 @@ struct RemoteConflictSemanticMergeWorkspace: View {
     .padding(10)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
-      Color.accentColor.opacity(0.08),
+      workbenchAccentColor.opacity(0.08),
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
     )
   }
@@ -165,7 +166,7 @@ struct RemoteConflictSemanticMergeWorkspace: View {
       .frame(maxWidth: .infinity)
     }
     .buttonStyle(.bordered)
-    .tint(isSelected ? .accentColor : nil)
+    .tint(isSelected ? workbenchAccentColor : nil)
     .disabled(isDisabled)
     .accessibilityValue(isSelected ? "已选择" : "未选择")
   }
@@ -215,7 +216,7 @@ struct RemoteConflictSemanticMergeWorkspace: View {
       .frame(maxWidth: .infinity)
     }
     .buttonStyle(.bordered)
-    .tint(isSelected ? .accentColor : nil)
+    .tint(isSelected ? workbenchAccentColor : nil)
     .disabled(isDisabled)
     .accessibilityValue(isSelected ? "已选择" : "未选择")
   }

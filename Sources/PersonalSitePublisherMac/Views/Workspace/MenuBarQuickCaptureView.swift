@@ -8,6 +8,8 @@ final class MenuBarQuickCaptureState: ObservableObject {
   @Published var text = ""
   @Published private(set) var isSaving = false
   @Published private(set) var feedback: String?
+  private var feedbackClearTask: Task<Void, Never>?
+  private var feedbackRevision = 0
 
   var canSave: Bool {
     !isSaving && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -16,6 +18,7 @@ final class MenuBarQuickCaptureState: ObservableObject {
   func save(using knowledge: KnowledgeStore) async {
     guard canSave else { return }
     let capturedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    clearFeedback()
     isSaving = true
     defer { isSaving = false }
 
@@ -25,9 +28,40 @@ final class MenuBarQuickCaptureState: ObservableObject {
       if text.trimmingCharacters(in: .whitespacesAndNewlines) == capturedText {
         text = ""
       }
-      feedback = String(localized: "速记已保存到知识笔记")
+      showFeedback(String(localized: "速记已保存到知识笔记"), clearsAutomatically: true)
     } else {
-      feedback = knowledge.lastError ?? String(localized: "速记保存失败")
+      showFeedback(knowledge.lastError ?? String(localized: "速记保存失败"), clearsAutomatically: false)
+    }
+  }
+
+  func textDidChange() {
+    guard !isSaving else { return }
+    clearFeedback()
+  }
+
+  private func clearFeedback() {
+    feedbackRevision &+= 1
+    feedbackClearTask?.cancel()
+    feedbackClearTask = nil
+    feedback = nil
+  }
+
+  private func showFeedback(_ message: String, clearsAutomatically: Bool) {
+    feedbackRevision &+= 1
+    feedbackClearTask?.cancel()
+    feedback = message
+    guard clearsAutomatically else { return }
+
+    let revision = feedbackRevision
+    feedbackClearTask = Task { [weak self] in
+      do {
+        try await Task.sleep(nanoseconds: 3_000_000_000)
+      } catch {
+        return
+      }
+      guard !Task.isCancelled, let self, self.feedbackRevision == revision else { return }
+      self.feedback = nil
+      self.feedbackClearTask = nil
     }
   }
 }
@@ -122,6 +156,9 @@ private struct MenuBarReadyView: View {
         .focused($isCaptureFocused)
         .frame(height: 108)
         .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+        .onChange(of: capture.text) { _, _ in
+          capture.textDidChange()
+        }
 
       HStack {
         Button("保存速记") {

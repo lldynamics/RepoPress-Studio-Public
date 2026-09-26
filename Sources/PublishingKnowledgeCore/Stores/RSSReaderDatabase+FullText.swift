@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 import SQLite3
 
 extension RSSReaderDatabase {
@@ -211,12 +212,12 @@ extension RSSReaderDatabase {
   private func decodeFullTextRecord(_ statement: OpaquePointer?) throws -> RSSArticleFullTextRecord
   {
     guard let articleID = text(statement, 0), !articleID.isEmpty else {
-      throw RSSReaderError.persistence("RSS 全文缓存缺少文章 ID")
+      throw RSSReaderError.persistence(CoreL10n.text("RSS 全文缓存缺少文章 ID"))
     }
     guard let rawStatus = text(statement, 1),
       let status = RSSArticleFullTextStatus(rawValue: rawStatus)
     else {
-      throw RSSReaderError.persistence("RSS 全文缓存包含未知状态")
+      throw RSSReaderError.persistence(CoreL10n.text("RSS 全文缓存包含未知状态"))
     }
 
     return RSSArticleFullTextRecord(
@@ -246,7 +247,7 @@ extension RSSReaderDatabase {
   ) throws -> URL? {
     guard let value = text(statement, index) else { return nil }
     guard let url = URL(string: value), RSSNetworkURLPolicy.isSyntacticallyAllowed(url) else {
-      throw RSSReaderError.persistence("RSS 全文缓存包含无效 \(field) URL")
+      throw RSSReaderError.persistence(CoreL10n.format("RSS 全文缓存包含无效 %@ URL", field))
     }
     return url
   }

@@ -657,6 +657,7 @@ enum ImageWorkbenchResourceNavigationPolicy {
 }
 
 private struct ImageWorkbenchBatchCardStyle: ButtonStyle {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let isAvailable: Bool
 
   func makeBody(configuration: Configuration) -> some View {
@@ -665,13 +666,13 @@ private struct ImageWorkbenchBatchCardStyle: ButtonStyle {
       .padding(.vertical, 6)
       .frame(maxWidth: .infinity)
       .background(
-        isAvailable ? Color.accentColor.opacity(0.08) : Color.primary.opacity(0.025),
+        isAvailable ? workbenchAccentColor.opacity(0.08) : Color.primary.opacity(0.025),
         in: RoundedRectangle(cornerRadius: 8)
       )
       .overlay {
         RoundedRectangle(cornerRadius: 8)
           .strokeBorder(
-            isAvailable ? Color.accentColor.opacity(0.12) : Color.primary.opacity(0.08)
+            isAvailable ? workbenchAccentColor.opacity(0.12) : Color.primary.opacity(0.08)
           )
       }
       .opacity(configuration.isPressed ? 0.75 : 1)

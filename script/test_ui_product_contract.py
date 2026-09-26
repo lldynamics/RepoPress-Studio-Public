@@ -102,16 +102,9 @@ class UIProductContractTests(unittest.TestCase):
         )["strings"]
 
         self.assertIn("public enum WorkspaceSection", core_models)
-        self.assertIn(
-            "static let primaryRows: [[WorkspaceSection]] = [\n"
-            "    [.writing, .library],\n"
-            "    [.rss, .sync],\n"
-            "    [.contentHealth],\n"
-            "  ]",
-            descriptor,
-        )
+        self.assertIn("WorkspaceVisibilityPolicy.commandMenuPrimarySections", descriptor)
         self.assertIn("static let primarySections", descriptor)
-        self.assertIn("WorkspaceNavigationRouteDescriptor.primaryRows.enumerated()", full_rail)
+        self.assertIn("WorkspaceNavigationRouteDescriptor.primarySections", full_rail)
         self.assertIn("WorkspaceNavigationRouteDescriptor.primarySections", compact_rail)
         self.assertIn("Button {", compact_rail)
         self.assertIn(

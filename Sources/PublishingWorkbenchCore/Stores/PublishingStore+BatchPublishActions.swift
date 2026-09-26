@@ -17,7 +17,7 @@ extension PublishingStore {
       return .failed(message: publishActionMessage ?? "通用草稿不能直接写入站点仓库。")
     }
     guard let package = publishPackageForSelectedDraft(store: store) else {
-      setPublishActionMessage("没有可写入的发布包。", status: .warning)
+      setPublishingActionMessage("没有可写入的发布包。", status: .warning)
       return .failed(message: publishActionMessage ?? "没有可写入的发布包。")
     }
 
@@ -30,7 +30,7 @@ extension PublishingStore {
       store: store
     )
     guard blockingIssues.isEmpty else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         blockedLocalPublishMessage(action: "写入", issues: blockingIssues),
         status: .warning
       )
@@ -38,14 +38,14 @@ extension PublishingStore {
     }
 
     guard let operation = beginLocalRepositoryMutation(profile: profile) else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         "已有本地仓库写入或提交任务正在运行，请等待完成。",
         status: .warning
       )
       return .failed(message: publishActionMessage ?? "本地仓库写入任务正在运行。")
     }
     defer { finishLocalRepositoryMutation(operation) }
-    setPublishActionMessage("正在后台写入本地仓库…", status: .inProgress)
+    setPublishingActionMessage("正在后台写入本地仓库…", status: .inProgress)
 
     do {
       let writtenPaths = try await localPublishPreviewService.writeAsync(
@@ -60,7 +60,7 @@ extension PublishingStore {
         )
       else {
         let message = "文件已写入本地仓库，但无法记录文章的项目绑定。"
-        setPublishActionMessage(message, status: .failure)
+        setPublishingActionMessage(message, status: .failure)
         return .writtenButRecordSaveFailed(
           writtenPaths: writtenPaths,
           message: message
@@ -74,19 +74,19 @@ extension PublishingStore {
         && store.profiles.first(where: { $0.id == profile.id }).map(operation.stillMatches) == true
         && store.activeProfileID == profile.id
       if stillCurrent {
-        setPublishActionMessage(
+        setPublishingActionMessage(
           "已写入 \(writtenPaths.count) 个文件到本地仓库。",
           status: .success
         )
         store.requestRepositoryScan()
       } else {
-        setPublishActionMessage(
+        setPublishingActionMessage(
           "原站点已写入 \(writtenPaths.count) 个文件；当前站点已变化，未刷新当前仓库状态。",
           status: .warning
         )
       }
       guard store.flushPendingChanges() else {
-        setPublishActionMessage(
+        setPublishingActionMessage(
           "文件已写入本地仓库，但工作台发布记录保存失败，请先处理保存问题。",
           status: .failure
         )
@@ -101,7 +101,7 @@ extension PublishingStore {
       )
     } catch {
       let prefix = store.activeProfileID == profile.id ? "写入失败" : "原站点写入失败"
-      setPublishActionMessage(
+      setPublishingActionMessage(
         "\(prefix)：\(error.localizedDescription)",
         status: .failure
       )
@@ -116,13 +116,13 @@ extension PublishingStore {
     await store.refreshBatchPublishPlanAsync()
 
     guard let batchPublishPlan else {
-      setPublishActionMessage("没有可写入的批量发布计划。", status: .warning)
+      setPublishingActionMessage("没有可写入的批量发布计划。", status: .warning)
       return BatchLocalWriteResult(writtenDraftCount: 0, writtenPaths: [], skippedCount: 0)
     }
 
     let writableItems = batchPublishPlan.writableItems
     guard !writableItems.isEmpty else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         "当前没有可批量写入的文章；请先处理阻塞问题、需确认项或确认文件变化。",
         status: .warning
       )
@@ -135,7 +135,7 @@ extension PublishingStore {
 
     let profile = store.activeProfile
     guard let operation = beginLocalRepositoryMutation(profile: profile) else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         "已有本地仓库写入或提交任务正在运行，请等待完成。",
         status: .warning
       )
@@ -146,7 +146,7 @@ extension PublishingStore {
       )
     }
     defer { finishLocalRepositoryMutation(operation) }
-    setPublishActionMessage("正在后台批量写入本地仓库…", status: .inProgress)
+    setPublishingActionMessage("正在后台批量写入本地仓库…", status: .inProgress)
 
     var writtenItems: [BatchPublishPlanItem] = []
     var writtenPaths: [String] = []
@@ -197,17 +197,17 @@ extension PublishingStore {
     )
 
     if !stillCurrent {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         "原站点批量写入完成：成功 \(result.writtenDraftCount) 篇、失败 \(failedTitles.count) 篇；当前站点已变化。",
         status: .warning
       )
     } else if failedTitles.isEmpty {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         "已批量写入 \(result.writtenDraftCount) 篇、\(result.writtenPaths.count) 个文件。",
         status: .success
       )
     } else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         "已写入 \(result.writtenDraftCount) 篇，\(failedTitles.count) 篇失败：\(failedTitles.joined(separator: "；"))",
         status: .warning
       )
@@ -252,14 +252,14 @@ extension PublishingStore {
     guard self.remoteConflictResolutionOperationID == nil
       || self.remoteConflictResolutionOperationID == conflictResolutionOperationID
     else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.text("远端冲突协调正在运行，请等待完成。"),
         status: .warning
       )
       return nil
     }
     guard store.canUseProtectedWorkbench else {
-      setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
+      setPublishingActionMessage(store.quickHideOperationMessage, status: .warning)
       return nil
     }
 
@@ -270,7 +270,7 @@ extension PublishingStore {
           profile: store.activeProfile
         )
       } catch {
-        setPublishActionMessage(error.localizedDescription, status: .warning)
+        setPublishingActionMessage(error.localizedDescription, status: .warning)
         return nil
       }
     }
@@ -278,7 +278,7 @@ extension PublishingStore {
     await store.refreshBatchPublishPlanAsync()
 
     guard var batchPlan = batchPublishPlan else {
-      setPublishActionMessage("没有可线上发布的批量队列。", status: .warning)
+      setPublishingActionMessage("没有可线上发布的批量队列。", status: .warning)
       return nil
     }
 
@@ -286,7 +286,7 @@ extension PublishingStore {
     // online queue. Site drafts remain excluded by remotePublishableItems.
     var publishableItems = batchPlan.remotePublishableItems
     guard !publishableItems.isEmpty else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         "当前没有可批量发布的文章。待下线请求请在回收站单独处理。",
         status: .warning
       )
@@ -296,14 +296,14 @@ extension PublishingStore {
     var profile = store.activeProfile
     var mode = modeOverride ?? preferredRemoteRepositoryPublishMode(for: profile)
     guard var package = exactPackageOverride ?? remotePublishPackage(for: batchPlan) else {
-      setPublishActionMessage("批量队列没有可上传的文件。", status: .warning)
+      setPublishingActionMessage("批量队列没有可上传的文件。", status: .warning)
       return nil
     }
     let reviewedFiles = package.files
     let reviewedDraftIDs = publishableItems.map(\.draftID)
 
     if let expectedReview, !expectedReview.matches(plan: batchPlan, package: package) {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.text("待发布文章或内容已变化，请重新打开确认页审阅完整清单。"),
         status: .warning
       )
@@ -324,7 +324,7 @@ extension PublishingStore {
     if let expectedTarget,
       expectedTarget != reviewedTarget
     {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.text("发布目标已变化，请重新打开确认页核对仓库、分支和发布方式。"),
         status: .warning
       )
@@ -340,21 +340,21 @@ extension PublishingStore {
           repositoryReport: store.repositoryReport(for: profile)
         )
       } catch {
-        setPublishActionMessage(error.localizedDescription, status: .warning)
+        setPublishingActionMessage(error.localizedDescription, status: .warning)
         return nil
       }
     }
     if let expectedChangedPaths,
       Set(initialPreview.changedPaths) != expectedChangedPaths
     {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。"),
         status: .warning
       )
       return nil
     }
     if let tokenAccessFailureMessage = initialPreview.tokenAccessFailureMessage {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.format(
           "仓库 Token 状态读取失败：%@",
           tokenAccessFailureMessage
@@ -364,7 +364,7 @@ extension PublishingStore {
       return nil
     }
     guard initialPreview.hasToken else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         "仓库访问 Token 未保存，无法批量线上发布。",
         status: .warning
       )
@@ -372,7 +372,7 @@ extension PublishingStore {
     }
     let initialBlockingIssues = blockingIssuesBeforeAuthoritativeRemotePreflight(initialPreview)
     guard initialBlockingIssues.isEmpty else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         blockedLocalPublishMessage(action: "批量线上发布", issues: initialBlockingIssues),
         status: .warning
       )
@@ -389,13 +389,13 @@ extension PublishingStore {
     guard let refreshedBatchPlan = self.batchPublishPlan,
       refreshedBatchPlan.profileID == store.activeProfileID
     else {
-      setPublishActionMessage("没有可线上发布的批量队列。", status: .warning)
+      setPublishingActionMessage("没有可线上发布的批量队列。", status: .warning)
       return nil
     }
     batchPlan = refreshedBatchPlan
     publishableItems = batchPlan.remotePublishableItems
     guard publishableItems.map(\.draftID) == reviewedDraftIDs else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         "待发布文章已变化，请重新打开确认页审阅完整清单。",
         status: .warning
       )
@@ -403,11 +403,11 @@ extension PublishingStore {
     }
     if exactPackageOverride == nil {
       guard let refreshedPackage = remotePublishPackage(for: batchPlan) else {
-        setPublishActionMessage("批量队列没有可上传的文件。", status: .warning)
+        setPublishingActionMessage("批量队列没有可上传的文件。", status: .warning)
         return nil
       }
       if refreshedPackage.files != reviewedFiles {
-        setPublishActionMessage(
+        setPublishingActionMessage(
           CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。"),
           status: .warning
         )
@@ -427,7 +427,7 @@ extension PublishingStore {
     if reviewedTarget
       != RemoteRepositoryPublishTargetSnapshot(profile: profile, preview: preview)
     {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.text("发布目标已变化，请重新打开确认页核对仓库、分支和发布方式。"),
         status: .warning
       )
@@ -436,7 +436,7 @@ extension PublishingStore {
     if let expectedChangedPaths,
       Set(preview.changedPaths) != expectedChangedPaths
     {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。"),
         status: .warning
       )
@@ -452,13 +452,13 @@ extension PublishingStore {
           repositoryReport: store.repositoryReport(for: profile)
         )
       } catch {
-        setPublishActionMessage(error.localizedDescription, status: .warning)
+        setPublishingActionMessage(error.localizedDescription, status: .warning)
         return nil
       }
     }
     let refreshedBlockingIssues = blockingIssuesBeforeAuthoritativeRemotePreflight(preview)
     guard refreshedBlockingIssues.isEmpty else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         blockedLocalPublishMessage(action: "批量线上发布", issues: refreshedBlockingIssues),
         status: .warning
       )
@@ -469,7 +469,7 @@ extension PublishingStore {
       preview.accessCheck?.canWrite == true,
       blockingIssuesBeforeAuthoritativeRemotePreflight(preview).isEmpty
     else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         "Token 权限未通过，无法批量线上发布。",
         status: .failure
       )
@@ -495,7 +495,7 @@ extension PublishingStore {
     if let validationBeforeRemoteMutation {
       let isStillValid = await validationBeforeRemoteMutation()
       guard isStillValid else {
-        setPublishActionMessage(
+        setPublishingActionMessage(
           CoreL10n.text("已审阅的发布包在等待期间发生变化，未写入远端。"),
           status: .warning
         )
@@ -504,7 +504,7 @@ extension PublishingStore {
     }
 
     guard remoteRepositoryMutationContext == nil else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         "已有远端仓库操作正在运行，请等待完成。",
         status: .warning
       )
@@ -518,14 +518,14 @@ extension PublishingStore {
         conflictResolutionOperationID: conflictResolutionOperationID
       )
     else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         "已有远端仓库操作正在运行，请等待完成。",
         status: .warning
       )
       return nil
     }
     store.setRemoteRepositoryPublishProgress(nil)
-    setPublishActionMessage(
+    setPublishingActionMessage(
       mode == .directCommit
         ? CoreL10n.format(
           "正在通过 %@ 批量核对远端版本并执行 %@…", profile.repositoryProvider.displayName, mode.displayName)
@@ -621,7 +621,7 @@ extension PublishingStore {
               detail: message
             )
           )
-          setPublishActionMessage(message, status: .warning)
+          setPublishingActionMessage(message, status: .warning)
           store.save()
           return nil
         }
@@ -692,7 +692,7 @@ extension PublishingStore {
         operationSummary: operationSummary,
         deploymentStatus: deploymentStatus
       )
-      setPublishActionMessage(
+      setPublishingActionMessage(
         completionFeedback.message,
         status: completionFeedback.status
       )
@@ -740,7 +740,7 @@ extension PublishingStore {
             detail: message
           )
         )
-        setPublishActionMessage(message, status: .warning)
+        setPublishingActionMessage(message, status: .warning)
         store.save()
         return nil
       }
@@ -754,7 +754,7 @@ extension PublishingStore {
             message: CoreL10n.text("批量发布已中断"),
             detail: message
           ))
-        setPublishActionMessage(message, status: .warning)
+        setPublishingActionMessage(message, status: .warning)
         return nil
       }
       let message = "批量\(mode.displayName)失败：\(error.localizedDescription)"
@@ -785,7 +785,7 @@ extension PublishingStore {
           error: error
         )
       }
-      setPublishActionMessage(message, status: .failure)
+      setPublishingActionMessage(message, status: .failure)
       if store.shouldRefreshDeploymentStatusAfterRemoteOperation(releaseRecord) {
         await store.refreshDeploymentStatus(for: releaseRecord, updatesMessage: false)
       }

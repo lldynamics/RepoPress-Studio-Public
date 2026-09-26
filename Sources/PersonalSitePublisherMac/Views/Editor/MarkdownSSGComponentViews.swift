@@ -2,6 +2,7 @@ import PublishingMarkdownCore
 import SwiftUI
 
 struct MarkdownSSGComponentThumbnail: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let kind: MarkdownSSGComponentKind
   let title: String
   let previewText: String
@@ -75,7 +76,7 @@ struct MarkdownSSGComponentThumbnail: View {
         .foregroundStyle(.secondary)
         .lineLimit(2)
       Capsule()
-        .fill(Color.accentColor.opacity(0.28))
+        .fill(workbenchAccentColor.opacity(0.28))
         .frame(width: 90, height: 4)
     }
     .padding(10)
@@ -84,7 +85,7 @@ struct MarkdownSSGComponentThumbnail: View {
   private var videoPreview: some View {
     ZStack {
       LinearGradient(
-        colors: [Color.black.opacity(0.72), Color.accentColor.opacity(0.55)],
+        colors: [Color.black.opacity(0.72), workbenchAccentColor.opacity(0.55)],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
       )
@@ -132,7 +133,7 @@ struct MarkdownSSGComponentThumbnail: View {
       RoundedRectangle(cornerRadius: 5)
         .fill(
           LinearGradient(
-            colors: [Color.accentColor.opacity(0.30), Color.accentColor.opacity(0.08)],
+            colors: [workbenchAccentColor.opacity(0.30), workbenchAccentColor.opacity(0.08)],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
           )
@@ -168,7 +169,7 @@ struct MarkdownSSGComponentThumbnail: View {
         .foregroundStyle(.secondary)
         .lineLimit(2)
       Capsule()
-        .fill(Color.accentColor.opacity(0.30))
+        .fill(workbenchAccentColor.opacity(0.30))
         .frame(width: 72, height: 4)
     }
     .padding(10)

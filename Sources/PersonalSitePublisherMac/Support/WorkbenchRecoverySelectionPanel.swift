@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 
 enum WorkbenchRecoverySelectionPanel {
   @MainActor
-  static func chooseSnapshot() -> URL? {
+  static func chooseSnapshot() async -> URL? {
     let panel = NSOpenPanel()
     panel.title = String(localized: "选择工作台恢复文件")
     panel.prompt = String(localized: "验证并恢复")
@@ -12,11 +12,11 @@ enum WorkbenchRecoverySelectionPanel {
     panel.canChooseDirectories = false
     panel.allowsMultipleSelection = false
     panel.allowedContentTypes = [.json]
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 
   @MainActor
-  static func chooseExportDirectory() -> URL? {
+  static func chooseExportDirectory() async -> URL? {
     let panel = NSOpenPanel()
     panel.title = String(localized: "导出工作台故障文件")
     panel.prompt = String(localized: "导出")
@@ -24,6 +24,6 @@ enum WorkbenchRecoverySelectionPanel {
     panel.canChooseFiles = false
     panel.canChooseDirectories = true
     panel.allowsMultipleSelection = false
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 }

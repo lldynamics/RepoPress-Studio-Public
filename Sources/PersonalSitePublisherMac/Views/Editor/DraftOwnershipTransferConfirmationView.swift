@@ -2,6 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct DraftOwnershipTransferConfirmationView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let plan: DraftOwnershipTransferPlan
   let onConfirm: (DraftOwnershipTransferPlan) -> Bool
 
@@ -63,10 +64,10 @@ struct DraftOwnershipTransferConfirmationView: View {
     HStack(alignment: .top, spacing: 14) {
       Image(systemName: headerSystemImage)
         .font(.system(size: 22, weight: .semibold))
-        .foregroundStyle(plan.conflicts.isEmpty ? Color.accentColor : WorkbenchTheme.risk)
+        .foregroundStyle(plan.conflicts.isEmpty ? workbenchAccentColor : WorkbenchTheme.risk)
         .frame(width: 42, height: 42)
         .background(
-          (plan.conflicts.isEmpty ? Color.accentColor : WorkbenchTheme.risk)
+          (plan.conflicts.isEmpty ? workbenchAccentColor : WorkbenchTheme.risk)
             .opacity(WorkbenchOpacity.accentBackground),
           in: RoundedRectangle(cornerRadius: 10)
         )

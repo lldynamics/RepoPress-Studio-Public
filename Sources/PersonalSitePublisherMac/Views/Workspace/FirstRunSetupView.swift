@@ -1,8 +1,10 @@
+import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
 
 enum FirstRunSetupPath: String, CaseIterable, Identifiable {
   case connectExistingRepository
+  case cloneRemoteRepository
   case localDrafts
 
   var id: String { rawValue }
@@ -11,6 +13,8 @@ enum FirstRunSetupPath: String, CaseIterable, Identifiable {
     switch self {
     case .connectExistingRepository:
       return String(localized: "连接已有仓库")
+    case .cloneRemoteRepository:
+      return String(localized: "从 GitHub/GitLab 克隆")
     case .localDrafts:
       return String(localized: "暂不配置站点")
     }
@@ -20,6 +24,8 @@ enum FirstRunSetupPath: String, CaseIterable, Identifiable {
     switch self {
     case .connectExistingRepository:
       return String(localized: "选择已有的本地站点仓库，应用会按你选择的绝对路径读取配置并导入文章。")
+    case .cloneRemoteRepository:
+      return String(localized: "输入 HTTPS 仓库地址，选择保存位置，克隆完成后再确认站点规则。")
     case .localDrafts:
       return String(localized: "先写本地 Markdown 草稿，不要求仓库、站点类型或发布配置。")
     }
@@ -29,6 +35,8 @@ enum FirstRunSetupPath: String, CaseIterable, Identifiable {
     switch self {
     case .connectExistingRepository:
       return "externaldrive.badge.checkmark"
+    case .cloneRemoteRepository:
+      return "square.and.arrow.down"
     case .localDrafts:
       return "square.and.pencil"
     }
@@ -38,7 +46,7 @@ enum FirstRunSetupPath: String, CaseIterable, Identifiable {
 
   var destination: FirstRunSetupDestination {
     switch self {
-    case .connectExistingRepository:
+    case .connectExistingRepository, .cloneRemoteRepository:
       return .repositoryWizard
     case .localDrafts:
       return .localDrafts
@@ -256,6 +264,7 @@ private struct FirstRunSetupPathCard: View {
 }
 
 struct FirstRunSetupView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let store: WorkbenchStore
   let finish: (FirstRunSetupCompletion) -> FirstRunSetupCommitResult
   let skip: () -> Void
@@ -269,6 +278,10 @@ struct FirstRunSetupView: View {
   @State private var repositoryDetectionID: UUID?
   @State private var isPreparingRepository = false
   @State private var repositoryMessage: String?
+  @State private var remoteRepositoryURL = ""
+  @State private var cloneParentURL: URL?
+  @State private var isCloningRepository = false
+  @State private var cloneTask: Task<Void, Never>?
   @State private var completionMessage: String?
   @State private var requiresSamePathRetry = false
   @State private var isCommitConfirmationPresented = false
@@ -325,6 +338,7 @@ struct FirstRunSetupView: View {
     } message: {
       Text("这会应用上方预览的站点、发布和可选 AI 关联规则，并保存你选择的本地仓库。返回或取消不会保存这些改动。")
     }
+    .onDisappear { cloneTask?.cancel() }
   }
 
   private var header: some View {
@@ -453,25 +467,71 @@ struct FirstRunSetupView: View {
           .foregroundStyle(.secondary)
       }
 
-      Button {
-        chooseRepository()
-      } label: {
-        Label(
-          hasRepository
-            ? String(localized: "更换本地仓库")
-            : String(localized: "选择本地仓库"),
-          systemImage: "folder.badge.plus"
-        )
+      if selectedPath == .cloneRemoteRepository {
+        cloneRepositoryControls
+      } else {
+        Button {
+          chooseRepository()
+        } label: {
+          Label(
+            hasRepository
+              ? String(localized: "更换本地仓库")
+              : String(localized: "选择本地仓库"),
+            systemImage: "folder.badge.plus"
+          )
+        }
+        .workbenchProminentActionStyle()
+        .disabled(isPreparingRepository)
       }
-      .workbenchProminentActionStyle()
-      .disabled(isPreparingRepository)
 
-      if isPreparingRepository {
-        ProgressView(String(localized: "正在读取仓库配置…"))
+      if isPreparingRepository || isCloningRepository {
+        ProgressView(
+          isCloningRepository
+            ? String(localized: "正在克隆仓库…")
+            : String(localized: "正在读取仓库配置…")
+        )
           .controlSize(.small)
       } else if let repositoryMessage {
         AccessibleStatusMessage(message: repositoryMessage, severity: .error)
       }
+    }
+  }
+
+  private var cloneRepositoryControls: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      TextField("GitHub/GitLab HTTPS 仓库地址", text: $remoteRepositoryURL)
+        .textFieldStyle(.roundedBorder)
+        .autocorrectionDisabled()
+        .accessibilityLabel("GitHub/GitLab HTTPS 仓库地址")
+        .accessibilityIdentifier("first-run-clone-url")
+
+      HStack {
+        Button("选择保存位置…") {
+          chooseCloneParent()
+        }
+        .disabled(isCloningRepository || isPreparingRepository)
+        if let cloneParentURL {
+          Text(cloneParentURL.path)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+        }
+      }
+
+      Button("克隆仓库") {
+        cloneRepository()
+      }
+      .workbenchProminentActionStyle()
+      .disabled(
+        FirstRunRepositoryCloneSource(text: remoteRepositoryURL) == nil
+          || cloneParentURL == nil || isCloningRepository || isPreparingRepository
+      )
+      .accessibilityIdentifier("first-run-clone-repository")
+
+      Text("克隆仅写入你选择位置中的新文件夹；完成前不会保存站点配置。私有仓库需由系统 Git 凭据支持。")
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
   }
 
@@ -543,7 +603,7 @@ struct FirstRunSetupView: View {
             }
           }
           .pickerStyle(.segmented)
-          .tint(WorkbenchTheme.navigationSelection)
+          .tint(workbenchAccentColor)
 
           Picker("发布策略", selection: publishStrategyBinding) {
             ForEach(RepositoryPublishStrategy.allCases) { strategy in
@@ -649,12 +709,15 @@ struct FirstRunSetupView: View {
       } else {
         if step == .repository {
           Button("返回") {
+            cloneTask?.cancel()
+            cloneTask = nil
             isRepositorySetupActive = false
             stagedProfile = nil
             autoConfigurationProposal = nil
             selectedAIConnectionID = nil
             repositoryDetectionID = nil
             isPreparingRepository = false
+            isCloningRepository = false
             repositoryMessage = nil
           }
         } else {
@@ -693,6 +756,8 @@ struct FirstRunSetupView: View {
       autoConfigurationProposal = nil
       selectedAIConnectionID = nil
       repositoryDetectionID = nil
+      repositoryMessage = nil
+      isCloningRepository = false
       isRepositorySetupActive = true
       step = .repository
     case .localDrafts:
@@ -853,13 +918,59 @@ struct FirstRunSetupView: View {
   }
 
   private func chooseRepository() {
-    guard let url = RepositorySelectionPanel.chooseDirectory() else { return }
+    Task { @MainActor in
+      guard let url = await RepositorySelectionPanel.chooseDirectory() else { return }
+      stageRepository(url)
+    }
+  }
+
+  private func chooseCloneParent() {
+    let panel = NSOpenPanel()
+    panel.title = String(localized: "选择克隆仓库的保存位置")
+    panel.prompt = String(localized: "选择此位置")
+    panel.canChooseFiles = false
+    panel.canChooseDirectories = true
+    panel.allowsMultipleSelection = false
+    Task { @MainActor in
+      if await WindowSheetPresenter.response(to: panel) == .OK {
+        cloneParentURL = panel.url
+      }
+    }
+  }
+
+  private func cloneRepository() {
+    guard let source = FirstRunRepositoryCloneSource(text: remoteRepositoryURL),
+      let cloneParentURL, !isCloningRepository
+    else { return }
+    isCloningRepository = true
+    repositoryMessage = nil
+    cloneTask = Task { @MainActor in
+      do {
+        let url = try await FirstRunRepositoryCloneService.clone(source, in: cloneParentURL)
+        guard !Task.isCancelled, isRepositorySetupActive,
+          selectedPath == .cloneRemoteRepository
+        else { return }
+        isCloningRepository = false
+        stageRepository(url, securityScopeURL: cloneParentURL)
+      } catch {
+        guard !Task.isCancelled else { return }
+        repositoryMessage = error.localizedDescription
+        isCloningRepository = false
+      }
+      cloneTask = nil
+    }
+  }
+
+  private func stageRepository(_ url: URL, securityScopeURL: URL? = nil) {
     let detectionID = UUID()
     let fallbackProfile = setupProfile
     repositoryDetectionID = detectionID
     isPreparingRepository = true
     repositoryMessage = nil
     Task { @MainActor in
+      let scopeURL = securityScopeURL ?? url
+      let hasAccess = scopeURL.startAccessingSecurityScopedResource()
+      defer { if hasAccess { scopeURL.stopAccessingSecurityScopedResource() } }
       let proposal = await Task.detached(priority: .userInitiated) {
         LocalRepositoryService().autoConfigurationProposal(
           for: url,
@@ -886,7 +997,8 @@ struct FirstRunSetupView: View {
     guard let stagedProfile else { return }
     complete(
       FirstRunSetupCompletion(
-        path: .connectExistingRepository,
+        path: selectedPath == .cloneRemoteRepository
+          ? .cloneRemoteRepository : .connectExistingRepository,
         stagedProfile: stagedProfile.profile
       )
     )

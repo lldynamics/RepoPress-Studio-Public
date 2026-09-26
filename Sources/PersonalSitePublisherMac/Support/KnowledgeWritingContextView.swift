@@ -318,6 +318,7 @@ struct KnowledgeWritingTargetPickerPresentation: Identifiable, Hashable {
 }
 
 struct KnowledgeWritingTargetPicker: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let targets: [KnowledgeWritingTargetPickerPresentation]
   let selectedID: UUID?
   let onReturnToWriting: () -> Void
@@ -393,7 +394,7 @@ struct KnowledgeWritingTargetPicker: View {
   private func targetRow(_ target: KnowledgeWritingTargetPickerPresentation) -> some View {
     HStack(spacing: 9) {
       Image(systemName: target.id == selectedID ? "checkmark.circle.fill" : "doc.text")
-        .foregroundStyle(target.id == selectedID ? Color.accentColor : .secondary)
+        .foregroundStyle(target.id == selectedID ? workbenchAccentColor : .secondary)
         .frame(width: 16)
         .accessibilityHidden(true)
 

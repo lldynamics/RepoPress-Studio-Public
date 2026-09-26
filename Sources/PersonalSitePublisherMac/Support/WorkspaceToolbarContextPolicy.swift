@@ -7,9 +7,16 @@ enum WorkspaceToolbarContextPolicy {
   enum PrimaryActionContext: Equatable {
     case publishing
     case rssReading
+    case knowledgeLibrary
+    case images
   }
 
   static func primaryActionContext(for section: WorkspaceSection) -> PrimaryActionContext {
-    section == .rss ? .rssReading : .publishing
+    switch section {
+    case .rss: .rssReading
+    case .library: .knowledgeLibrary
+    case .images: .images
+    case .writing, .sync, .contentHealth: .publishing
+    }
   }
 }

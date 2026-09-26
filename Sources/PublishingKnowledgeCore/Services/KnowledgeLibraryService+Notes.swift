@@ -329,7 +329,7 @@ extension KnowledgeLibraryService {
     }
     let markdownData = Data(source.markdown.utf8)
     guard markdownData.count <= KnowledgeLibraryFileReadLimits.textDocumentByteCount else {
-      throw KnowledgeLibraryError.sourceLimitExceeded("笔记正文超过 64 MB。")
+      throw KnowledgeLibraryError.sourceLimitExceeded(CoreL10n.text("笔记正文超过 64 MB。"))
     }
     let sourceURL = try normalizedNoteSourceURL(source.sourceURL)
     let tags = normalizedMetadataValues(source.tags, maximumCount: 50, maximumLength: 80)
@@ -394,7 +394,9 @@ extension KnowledgeLibraryService {
         throw KnowledgeLibraryError.invalidMetadata("笔记附件文件名无效。")
       }
       guard attachment.data.count <= KnowledgeLibraryFileReadLimits.binaryDocumentByteCount else {
-        throw KnowledgeLibraryError.sourceLimitExceeded("笔记附件超过 128 MB：\(name)")
+        throw KnowledgeLibraryError.sourceLimitExceeded(
+          CoreL10n.format("笔记附件超过 128 MB：%@", name)
+        )
       }
       let hash = KnowledgeChunkingService.contentHash(for: attachment.data)
       return KnowledgeStoredNoteAttachment(

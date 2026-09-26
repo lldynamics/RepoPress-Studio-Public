@@ -7,6 +7,7 @@ import SwiftUI
 /// persisted values; it does not introduce a second editor configuration
 /// source.
 struct EditorSettingsView: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @AppStorage(MarkdownEditorComfortPreferences.bodyFontStyleKey)
   private var bodyFontStyleRawValue = MarkdownEditorBodyFontStyle.defaultStyle.rawValue
   @AppStorage(MarkdownEditorComfortPreferences.fontSizeKey)
@@ -261,7 +262,7 @@ struct EditorSettingsView: View {
       HStack(spacing: 0) {
         if isCurrentParagraphHighlightEnabled {
           RoundedRectangle(cornerRadius: 2)
-            .fill(Color.accentColor)
+            .fill(workbenchAccentColor)
             .frame(width: 3)
             .padding(.trailing, 8)
         }
@@ -276,7 +277,7 @@ struct EditorSettingsView: View {
       .padding(.horizontal, isCurrentParagraphHighlightEnabled ? 6 : 0)
       .background(
         isCurrentParagraphHighlightEnabled
-          ? Color.accentColor.opacity(0.08)
+          ? workbenchAccentColor.opacity(0.08)
           : Color.clear,
         in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
       )

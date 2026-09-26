@@ -1,3 +1,4 @@
+import AppKit
 import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
@@ -26,6 +27,7 @@ struct WorkspaceShellSplitLayout: View {
   @AppStorage("workspacePrimarySidebarWidthV2")
   private var storedSidebarWidth = Double(WorkbenchLayoutMode.defaultSidebarWidth)
   @State private var sidebarResizeStartWidth: CGFloat?
+  @State private var isSidebarResizeCursorActive = false
   @StateObject private var contentHealthSidebarProjection = ContentHealthSidebarProjection()
 
   init(
@@ -174,6 +176,9 @@ struct WorkspaceShellSplitLayout: View {
         Color.clear
           .frame(width: 10)
           .contentShape(Rectangle())
+          .onHover(perform: setSidebarResizeCursor)
+          .onDisappear { setSidebarResizeCursor(false) }
+          .help("拖动以调整侧栏宽度")
           .gesture(
             DragGesture(minimumDistance: 1)
               .onChanged { value in
@@ -201,5 +206,15 @@ struct WorkspaceShellSplitLayout: View {
           break
         }
       }
+  }
+
+  private func setSidebarResizeCursor(_ active: Bool) {
+    guard isSidebarResizeCursorActive != active else { return }
+    isSidebarResizeCursorActive = active
+    if active {
+      NSCursor.resizeLeftRight.push()
+    } else {
+      NSCursor.pop()
+    }
   }
 }

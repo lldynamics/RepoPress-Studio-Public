@@ -2,7 +2,7 @@ import AppKit
 
 enum WorkbenchDiagnosticsSelectionPanel {
   @MainActor
-  static func chooseExportDirectory() -> URL? {
+  static func chooseExportDirectory() async -> URL? {
     let panel = NSOpenPanel()
     panel.title = String(localized: "选择诊断包导出位置")
     panel.prompt = String(localized: "导出")
@@ -10,6 +10,6 @@ enum WorkbenchDiagnosticsSelectionPanel {
     panel.canChooseFiles = false
     panel.canChooseDirectories = true
     panel.allowsMultipleSelection = false
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 }

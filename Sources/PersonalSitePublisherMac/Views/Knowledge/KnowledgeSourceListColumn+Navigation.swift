@@ -227,6 +227,7 @@ extension KnowledgeSourceListColumn {
       importSources: {
         isImportPresented = true
       },
+      createNote: beginQuickNote,
       selectPreviousDocument: {
         selectRelativeDocument(offset: -1)
       },

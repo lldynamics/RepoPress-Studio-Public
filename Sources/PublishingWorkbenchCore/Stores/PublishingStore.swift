@@ -11,13 +11,28 @@ public enum PublishActionMessageStatus: String, Hashable, Sendable {
   case failure
 }
 
+/// Names the workflow that produced a shared action message. Consumers that
+/// surface messages in a focused UI must not infer the workflow from text or
+/// failure severity alone.
+public enum PublishActionFeedbackSource: Hashable, Sendable {
+  case general
+  case publishing
+  case gitOperation
+}
+
 public struct PublishActionFeedback: Hashable, Sendable {
   public let message: String
   public let status: PublishActionMessageStatus
+  public let source: PublishActionFeedbackSource
 
-  public init(message: String, status: PublishActionMessageStatus) {
+  public init(
+    message: String,
+    status: PublishActionMessageStatus,
+    source: PublishActionFeedbackSource = .general
+  ) {
     self.message = message
     self.status = status
+    self.source = source
   }
 }
 
@@ -413,11 +428,26 @@ public final class PublishingStore: ObservableObject {
 
   func setPublishActionMessage(
     _ message: String?,
-    status: PublishActionMessageStatus
+    status: PublishActionMessageStatus,
+    source: PublishActionFeedbackSource = .general
   ) {
     publishActionFeedback = message.map {
-      PublishActionFeedback(message: $0, status: status)
+      PublishActionFeedback(message: $0, status: status, source: source)
     }
+  }
+
+  func setPublishingActionMessage(
+    _ message: String?,
+    status: PublishActionMessageStatus
+  ) {
+    setPublishActionMessage(message, status: status, source: .publishing)
+  }
+
+  public var publishDrawerFeedback: PublishActionFeedback? {
+    guard let feedback = publishActionFeedback, feedback.source != .general else {
+      return nil
+    }
+    return feedback
   }
 
 }

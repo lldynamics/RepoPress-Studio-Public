@@ -110,15 +110,15 @@ extension AIChatContextInspectorView {
         HStack(spacing: 6) {
           Image(systemName: "sparkles")
             .font(.workbenchMetadata)
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(workbenchAccentColor)
           Text("AI 思考中…")
             .font(.caption.weight(.medium))
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(workbenchAccentColor)
           Spacer()
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+        .background(workbenchAccentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
       }
 
       AIOutboundPayloadSummaryView(scopeID: inspectorSurfaceConversationID)
@@ -186,48 +186,12 @@ extension AIChatContextInspectorView {
         HStack(spacing: 8) {
           contextReferenceMenu
 
-          Menu {
-            if availableChatImageAttachments.isEmpty {
-              Text(String(localized: "当前文章没有可发送的图片"))
-            } else {
-              ForEach(availableChatImageAttachments) { attachment in
-                let knownFailureReason = AIChatImageAttachmentSelectionPolicy.knownFailureReason(
-                  for: attachment
-                )
-                let isSelected = selectedChatImageAttachmentIDs.contains(attachment.id)
-                Button {
-                  toggleChatImageAttachment(attachment.id)
-                } label: {
-                  VStack(alignment: .leading, spacing: 2) {
-                    Label(
-                      attachment.originalFilename,
-                      systemImage: isSelected ? "checkmark.circle.fill" : "circle"
-                    )
-                    if let knownFailureReason {
-                      Text(knownFailureReason)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
-                  }
-                }
-                .disabled(!isSelected && knownFailureReason != nil)
-              }
-              Divider()
-              Button(String(localized: "清空图片选择")) {
-                setSelectedImageAttachmentIDs([])
-              }
-              .disabled(selectedChatImageAttachmentIDs.isEmpty)
-            }
-          } label: {
-            Label(
-              selectedChatImageAttachmentIDs.isEmpty
-                ? String(localized: "添加图片")
-                : String(localized: "图片 \(selectedChatImageAttachmentIDs.count)"),
-              systemImage: "paperclip"
-            )
-          }
-          .menuStyle(.borderlessButton)
-          .fixedSize()
+          AIChatImageAttachmentPicker(
+            attachments: availableChatImageAttachments,
+            selectedIDs: selectedChatImageAttachmentIDs,
+            onToggle: toggleChatImageAttachment,
+            onClear: { setSelectedImageAttachmentIDs([]) }
+          )
           .disabled(
             inspectorDraft == nil
               || !currentAIProviderConfig.supportsImageInput
@@ -818,5 +782,82 @@ extension AIChatContextInspectorView {
     }
     setInspectorSurfaceConversationID(conversation.id)
     return conversation
+  }
+}
+
+/// A popover keeps the attachment checklist open while the user makes several
+/// selections. A menu closes after every button activation, which makes a
+/// multi-image choice needlessly repetitive with a pointer.
+private struct AIChatImageAttachmentPicker: View {
+  let attachments: [DraftAttachment]
+  let selectedIDs: Set<UUID>
+  let onToggle: (UUID) -> Void
+  let onClear: () -> Void
+  @State private var isPresented = false
+
+  var body: some View {
+    Button {
+      isPresented = true
+    } label: {
+      Label(
+        selectedIDs.isEmpty
+          ? String(localized: "添加图片")
+          : String(localized: "图片 \(selectedIDs.count)"),
+        systemImage: "paperclip"
+      )
+    }
+    .buttonStyle(.borderless)
+    .fixedSize()
+    .accessibilityIdentifier("ai-chat-image-attachment-picker")
+    .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+      VStack(alignment: .leading, spacing: 10) {
+        Text("添加图片")
+          .font(.headline)
+
+        if attachments.isEmpty {
+          Text("当前文章没有可发送的图片")
+            .foregroundStyle(.secondary)
+        } else {
+          ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+              ForEach(attachments) { attachment in
+                let knownFailureReason = AIChatImageAttachmentSelectionPolicy.knownFailureReason(
+                  for: attachment
+                )
+                Toggle(
+                  isOn: Binding(
+                    get: { selectedIDs.contains(attachment.id) },
+                    set: { _ in onToggle(attachment.id) }
+                  )
+                ) {
+                  VStack(alignment: .leading, spacing: 2) {
+                    Text(attachment.originalFilename)
+                    if let knownFailureReason {
+                      Text(knownFailureReason)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                  }
+                }
+                .toggleStyle(.checkbox)
+                .disabled(!selectedIDs.contains(attachment.id) && knownFailureReason != nil)
+              }
+            }
+          }
+          .frame(maxHeight: 280)
+
+          Divider()
+          HStack {
+            Button("清空图片选择", action: onClear)
+              .disabled(selectedIDs.isEmpty)
+            Spacer()
+            Button("完成") { isPresented = false }
+              .keyboardShortcut(.defaultAction)
+          }
+        }
+      }
+      .padding(14)
+      .frame(minWidth: 280)
+    }
   }
 }

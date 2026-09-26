@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 #if canImport(FoundationNetworking)
   import FoundationNetworking
@@ -47,7 +48,7 @@ public struct RSSFeedDiscoveryService: Sendable {
         throw RSSReaderError.httpStatus(response.statusCode)
       }
       guard let html = String(data: data, encoding: .utf8) else {
-        throw RSSReaderError.parseFailed("网页不是可识别的 UTF-8 文本")
+        throw RSSReaderError.parseFailed(CoreL10n.text("网页不是可识别的 UTF-8 文本"))
       }
       return Self.feedURLs(
         in: html,

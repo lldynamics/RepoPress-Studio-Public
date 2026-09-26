@@ -60,6 +60,7 @@ struct AIChatGeneralKeyAvailabilityRefreshKey: Equatable {
 }
 
 struct AIChatContextInspectorView: View {
+  @Environment(\.workbenchAccentColor) var workbenchAccentColor
   @Environment(\.openSettings) var openSettings
   @Environment(\.settingsWorkspaceCommandAction) var settingsWorkspaceCommandAction
   let ai: WorkbenchAIFeatureFacade

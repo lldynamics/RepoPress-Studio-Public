@@ -91,7 +91,7 @@ final class WorkbenchTaskCenterFacadeTests: XCTestCase {
       conversationID: conversationID,
       requiresDuplicateChargeConfirmation: false
     )
-    store.setAIChatMessage("AI 讨论失败：网络超时")
+    store.setAIChatFailureMessage("AI 讨论失败：网络超时")
 
     let task = try XCTUnwrap(store.activityStatus.taskCenterItems.first)
     XCTAssertEqual(task.kind, .aiRequest)
@@ -124,6 +124,28 @@ final class WorkbenchTaskCenterFacadeTests: XCTestCase {
     XCTAssertEqual(store.aiStore.activeAIChatOperationID, secondOperationID)
     XCTAssertFalse(store.aiStore.aiChatCancellationRequested())
     store.aiStore.finishAIChatOperation(secondOperationID)
+  }
+
+  func testAIRequestFailureUsesTypedStatusAndClearsOnNewMessage() throws {
+    let store = makeStore()
+    store.setAIChatFailureMessage("The request was rejected by the provider.")
+
+    let task = try XCTUnwrap(
+      store.activityStatus.taskCenterItems.first { $0.kind == .aiRequest }
+    )
+    XCTAssertEqual(task.state, .failed)
+    XCTAssertEqual(task.failureReason, "The request was rejected by the provider.")
+
+    store.setAIChatMessage("无法完成请求")
+    XCTAssertNil(store.activityStatus.taskCenterItems.first { $0.kind == .aiRequest })
+
+    store.setAIActionFailureMessage("The metadata request timed out.")
+    XCTAssertEqual(
+      store.activityStatus.taskCenterItems.first { $0.kind == .aiRequest }?.failureReason,
+      "The metadata request timed out."
+    )
+    store.setAIActionMessage("Ready")
+    XCTAssertNil(store.activityStatus.taskCenterItems.first { $0.kind == .aiRequest })
   }
 
   func testTaskCenterStopCancelsRegisteredRequestTaskAndReleasesAIRequestLane() async throws {
@@ -254,18 +276,92 @@ final class WorkbenchTaskCenterFacadeTests: XCTestCase {
     XCTAssertEqual(store.selectedDraftID, originalDraftID)
   }
 
-  func testGitFailureUsesStructuredStatusInsteadOfMessageKeywords() throws {
+  func testUnrelatedPublishFailureDoesNotBecomeGitTaskAfterRemoteOperation() {
     let store = makeStore()
+    _ = store.activityStatus
+    store.setRemoteRepositoryPublishing(true)
     store.setPublishActionMessage(
-      "Repository rejected the operation.",
+      "本地预览启动失败。",
       status: .failure
     )
+
+    let runningTask = store.activityStatus.taskCenterItems.first {
+      $0.kind == .gitPush
+    }
+    guard let runningTask else {
+      return XCTFail("expected the active Git operation")
+    }
+    XCTAssertEqual(runningTask.state, .running)
+    XCTAssertEqual(runningTask.detail, "正在执行 Git 操作…")
+    XCTAssertEqual(store.publishActionFeedback?.source, .general)
+    XCTAssertNil(store.publishDrawerFeedback)
+    store.setRemoteRepositoryPublishing(false)
+    XCTAssertNil(
+      store.activityStatus.taskCenterItems.first { $0.kind == .gitPush }
+    )
+    XCTAssertEqual(store.activityStatus.failedTaskCount, 0)
+  }
+
+  func testPublishDrawerFeedbackRequiresExplicitPublishingSource() {
+    let store = makeStore()
+
+    store.setPublishActionMessage("站点文件写入失败。", status: .failure)
+    XCTAssertNil(store.publishDrawerFeedback)
+
+    store.publishingStore.setPublishingActionMessage("线上发布失败。", status: .failure)
+
+    XCTAssertEqual(store.publishDrawerFeedback?.message, "线上发布失败。")
+    XCTAssertEqual(store.publishDrawerFeedback?.source, .publishing)
+  }
+
+  func testFailedRemoteGitProgressCreatesRetryableGitTask() throws {
+    let store = makeStore()
+    let draftID = try XCTUnwrap(store.selectedDraft?.id)
+    _ = store.activityStatus
+    store.setRemoteRepositoryPublishing(true)
+    store.setRemoteRepositoryPublishProgress(
+      RemoteRepositoryPublishProgress(
+        stage: .failed,
+        progress: nil,
+        message: "远端推送失败",
+        detail: "权限被拒绝"
+      )
+    )
+    store.setRemoteRepositoryPublishing(false)
 
     let task = try XCTUnwrap(
       store.activityStatus.taskCenterItems.first { $0.kind == .gitPush }
     )
     XCTAssertEqual(task.state, .failed)
-    XCTAssertEqual(task.failureReason, "Repository rejected the operation.")
+    XCTAssertEqual(task.failureReason, "权限被拒绝")
+    XCTAssertTrue(task.canRetry)
+    XCTAssertEqual(
+      task.retryIntent,
+      .gitRemoteDraft(profileID: store.activeProfileID, draftID: draftID)
+    )
+    XCTAssertEqual(
+      task.target,
+      .draft(draftID)
+    )
+  }
+
+  func testExplicitGitFailureFeedbackKeepsRetryableGitTask() throws {
+    let store = makeStore()
+    let draftID = try XCTUnwrap(store.selectedDraft?.id)
+    _ = store.activityStatus
+    store.setRemoteRepositoryPublishing(true)
+    store.setRemoteRepositoryPublishing(false)
+    store.setGitActionMessage("Git 推送失败。", status: .failure)
+
+    let task = try XCTUnwrap(
+      store.activityStatus.taskCenterItems.first { $0.kind == .gitPush }
+    )
+    XCTAssertEqual(task.failureReason, "Git 推送失败。")
+    XCTAssertEqual(
+      task.retryIntent,
+      .gitRemoteDraft(profileID: store.activeProfileID, draftID: draftID)
+    )
+    XCTAssertEqual(task.target, .draft(draftID))
   }
 
   func testGitWarningDoesNotBecomeFailureFromMessageText() {

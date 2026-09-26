@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 /// Value-semantic data prepared before the main-actor RSS store is created.
 ///
@@ -274,7 +275,7 @@ public struct RSSReaderBootstrap: Sendable {
     let snapshot = try decoder.decode(RSSReaderSnapshot.self, from: data)
     guard snapshot.schemaVersion <= RSSReaderSnapshot.currentSchemaVersion else {
       throw RSSReaderError.persistence(
-        "缓存版本 \(snapshot.schemaVersion) 高于当前支持版本"
+        CoreL10n.format("缓存版本 %d 高于当前支持版本", snapshot.schemaVersion)
       )
     }
     return snapshot

@@ -42,7 +42,7 @@ extension RSSReaderStore {
   public func updateFeedURL(feedID: UUID, newURL: URL) throws {
     try validateFeedURL(newURL)
     guard let index = feeds.firstIndex(where: { $0.id == feedID }) else {
-      throw RSSReaderError.persistence("找不到要修改的订阅。")
+      throw RSSReaderError.persistence(CoreL10n.text("找不到要修改的订阅。"))
     }
     if feeds.contains(where: { $0.id != feedID && $0.url.absoluteString == newURL.absoluteString })
     {
@@ -268,10 +268,10 @@ extension RSSReaderStore {
     existingID: UUID? = nil
   ) throws -> RSSArticleHighlight {
     guard requireCompleteArticleIndex() else {
-      throw RSSReaderError.persistence("RSS 文章索引仍在加载，请稍后重试。")
+      throw RSSReaderError.persistence(CoreL10n.text("RSS 文章索引仍在加载，请稍后重试。"))
     }
     guard articleHeaders.contains(where: { $0.id == articleID }) else {
-      throw RSSReaderError.persistence("找不到要标注的文章。")
+      throw RSSReaderError.persistence(CoreL10n.text("找不到要标注的文章。"))
     }
     let now = Date()
     let id = existingID ?? UUID()
@@ -296,7 +296,7 @@ extension RSSReaderStore {
           let article = payloadCache.article(id: articleID)
             ?? legacyArticles.first(where: { $0.id == articleID })
         else {
-          throw RSSReaderError.persistence("文章正文尚未写入本地数据库。")
+          throw RSSReaderError.persistence(CoreL10n.text("文章正文尚未写入本地数据库。"))
         }
         try database.upsertArticles([article])
       }
@@ -455,7 +455,7 @@ extension RSSReaderStore {
 
   public func saveFullTextRecord(_ record: RSSArticleFullTextRecord) throws {
     guard let database else {
-      throw RSSReaderError.persistence("全文缓存需要可用的 SQLite 数据库。")
+      throw RSSReaderError.persistence(CoreL10n.text("全文缓存需要可用的 SQLite 数据库。"))
     }
     try database.upsertFullTextRecord(record)
     bumpMutationRevision()
@@ -465,7 +465,7 @@ extension RSSReaderStore {
   /// main actor, then publishes the lightweight store revision update.
   public func saveFullTextRecordAsync(_ record: RSSArticleFullTextRecord) async throws {
     guard let database else {
-      throw RSSReaderError.persistence("全文缓存需要可用的 SQLite 数据库。")
+      throw RSSReaderError.persistence(CoreL10n.text("全文缓存需要可用的 SQLite 数据库。"))
     }
     let task = Task.detached(priority: .utility) {
       try database.upsertFullTextRecord(record)
@@ -482,7 +482,7 @@ extension RSSReaderStore {
     _ record: RSSArticleFullTextRecord
   ) async throws -> Bool {
     guard let database else {
-      throw RSSReaderError.persistence("全文缓存需要可用的 SQLite 数据库。")
+      throw RSSReaderError.persistence(CoreL10n.text("全文缓存需要可用的 SQLite 数据库。"))
     }
     let task = Task.detached(priority: .utility) {
       try database.upsertFullTextRecordIfCurrentSource(record)

@@ -139,6 +139,7 @@ public struct ArticleDraftMetadataProjection: Equatable, Hashable, Sendable {
   public let visibility: ArticleVisibility
   public let summary: String
   public let coverAttachmentID: UUID?
+  public let targetWordCount: Int?
   public let attachments: [DraftAttachment]
   public let status: DraftStatus
   public let createdAt: Date
@@ -164,6 +165,7 @@ public struct ArticleDraftMetadataProjection: Equatable, Hashable, Sendable {
     visibility = draft.visibility
     summary = draft.summary
     coverAttachmentID = draft.coverAttachmentID
+    targetWordCount = draft.targetWordCount
     attachments = draft.attachments
     status = draft.status
     createdAt = draft.createdAt

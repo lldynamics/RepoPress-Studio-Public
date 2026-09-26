@@ -5,7 +5,10 @@ import Foundation
 public final class AIWorkspaceStore: ObservableObject {
   @Published public internal(set) var aiTokenAvailability: KeychainTokenAvailability
   @Published public internal(set) var aiActionResult: AIPublishingActionResult?
-  @Published public internal(set) var aiActionMessage: String?
+  @Published public internal(set) var aiActionMessage: String? {
+    didSet { aiActionMessageIsFailure = false }
+  }
+  @Published public internal(set) var aiActionMessageIsFailure = false
   @Published public internal(set) var isAIActionRunning: Bool
   @Published public internal(set) var aiMetadataApplicationRecords: [AIPublishingMetadataApplicationRecord]
   @Published public internal(set) var automationRunRecords: [WorkbenchAutomationRunRecord]
@@ -26,7 +29,10 @@ public final class AIWorkspaceStore: ObservableObject {
   @Published public internal(set) var activeAIConversationIDsByDraftID: [UUID: UUID]
   @Published public internal(set) var activeAIConversationIDsByScope: [String: UUID]
   @Published public internal(set) var pendingAIQuickPrompt: AIPublishingQuickPrompt?
-  @Published public internal(set) var aiChatMessage: String?
+  @Published public internal(set) var aiChatMessage: String? {
+    didSet { aiChatMessageIsFailure = false }
+  }
+  @Published public internal(set) var aiChatMessageIsFailure = false
   @Published public internal(set) var isAIChatRunning: Bool
   @Published public internal(set) var isAutomationRunning: Bool
   @Published public internal(set) var activeAutomationPlanID: UUID?

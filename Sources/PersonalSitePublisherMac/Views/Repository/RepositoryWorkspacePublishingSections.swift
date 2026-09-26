@@ -221,7 +221,7 @@ extension RepositoryWorkspaceView {
           .accessibilityHint(safeSyncAction.help)
 
           Button {
-            copy(plan.commandText, message: "已复制同步建议命令。")
+            copy(plan.commandText, message: String(localized: "已复制同步建议命令。"))
           } label: {
             Label("复制命令", systemImage: "terminal")
           }
@@ -318,7 +318,7 @@ extension RepositoryWorkspaceView {
           .foregroundStyle(.secondary)
         Spacer()
         Button {
-          copy(result.clipboardSummary, message: "已复制线上发布结果。")
+          copy(result.clipboardSummary, message: String(localized: "已复制线上发布结果。"))
         } label: {
           Label("复制结果", systemImage: "doc.on.doc")
         }
@@ -358,7 +358,7 @@ extension RepositoryWorkspaceView {
                 .font(.caption.monospaced())
                 .textSelection(.enabled)
               Button {
-                copy(commitSHA, message: "已复制 commit SHA。")
+                copy(commitSHA, message: String(localized: "已复制 commit SHA。"))
               } label: {
                 Image(systemName: "doc.on.doc")
               }

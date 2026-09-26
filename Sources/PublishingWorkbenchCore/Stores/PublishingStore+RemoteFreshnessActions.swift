@@ -219,14 +219,14 @@ extension PublishingStore {
   ) async -> Bool {
     guard !blockPublishingIfGeneralDraftSelected(store: store) else { return false }
     guard store.canUseProtectedWorkbench else {
-      setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
+      setPublishingActionMessage(store.quickHideOperationMessage, status: .warning)
       return false
     }
 
     let refresh = await store.refreshRepositoryStateForPublishing()
     guard !Task.isCancelled else { return false }
     guard refresh != nil else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.text("当前站点或仓库已变化，请重新发起发布。"),
         status: .warning
       )
@@ -275,13 +275,13 @@ extension PublishingStore {
     guard remoteRepositoryMutationContext == nil,
       let operation = beginRemoteRepositoryMutation(profile: profile, store: store)
     else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.text("已有远端仓库操作正在运行，请等待完成。"),
         status: .warning
       )
       return false
     }
-    setPublishActionMessage(
+    setPublishingActionMessage(
       CoreL10n.text("正在检查其他软件产生的远端更新…"),
       status: .inProgress
     )
@@ -313,7 +313,7 @@ extension PublishingStore {
           conflictPaths: inspection.conflictPaths,
           conflictMessage: message
         )
-        setPublishActionMessage(message, status: .warning)
+        setPublishingActionMessage(message, status: .warning)
         store.save()
         return false
       }
@@ -331,14 +331,14 @@ extension PublishingStore {
         refresh?.status == .failed
         ? CoreL10n.format("；本地 fetch 失败，但远端 API 已完成逐文件核对：%@", refresh?.message ?? "")
         : ""
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.format("已核对远端最新版本，可进入发布确认%@", fetchWarning),
         status: refresh?.status == .failed ? .warning : .success
       )
       return true
     } catch {
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return false }
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.format("刷新远端版本失败：%@", error.localizedDescription),
         status: .failure
       )
@@ -351,13 +351,13 @@ extension PublishingStore {
   @discardableResult
   public func prepareBatchOnlinePublish(store: WorkbenchStore) async -> Bool {
     guard store.canUseProtectedWorkbench else {
-      setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
+      setPublishingActionMessage(store.quickHideOperationMessage, status: .warning)
       return false
     }
     let refresh = await store.refreshRepositoryStateForPublishing()
     guard !Task.isCancelled else { return false }
     guard refresh != nil else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.text("当前站点或仓库已变化，请重新发起发布。"),
         status: .warning
       )
@@ -408,13 +408,13 @@ extension PublishingStore {
     guard remoteRepositoryMutationContext == nil,
       let operation = beginRemoteRepositoryMutation(profile: profile, store: store)
     else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.text("已有远端仓库操作正在运行，请等待完成。"),
         status: .warning
       )
       return false
     }
-    setPublishActionMessage(
+    setPublishingActionMessage(
       CoreL10n.text("正在检查整批文件的远端最新版本…"),
       status: .inProgress
     )
@@ -449,7 +449,7 @@ extension PublishingStore {
           conflictPaths: inspection.conflictPaths,
           conflictMessage: message
         )
-        setPublishActionMessage(message, status: .warning)
+        setPublishingActionMessage(message, status: .warning)
         store.save()
         return false
       }
@@ -464,14 +464,14 @@ extension PublishingStore {
         refresh?.status == .failed
         ? CoreL10n.format("；本地 fetch 失败，但远端 API 已完成逐文件核对：%@", refresh?.message ?? "")
         : ""
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.format("已核对整批远端版本，可进入发布确认%@", fetchWarning),
         status: refresh?.status == .failed ? .warning : .success
       )
       return true
     } catch {
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return false }
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.format("刷新整批远端版本失败：%@", error.localizedDescription),
         status: .failure
       )
@@ -484,14 +484,14 @@ extension PublishingStore {
     action: String
   ) -> Bool {
     if let tokenAccessFailureMessage = preview.tokenAccessFailureMessage {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.format("仓库 Token 状态读取失败：%@", tokenAccessFailureMessage),
         status: .failure
       )
       return false
     }
     guard preview.hasToken else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         CoreL10n.text("仓库访问 Token 未保存，无法线上发布。"),
         status: .warning
       )
@@ -499,7 +499,7 @@ extension PublishingStore {
     }
     let blockingIssues = blockingIssuesBeforeAuthoritativeRemotePreflight(preview)
     guard blockingIssues.isEmpty else {
-      setPublishActionMessage(
+      setPublishingActionMessage(
         blockedLocalPublishMessage(action: action, issues: blockingIssues),
         status: .warning
       )

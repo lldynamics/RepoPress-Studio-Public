@@ -328,7 +328,7 @@ extension KnowledgeSourceListColumn {
     .padding(.trailing, 5)
     .padding(.vertical, 3)
     .foregroundStyle(.tint)
-    .background(Color.accentColor.opacity(0.1), in: Capsule())
+    .background(workbenchAccentColor.opacity(0.1), in: Capsule())
   }
 
   private var hasActiveSearchFilter: Bool {

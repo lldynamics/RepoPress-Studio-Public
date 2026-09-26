@@ -611,14 +611,16 @@ struct StorageManagementView: View {
   }
 
   private func createSelectiveBackup() {
+    Task { @MainActor in
     let destination = backupDestination
     let categories = selectedBackupCategories
     let localURL: URL
     let stagingDirectory: URL?
     switch destination {
     case .local:
-      guard let selected = WorkspaceBackupSelectionPanel.chooseSelectiveBackupDestination() else { return }
-      localURL = selected
+        guard let selected = await WorkspaceBackupSelectionPanel.chooseSelectiveBackupDestination()
+        else { return }
+        localURL = selected
       stagingDirectory = nil
     case .iCloud:
       let directory = FileManager.default.temporaryDirectory
@@ -677,6 +679,7 @@ struct StorageManagementView: View {
         )
       }
     }
+    }
   }
 
   private func refreshCloudBackups() {
@@ -688,8 +691,10 @@ struct StorageManagementView: View {
   }
 
   private func previewSelectiveRestore() {
-    guard let url = WorkspaceBackupSelectionPanel.chooseBackupForRestore() else { return }
-    inspectSelectiveBackup(at: url)
+    Task { @MainActor in
+      guard let url = await WorkspaceBackupSelectionPanel.chooseBackupForRestore() else { return }
+      inspectSelectiveBackup(at: url)
+    }
   }
 
   private func previewCloudBackup(_ item: iCloudWorkspaceBackupStore.Item) {
@@ -1165,12 +1170,13 @@ struct StorageManagementView: View {
   }
 
   private func createWorkspaceBackup() {
-    guard let destinationURL = WorkspaceBackupSelectionPanel.chooseBackupDestination() else {
-      return
-    }
-    operationMessage = nil
-    operationError = nil
-    Task {
+    Task { @MainActor in
+      guard let destinationURL = await WorkspaceBackupSelectionPanel.chooseBackupDestination()
+      else {
+        return
+      }
+      operationMessage = nil
+      operationError = nil
       let preview = await dataManagement.createWorkspaceBackup(at: destinationURL)
       if let preview {
         operationMessage = String(
@@ -1186,10 +1192,12 @@ struct StorageManagementView: View {
   }
 
   private func chooseWorkspaceBackupForRestore() {
-    guard let backupURL = WorkspaceBackupSelectionPanel.chooseBackupForRestore() else { return }
-    operationMessage = nil
-    operationError = nil
-    Task {
+    Task { @MainActor in
+      guard let backupURL = await WorkspaceBackupSelectionPanel.chooseBackupForRestore() else {
+        return
+      }
+      operationMessage = nil
+      operationError = nil
       workspaceBackupPreview = await dataManagement.workspaceBackupPreview(from: backupURL)
       if workspaceBackupPreview == nil {
         operationError = dataManagement.lastSaveStatus
@@ -1198,11 +1206,13 @@ struct StorageManagementView: View {
   }
 
   private func exportWorkspaceExchange() {
-    guard let destinationURL = WorkspaceExchangeFilePanel.chooseExportDestination() else { return }
-    operationMessage = nil
-    operationError = nil
-    isExchangingWorkspace = true
-    Task {
+    Task { @MainActor in
+      guard let destinationURL = await WorkspaceExchangeFilePanel.chooseExportDestination() else {
+        return
+      }
+      operationMessage = nil
+      operationError = nil
+      isExchangingWorkspace = true
       defer { isExchangingWorkspace = false }
       do {
         let data = try await workbenchStore.makeWorkspaceExchangeData()
@@ -1219,11 +1229,11 @@ struct StorageManagementView: View {
   }
 
   private func previewWorkspaceExchangeImport() {
-    guard let sourceURL = WorkspaceExchangeFilePanel.chooseImportSource() else { return }
-    operationMessage = nil
-    operationError = nil
-    isExchangingWorkspace = true
-    Task {
+    Task { @MainActor in
+      guard let sourceURL = await WorkspaceExchangeFilePanel.chooseImportSource() else { return }
+      operationMessage = nil
+      operationError = nil
+      isExchangingWorkspace = true
       defer { isExchangingWorkspace = false }
       do {
         let data = try await Task.detached(priority: .utility) {
@@ -1237,22 +1247,25 @@ struct StorageManagementView: View {
   }
 
   private func createKnowledgeBackup() {
-    guard let destinationURL = KnowledgeLibraryBackupSelectionPanel.chooseBackupDestination() else {
-      return
-    }
-    Task {
+    Task { @MainActor in
+      guard
+        let destinationURL = await KnowledgeLibraryBackupSelectionPanel.chooseBackupDestination()
+      else {
+        return
+      }
       _ = await dataManagement.knowledge.createBackup(at: destinationURL)
       await refreshUsage()
     }
   }
 
   private func chooseKnowledgeBackupForRestore() {
-    guard let backupURL = KnowledgeLibraryBackupSelectionPanel.chooseBackupForRestore() else {
-      return
-    }
-    operationMessage = nil
-    operationError = nil
-    Task {
+    Task { @MainActor in
+      guard let backupURL = await KnowledgeLibraryBackupSelectionPanel.chooseBackupForRestore()
+      else {
+        return
+      }
+      operationMessage = nil
+      operationError = nil
       knowledgeBackupPreview = await dataManagement.knowledge.backupPreview(from: backupURL)
       if knowledgeBackupPreview == nil {
         operationError = dataManagement.lastSaveStatus
@@ -1261,17 +1274,21 @@ struct StorageManagementView: View {
   }
 
   private func chooseAutomaticBackupDirectory() {
-    guard let folderURL = WorkspaceBackupSelectionPanel.chooseBackupDirectory() else { return }
-    do {
-      try backupScheduler.setDestinationFolder(folderURL)
-      refreshAutomaticBackupCapacity()
-      operationMessage = String(localized: "自动备份目录已更新。")
-      operationError = nil
-    } catch {
-      operationError = String(
-        format: String(localized: "自动备份目录不可用：%@"),
-        error.localizedDescription
-      )
+    Task { @MainActor in
+      guard let folderURL = await WorkspaceBackupSelectionPanel.chooseBackupDirectory() else {
+        return
+      }
+      do {
+        try backupScheduler.setDestinationFolder(folderURL)
+        refreshAutomaticBackupCapacity()
+        operationMessage = String(localized: "自动备份目录已更新。")
+        operationError = nil
+      } catch {
+        operationError = String(
+          format: String(localized: "自动备份目录不可用：%@"),
+          error.localizedDescription
+        )
+      }
     }
   }
 

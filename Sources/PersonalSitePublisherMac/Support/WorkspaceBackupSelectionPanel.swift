@@ -10,8 +10,8 @@ extension UTType {
 
 enum WorkspaceBackupSelectionPanel {
   @MainActor
-  static func chooseBackupDestination() -> URL? {
-    chooseBackupDestination(
+  static func chooseBackupDestination() async -> URL? {
+    await chooseBackupDestination(
       title: String(localized: "备份完整工作区"),
       message: String(localized: "包含草稿、历史版本、站点配置、资料库、RSS、附件和发布记录；不包含 API Key。可在系统面板中选择保存位置。"),
       filename: String(localized: "工作区备份")
@@ -19,8 +19,8 @@ enum WorkspaceBackupSelectionPanel {
   }
 
   @MainActor
-  static func chooseSelectiveBackupDestination() -> URL? {
-    chooseBackupDestination(
+  static func chooseSelectiveBackupDestination() async -> URL? {
+    await chooseBackupDestination(
       title: String(localized: "备份所选类别"),
       message: String(localized: "仅保存所选的数据类别；API Key 和 AI 服务凭据不会写入。可在系统面板中选择保存位置。"),
       filename: String(localized: "所选工作区备份")
@@ -28,7 +28,9 @@ enum WorkspaceBackupSelectionPanel {
   }
 
   @MainActor
-  private static func chooseBackupDestination(title: String, message: String, filename: String) -> URL? {
+  private static func chooseBackupDestination(title: String, message: String, filename: String)
+    async -> URL?
+  {
     let panel = NSSavePanel()
     panel.title = title
     panel.prompt = String(localized: "创建备份")
@@ -45,11 +47,11 @@ enum WorkspaceBackupSelectionPanel {
       filename,
       formatter.string(from: Date())
     )
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 
   @MainActor
-  static func chooseBackupForRestore() -> URL? {
+  static func chooseBackupForRestore() async -> URL? {
     let panel = NSOpenPanel()
     panel.title = String(localized: "选择工作区备份")
     panel.prompt = String(localized: "验证备份")
@@ -60,11 +62,11 @@ enum WorkspaceBackupSelectionPanel {
     panel.canChooseFiles = true
     panel.canChooseDirectories = false
     panel.allowsMultipleSelection = false
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 
   @MainActor
-  static func chooseBackupDirectory() -> URL? {
+  static func chooseBackupDirectory() async -> URL? {
     let panel = NSOpenPanel()
     panel.title = String(localized: "选择自动备份目录")
     panel.prompt = String(localized: "使用此目录")
@@ -75,6 +77,6 @@ enum WorkspaceBackupSelectionPanel {
     panel.canChooseDirectories = true
     panel.allowsMultipleSelection = false
     panel.canCreateDirectories = true
-    return panel.runModal() == .OK ? panel.url : nil
+    return await WindowSheetPresenter.response(to: panel) == .OK ? panel.url : nil
   }
 }
