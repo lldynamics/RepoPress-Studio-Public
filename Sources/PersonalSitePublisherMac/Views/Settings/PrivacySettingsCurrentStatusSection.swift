@@ -1,19 +1,15 @@
-import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
 
 struct PrivacySettingsCurrentStatusSection: View {
   let status: PrivacyProtectionStatus
-  let onQuickHide: () -> Void
   let subsectionAnchor: SettingsSubsection?
 
   init(
     status: PrivacyProtectionStatus,
-    onQuickHide: @escaping () -> Void,
     subsectionAnchor: SettingsSubsection? = nil
   ) {
     self.status = status
-    self.onQuickHide = onQuickHide
     self.subsectionAnchor = subsectionAnchor
   }
 
@@ -21,9 +17,9 @@ struct PrivacySettingsCurrentStatusSection: View {
     Section {
       Label(
         status.title,
-        systemImage: status.isQuickHideActive ? "eye.slash" : "eye"
+        systemImage: "shield"
       )
-      .foregroundStyle(status.isQuickHideActive ? WorkbenchTheme.warning : Color.secondary)
+      .foregroundStyle(Color.secondary)
 
       Text(status.detail)
         .font(.workbenchSupporting)
@@ -34,16 +30,8 @@ struct PrivacySettingsCurrentStatusSection: View {
           .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
       }
-
-      Button {
-        onQuickHide()
-      } label: {
-        Label(String(localized: "立即快速隐藏"), systemImage: "eye.slash")
-      }
-      .workbenchProminentActionStyle(tint: WorkbenchTheme.warningActionFill)
-      .disabled(status.isQuickHideActive)
     } header: {
-      Text(String(localized: "快速隐藏状态"))
+      Text(String(localized: "当前保护状态"))
         .settingsSubsectionAnchor(subsectionAnchor)
     }
   }

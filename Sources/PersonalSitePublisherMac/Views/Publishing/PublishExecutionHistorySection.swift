@@ -170,7 +170,7 @@ struct PublishExecutionHistorySection: View {
     }
     .buttonStyle(.bordered)
     .disabled(
-      store.isQuickHideActive || store.isRemoteRepositoryPublishing || verifyingRecordID != nil
+      store.isRemoteRepositoryPublishing || verifyingRecordID != nil
     )
     .help("只读取远端结果，不会写入远端；结果未知时请先核对再重试。")
     .accessibilityIdentifier("publish-execution-verify-\(record.id)")
@@ -240,7 +240,7 @@ struct PublishExecutionHistorySection: View {
   }
 
   private func verifyRemoteResult(_ record: PublishExecutionRecord) {
-    guard !store.isQuickHideActive, !store.isRemoteRepositoryPublishing,
+    guard !store.isRemoteRepositoryPublishing,
       verifyingRecordID == nil
     else { return }
     verifyingRecordID = record.id

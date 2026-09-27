@@ -74,16 +74,7 @@ extension WorkbenchStore {
     }
   }
 
-  public func activateQuickHide(reason: String? = nil) {
-    privacyProtectionStore.activateQuickHide(reason: reason)
-    aiStore.cancelAIGenerationRequests()
-    save()
-  }
 
-  public func deactivateQuickHide() {
-    privacyProtectionStore.deactivateQuickHide()
-    save()
-  }
 
   public var activeDeploymentStatusReadiness: DeploymentStatusProviderReadiness {
     deploymentStore.activeDeploymentStatusReadiness(store: self)

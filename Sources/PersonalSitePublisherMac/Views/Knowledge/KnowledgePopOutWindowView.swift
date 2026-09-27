@@ -12,8 +12,6 @@ struct KnowledgePopOutWindowView: View {
   @ObservedObject var knowledge: KnowledgeStore
   let documentID: UUID
 
-  @ObservedObject private var rootPresentation: WorkbenchRootPresentationFeatureFacade
-
   @State private var presentation: Presentation = .loading
   @State private var readerBlocks: [KnowledgeDocumentBlock] = []
   @State private var originalFileURL: URL?
@@ -23,7 +21,6 @@ struct KnowledgePopOutWindowView: View {
     self.store = store
     self.knowledge = knowledge
     self.documentID = documentID
-    _rootPresentation = ObservedObject(wrappedValue: store.rootPresentation)
   }
 
   var body: some View {
@@ -71,12 +68,6 @@ struct KnowledgePopOutWindowView: View {
     }
     .frame(minWidth: 420, minHeight: 360)
     .navigationTitle(windowTitle)
-    .disabled(rootPresentation.isQuickHideActive)
-    .overlay {
-      if rootPresentation.isQuickHideActive {
-        QuickHideOverlay(store: store)
-      }
-    }
     .task(id: taskID) {
       await loadPresentation(for: taskID)
     }
@@ -249,9 +240,6 @@ struct KnowledgePopOutWindowView: View {
   }
 
   private var windowTitle: String {
-    guard !rootPresentation.isQuickHideActive else {
-      return String(localized: "独立参考资料")
-    }
     if case .document(let document, _) = presentation {
       return document.title
     }

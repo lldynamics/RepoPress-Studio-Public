@@ -1886,6 +1886,8 @@ final class MarkdownEditorAppKitInteractionSyntaxAndAttachmentTests:
       bodyMarkdown: source,
       bodyUTF16Offset: 0
     )
+    coordinator.comfortConfiguration = MarkdownEditorComfortConfiguration(
+      paragraphFocusEnabled: true)
     let textView = DroppableMarkdownTextView.makeTextKit2(
       containerSize: NSSize(width: 640, height: 480)
     )
@@ -1963,6 +1965,11 @@ final class MarkdownEditorAppKitInteractionSyntaxAndAttachmentTests:
     XCTAssertTrue(
       coordinator.updateCurrentParagraphHighlight(in: textView, force: true)
     )
+
+    coordinator.comfortConfiguration = MarkdownEditorComfortConfiguration(
+      paragraphFocusEnabled: false)
+    XCTAssertTrue(coordinator.updateCurrentParagraphHighlight(in: textView))
+    XCTAssertNil(textView.markdownParagraphHighlightRect)
   }
 
   func testDiagnosticViewportDeltaRemovesLeavingRetainsOverlapAndAppliesEntering() {

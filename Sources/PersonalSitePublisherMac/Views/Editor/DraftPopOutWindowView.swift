@@ -7,7 +7,6 @@ struct DraftPopOutWindowView: View {
   let store: WorkbenchStore
   let draftID: UUID
   @ObservedObject private var draftList: DraftListStore
-  @ObservedObject private var rootPresentation: WorkbenchRootPresentationFeatureFacade
   @Environment(\.controlActiveState) private var controlActiveState
   @StateObject private var windowSession: WorkspaceWindowSession
   @StateObject private var sceneCommandRouter = WorkspaceSceneCommandRouter()
@@ -16,7 +15,6 @@ struct DraftPopOutWindowView: View {
     self.store = store
     self.draftID = draftID
     _draftList = ObservedObject(wrappedValue: store.draftList)
-    _rootPresentation = ObservedObject(wrappedValue: store.rootPresentation)
     _windowSession = StateObject(
       wrappedValue: WorkspaceWindowSession(selectedSection: .writing, selectedDraftID: draftID)
     )
@@ -33,11 +31,7 @@ struct DraftPopOutWindowView: View {
           store: store
         )
         .id(draftID)
-        .navigationTitle(
-          rootPresentation.isQuickHideActive
-            ? String(localized: "独立草稿")
-            : store.privateContentDisplay(for: draft).title
-        )
+        .navigationTitle(store.privateContentDisplay(for: draft).title)
       } else {
         ContentUnavailableView(
           "草稿已不可用",
@@ -53,12 +47,6 @@ struct DraftPopOutWindowView: View {
     .environment(\.workspaceWindowIsKey, windowSession.isKeyWindow)
     .environmentObject(sceneCommandRouter)
     .focusedSceneObject(sceneCommandRouter)
-    .disabled(rootPresentation.isQuickHideActive)
-    .overlay {
-      if rootPresentation.isQuickHideActive {
-        QuickHideOverlay(store: store)
-      }
-    }
     .onAppear(perform: synchronizeWindowActivity)
     .onChange(of: controlActiveState) { _, _ in
       synchronizeWindowActivity()

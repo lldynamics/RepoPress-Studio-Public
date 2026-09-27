@@ -14,7 +14,6 @@ public final class WorkbenchOperationLogFeatureFacade: ObservableObject {
 
   init(store: WorkbenchStore) {
     self.store = store
-    observe(store.privacyProtectionStore.$isQuickHideActive)
     observe(store.publishingStore.publishSession.$releaseRecords)
     observe(store.publishingStore.$maintenanceOperationRecords)
     observe(store.aiWorkspaceStore.$automationRunRecords)
@@ -27,7 +26,6 @@ public final class WorkbenchOperationLogFeatureFacade: ObservableObject {
     observe(store.draftList.presentationDidChange)
   }
 
-  public var isQuickHideActive: Bool { store.isQuickHideActive }
   public var entries: [WorkbenchOperationLogEntry] { store.operationLogEntries }
   public var profiles: [SiteProfile] { store.profiles }
   public var retentionPolicy: WorkbenchOperationLogRetentionPolicy {

@@ -10,7 +10,7 @@ final class SettingsApplicationSubsectionPresentationTests: XCTestCase {
     )
     XCTAssertEqual(
       SettingsSubsection.sections(for: .appearance),
-      [.appearanceBehavior, .appearanceTheme, .appearanceLanguage]
+      [.appearanceBehavior, .appearanceTheme]
     )
     XCTAssertEqual(
       SettingsSubsection.sections(for: .editor),
@@ -25,7 +25,7 @@ final class SettingsApplicationSubsectionPresentationTests: XCTestCase {
     )
     XCTAssertEqual(
       SettingsSubsection.sections(for: .privacy),
-      [.privacyQuickHide, .privacyMasking, .privacyStatus]
+      [.privacyMasking, .privacyStatus]
     )
   }
 }

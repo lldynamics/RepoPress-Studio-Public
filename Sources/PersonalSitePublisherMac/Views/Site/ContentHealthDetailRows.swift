@@ -81,7 +81,7 @@ extension ContentHealthDetailView {
         label: "警告"
       )
       if row.aiFixItem != nil {
-        Label("AI", systemImage: "sparkles")
+        Label("AI 修复", systemImage: "sparkles")
           .font(.caption.weight(.semibold))
           .foregroundStyle(WorkbenchTheme.inventoryForeground)
           .help(String(localized: "可使用 AI 协助修复"))

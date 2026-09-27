@@ -55,7 +55,6 @@ struct PublishDrawerView: View {
   @State private var completedReleaseRecordID: UUID?
   @State private var showsReleaseHistory = false
   @State private var isAdvancedFlowExpanded = false
-  @State private var isAnalyticsSetupExpanded = false
   @State private var isRemoteConflictResolverPresented = false
   @State private var batchPlanConsumerID = UUID()
   @StateObject private var operationController = PublishDrawerOperationController()
@@ -91,11 +90,6 @@ struct PublishDrawerView: View {
           store.refreshBatchPublishPlanInBackground()
           operationController.start {
             await refreshPublishingStateFromRemote(draftID: draft.id)
-          }
-          if draft.siteProfileID == store.activeProfileID,
-            store.activeProfile.siteAnalytics?.isEnabled == true
-          {
-            store.refreshSiteAnalytics(for: draft)
           }
         }
       }
@@ -209,14 +203,6 @@ struct PublishDrawerView: View {
             .disclosureGroupStyle(
               WorkbenchDisclosureGroupStyle(toggleIdentifier: "publish-drawer-local-actions")
             )
-            if store.profile(for: draft).siteAnalytics?.isEnabled == true {
-              postPublishAnalytics(draft: draft)
-            } else {
-              DisclosureGroup(String(localized: "发布后阅读回流"), isExpanded: $isAnalyticsSetupExpanded) {
-                postPublishAnalytics(draft: draft)
-              }
-              .accessibilityIdentifier("publish-drawer-analytics-setup")
-            }
           }
           .padding(16)
         }
@@ -272,11 +258,6 @@ struct PublishDrawerView: View {
           store.prepareSEOSocialPreview(for: draft)
           store.scheduleImageWorkbenchReportRefresh(for: draft, force: true)
           await refreshPublishingStateFromRemote(draftID: draft.id)
-          if draft.siteProfileID == store.activeProfileID,
-            store.activeProfile.siteAnalytics?.isEnabled == true
-          {
-            store.refreshSiteAnalytics(for: draft)
-          }
         }
       } label: {
         Label("刷新", systemImage: "arrow.clockwise")
@@ -782,20 +763,6 @@ struct PublishDrawerView: View {
 
   private func isAuthoritativeRemotePreflightIssue(_ issue: PreflightIssue) -> Bool {
     PublishDrawerConnectionPresentation.isDeferredRemoteIssue(issue)
-  }
-
-  private func postPublishAnalytics(draft: ArticleDraft) -> some View {
-    PublishDrawerAnalyticsCard(
-      draft: draft,
-      settings: store.profile(for: draft).siteAnalytics,
-      summary: store.siteAnalyticsSummary(for: draft),
-      isLoading: store.isSiteAnalyticsLoading(for: draft),
-      tokenAvailability: store.siteAnalyticsTokenAvailability,
-      message: store.siteAnalyticsMessage,
-      refreshAction: {
-        store.refreshSiteAnalytics(for: draft)
-      }
-    )
   }
 
   private func advancedPublishOptions(

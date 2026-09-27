@@ -571,12 +571,6 @@
       "rationale": "Older RSS records may omit or contain an invalid optional date; decoding falls back to the record timestamp policy."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/HTMLSourceEditingService.swift",
-      "category": "ioBestEffort",
-      "contains": "try? synchronize(descriptor:",
-      "rationale": "Directory fsync is a durability hint after the primary file operation; the caller still reports the primary write result."
-    },
-    {
       "file": "Sources/PublishingKnowledgeCore/Services/KnowledgeLibraryBackupService.swift",
       "category": "temporaryCleanup",
       "contains": "try? output.close()",
@@ -835,13 +829,13 @@
       "rationale": "An unreadable manifest yields nil payload paths; the upload-state probe then reports the backup as pending upload instead of trusting undeclared files."
     },
     {
-      "file": "Sources/PersonalSitePublisherMac/Views/Knowledge/KnowledgeNoteTransferSheet.swift",
+      "file": "Sources/PersonalSitePublisherMac/Views/Knowledge/KnowledgeNoteSnapshotBackupSheet.swift",
       "category": "probeFallback",
       "contains": "try? KnowledgeNoteSnapshotBackupService.iCloudNotesBackupDirectory()",
       "rationale": "The iCloud notes directory is only probed to decide whether a manual snapshot also refreshes the automatic-backup signature; without iCloud the manual snapshot is still written."
     },
     {
-      "file": "Sources/PersonalSitePublisherMac/Views/Knowledge/KnowledgeNoteTransferSheet.swift",
+      "file": "Sources/PersonalSitePublisherMac/Views/Knowledge/KnowledgeNoteSnapshotBackupSheet.swift",
       "category": "auxiliaryPersistence",
       "contains": "try? KnowledgeNoteSnapshotBackupService.contentSignature(for: package.notes)",
       "rationale": "The content signature only lets the next automatic snapshot skip unchanged notes; without it the next automatic snapshot simply runs again."

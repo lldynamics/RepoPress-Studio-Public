@@ -234,7 +234,6 @@ import XCTest
         "settings",
         "general-drafts",
         "knowledge-library",
-        "privacy-lock",
       ]
 
       XCTAssertEqual(Set(ScreenshotDemoSurface.allCases.map(\.rawValue)), requiredIDs)
@@ -243,7 +242,7 @@ import XCTest
       XCTAssertEqual(ScreenshotDemoSurface(rawValue: "deployment-status"), .deploymentStatus)
       XCTAssertEqual(ScreenshotDemoSurface(rawValue: "general-drafts"), .generalDrafts)
       XCTAssertEqual(ScreenshotDemoSurface(rawValue: "knowledge-library"), .knowledgeLibrary)
-      XCTAssertEqual(ScreenshotDemoSurface(rawValue: "privacy-lock"), .quickHide)
+      XCTAssertNil(ScreenshotDemoSurface(rawValue: "privacy-lock"))
     }
 
     func testScreenshotDemoSurfaceCanBeReadFromEnvironment() {
@@ -381,7 +380,6 @@ import XCTest
       XCTAssertEqual(store.selectedSection, .writing)
       XCTAssertTrue(store.isAIPublishingAssistantPresented)
       XCTAssertFalse(store.aiChatMessages.isEmpty)
-      XCTAssertFalse(store.isQuickHideActive)
 
       ScreenshotDemoSurface.deploymentStatus.apply(to: store)
       XCTAssertEqual(store.selectedSection, .sync)
@@ -401,10 +399,6 @@ import XCTest
       XCTAssertEqual(store.draftListContentScope, .general)
       XCTAssertEqual(store.publishActionMessage, "截图模式：通用草稿已载入。")
 
-      ScreenshotDemoSurface.quickHide.apply(to: store)
-      XCTAssertEqual(store.selectedSection, .writing)
-      XCTAssertTrue(store.isQuickHideActive)
-      XCTAssertTrue(store.quickHideReason?.contains("私密内容已遮挡") == true)
     }
 
     @MainActor

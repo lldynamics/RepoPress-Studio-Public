@@ -249,6 +249,60 @@ final class DraftFullTextSearchServiceTests: XCTestCase {
     )
   }
 
+  func testSavedQueryLegacyScopesMigrateFromSearchesAllSites() {
+    let currentSite = DraftFullTextSavedQueryService.decode(
+      "[{\"id\":\"00000000-0000-0000-0000-000000000001\",\"query\":\"current\",\"searchesAllSites\":false,\"savedAt\":0}]"
+    )
+    let allSites = DraftFullTextSavedQueryService.decode(
+      "[{\"id\":\"00000000-0000-0000-0000-000000000002\",\"query\":\"all\",\"searchesAllSites\":true,\"savedAt\":0}]"
+    )
+
+    XCTAssertEqual(currentSite.first?.scope, .currentSite)
+    XCTAssertEqual(allSites.first?.scope, .allSites)
+  }
+
+  func testSavedQueryScopesRoundTripAndUnknownScopeFallback() {
+    let queries = DraftFullTextSearchScope.allCases.enumerated().map { index, scope in
+      DraftFullTextSavedQuery(
+        query: "query \(index)",
+        scope: scope,
+        savedAt: Date(timeIntervalSince1970: TimeInterval(index))
+      )
+    }
+
+    XCTAssertEqual(
+      DraftFullTextSavedQueryService.decode(DraftFullTextSavedQueryService.encode(queries)), queries
+    )
+
+    let unknown = DraftFullTextSavedQueryService.decode(
+      "[{\"id\":\"00000000-0000-0000-0000-000000000003\",\"query\":\"unknown\",\"scope\":\"futureScope\",\"searchesAllSites\":true,\"savedAt\":0}]"
+    )
+    XCTAssertEqual(unknown.first?.scope, .allSites)
+  }
+
+  func testSavedQueriesDeduplicateByScope() {
+    let allSites = DraftFullTextSavedQueryService.saving(
+      query: "same",
+      scope: .allSites,
+      in: []
+    )
+    let withCurrentSite = DraftFullTextSavedQueryService.saving(
+      query: "same",
+      scope: .currentSite,
+      in: allSites
+    )
+    XCTAssertEqual(withCurrentSite.count, 2)
+
+    let replaced = DraftFullTextSavedQueryService.saving(
+      query: " SAME ",
+      scope: .allSites,
+      in: withCurrentSite
+    )
+    XCTAssertEqual(replaced.count, 2)
+    XCTAssertEqual(replaced.filter { $0.scope == .allSites }.count, 1)
+    XCTAssertEqual(replaced.filter { $0.scope == .currentSite }.count, 1)
+  }
+
   func testEditorFocusRequestCarriesExactBodyRange() {
     let range = NSRange(location: 18, length: 4)
     let request = EditorFocusRequest(

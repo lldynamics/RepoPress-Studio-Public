@@ -7,16 +7,13 @@ import SwiftUI
 struct WorkspaceRSSReadingToolbar: View {
   @ObservedObject private var rssStore: RSSReaderStore
   @ObservedObject private var commandRouter: WorkspaceSceneCommandRouter
-  let isEnabled: Bool
 
   init(
     rssStore: RSSReaderStore,
-    commandRouter: WorkspaceSceneCommandRouter,
-    isEnabled: Bool
+    commandRouter: WorkspaceSceneCommandRouter
   ) {
     _rssStore = ObservedObject(wrappedValue: rssStore)
     _commandRouter = ObservedObject(wrappedValue: commandRouter)
-    self.isEnabled = isEnabled
   }
 
   var body: some View {
@@ -27,7 +24,7 @@ struct WorkspaceRSSReadingToolbar: View {
           ? "arrow.clockwise" : "arrow.triangle.2.circlepath.circle.fill",
         accessibilityIdentifier: "workspace-rss-refresh",
         isActive: !rssStore.refreshingFeedIDs.isEmpty,
-        isEnabled: isEnabled && rssStore.refreshingFeedIDs.isEmpty,
+        isEnabled: rssStore.refreshingFeedIDs.isEmpty,
         help: String(localized: "刷新 RSS 订阅")
       ) {
         Task { await rssStore.refreshAll() }
@@ -37,8 +34,7 @@ struct WorkspaceRSSReadingToolbar: View {
         title: String(localized: "上一篇文章"),
         systemImage: "arrow.left",
         accessibilityIdentifier: "workspace-rss-previous-article",
-        isEnabled: isEnabled
-          && (commandRouter.rssReaderCommandActions?.canNavigatePrevious ?? false),
+        isEnabled: commandRouter.rssReaderCommandActions?.canNavigatePrevious ?? false,
         help: String(localized: "阅读上一篇文章（⌃⌘←）")
       ) {
         commandRouter.rssReaderCommandActions?.navigatePrevious()
@@ -48,7 +44,7 @@ struct WorkspaceRSSReadingToolbar: View {
         title: String(localized: "下一篇文章"),
         systemImage: "arrow.right",
         accessibilityIdentifier: "workspace-rss-next-article",
-        isEnabled: isEnabled && (commandRouter.rssReaderCommandActions?.canNavigateNext ?? false),
+        isEnabled: commandRouter.rssReaderCommandActions?.canNavigateNext ?? false,
         help: String(localized: "阅读下一篇文章（⌃⌘→）")
       ) {
         commandRouter.rssReaderCommandActions?.navigateNext()
@@ -58,7 +54,7 @@ struct WorkspaceRSSReadingToolbar: View {
         title: String(localized: "切换已读状态"),
         systemImage: "checkmark.circle",
         accessibilityIdentifier: "workspace-rss-toggle-read",
-        isEnabled: isEnabled && (commandRouter.rssReaderCommandActions?.canActOnArticle ?? false),
+        isEnabled: commandRouter.rssReaderCommandActions?.canActOnArticle ?? false,
         help: String(localized: "切换当前文章的已读状态（⌃⌘U）")
       ) {
         commandRouter.rssReaderCommandActions?.toggleRead()

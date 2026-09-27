@@ -61,7 +61,7 @@ enum ImageWorkbenchBatchAction: Identifiable {
     case .fillMetadata: "text.badge.checkmark"
     case .file(.optimizeJPEG): "photo.stack"
     case .file(.convertWebP): "arrow.triangle.2.circlepath"
-    case .file(.optimizeSVG): "wand.and.stars"
+    case .file(.optimizeSVG): "slider.horizontal.3"
     case .file(.resizeLargeImages): "arrow.down.right.and.arrow.up.left"
     case .file(.cropCover16By9): "crop"
     case .file(.removePrivacyMetadata): "hand.raised"

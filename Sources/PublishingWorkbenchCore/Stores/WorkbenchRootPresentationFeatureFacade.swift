@@ -18,7 +18,6 @@ public final class WorkbenchRootPresentationFeatureFacade: ObservableObject {
     observe(store.publishingStore.$selectedDraftID)
     observe(store.publishingStore.$selectedSection)
     observe(store.publishingStore.$isInspectorPresented)
-    observe(store.privacyProtectionStore.$isQuickHideActive)
     observe(store.persistenceStore.$recoveryMessage)
     observe(store.persistenceStore.$isRecoveryWriteProtected)
     observe(store.aiWorkspaceStore.$isAIPublishingAssistantPresented)
@@ -27,8 +26,6 @@ public final class WorkbenchRootPresentationFeatureFacade: ObservableObject {
   public var selectedDraftID: UUID? { store.selectedDraftID }
   public var selectedSection: WorkspaceSection { store.selectedSection }
   public var isInspectorPresented: Bool { store.isInspectorPresented }
-  public var isQuickHideActive: Bool { store.isQuickHideActive }
-  public var canUseProtectedWorkbench: Bool { !isQuickHideActive }
   public var persistenceRecoveryMessage: String? { store.persistenceRecoveryMessage }
   public var isPersistenceRecoveryWriteProtected: Bool {
     store.isPersistenceRecoveryWriteProtected

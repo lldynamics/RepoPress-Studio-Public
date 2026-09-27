@@ -25,7 +25,7 @@ final class CoreLocalizationTests: XCTestCase {
     )
   }
 
-  func testEnglishErrorAndQuickHideCopyResolvesFromCoreResources() {
+  func testEnglishErrorAndPrivateContentCopyResolvesFromCoreResources() {
     let english = Locale(identifier: "en")
     XCTAssertEqual(
       CoreL10n.format(
@@ -42,8 +42,8 @@ final class CoreLocalizationTests: XCTestCase {
       "AI request failed: HTTP 429\nRate limited"
     )
     XCTAssertEqual(
-      CoreL10n.text("快速隐藏已启用", locale: english),
-      "Quick Hide is enabled"
+      CoreL10n.text("私密内容遮挡已开启", locale: english),
+      "Private-content masking is on"
     )
   }
 

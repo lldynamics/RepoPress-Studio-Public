@@ -68,7 +68,6 @@ struct DefaultRuleSettingsView: View {
       .accessibilityIdentifier("default-rule-path-rules")
     }
     .formStyle(.grouped)
-    .scrollIndicators(.hidden)
     .padding(WorkbenchSpacing.content)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("default-rule-settings")

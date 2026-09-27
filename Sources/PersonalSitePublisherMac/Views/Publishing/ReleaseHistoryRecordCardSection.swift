@@ -429,8 +429,7 @@ extension ReleaseHistoryDetailView {
             releaseRecordActionLabel("重新审阅发布…", systemImage: "doc.text.magnifyingglass")
           }
           .disabled(
-            store.isQuickHideActive || store.isRemoteRepositoryPublishing
-              || !canReviewFailure
+            store.isRemoteRepositoryPublishing || !canReviewFailure
           )
           .help(reviewFailureHelp)
           .accessibilityIdentifier("release-record-\(record.id)-review-again")
@@ -485,7 +484,7 @@ extension ReleaseHistoryDetailView {
             await store.sendReleaseRecoveryPackageToAI(for: entry)
           }
         } label: {
-          releaseRecordActionLabel("交给 AI", systemImage: "sparkles")
+          releaseRecordActionLabel("AI 修复", systemImage: "sparkles")
         }
         .disabled(record.draftID == nil || store.ai.isChatRunning)
         .accessibilityIdentifier("release-record-\(record.id)-send-to-ai")

@@ -5,7 +5,6 @@ enum WorkspaceModalPresentation: String, CaseIterable, Identifiable {
   case localSitePreview
   case firstRunSetup
   case commandPalette
-  case draftFullTextSearch
 
   var id: String { rawValue }
 }

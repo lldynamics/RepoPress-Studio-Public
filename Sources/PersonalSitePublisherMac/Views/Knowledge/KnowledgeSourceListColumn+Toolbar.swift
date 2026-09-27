@@ -21,21 +21,15 @@ extension KnowledgeSourceListColumn {
       .workbenchProminentActionStyle()
       .controlSize(.regular)
       .fixedSize()
-      .help("新建仅保存在本机的 Markdown 笔记")
+      .help("新建 Markdown 笔记；启用 iCloud 同步后可在设备间接续编辑")
       .accessibilityLabel("新建笔记")
       .accessibilityIdentifier("knowledge-create-note")
       .disabled(knowledge.isBusy)
       Menu {
         Button {
-          isSettingsPresented = true
-        } label: {
-          Label("资料库设置…", systemImage: "gearshape")
-        }
-        Divider()
-        Button {
           isNoteTransferPresented = true
         } label: {
-          Label("导入与导出笔记…", systemImage: "arrow.left.arrow.right.square")
+          Label("笔记同步与备份…", systemImage: "icloud")
         }
         Button {
           isArchivedNotesPresented = true
@@ -68,7 +62,7 @@ extension KnowledgeSourceListColumn {
       .menuStyle(.borderlessButton)
       .menuIndicator(.hidden)
       .fixedSize()
-      .help("资料库设置、回收站、备份与恢复")
+      .help("资料库管理、回收站和数据管理")
       .accessibilityLabel("资料库管理")
       .disabled(knowledge.isBusy)
       if !knowledge.documents.isEmpty {
@@ -80,82 +74,6 @@ extension KnowledgeSourceListColumn {
         .buttonStyle(.plain)
         .help("导入资料")
         .accessibilityLabel("导入资料")
-      }
-    }
-  }
-
-  @ViewBuilder
-  var knowledgeInsertionActions: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      if let document = knowledge.selectedDocument {
-        HStack(spacing: 8) {
-          if document.kind == .image {
-            Button {
-              isInsertingKnowledgeImage = true
-              Task { @MainActor in
-                defer { isInsertingKnowledgeImage = false }
-                _ = await KnowledgeArticleInsertionService.insertImage(
-                  document: document,
-                  selectedResult: knowledge.selectedSearchResult,
-                  knowledge: knowledge,
-                  into: store
-                )
-              }
-            } label: {
-              Label(
-                isInsertingKnowledgeImage ? String(localized: "正在插入图片") : String(localized: "插入图片"),
-                systemImage: isInsertingKnowledgeImage ? "hourglass" : "photo.badge.plus"
-              )
-            }
-            .workbenchProminentActionStyle()
-            .controlSize(.small)
-            .disabled(isInsertingKnowledgeImage || knowledge.isBusy)
-            .help("将资料库托管副本复制到当前文章附件后插入")
-            .accessibilityIdentifier("knowledge-insert-current-image")
-          } else {
-            Button {
-              _ = KnowledgeArticleInsertionService.insertCurrentArticle(
-                document: document,
-                text: knowledge.selectedDocumentText,
-                into: store
-              )
-            } label: {
-              Label("插入当前文章", systemImage: "text.insert")
-            }
-            .workbenchProminentActionStyle()
-            .controlSize(.small)
-            .disabled(
-              knowledge.selectedDocumentText.trimmedForPublishing.isEmpty || knowledge.isBusy
-            )
-            .help("将当前资料正文插入正在编辑的文章")
-            .accessibilityIdentifier("knowledge-insert-current-article")
-          }
-
-          Button {
-            _ = KnowledgeArticleInsertionService.insertCitation(
-              document: document,
-              selectedResult: knowledge.selectedSearchResult,
-              fallbackText: knowledge.selectedDocumentText,
-              into: store
-            )
-          } label: {
-            Label("插入引用", systemImage: "quote.opening")
-          }
-          .buttonStyle(.bordered)
-          .controlSize(.small)
-          .disabled(knowledge.selectedDocumentText.trimmedForPublishing.isEmpty || knowledge.isBusy)
-          .help("将当前选中片段作为引用插入正在编辑的文章")
-          .accessibilityIdentifier("knowledge-insert-citation")
-
-          Spacer(minLength: 0)
-
-          KnowledgeWritingContextView(store: store, presentation: .menu)
-        }
-        .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
-        .padding(.vertical, 8)
-        .background(WorkbenchBackgroundStyle.card)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("插入当前资料")
       }
     }
   }

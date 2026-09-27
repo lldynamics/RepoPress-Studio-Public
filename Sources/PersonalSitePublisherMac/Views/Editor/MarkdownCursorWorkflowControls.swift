@@ -19,7 +19,11 @@ struct MarkdownCursorWorkflowControls: View {
 
   var body: some View {
     HStack(spacing: 5) {
-      completionMenu
+      // Slash commands already appear beside the caret. Keep the status line
+      // quiet unless article-link or code-language candidates are available.
+      if let completion, completion.kind != .slashCommand {
+        completionMenu
+      }
 
       if let fenceMatch {
         Button(action: onJumpToCounterpartFence) {
@@ -102,13 +106,13 @@ struct MarkdownCursorWorkflowControls: View {
       if showsTitle {
         Label(
           "Markdown 智能补全",
-          systemImage: completion == nil ? "wand.and.stars" : "wand.and.stars.inverse"
+          systemImage: "text.cursor"
         )
         .labelStyle(.titleAndIcon)
         .font(.caption)
         .fixedSize(horizontal: true, vertical: false)
       } else {
-        Image(systemName: completion == nil ? "wand.and.stars" : "wand.and.stars.inverse")
+        Image(systemName: "text.cursor")
           .frame(width: 24, height: 24)
       }
     }

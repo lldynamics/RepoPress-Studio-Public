@@ -28,13 +28,11 @@ struct KnowledgeSourceListColumn: View {
   @State var selectedDocumentIDs = Set<UUID>()
   @State var isRecycleBinPresented = false
   @State var isHealthPresented = false
-  @State var isSettingsPresented = false
   @State var isBatchRecycleConfirmationPresented = false
   @State var isBatchTagEditorPresented = false
   @State var isImageBatchExportPresented = false
   @State var batchTags = ""
   @State var hoveredDocumentID: UUID?
-  @State var isInsertingKnowledgeImage = false
   @State var listPresentation: KnowledgeSourceListPresentationSnapshot
   @FocusState var isSearchFocused: Bool
 
@@ -65,9 +63,6 @@ struct KnowledgeSourceListColumn: View {
         .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
         .padding(.bottom, 8)
       }
-
-      knowledgeInsertionActions
-        .padding(.bottom, 4)
 
       KnowledgeCollectionNavigationView(
         knowledge: knowledge,
@@ -116,15 +111,6 @@ struct KnowledgeSourceListColumn: View {
     }
     .sheet(isPresented: $isHealthPresented) {
       KnowledgeLibraryHealthView(knowledge: knowledge)
-    }
-    .sheet(isPresented: $isSettingsPresented) {
-      KnowledgeSettingsView(
-        knowledge: knowledge,
-        onOpenLibrary: {
-          isSettingsPresented = false
-        }
-      )
-      .workbenchSheetSize(.detail)
     }
     .sheet(isPresented: $isImageBatchExportPresented) {
       KnowledgeImageBatchExportSheet(

@@ -19,7 +19,6 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
 
   init(store: WorkbenchStore) {
     self.store = store
-    observe(store.privacyProtectionStore.$isQuickHideActive)
     observe(store.repositoryStore.$repositoryScanState)
     observeGitOperation(
       store.repositoryStore.$isRemoteRepositoryPublishing,
@@ -71,7 +70,6 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
     observe(store.$siteDraftFileSaveFailures)
   }
 
-  public var isQuickHideActive: Bool { store.isQuickHideActive }
   public var repositoryScanState: RepositoryScanState { store.repositoryScanState }
   public var isRemoteRepositoryPublishing: Bool { store.isRemoteRepositoryPublishing }
   public var isAIChatRunning: Bool { store.isAIChatRunning }

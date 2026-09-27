@@ -16,11 +16,13 @@ struct SiteMaintenanceDetailView: View {
   var body: some View {
     if isEmbedded {
       bodyContent
+        .task { await store.refreshSiteMaintenanceSnapshot() }
     } else {
       ScrollView {
         bodyContent
           .workbenchPageLayout()
       }
+      .task { await store.refreshSiteMaintenanceSnapshot() }
     }
   }
 

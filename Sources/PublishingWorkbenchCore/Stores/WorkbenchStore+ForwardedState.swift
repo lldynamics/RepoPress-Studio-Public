@@ -248,6 +248,4 @@ extension WorkbenchStore {
 
 extension WorkbenchStore {
   public var privacySettings: PrivacyProtectionSettings { privacyProtectionStore.privacySettings }
-  public var isQuickHideActive: Bool { privacyProtectionStore.isQuickHideActive }
-  public var quickHideReason: String? { privacyProtectionStore.quickHideReason }
 }

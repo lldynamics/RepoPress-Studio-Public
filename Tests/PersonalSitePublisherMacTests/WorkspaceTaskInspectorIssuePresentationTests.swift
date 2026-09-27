@@ -46,14 +46,10 @@ final class WorkspaceTaskInspectorIssuePresentationTests: XCTestCase {
     XCTAssertEqual(issue(field: "title").contentHealthFocusTargetTitle, "元数据")
   }
 
-  func testWritingContextPanelsAndToolDensitiesAreExplicitlyEnumerated() {
+  func testWritingContextPanelsAreExplicitlyEnumerated() {
     XCTAssertEqual(
       Set(MarkdownWritingContextPanel.allCases),
       Set([.selectionTools, .aiReview, .imageInfo, .outline])
-    )
-    XCTAssertEqual(
-      MarkdownWritingToolDensity.allCases.map(\.title),
-      ["基础写作", "专业 Markdown"]
     )
   }
 

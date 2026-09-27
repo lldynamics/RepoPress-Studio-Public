@@ -689,7 +689,6 @@ extension WorkbenchStore {
 
   @discardableResult
   public func moveGeneralDrafts(_ draftIDs: [UUID], toFolder name: String?) -> Int {
-    guard canUseProtectedWorkbench else { return 0 }
     flushDraftBodyEditorBuffers()
     return publishingStore.moveGeneralDrafts(draftIDs, toFolder: name, store: self)
   }

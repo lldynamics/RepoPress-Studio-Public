@@ -20,12 +20,12 @@ final class SettingsNavigationTargetTests: XCTestCase {
     XCTAssertEqual(token?.route, .subsection(.tokenRepository))
     XCTAssertEqual(token?.healthDestination, .repositoryToken)
 
-    let language = SettingsNavigationTarget.requestedID(
-      "language",
-      shouldOpenAIKeyConnection: { false }
+    XCTAssertNil(
+      SettingsNavigationTarget.requestedID(
+        "language",
+        shouldOpenAIKeyConnection: { false }
+      )
     )
-    XCTAssertEqual(language?.destination, .tab(.appearance))
-    XCTAssertEqual(language?.route, .subsection(.appearanceLanguage))
   }
 
   func testAIKeyCompatibilityOnlyRedirectsWhenKeyIsMissing() {

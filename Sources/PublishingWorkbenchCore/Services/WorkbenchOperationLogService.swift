@@ -213,7 +213,7 @@ public struct WorkbenchOperationLogService: Sendable {
     case .imagePrivacySanitization: "hand.raised"
     case .imageJPEGOptimization: "photo.badge.checkmark"
     case .imageWebPConversion: "arrow.triangle.2.circlepath"
-    case .imageSVGOptimization: "wand.and.stars"
+    case .imageSVGOptimization: "slider.horizontal.3"
     case .imageResize: "arrow.down.right.and.arrow.up.left"
     case .imageCoverCrop: "crop"
     case .workspaceBackupCreated: "externaldrive.badge.timemachine"

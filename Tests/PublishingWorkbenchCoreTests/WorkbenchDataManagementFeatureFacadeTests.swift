@@ -163,7 +163,7 @@ final class WorkbenchDataManagementFeatureFacadeTests: XCTestCase {
       reloaded.drafts.first(where: { $0.title == archivedDraft.title })?.scope, .general)
   }
 
-  func testFacadeArticleRestoreRejectsQuickHideAndRecoveryWriteProtection() async throws {
+  func testFacadeArticleRestoreRejectsRecoveryWriteProtection() async throws {
     let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(
       prefix: "DataManagementArticleRestoreGuards")
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -187,17 +187,11 @@ final class WorkbenchDataManagementFeatureFacadeTests: XCTestCase {
     let preview = try await facade.workspaceBackupArticleSelectionPreview(from: archiveURL)
     let initialDrafts = store.drafts
 
-    store.activateQuickHide(reason: "test")
+    store.persistenceStore.protectWritesForUnrecoverableSnapshot(message: "test protection")
     await assertUnavailableArticleRestore {
       _ = try await facade.restoreWorkspaceBackupArticles(
-        preview: preview,
-        selectedDraftIDs: [archivedDraft.id]
-      )
+        preview: preview, selectedDraftIDs: [archivedDraft.id])
     }
-    XCTAssertEqual(store.drafts, initialDrafts)
-
-    store.deactivateQuickHide()
-    store.persistenceStore.protectWritesForUnrecoverableSnapshot(message: "test protection")
     await assertUnavailableArticleRestore {
       _ = try await facade.workspaceBackupArticleSelectionPreview(from: archiveURL)
     }

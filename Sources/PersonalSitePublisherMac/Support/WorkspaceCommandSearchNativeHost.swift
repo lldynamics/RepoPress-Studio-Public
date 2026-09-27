@@ -6,12 +6,11 @@ import SwiftUI
 /// its HStack label, and gives the toolbar a stable fitting size at insertion.
 struct WorkspaceCommandSearchNativeHost: NSViewRepresentable {
   let density: WorkspaceTopBarPresentation.Density
-  let isEnabled: Bool
   let action: () -> Void
 
   private var content: WorkspaceCommandSearchHostedContent {
     WorkspaceCommandSearchHostedContent(
-      density: density, isEnabled: isEnabled, action: action
+      density: density, action: action
     )
   }
 
@@ -43,12 +42,10 @@ struct WorkspaceCommandSearchNativeHost: NSViewRepresentable {
 
 struct WorkspaceCommandSearchHostedContent: View {
   let density: WorkspaceTopBarPresentation.Density
-  let isEnabled: Bool
   let action: () -> Void
 
   var body: some View {
     OmniCommandSearchBar(density: density, action: action)
-      .disabled(!isEnabled)
       .frame(width: WorkspaceTopBarPresentation.searchWidth(for: density), height: 28)
   }
 }

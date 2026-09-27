@@ -21,7 +21,6 @@ struct SettingsNavigationList: View {
     }
     .listStyle(.sidebar)
     .scrollContentBackground(.hidden)
-    .scrollIndicators(.hidden)
     .accessibilityIdentifier("settings-sidebar")
   }
 

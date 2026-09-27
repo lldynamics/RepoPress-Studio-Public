@@ -1,12 +1,9 @@
 import PublishingWorkbenchCore
 
 struct MarkdownEditorToolbarActions {
-  let onSetWritingToolDensity: (MarkdownWritingToolDensity) -> Void
   let onShowFindReplace: () -> Void
   let onShowOutline: () -> Void
-  let onOpenWritingContextPanel: (MarkdownWritingContextPanel) -> Void
   let onShowShortcutHelp: () -> Void
-  let onPreparePublish: () -> Void
   let onOpenAIContextInspector: () -> Void
   let onOpenAITemplateLibrary: () -> Void
   let onRequestInlineAICompletion: () -> Void
@@ -22,4 +19,5 @@ struct MarkdownEditorToolbarActions {
   let onPasteAIPromptToClipboard: () -> Void
   var onFormatChineseTypography: (() -> Void)? = nil
   var onCopyForWeChatAndZhihu: (() -> Void)? = nil
+  var onShowImageInfo: (() -> Void)? = nil
 }

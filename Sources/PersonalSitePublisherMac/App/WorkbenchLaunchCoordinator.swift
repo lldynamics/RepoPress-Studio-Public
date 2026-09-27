@@ -191,17 +191,73 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     await createNewDataRoot(in: parentURL)
   }
 
+  /// Creates a new root under the application's standard Application Support
+  /// directory. Existing data roots are never reused by this entry point: a
+  /// numbered sibling is selected before initialization instead.
+  func useRecommendedDataRoot() async {
+    guard let parentURL = Self.recommendedDataRootParentURL else {
+      showDataRootSetup(
+        message: String(localized: "无法确定“应用程序支持”文件夹，请手动选择数据文件夹。")
+      )
+      return
+    }
+    await createRecommendedDataRoot(in: parentURL)
+  }
+
+  /// Testable form of the recommended-location flow. The caller provides the
+  /// Application Support parent so tests do not touch a user's real data.
+  func createRecommendedDataRoot(in parentURL: URL) async {
+    guard let pathStore else { return }
+
+    phase = .preparing(String(localized: "正在准备推荐的数据文件夹…"))
+    dataRootMessage = nil
+
+    do {
+      try await Task.detached(priority: .utility) {
+        try FileManager.default.createDirectory(
+          at: parentURL,
+          withIntermediateDirectories: true
+        )
+      }.value
+      guard !Task.isCancelled else { return }
+      await createNewDataRoot(
+        in: parentURL,
+        reuseEmptyExistingRoot: false,
+        pathStore: pathStore
+      )
+    } catch {
+      showDataRootSetup(
+        message: String(
+          format: String(localized: "无法新建数据文件夹：%@"),
+          friendlyMessage(for: error)
+        )
+      )
+    }
+  }
+
   /// Testable half of the folder-selection flow. `parentURL` is the directory
   /// the user selected; the generated child is persisted as the active root.
   func createNewDataRoot(in parentURL: URL) async {
     guard let pathStore else { return }
+    await createNewDataRoot(
+      in: parentURL,
+      reuseEmptyExistingRoot: true,
+      pathStore: pathStore
+    )
+  }
+
+  private func createNewDataRoot(
+    in parentURL: URL,
+    reuseEmptyExistingRoot: Bool,
+    pathStore: WorkbenchDataRootPathStore
+  ) async {
 
     phase = .preparing(String(localized: "正在新建 RepoPress Studio 数据文件夹…"))
     dataRootMessage = nil
 
     let rootURL = Self.availableDataRootURL(
       in: parentURL,
-      reuseEmptyExistingRoot: true
+      reuseEmptyExistingRoot: reuseEmptyExistingRoot
     )
     let appVersion = Self.currentApplicationVersion
     do {
@@ -567,6 +623,21 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     }
     return parentURL.appendingPathComponent(
       "RepoPress Data \(UUID().uuidString.prefix(8))",
+      isDirectory: true
+    )
+  }
+
+  nonisolated static var recommendedDataRootParentURL: URL? {
+    guard
+      let applicationSupportURL = FileManager.default.urls(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask
+      ).first
+    else {
+      return nil
+    }
+    return applicationSupportURL.appendingPathComponent(
+      "RepoPress Studio",
       isDirectory: true
     )
   }

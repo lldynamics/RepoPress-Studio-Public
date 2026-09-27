@@ -4,84 +4,44 @@ import SwiftUI
 
 struct WorkspaceTaskCenterView: View {
   @Environment(\.dismiss) private var dismiss
-  @Environment(\.workspaceWindowID) private var workspaceWindowID
-  @Environment(\.openWindow) private var openWindow
   @ObservedObject private var activityStatus: WorkbenchActivityStatusFacade
-  @ObservedObject private var operationLog: WorkbenchOperationLogFeatureFacade
   /// Action routing intentionally retains the full store without observing it.
-  /// The task center's redraw inputs are limited to activity and operation-log
-  /// facades, so editor and unrelated workspace mutations do not invalidate it.
+  /// Task and history panes observe their own facades, so editor and unrelated
+  /// workspace mutations do not invalidate them.
   private let store: WorkbenchStore
+  private let windowSession: WorkspaceWindowSession
   @State private var retryingTaskID: String?
   @State private var duplicateChargeConfirmationTask: WorkbenchTaskItem?
   @State private var expandedTaskIDs = Set<String>()
   @State private var taskActionFeedback: String?
   @State private var focusedReleaseRecord: TaskCenterReleaseRecordFocus?
 
-  init(store: WorkbenchStore) {
+  init(store: WorkbenchStore, windowSession: WorkspaceWindowSession) {
     self.store = store
+    self.windowSession = windowSession
     _activityStatus = ObservedObject(wrappedValue: store.activityStatus)
-    _operationLog = ObservedObject(wrappedValue: store.operationLog)
   }
 
   var body: some View {
-    let recentEntries = privacyAwareRecentActivityEntries
-
     VStack(spacing: 0) {
       header
-      if let taskActionFeedback {
-        Text(taskActionFeedback)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(.horizontal, 16)
-          .padding(.bottom, 8)
-          .accessibilityIdentifier("workspace-task-action-feedback")
-      }
-      Divider()
-
-      ScrollView {
-        VStack(alignment: .leading, spacing: 16) {
-          if activityStatus.taskCenterItems.isEmpty {
-            ContentUnavailableView {
-              Label("暂无任务", systemImage: "checkmark.circle")
-            } description: {
-              Text("AI 请求、资料导入、图片处理、站点扫描、Git 推送和部署状态会集中显示在这里。")
-            }
-            .frame(maxWidth: .infinity, minHeight: 150)
-          } else {
-            LazyVStack(alignment: .leading, spacing: 10) {
-              ForEach(
-                WorkspaceTaskCenterPresentation.ordered(activityStatus.taskCenterItems)
-              ) { task in
-                WorkspaceTaskCenterRow(
-                  task: task,
-                  isRetrying: retryingTaskID == task.id,
-                  isExpanded: expandedTaskIDs.contains(task.id),
-                  retry: { retry(task) },
-                  locate: { _ = locate(task) },
-                  cancel: { cancel(task) },
-                  toggleDetails: { toggleDetails(task) },
-                  copyDiagnostic: { copyDiagnostic(for: task) }
-                )
-              }
-            }
+      TabView {
+        taskList
+          .tabItem { Label("任务", systemImage: "list.bullet.rectangle") }
+        WorkspaceTaskCenterActivityView(
+          operationLog: store.operationLog,
+          openSyncWorkspace: {
+            WorkspaceTaskCenterNavigation.openSyncWorkspace(
+              store: store, windowSession: windowSession
+            )
+            dismiss()
           }
-
-          if operationLog.isQuickHideActive {
-            Label("活动记录已隐藏", systemImage: "eye.slash")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .frame(maxWidth: .infinity, alignment: .leading)
-              .accessibilityIdentifier("workspace-task-center-recent-activity-hidden")
-          } else {
-            recentActivity(entries: recentEntries)
-          }
-        }
-        .padding(16)
+        )
+        .tabItem { Label("活动记录", systemImage: "clock.arrow.circlepath") }
       }
+      .padding([.horizontal, .bottom], 12)
     }
-    .frame(width: 480, height: panelHeight(activityCount: recentEntries.count))
+    .frame(minWidth: 800, idealWidth: 900, minHeight: 580, idealHeight: 640)
     .onExitCommand { dismiss() }
     .confirmationDialog(
       "重新生成可能重复计费",
@@ -117,7 +77,7 @@ struct WorkspaceTaskCenterView: View {
       }
       .frame(minWidth: 760, minHeight: 620)
     }
-    .accessibilityLabel("统一任务中心")
+    .accessibilityLabel("任务中心")
     .accessibilityIdentifier("workspace-task-center")
   }
 
@@ -126,7 +86,7 @@ struct WorkspaceTaskCenterView: View {
       Image(systemName: "list.bullet.rectangle.portrait")
         .foregroundStyle(.secondary)
       VStack(alignment: .leading, spacing: 2) {
-        Text("统一任务中心")
+        Text("任务中心")
           .font(.headline)
         Text(headerDetail)
           .font(.caption)
@@ -153,44 +113,45 @@ struct WorkspaceTaskCenterView: View {
     return String(localized: "进行中 \(active) · 失败待处理 \(failed)")
   }
 
-  private func panelHeight(activityCount: Int) -> CGFloat {
-    let taskCount = activityStatus.taskCenterItems.count
-    guard taskCount > 0 else { return min(560, max(300, CGFloat(activityCount) * 58 + 250)) }
-    return min(560, max(300, CGFloat(taskCount) * 112 + CGFloat(activityCount) * 58 + 100))
-  }
-
-  private func recentActivity(entries: [WorkbenchOperationLogEntry]) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack {
-        Label("最近活动", systemImage: "clock.arrow.circlepath")
-          .font(.headline)
-        Spacer()
-        Button("查看全部活动记录…") {
-          dismiss()
-          openWindow(id: "operation-log")
-        }
-        .buttonStyle(.link)
-        .accessibilityIdentifier("operation-log-open")
-      }
-
-      if entries.isEmpty {
-        Text("完成的发布、维护和同步操作会显示在这里。")
+  private var taskList: some View {
+    VStack(spacing: 0) {
+      if let taskActionFeedback {
+        Text(taskActionFeedback)
           .font(.caption)
           .foregroundStyle(.secondary)
-      } else {
-        LazyVStack(alignment: .leading, spacing: 8) {
-          ForEach(entries) { entry in
-            WorkspaceRecentActivityRow(entry: entry)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(16)
+          .accessibilityIdentifier("workspace-task-action-feedback")
+      }
+      ScrollView {
+        if activityStatus.taskCenterItems.isEmpty {
+          ContentUnavailableView {
+            Label("暂无任务", systemImage: "checkmark.circle")
+          } description: {
+            Text("AI 请求、资料导入、图片处理、站点扫描、Git 推送和部署状态会集中显示在这里。")
           }
+          .frame(maxWidth: .infinity, minHeight: 240)
+        } else {
+          LazyVStack(alignment: .leading, spacing: 10) {
+            ForEach(WorkspaceTaskCenterPresentation.ordered(activityStatus.taskCenterItems)) {
+              task in
+              WorkspaceTaskCenterRow(
+                task: task,
+                isRetrying: retryingTaskID == task.id,
+                isExpanded: expandedTaskIDs.contains(task.id),
+                retry: { retry(task) },
+                locate: { _ = locate(task) },
+                cancel: { cancel(task) },
+                toggleDetails: { toggleDetails(task) },
+                copyDiagnostic: { copyDiagnostic(for: task) }
+              )
+            }
+          }
+          .padding(16)
         }
       }
     }
-    .accessibilityIdentifier("workspace-task-center-recent-activity")
-  }
-
-  private var privacyAwareRecentActivityEntries: [WorkbenchOperationLogEntry] {
-    guard !operationLog.isQuickHideActive else { return [] }
-    return Array(operationLog.entries.prefix(5))
+    .accessibilityIdentifier("workspace-task-center-tasks")
   }
 
   private func retry(_ task: WorkbenchTaskItem) {
@@ -225,12 +186,16 @@ struct WorkspaceTaskCenterView: View {
 
   @discardableResult
   private func locate(_ task: WorkbenchTaskItem) -> Bool {
-    if let message = activityStatus.locateTask(task, windowID: workspaceWindowID) {
+    if let message = WorkspaceTaskCenterNavigation.locate(
+      task, store: store, windowSession: windowSession
+    ) {
       taskActionFeedback = message
       return false
     }
     if case .releaseRecord(let recordID) = task.target {
       focusedReleaseRecord = TaskCenterReleaseRecordFocus(id: recordID)
+    } else {
+      dismiss()
     }
     taskActionFeedback = String(localized: "已定位到任务目标。")
     return true
@@ -259,63 +224,6 @@ struct WorkspaceTaskCenterView: View {
 
 private struct TaskCenterReleaseRecordFocus: Identifiable {
   let id: UUID
-}
-
-private struct WorkspaceRecentActivityRow: View {
-  let entry: WorkbenchOperationLogEntry
-
-  var body: some View {
-    HStack(alignment: .top, spacing: 9) {
-      Image(systemName: entry.systemImage)
-        .foregroundStyle(.secondary)
-        .frame(width: 18)
-      VStack(alignment: .leading, spacing: 2) {
-        Text(entry.title)
-          .font(.caption.weight(.semibold))
-        Text(entry.summary)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .lineLimit(2)
-        HStack(spacing: 4) {
-          if let targetLabel = entry.targetLabel {
-            Text(targetLabel)
-            Text("·")
-          }
-          Text(workspaceOperationOutcomeTitle(entry.outcome))
-          Text("·")
-          Text(entry.occurredAt, style: .relative)
-        }
-        .font(.workbenchMetadata)
-        .foregroundStyle(.tertiary)
-        .lineLimit(1)
-      }
-      Spacer(minLength: 0)
-    }
-    .padding(9)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(
-      WorkbenchBackgroundStyle.card,
-      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-    )
-    .accessibilityElement(children: .combine)
-  }
-}
-
-private func workspaceOperationOutcomeTitle(_ outcome: WorkbenchOperationLogOutcome) -> String {
-  switch outcome {
-  case .succeeded:
-    return String(localized: "已完成")
-  case .partial:
-    return String(localized: "部分完成")
-  case .failed:
-    return String(localized: "失败")
-  case .cancelled:
-    return String(localized: "已取消")
-  case .recorded:
-    return String(localized: "已记录")
-  case .observed:
-    return String(localized: "已观察")
-  }
 }
 
 private struct WorkspaceTaskCenterRow: View {

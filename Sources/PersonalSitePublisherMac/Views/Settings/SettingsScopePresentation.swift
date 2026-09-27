@@ -13,7 +13,7 @@ enum SettingsScopePresentation: Equatable, Sendable {
     case .shared:
       return String(localized: "全局共享")
     case .sharedConnection:
-      return String(localized: "共享连接")
+      return String(localized: "应用级共享连接")
     }
   }
 
@@ -35,7 +35,7 @@ enum SettingsScopePresentation: Equatable, Sendable {
     case .shared:
       return String(localized: "全局共享，适用于所有站点")
     case .sharedConnection:
-      return String(localized: "共享连接，修改会影响所有引用此连接的站点")
+      return String(localized: "应用级共享连接，修改会影响所有引用此连接的站点")
     }
   }
 }

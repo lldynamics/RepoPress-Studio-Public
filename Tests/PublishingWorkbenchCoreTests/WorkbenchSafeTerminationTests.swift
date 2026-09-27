@@ -412,7 +412,6 @@ func makeSafeExitTestStore(persistence: WorkbenchPersistence) -> WorkbenchStore 
       service: "RepoPress.Tests.SafeExit.\(UUID().uuidString)", accountPrefix: "test", inMemory: true),
     repositoryTokenStore: KeychainTokenStore(service: "RepoPress.Tests.SafeExit.Repository", accountPrefix: "test", inMemory: true),
     deploymentTokenStore: KeychainTokenStore(service: "RepoPress.Tests.SafeExit.Deployment", accountPrefix: "test", inMemory: true),
-    siteAnalyticsTokenStore: KeychainTokenStore(service: "RepoPress.Tests.SafeExit.Analytics", accountPrefix: "test", inMemory: true),
     aiDataSharingConsentStore: AIDataSharingConsentStore(
       defaults: UserDefaults(suiteName: "RepoPress.Tests.SafeExit.\(UUID().uuidString)")!))
 }

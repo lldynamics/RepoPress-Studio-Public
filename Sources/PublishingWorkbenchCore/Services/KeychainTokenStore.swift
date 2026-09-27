@@ -76,7 +76,6 @@ public struct KeychainTokenMutationReport: Hashable, Sendable {
 public enum KeychainTokenScope: Hashable, Sendable {
   case repository(RepositoryProvider)
   case deployment(DeploymentProvider)
-  case analytics(SiteAnalyticsProvider)
 
   var accountComponent: String {
     switch self {
@@ -84,8 +83,6 @@ public enum KeychainTokenScope: Hashable, Sendable {
       return "repository-\(provider.rawValue)"
     case .deployment(let provider):
       return "deployment-\(provider.rawValue)"
-    case .analytics(let provider):
-      return "analytics-\(provider.rawValue)"
     }
   }
 }
@@ -95,12 +92,10 @@ public enum KeychainCredentialServices {
     public static let ai = "PersonalSitePublisherMac.LocalDevelopment.AIProvider"
     public static let repository = "PersonalSitePublisherMac.LocalDevelopment.RepositoryProvider"
     public static let deployment = "PersonalSitePublisherMac.LocalDevelopment.DeploymentProvider"
-    public static let analytics = "PersonalSitePublisherMac.LocalDevelopment.SiteAnalytics"
   #else
     public static let ai = "PersonalSitePublisherMac.AIProvider"
     public static let repository = "PersonalSitePublisherMac.RepositoryProvider"
     public static let deployment = "PersonalSitePublisherMac.DeploymentProvider"
-    public static let analytics = "PersonalSitePublisherMac.SiteAnalytics"
   #endif
 }
 

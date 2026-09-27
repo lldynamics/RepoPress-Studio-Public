@@ -34,7 +34,6 @@ struct WorkbenchAccessibilityStatusAnnouncer: View {
   }
 
   private var status: WorkbenchAccessibilityStatus {
-    if activityStatus.isQuickHideActive { return .quickHideActive }
     if activityStatus.repositoryScanState.isScanning {
       return .repositoryScanning(activityStatus.repositoryScanState.message)
     }
@@ -47,7 +46,6 @@ struct WorkbenchAccessibilityStatusAnnouncer: View {
 }
 
 private enum WorkbenchAccessibilityStatus: Equatable {
-  case quickHideActive
   case repositoryScanning(String)
   case remotePublishing
   case aiReplying
@@ -66,7 +64,6 @@ private enum WorkbenchAccessibilityStatus: Equatable {
 
   var message: String {
     switch self {
-    case .quickHideActive: return String(localized: "快速隐藏已启用（仅界面遮挡）。")
     case .repositoryScanning(let message):
       return String(format: String(localized: "仓库状态更新：%@"), message)
     case .remotePublishing: return String(localized: "正在执行线上发布。")

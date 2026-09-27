@@ -1,7 +1,88 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
+/// Actions that operate on the currently selected library item. Keeping these
+/// beside the inspector makes it clear that they act on the selected detail,
+/// while the sidebar remains focused on navigation and selection.
+struct KnowledgeLibraryInsertionActions: View {
+  let store: WorkbenchStore
+  @ObservedObject var knowledge: KnowledgeStore
+  let document: KnowledgeDocument
+  let activeSearchResult: KnowledgeSearchResult?
+  @State private var isInsertingImage = false
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("插入到当前文章")
+        .font(.callout.weight(.semibold))
+
+      if document.kind == .image {
+        Button {
+          isInsertingImage = true
+          Task { @MainActor in
+            defer { isInsertingImage = false }
+            _ = await KnowledgeArticleInsertionService.insertImage(
+              document: document,
+              selectedResult: activeSearchResult,
+              knowledge: knowledge,
+              into: store
+            )
+          }
+        } label: {
+          Label(
+            isInsertingImage ? String(localized: "正在插入图片") : String(localized: "插入图片"),
+            systemImage: isInsertingImage ? "hourglass" : "photo.badge.plus"
+          )
+          .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .workbenchProminentActionStyle()
+        .disabled(isInsertingImage || knowledge.isBusy)
+        .help("将资料库托管副本复制到当前文章附件后插入")
+        .accessibilityIdentifier("knowledge-insert-current-image")
+      } else {
+        Button {
+          _ = KnowledgeArticleInsertionService.insertCurrentArticle(
+            document: document,
+            text: knowledge.selectedDocumentText,
+            into: store
+          )
+        } label: {
+          Label("插入当前文章", systemImage: "text.insert")
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .workbenchProminentActionStyle()
+        .disabled(
+          knowledge.selectedDocumentText.trimmedForPublishing.isEmpty || knowledge.isBusy
+        )
+        .help("将当前资料正文插入正在编辑的文章")
+        .accessibilityIdentifier("knowledge-insert-current-article")
+      }
+
+      Button {
+        _ = KnowledgeArticleInsertionService.insertCitation(
+          document: document,
+          selectedResult: activeSearchResult,
+          fallbackText: knowledge.selectedDocumentText,
+          into: store
+        )
+      } label: {
+        Label("插入引用", systemImage: "quote.opening")
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .buttonStyle(.bordered)
+      .disabled(knowledge.selectedDocumentText.trimmedForPublishing.isEmpty || knowledge.isBusy)
+      .help("将当前选中片段作为引用插入正在编辑的文章")
+      .accessibilityIdentifier("knowledge-insert-citation")
+    }
+    .controlSize(.small)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("将当前资料插入文章")
+    .accessibilityIdentifier("knowledge-library-insertion-actions")
+  }
+}
+
 struct KnowledgeLibraryInspectorPanel: View {
+  let store: WorkbenchStore
   @ObservedObject var knowledge: KnowledgeStore
   let document: KnowledgeDocument
   let activeSearchResult: KnowledgeSearchResult?
@@ -32,6 +113,15 @@ struct KnowledgeLibraryInspectorPanel: View {
           .help("编辑元数据")
           .accessibilityLabel("编辑资料元数据")
         }
+
+        KnowledgeLibraryInsertionActions(
+          store: store,
+          knowledge: knowledge,
+          document: document,
+          activeSearchResult: activeSearchResult
+        )
+
+        Divider()
 
         VStack(alignment: .leading, spacing: 8) {
           Button(action: onAddAnnotation) {

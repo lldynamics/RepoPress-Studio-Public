@@ -258,10 +258,6 @@ extension PublishingStore {
       )
       return nil
     }
-    guard store.canUseProtectedWorkbench else {
-      setPublishingActionMessage(store.quickHideOperationMessage, status: .warning)
-      return nil
-    }
 
     if let authorization {
       do {

@@ -7,7 +7,6 @@ enum SettingsRulesDestination: String, Hashable, Sendable {
 enum SettingsTokenDestination: String, Hashable, Sendable {
   case repository
   case deployment
-  case analytics
 }
 
 enum SettingsAIDestination: String, Hashable, Sendable {
@@ -73,7 +72,7 @@ enum SettingsDestination: Hashable, Identifiable, Sendable {
     case "token.deployment":
       self = .token(.deployment)
     case "token.analytics":
-      self = .token(.analytics)
+      self = .tab(.token)
     case "ai.connection":
       self = .ai(.connection)
     case "ai.credentials":
@@ -88,8 +87,6 @@ enum SettingsDestination: Hashable, Identifiable, Sendable {
       self = .data(.migration)
     case "appearance.defaults":
       self = .tab(.editor)
-    case "language":
-      self = .tab(.appearance)
     case "storage", "data":
       self = .tab(.dataManagement)
     default:
@@ -113,8 +110,12 @@ enum SettingsNavigation {
     open(destination: tab.map(SettingsDestination.tab), openSettings: openSettings)
   }
 
-  static func open(destination: SettingsDestination?, openSettings: () -> Void) {
-    request(destination: destination)
+  static func open(
+    destination: SettingsDestination?,
+    defaults: UserDefaults = .standard,
+    openSettings: () -> Void
+  ) {
+    request(destination: destination, defaults: defaults)
     openSettings()
   }
 
@@ -131,31 +132,7 @@ enum SettingsNavigation {
     }
   }
 
-  static func request(destination: SettingsDestination?) {
-    UserDefaults.standard.set(destination?.id ?? "", forKey: requestedTabStorageKey)
-  }
-
-  /// Site configuration is shown in the main window. The Settings window hands
-  /// such destinations over through this one-shot key; the main window
-  /// consumes and clears it.
-  static let requestedSiteDestinationStorageKey = "settingsRequestedSiteDestinationID"
-
-  static func requestSiteSettings(_ destination: SettingsDestination) {
-    UserDefaults.standard.set(destination.id, forKey: requestedSiteDestinationStorageKey)
-  }
-
-  static func consumeRequestedSiteSettings() -> SettingsDestination? {
-    let defaults = UserDefaults.standard
-    guard let id = defaults.string(forKey: requestedSiteDestinationStorageKey), !id.isEmpty
-    else { return nil }
-    defaults.set("", forKey: requestedSiteDestinationStorageKey)
-    return SettingsDestination(requestedID: id)
-  }
-
-  /// App preferences belong to the standard Settings window; only site
-  /// configuration is presented inside the main workspace.
-  static func opensInSettingsWindow(_ destination: SettingsDestination?) -> Bool {
-    guard let destination else { return true }
-    return !destination.tab.isSiteScoped
+  static func request(destination: SettingsDestination?, defaults: UserDefaults = .standard) {
+    defaults.set(destination?.id ?? "", forKey: requestedTabStorageKey)
   }
 }

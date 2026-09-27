@@ -118,13 +118,14 @@ struct WorkspaceTaskMetadataSection: View {
           .fixedSize(horizontal: false, vertical: true)
       }
 
-      InspectorSection("分类") {
+      InspectorSection("标签与分类") {
         TaxonomySuggestionField(
           title: "标签",
           values: $draft.tags,
           suggestions: tagSuggestions
         )
         .id(PublishMetadataFieldAnchor.id(for: "tags"))
+
         TaxonomySuggestionField(
           title: "分类",
           values: $draft.categories,
@@ -376,7 +377,7 @@ struct WorkspaceTaskMetadataSection: View {
   private var summaryAIButtonTitle: String {
     draft.summary.trimmedForPublishing.isEmpty
       ? String(localized: "AI 生成")
-      : String(localized: "AI 重写")
+      : String(localized: "AI 修复")
   }
 
   private var summaryAIButtonHelp: String {

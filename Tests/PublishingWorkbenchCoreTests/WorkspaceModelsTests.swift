@@ -198,9 +198,9 @@ final class WorkspaceModelsTests: XCTestCase {
 
     let decoded = try JSONDecoder.workbench.decode(SiteProfile.self, from: legacyData)
 
-    XCTAssertEqual(decoded.resolvedAIWritingStyle.preset, .jinfangZola)
-    XCTAssertTrue(decoded.aiWritingStylePromptInstructions.contains("克制、实用、直接"))
-    XCTAssertTrue(decoded.aiWritingStylePromptInstructions.contains("个人网站、静态博客"))
+    XCTAssertEqual(decoded.resolvedAIWritingStyle.preset, .technicalNote)
+    XCTAssertTrue(decoded.aiWritingStylePromptInstructions.contains("准确、结构清晰"))
+    XCTAssertTrue(decoded.aiWritingStylePromptInstructions.contains("技术对象、关键步骤和适用边界"))
   }
 
   func testAIWritingStylePresetAppliesMobileDefaults() {

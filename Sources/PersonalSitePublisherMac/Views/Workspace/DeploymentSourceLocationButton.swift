@@ -17,8 +17,8 @@ struct DeploymentSourceRequest: Identifiable {
   let profile: SiteProfile
   let entry: DeploymentLogEntry
 
-  func isValid(activeProfile: SiteProfile, canUseProtectedWorkbench: Bool) -> Bool {
-    canUseProtectedWorkbench && activeProfile == profile
+  func isValid(activeProfile: SiteProfile) -> Bool {
+    activeProfile == profile
   }
 }
 
@@ -35,13 +35,11 @@ struct DeploymentSourceLocationButton: View {
   }
 
   private var isAvailable: Bool {
-    shell.canUseProtectedWorkbench && shell.activeProfile == profile
+    shell.activeProfile == profile
   }
 
   private var isRequestValid: Bool {
-    request?.isValid(
-      activeProfile: shell.activeProfile,
-      canUseProtectedWorkbench: shell.canUseProtectedWorkbench) ?? false
+    request?.isValid(activeProfile: shell.activeProfile) ?? false
   }
 
   var body: some View {
@@ -56,10 +54,7 @@ struct DeploymentSourceLocationButton: View {
       .disabled(!isAvailable)
       .accessibilityIdentifier("deployment-open-source-\(entry.id)")
       .sheet(item: $request) { request in
-        if request.isValid(
-          activeProfile: shell.activeProfile,
-          canUseProtectedWorkbench: shell.canUseProtectedWorkbench)
-        {
+        if request.isValid(activeProfile: shell.activeProfile) {
           DeploymentSourcePreview(profile: request.profile, entry: request.entry)
             .id(request.id)
         }

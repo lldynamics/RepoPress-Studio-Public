@@ -107,8 +107,6 @@ public struct WorkbenchRSSListTitleTranslationState: Equatable, Sendable {
   public let providerConfiguration: AIProviderConfig
   public let tokenAvailability: KeychainTokenAvailability
   public let dataSharingConsent: AIDataSharingConsentPresentation
-  public let canUseProtectedWorkbench: Bool
-  public let isQuickHideActive: Bool
 
 }
 
@@ -164,7 +162,6 @@ public final class WorkbenchRSSListTitleTranslationFeatureFacade: ObservableObje
 
     observe(providerConfiguration)
     observe(store.aiWorkspaceStore.$aiTokenAvailability)
-    observe(store.privacyProtectionStore.$isQuickHideActive)
   }
 
   public var providerConfiguration: AIProviderConfig { state.providerConfiguration }
@@ -173,9 +170,7 @@ public final class WorkbenchRSSListTitleTranslationFeatureFacade: ObservableObje
 
   public var dataSharingConsent: AIDataSharingConsentPresentation { state.dataSharingConsent }
 
-  public var canUseProtectedWorkbench: Bool { state.canUseProtectedWorkbench }
 
-  public var isQuickHideActive: Bool { state.isQuickHideActive }
 
   public func translateRSSTitles(
     _ titles: [RSSArticleTranslationTextRequest],
@@ -222,15 +217,12 @@ public final class WorkbenchRSSListTitleTranslationFeatureFacade: ObservableObje
 
   private static func makeState(store: WorkbenchStore) -> WorkbenchRSSListTitleTranslationState {
     let providerConfiguration = store.aiProviderConfig(for: store.activeProfile)
-    let isQuickHideActive = store.isQuickHideActive
     return WorkbenchRSSListTitleTranslationState(
       providerConfiguration: providerConfiguration,
       tokenAvailability: store.aiTokenAvailability,
       dataSharingConsent: store.aiStore.aiDataSharingConsentPresentation(
         for: providerConfiguration
-      ),
-      canUseProtectedWorkbench: store.canUseProtectedWorkbench,
-      isQuickHideActive: isQuickHideActive
+      )
     )
   }
 }
@@ -276,13 +268,7 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     )
   }
 
-  public var canUseProtectedWorkbench: Bool {
-    store.canUseProtectedWorkbench
-  }
 
-  public var isQuickHideActive: Bool {
-    store.isQuickHideActive
-  }
 
   public var isActionRunning: Bool {
     store.isAIActionRunning

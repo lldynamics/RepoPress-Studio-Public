@@ -1673,6 +1673,21 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(reloaded.deploymentPollingSettings.normalizedIntervalMinutes, 15)
   }
 
+  func testManualDeploymentCheckWorksWhileAutomaticPollingIsDisabled() async throws {
+    let transport = SequencedDeploymentTransport(responses: [])
+    let store = try deploymentStore(transport: transport)
+    let now = Date(timeIntervalSince1970: 1_900_000_000)
+
+    XCTAssertFalse(store.deploymentPollingSettings.isEnabled)
+    let didTick = await store.tickDeploymentPolling(now: now)
+    let didCheckManually = await store.runDeploymentPollingManually(now: now)
+    XCTAssertFalse(didTick)
+    XCTAssertTrue(didCheckManually)
+    XCTAssertEqual(store.deploymentPollingState.status, .noEligibleRecords)
+    XCTAssertNil(store.deploymentPollingState.nextRunAt)
+    XCTAssertFalse(store.deploymentPollingSettings.isEnabled)
+  }
+
   func testDeploymentPollingStateDecodesLegacyPayloadWithoutCheckedRecords() throws {
     let data = """
       {

@@ -60,7 +60,7 @@ struct KnowledgeCollectionNavigationView: View {
         Button {
           isCollectionBuilderPresented = true
         } label: {
-          Image(systemName: "wand.and.stars.inverse")
+          Image(systemName: "line.3.horizontal.decrease.circle")
             .font(.system(size: 15, weight: .medium))
             .frame(width: 28, height: 28)
             .contentShape(Rectangle())
@@ -96,7 +96,7 @@ struct KnowledgeCollectionNavigationView: View {
           }
 
           if visibleSmartCollectionKinds.contains(where: { !smartItems(kind: $0).isEmpty }) {
-            collectionSectionTitle("智能集合", systemImage: "wand.and.stars")
+              collectionSectionTitle("智能集合", systemImage: "line.3.horizontal.decrease.circle")
             ForEach(visibleSmartCollectionKinds) { kind in
               let items = smartItems(kind: kind)
               if !items.isEmpty {
@@ -410,7 +410,7 @@ private struct KnowledgeSavedCollectionBuilderView: View {
   var body: some View {
     VStack(spacing: 0) {
       HStack {
-        Label("新建组合智能集合", systemImage: "wand.and.stars")
+        Label("新建组合智能集合", systemImage: "line.3.horizontal.decrease.circle")
           .font(.headline)
         Spacer()
       }

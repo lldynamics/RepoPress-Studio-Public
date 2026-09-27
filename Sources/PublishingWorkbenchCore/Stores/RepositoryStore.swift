@@ -1696,10 +1696,6 @@ public final class RepositoryStore: ObservableObject {
   public func checkRepositoryTokenAccess(store: WorkbenchStore) async
     -> RemoteRepositoryAccessCheck?
   {
-    guard store.canUseProtectedWorkbench else {
-      store.setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
-      return nil
-    }
     guard !store.isRemoteRepositoryPublishing else {
       store.setPublishActionMessage(
         CoreL10n.text("已有远端仓库操作正在运行，请等待完成。"),
@@ -1746,7 +1742,7 @@ public final class RepositoryStore: ObservableObject {
         return nil
       }
       await invalidateRemoteRepositoryAccessCheck(for: profile, store: store)
-      store.setPublishActionMessage(
+      store.setGitActionMessage(
         CoreL10n.format("仓库权限检查失败：%@", error.localizedDescription),
         status: .failure
       )
@@ -1901,10 +1897,6 @@ public final class RepositoryStore: ObservableObject {
     privateRepository: Bool = true,
     store: WorkbenchStore
   ) async -> RemoteRepositoryCreationResult? {
-    guard store.canUseProtectedWorkbench else {
-      store.setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
-      return nil
-    }
     let profile = store.activeProfile
     guard !store.isRemoteRepositoryPublishing else {
       store.setPublishActionMessage(

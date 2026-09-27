@@ -22,8 +22,6 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
     let isSidebarPresented: Bool
     let isInspectorPresented: Bool
     let canToggleInspector: Bool
-    let repositorySourceHasUnsavedChanges: Bool
-    let isSettingsWorkspacePresented: Bool
   }
 
   struct MarkdownPresentation: Equatable {
@@ -36,11 +34,6 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
     let canNavigatePrevious: Bool
     let canNavigateNext: Bool
     let canActOnArticle: Bool
-  }
-
-  struct RepositorySourcePresentation: Equatable {
-    let hasDocument: Bool
-    let canSave: Bool
   }
 
   let objectWillChange = ObservableObjectPublisher()
@@ -57,18 +50,16 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
   private(set) var workspaceSidebarCommandAction: WorkspaceSidebarCommandAction?
   private(set) var workspaceInspectorCommandAction: WorkspaceInspectorCommandAction?
   private(set) var showShortcutHelp: (() -> Void)?
-  private(set) var repositorySourceSessionCommandActions: RepositorySourceSessionCommandActions?
+  private(set) var showTaskCenter: (() -> Void)?
 
   private(set) var markdownEditorCommandActions: MarkdownEditorCommandActions?
   private(set) var writingDraftCommandActions: WritingDraftCommandActions?
   private(set) var knowledgeLibraryCommandActions: KnowledgeLibraryCommandActions?
-  private(set) var repositorySourceEditorCommandActions: RepositorySourceEditorCommandActions?
   private(set) var rssReaderCommandActions: RSSReaderCommandActions?
 
   private var markdownOwner: UUID?
   private var writingOwner: UUID?
   private var knowledgeOwner: UUID?
-  private var repositorySourceOwner: UUID?
   private var rssOwner: UUID?
   private var isChangeNotificationScheduled = false
 
@@ -83,7 +74,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
     workspaceSidebarCommandAction: WorkspaceSidebarCommandAction? = nil,
     workspaceInspectorCommandAction: WorkspaceInspectorCommandAction,
     showShortcutHelp: (() -> Void)? = nil,
-    repositorySourceSessionCommandActions: RepositorySourceSessionCommandActions
+    showTaskCenter: (() -> Void)? = nil,
   ) {
     mutatePresentation {
       self.publishDrawerCommandAction = publishDrawerCommandAction
@@ -96,7 +87,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
       self.workspaceSidebarCommandAction = workspaceSidebarCommandAction
       self.workspaceInspectorCommandAction = workspaceInspectorCommandAction
       self.showShortcutHelp = showShortcutHelp
-      self.repositorySourceSessionCommandActions = repositorySourceSessionCommandActions
+      self.showTaskCenter = showTaskCenter
     }
   }
 
@@ -112,17 +103,15 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
       workspaceSidebarCommandAction = nil
       workspaceInspectorCommandAction = nil
       showShortcutHelp = nil
-      repositorySourceSessionCommandActions = nil
+      showTaskCenter = nil
 
       markdownOwner = nil
       writingOwner = nil
       knowledgeOwner = nil
-      repositorySourceOwner = nil
       rssOwner = nil
       markdownEditorCommandActions = nil
       writingDraftCommandActions = nil
       knowledgeLibraryCommandActions = nil
-      repositorySourceEditorCommandActions = nil
       rssReaderCommandActions = nil
     }
   }
@@ -172,24 +161,6 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
     }
   }
 
-  func registerRepositorySource(
-    _ actions: RepositorySourceEditorCommandActions,
-    owner: UUID
-  ) {
-    mutatePresentation {
-      repositorySourceOwner = owner
-      repositorySourceEditorCommandActions = actions
-    }
-  }
-
-  func unregisterRepositorySource(owner: UUID) {
-    guard repositorySourceOwner == owner else { return }
-    mutatePresentation {
-      repositorySourceOwner = nil
-      repositorySourceEditorCommandActions = nil
-    }
-  }
-
   func registerRSSReader(_ actions: RSSReaderCommandActions?, owner: UUID) {
     mutatePresentation {
       rssOwner = owner
@@ -215,14 +186,12 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
   private var presentationSnapshot: PresentationSnapshot {
     PresentationSnapshot(
       hasRootActions: publishDrawerCommandAction != nil,
-      isSettingsWorkspacePresented: settingsWorkspaceCommandAction?.isPresented,
       focusModeIsActive: workspaceFocusModeCommandAction?.isActive,
       focusModeCanToggle: workspaceFocusModeCommandAction?.canToggle,
       sidebarIsPresented: workspaceSidebarCommandAction?.isPresented,
       sidebarCanToggle: workspaceSidebarCommandAction?.canToggle,
       inspectorIsPresented: workspaceInspectorCommandAction?.isPresented,
       inspectorCanToggle: workspaceInspectorCommandAction?.canToggle,
-      repositorySourceHasUnsavedChanges: repositorySourceSessionCommandActions?.hasUnsavedChanges,
       markdownOwner: markdownOwner,
       markdown: markdownEditorCommandActions.map {
         MarkdownPresentation(
@@ -234,12 +203,9 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
       writingOwner: writingOwner,
       hasWritingDraftActions: writingDraftCommandActions != nil,
       hasShortcutHelp: showShortcutHelp != nil,
+      hasTaskCenter: showTaskCenter != nil,
       knowledgeOwner: knowledgeOwner,
       hasKnowledgeLibraryActions: knowledgeLibraryCommandActions != nil,
-      repositorySourceOwner: repositorySourceOwner,
-      repositorySource: repositorySourceEditorCommandActions.map {
-        RepositorySourcePresentation(hasDocument: $0.hasDocument, canSave: $0.canSave)
-      },
       rssOwner: rssOwner,
       rss: rssReaderCommandActions.map {
         RSSPresentation(
@@ -263,23 +229,20 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
 
   private struct PresentationSnapshot: Equatable {
     let hasRootActions: Bool
-    let isSettingsWorkspacePresented: Bool?
     let focusModeIsActive: Bool?
     let focusModeCanToggle: Bool?
     let sidebarIsPresented: Bool?
     let sidebarCanToggle: Bool?
     let inspectorIsPresented: Bool?
     let inspectorCanToggle: Bool?
-    let repositorySourceHasUnsavedChanges: Bool?
     let markdownOwner: UUID?
     let markdown: MarkdownPresentation?
     let writingOwner: UUID?
     let hasWritingDraftActions: Bool
     let hasShortcutHelp: Bool
+    let hasTaskCenter: Bool
     let knowledgeOwner: UUID?
     let hasKnowledgeLibraryActions: Bool
-    let repositorySourceOwner: UUID?
-    let repositorySource: RepositorySourcePresentation?
     let rssOwner: UUID?
     let rss: RSSPresentation?
   }
@@ -301,15 +264,6 @@ extension RSSReaderCommandActions {
       canNavigatePrevious: canNavigatePrevious,
       canNavigateNext: canNavigateNext,
       canActOnArticle: canActOnArticle
-    )
-  }
-}
-
-extension RepositorySourceEditorCommandActions {
-  var sceneCommandPresentation: WorkspaceSceneCommandRouter.RepositorySourcePresentation {
-    WorkspaceSceneCommandRouter.RepositorySourcePresentation(
-      hasDocument: hasDocument,
-      canSave: canSave
     )
   }
 }

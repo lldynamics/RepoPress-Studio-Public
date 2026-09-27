@@ -32,6 +32,52 @@ enum ContentHealthSeverityFilter: String, CaseIterable, Identifiable, Sendable {
   }
 }
 
+enum ContentHealthSourceFilter: String, CaseIterable, Identifiable, Sendable {
+  case all
+  case articles
+  case site
+  case maintenance
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .all: String(localized: "全部来源")
+    case .articles: String(localized: "文章")
+    case .site: String(localized: "站点")
+    case .maintenance: String(localized: "维护")
+    }
+  }
+
+  var includesArticles: Bool { self == .all || self == .articles }
+  var includesSite: Bool { self == .all || self == .site }
+  var includesMaintenance: Bool { self == .all || self == .maintenance }
+}
+
+enum ContentHealthAIFixFilter: String, CaseIterable, Identifiable, Sendable {
+  case all
+  case fixable
+  case manual
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .all: String(localized: "全部处理方式")
+    case .fixable: String(localized: "AI 修复")
+    case .manual: String(localized: "手动处理")
+    }
+  }
+
+  func includes(canUseAI: Bool) -> Bool {
+    switch self {
+    case .all: true
+    case .fixable: canUseAI
+    case .manual: !canUseAI
+    }
+  }
+}
+
 struct ContentHealthArticlePresentation: Sendable {
   let snapshotID: UUID
   let filter: ContentHealthContextFilter

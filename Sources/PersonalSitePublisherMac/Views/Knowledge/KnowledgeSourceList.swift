@@ -17,19 +17,28 @@ struct KnowledgeSourceListPresentationSnapshot {
   @MainActor
   static func make(knowledge: KnowledgeStore) -> Self {
     let documentRows = knowledge.visibleDocuments.map { document in
-      let size = ByteCountFormatter.string(
-        fromByteCount: document.sourceByteCount,
-        countStyle: .file
-      )
       let date = knowledge.documentSort.field == .updatedAt
         ? document.updatedAt
         : document.importedAt
+      // A byte count describes the downloaded page container, which is not
+      // useful when browsing web sources. The detail inspector shows readable
+      // text statistics once the extracted body is available.
+      let size =
+        document.kind == .webpage
+        ? nil
+        : ByteCountFormatter.string(fromByteCount: document.sourceByteCount, countStyle: .file)
       let relativeDate = date.formatted(
         .relative(presentation: .named, unitsStyle: .abbreviated)
       )
-      let subtitle = knowledge.documentSort.field == .fileSize
-        ? "\(size) · \(document.kind.localizedDisplayName) · \(relativeDate)"
-        : "\(document.kind.localizedDisplayName) · \(relativeDate) · \(size)"
+      let subtitle: String
+      if let size {
+        subtitle =
+          knowledge.documentSort.field == .fileSize
+          ? "\(size) · \(document.kind.localizedDisplayName) · \(relativeDate)"
+          : "\(document.kind.localizedDisplayName) · \(relativeDate) · \(size)"
+      } else {
+        subtitle = "\(document.kind.localizedDisplayName) · \(relativeDate)"
+      }
       return KnowledgeDocumentListRowSnapshot(document: document, subtitle: subtitle)
     }
 

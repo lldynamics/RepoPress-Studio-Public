@@ -3,6 +3,30 @@ import PublishingSyncCore
 import PublishingWorkbenchCore
 import SwiftUI
 
+extension RepositoryOperationLifecycleReadFailure {
+  var presentationTitle: LocalizedStringKey {
+    switch self {
+    case .repositoryUnavailable: LocalizedStringKey("本地仓库不可用")
+    case .notGitWorktree: LocalizedStringKey("所选目录不是 Git 工作树")
+    case .notRepositoryRoot: LocalizedStringKey("所选目录不是 Git 工作树根目录")
+    case .gitReadFailed: LocalizedStringKey("无法读取仓库状态")
+    }
+  }
+
+  var presentationDetail: LocalizedStringKey {
+    switch self {
+    case .repositoryUnavailable:
+      LocalizedStringKey("所选文件夹不存在或无法访问。重新选择仓库后再扫描；软件已停止自动写入。")
+    case .notGitWorktree:
+      LocalizedStringKey("请重新选择包含 .git 的站点仓库根目录；软件已停止自动写入。")
+    case .notRepositoryRoot:
+      LocalizedStringKey("请重新选择 Git 工作树根目录；软件已停止自动写入。")
+    case .gitReadFailed:
+      LocalizedStringKey("Git 状态读取失败。请检查仓库后重新扫描或选择其他仓库；软件已停止自动写入。")
+    }
+  }
+}
+
 /// Persistent action bar for an in-progress Git sequencer or RepoPress stash
 /// recovery. It remains visible after the last conflict path is staged.
 struct RepositoryOperationLifecycleView: View {
@@ -10,6 +34,7 @@ struct RepositoryOperationLifecycleView: View {
   let recovery: RepositoryRebaseRecoveryContext?
   let diagnostic: String?
   let isRunning: Bool
+  let chooseRepositoryAction: () -> Void
   let completeAction: (String) -> Void
   let abortAction: () -> Void
   let restoreRebaseWIPAction: () -> Void
@@ -105,7 +130,14 @@ struct RepositoryOperationLifecycleView: View {
 
   @ViewBuilder
   private var actionButtons: some View {
-    if lifecycle.kind == .merge || lifecycle.kind == .rebase {
+    if lifecycle.readFailure != nil {
+      Button(action: chooseRepositoryAction) {
+        Label("重新选择仓库", systemImage: "folder")
+      }
+      .workbenchProminentActionStyle()
+      .disabled(isRunning)
+      .accessibilityIdentifier("repository-operation-choose-folder")
+    } else if lifecycle.kind == .merge || lifecycle.kind == .rebase {
       Button {
         completeAction(mergeMessage)
       } label: {
@@ -179,7 +211,10 @@ struct RepositoryOperationLifecycleView: View {
   }
 
   private var title: LocalizedStringKey {
-    switch lifecycle.kind {
+    if let readFailure = lifecycle.readFailure {
+      return readFailure.presentationTitle
+    }
+    return switch lifecycle.kind {
     case .merge: LocalizedStringKey("合并尚未完成")
     case .rebase: LocalizedStringKey("变基尚未完成")
     case .unmergedIndex: LocalizedStringKey("本地改动恢复冲突")
@@ -196,7 +231,8 @@ struct RepositoryOperationLifecycleView: View {
   }
 
   private var systemImage: String {
-    switch lifecycle.kind {
+    if lifecycle.readFailure != nil { return "externaldrive.badge.questionmark" }
+    return switch lifecycle.kind {
     case .merge: "arrow.triangle.merge"
     case .rebase: "arrow.triangle.branch"
     case .unmergedIndex: "archivebox"
@@ -206,7 +242,10 @@ struct RepositoryOperationLifecycleView: View {
   }
 
   private var detail: LocalizedStringKey {
-    switch lifecycle.kind {
+    if let readFailure = lifecycle.readFailure {
+      return readFailure.presentationDetail
+    }
+    return switch lifecycle.kind {
     case .merge where lifecycle.unresolvedConflictCount == 0:
       LocalizedStringKey("所有冲突已暂存。完成合并提交后，Git 才会退出 MERGING 状态。")
     case .merge:
@@ -270,6 +309,9 @@ struct RepositoryOperationLifecycleView: View {
   }
 
   private var statusBadgeTitle: String {
+    if lifecycle.readFailure != nil {
+      return String(localized: "仓库待检查")
+    }
     if lifecycle.kind == .none, recovery != nil || diagnostic != nil {
       return String(localized: "恢复记录待处理")
     }

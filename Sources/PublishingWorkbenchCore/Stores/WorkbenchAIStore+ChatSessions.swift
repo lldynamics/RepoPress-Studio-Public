@@ -279,9 +279,6 @@ extension WorkbenchAIStore {
     setAIChatSessionState(state, for: identity, streaming: streaming)
   }
 
-  func aiChatQuickHideOperationMessage() -> String {
-    store.quickHideOperationMessage
-  }
 
   func aiChatAvailableAPIKey(for profile: SiteProfile) throws -> String? {
     let connection = store.aiConnectionProfile(for: profile)
@@ -1270,10 +1267,6 @@ extension WorkbenchAIStore {
     draft: ArticleDraft? = nil,
     ownerToken: UUID? = nil
   ) async -> AIPublishingChatMessage? {
-    guard store.canUseProtectedWorkbench else {
-      store.setAIChatMessage(aiChatQuickHideOperationMessage())
-      return nil
-    }
 
     guard let chatDraft = draft ?? store.selectedDraft else {
       store.setAIChatMessage("请先选择一篇文章。")
@@ -1341,10 +1334,6 @@ extension WorkbenchAIStore {
     messageID: AIPublishingChatMessage.ID,
     draft: ArticleDraft? = nil
   ) async -> AIPublishingChatMessage? {
-    guard store.canUseProtectedWorkbench else {
-      store.setAIChatMessage(aiChatQuickHideOperationMessage())
-      return nil
-    }
 
     guard let chatDraft = draft ?? store.selectedDraft else {
       store.setAIChatMessage("请先选择一篇文章。")

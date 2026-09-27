@@ -108,7 +108,6 @@ public struct RSSArticleTranslationResult: Hashable, Sendable, Identifiable {
 public enum RSSArticleTranslationError: LocalizedError, Equatable, Sendable {
   case emptyArticle
   case invalidResponse
-  case protectedWorkbenchUnavailable
 
   public var errorDescription: String? {
     switch self {
@@ -116,8 +115,6 @@ public enum RSSArticleTranslationError: LocalizedError, Equatable, Sendable {
       return CoreL10n.text("这篇文章没有可翻译的本地正文。")
     case .invalidResponse:
       return CoreL10n.text("翻译服务返回的内容无法安全解析，请稍后重试。")
-    case .protectedWorkbenchUnavailable:
-      return CoreL10n.text("快速隐藏已启用，请返回工作台后再继续翻译。")
     }
   }
 }

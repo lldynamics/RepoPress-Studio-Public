@@ -32,7 +32,7 @@ public enum AIPublishingDefaultCapability: String, CaseIterable, Identifiable, S
   public var systemImage: String {
     switch self {
     case .continueWriting: "text.append"
-    case .rewrite: "wand.and.stars"
+    case .rewrite: "sparkles"
     case .condense: "arrow.down.right.and.arrow.up.left"
     case .translate: "character.book.closed"
     case .generateMetadata: "list.bullet.rectangle.portrait"

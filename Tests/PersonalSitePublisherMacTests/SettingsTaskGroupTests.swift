@@ -24,17 +24,34 @@ final class SettingsTaskGroupTests: XCTestCase {
     XCTAssertTrue(SettingsTaskGroup.currentSite.tabs.allSatisfy(\.isSiteScoped))
   }
 
-  func testAppPreferencesOpenInTheSettingsWindowAndSiteSettingsStayInline() {
-    XCTAssertTrue(SettingsNavigation.opensInSettingsWindow(nil))
-    for tab in SettingsTaskGroup.application.tabs {
-      XCTAssertTrue(SettingsNavigation.opensInSettingsWindow(.tab(tab)), "\(tab)")
+  func testEveryScopeOpensTheNativeWindowWithItsRequestedDestination() throws {
+    let suiteName = "SettingsTaskGroupTests.\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(SettingsTab.editor.id, forKey: SettingsNavigation.lastViewedTabStorageKey)
+    let destinations: [SettingsDestination?] =
+      SettingsTab.allCases.map { .tab($0) } + [
+        .rules(.paths), .token(.repository), .token(.deployment),
+        .ai(.connection), .ai(.credentials), .ai(.writingStyle),
+        .data(.drafts), .data(.backup), .data(.migration), nil,
+      ]
+
+    for destination in destinations {
+      var openCount = 0
+      SettingsNavigation.open(destination: destination, defaults: defaults) {
+        openCount += 1
+        XCTAssertEqual(
+          defaults.string(forKey: SettingsNavigation.requestedTabStorageKey),
+          destination?.id ?? ""
+        )
+      }
+      XCTAssertEqual(openCount, 1)
+      XCTAssertEqual(
+        defaults.string(forKey: SettingsNavigation.lastViewedTabStorageKey),
+        SettingsTab.editor.id,
+        "One-shot navigation must not overwrite the user's reopening preference."
+      )
     }
-    for tab in SettingsTaskGroup.currentSite.tabs {
-      XCTAssertFalse(SettingsNavigation.opensInSettingsWindow(.tab(tab)), "\(tab)")
-    }
-    XCTAssertTrue(SettingsNavigation.opensInSettingsWindow(.ai(.connection)))
-    XCTAssertFalse(SettingsNavigation.opensInSettingsWindow(.ai(.writingStyle)))
-    XCTAssertFalse(SettingsNavigation.opensInSettingsWindow(.token(.repository)))
   }
 
   func testEachTabResolvesBackToItsTaskGroup() {

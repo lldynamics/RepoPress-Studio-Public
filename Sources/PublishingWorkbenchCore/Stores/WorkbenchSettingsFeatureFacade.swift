@@ -44,8 +44,6 @@ public final class WorkbenchSettingsFeatureFacade: ObservableObject {
 
     observe(store.deploymentStore.$deploymentTokenAvailability)
     observe(store.deploymentStore.$deploymentStatusMessage)
-    observe(store.$siteAnalyticsTokenAvailability)
-    observe(store.$siteAnalyticsMessage)
 
     observe(store.$aiConnectionProfiles)
     observe(store.aiWorkspaceStore.$aiTokenAvailability)
@@ -53,16 +51,9 @@ public final class WorkbenchSettingsFeatureFacade: ObservableObject {
     observe(store.aiWorkspaceStore.$aiActionMessage)
 
     observe(store.privacyProtectionStore.$privacySettings)
-    observe(store.privacyProtectionStore.$isQuickHideActive)
   }
 
-  public var canUseProtectedWorkbench: Bool {
-    store.canUseProtectedWorkbench
-  }
 
-  public var isQuickHideActive: Bool {
-    store.isQuickHideActive
-  }
 
   private func observe<P: Publisher>(_ publisher: P) where P.Failure == Never {
     publisher

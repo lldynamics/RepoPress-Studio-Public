@@ -8,7 +8,6 @@ struct MacMarkdownComposerView: View {
   let store: WorkbenchStore
   let aiActions: WorkbenchAIFeatureFacade
   @ObservedObject var inlineAIReviewState: AIInlineStructuredEditReviewState
-  @Environment(\.publishDrawerCommandAction) var publishDrawerCommandAction
   @Environment(\.aiChatWorkspaceCommandAction) var aiChatWorkspaceCommandAction
   @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
   @Environment(\.accessibilityVoiceOverEnabled) private var accessibilityVoiceOverEnabled
@@ -24,8 +23,6 @@ struct MacMarkdownComposerView: View {
   @State var editorStatisticsState = MarkdownComposerStatisticsState()
   @StateObject var zenModeController = ZenModeController()
   @SceneStorage("workspace.focusMode") var isFocusModeActive = false
-  @AppStorage(MarkdownEditorComfortPreferences.focusToolbarFadeEnabledKey)
-  var isFocusToolbarFadeEnabled = true
   @State var attachmentState = MarkdownComposerAttachmentState()
   @State var selectionActionState = MarkdownComposerSelectionActionState()
   @State var selectionBubblePresentationState = MarkdownSelectionBubblePresentationState()
@@ -41,8 +38,6 @@ struct MacMarkdownComposerView: View {
   @StateObject var findMatchRefreshCoordinator = MarkdownFindMatchRefreshCoordinator()
   @State var markdownAnalysisTaskIsAutomatic = false
   @State var sceneCommandOwnerID = UUID()
-  @AppStorage("workspace.writingToolDensity") var writingToolDensityRawValue =
-    MarkdownWritingToolDensity.basic.rawValue
   @AppStorage(MarkdownEditorComfortPreferences.fontSizeKey)
   var editorFontSize = MarkdownEditorComfortConfiguration.defaultFontSize
   @AppStorage(MarkdownEditorComfortPreferences.lineSpacingKey)
@@ -53,19 +48,13 @@ struct MacMarkdownComposerView: View {
   var editorBodyFontStyleRawValue = MarkdownEditorBodyFontStyle.defaultStyle.rawValue
   @AppStorage(MarkdownEditorComfortPreferences.spellCheckEnabledKey)
   var isEditorSpellCheckEnabled = MarkdownEditorComfortConfiguration.defaultSpellCheckEnabled
-  @AppStorage(MarkdownEditorComfortPreferences.typewriterModeEnabledKey)
-  var isTypewriterModeEnabled = MarkdownEditorComfortConfiguration.defaultTypewriterModeEnabled
-  @AppStorage(MarkdownEditorComfortPreferences.currentParagraphHighlightEnabledKey)
-  var isCurrentParagraphHighlightEnabled = MarkdownEditorComfortConfiguration
-    .defaultCurrentParagraphHighlightEnabled
+  @AppStorage(MarkdownEditorComfortPreferences.paragraphFocusEnabledKey)
+  var isParagraphFocusEnabled = MarkdownEditorComfortPreferences.initialParagraphFocusEnabled()
   @AppStorage(MarkdownEditorComfortPreferences.warmPaperBackgroundEnabledKey)
   var isWarmPaperBackgroundEnabled = MarkdownEditorComfortConfiguration
     .defaultWarmPaperBackgroundEnabled
   @AppStorage(MarkdownEditorComfortPreferences.automaticPairingEnabledKey)
   var isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration.defaultAutomaticPairingEnabled
-  @AppStorage(MarkdownEditorComfortPreferences.paragraphSpotlightEnabledKey)
-  var isParagraphSpotlightEnabled = MarkdownEditorComfortConfiguration
-    .defaultParagraphSpotlightEnabled
   @AppStorage(MarkdownEditorComfortPreferences.realtimeAnalysisEnabledKey)
   var isRealtimeAnalysisEnabled = MarkdownEditorComfortConfiguration
     .defaultRealtimeAnalysisEnabled
@@ -108,8 +97,7 @@ struct MacMarkdownComposerView: View {
       bodyWidth: editorBodyWidth,
       bodyFontStyle: MarkdownEditorBodyFontStyle.resolved(rawValue: editorBodyFontStyleRawValue),
       spellCheckEnabled: isEditorSpellCheckEnabled,
-      typewriterModeEnabled: isTypewriterModeEnabled,
-      currentParagraphHighlightEnabled: isCurrentParagraphHighlightEnabled,
+      paragraphFocusEnabled: isParagraphFocusEnabled,
       warmPaperBackgroundEnabled: isWarmPaperBackgroundEnabled,
       automaticPairingEnabled: isAutomaticPairingEnabled,
       accessibilityReduceMotionEnabled: accessibilityReduceMotion
@@ -120,21 +108,14 @@ struct MacMarkdownComposerView: View {
     editorState.profile(for: draft)
   }
 
-  var writingToolDensity: MarkdownWritingToolDensity {
-    MarkdownWritingToolDensity(rawValue: writingToolDensityRawValue) ?? .basic
-  }
-
   var markdownEditorToolbarActions: MarkdownEditorToolbarActions {
     let aiAvailability = markdownComposerAIAvailabilitySnapshot
     return MarkdownEditorToolbarActions(
-      onSetWritingToolDensity: { writingToolDensityRawValue = $0.rawValue },
       onShowFindReplace: showFindReplace,
       onShowOutline: showOutline,
-      onOpenWritingContextPanel: showWritingContextPanel,
       onShowShortcutHelp: {
         isShortcutHelpPresented = true
       },
-      onPreparePublish: preparePublish,
       onOpenAIContextInspector: showAIContextInspector,
       onOpenAITemplateLibrary: {
         isAITemplateLibraryPresented = true
@@ -154,7 +135,9 @@ struct MacMarkdownComposerView: View {
       onPerformConvergedArticleAIAction: performConvergedArticleAIAction,
       onPasteAIPromptToClipboard: pasteAIPromptToClipboard,
       onFormatChineseTypography: formatChineseTypography,
-      onCopyForWeChatAndZhihu: copyForWeChatAndZhihu
+      onCopyForWeChatAndZhihu: copyForWeChatAndZhihu,
+      onShowImageInfo: activeInsertedImageMetadataBinding == nil
+        ? nil : { showWritingContextPanel(.imageInfo) }
     )
   }
 
@@ -257,11 +240,6 @@ struct MacMarkdownComposerView: View {
         draftID: draft.id,
         markdownPath: editorState.profile(for: draft).markdownPath(for: draft),
         isSelectionAIActionRunning: isSelectionAIActionRunning,
-        canOpenAIChat: aiChatWorkspaceCommandAction?.isAvailable ?? true,
-        aiChatUnavailableReason: aiChatWorkspaceCommandAction?.unavailableReason,
-        externalBrowserPreviewCoordinator: externalBrowserPreviewCoordinator,
-        writingToolDensity: writingToolDensity,
-        availableWritingContextPanels: availableWritingContextPanels,
         actions: markdownEditorToolbarActions,
         articleInformationToggle: articleInformationToggle,
         formattingToolbar: integratedFormattingToolbar
@@ -577,8 +555,6 @@ struct MacMarkdownComposerView: View {
           Spacer(minLength: 0)
           MarkdownWritingContextPanelContainer(
             selectedPanel: panel,
-            availablePanels: availableWritingContextPanels,
-            onSelectPanel: showWritingContextPanel,
             onClose: dismissWritingContextPanel
           ) {
             writingContextPanelContent(for: panel)
@@ -601,9 +577,6 @@ struct MacMarkdownComposerView: View {
         )
       }
       .onChange(of: isFocusModeActive) { _, _ in
-        syncFocusToolbarVisibility()
-      }
-      .onChange(of: isFocusToolbarFadeEnabled) { _, _ in
         syncFocusToolbarVisibility()
       }
       .onChange(of: accessibilityReduceMotion) { _, shouldReduceMotion in
@@ -713,15 +686,12 @@ struct MacMarkdownComposerView: View {
       let reviewPresentation = inlineStructuredEditReviewPresentation
       let statisticsDraftID = draft.id
       ZStack {
-        WorkbenchWritingSurface.color(usesWarmPaper: isWarmPaperBackgroundEnabled)
-
         MacMarkdownTextView(
           text: $editorSessionState.editorDocument,
           bodyMarkdown: editorBody,
           bodyUTF16Offset: editorDocumentBodyOffset,
           allowsLiveBodyChanges: frontMatterIssue == nil,
-          isFrontMatterFolded: writingToolDensity == .basic
-            && !isArticleInformationExpanded && frontMatterIssue == nil,
+          isFrontMatterFolded: isArticleInformationFolded,
           selectedRange: $editorSessionState.selectedRange,
           isFrontMatterSelection: $editorSessionState.isFrontMatterSelection,
           comfortConfiguration: editorComfortConfiguration,
@@ -890,7 +860,7 @@ struct MacMarkdownComposerView: View {
 
         if selectionBubblePresentationState.shouldRender(for: editorSessionState.selectedRange) {
           if let placement = contextualPopoverPlacement(
-            contentSize: CGSize(width: 344, height: 42),
+            contentSize: CGSize(width: 376, height: 42),
             preferredEdge: .above
           ) {
             MarkdownFloatingBubbleToolbar(
@@ -901,7 +871,8 @@ struct MacMarkdownComposerView: View {
               onApplyFormatting: applyMarkdownFormatting,
               onApplyAdvancedFormatting: applyAdvancedMarkdownFormatting,
               onPerformSelectionAIAction: performSelectionAIAction,
-              onPerformConvergedSelectionAIAction: performConvergedSelectionAIAction
+              onPerformConvergedSelectionAIAction: performConvergedSelectionAIAction,
+              onShowSelectionTools: { showWritingContextPanel(.selectionTools) }
             )
             .frame(width: placement.frame.width, height: placement.frame.height)
             .position(x: placement.frame.midX, y: placement.frame.midY)
@@ -949,6 +920,11 @@ struct MacMarkdownComposerView: View {
         }
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
+      // Keep TextKit and its selection/slash overlays in one coordinate space.
+      // With the native 16 pt inset, the folded body starts 32 pt below the
+      // toolbar; this outer gutter remains visible while the document scrolls.
+      .padding(.top, isArticleInformationFolded ? 16 : 0)
+      .background(WorkbenchWritingSurface.color(usesWarmPaper: isWarmPaperBackgroundEnabled))
 
       if !markdownSSGComponentOccurrences.isEmpty {
         Divider()
@@ -1062,9 +1038,9 @@ struct MacMarkdownComposerView: View {
       },
       SlashCommandItem(
         id: "ai",
-        title: String(localized: "AI 续写"),
+        title: String(localized: "AI 操作：续写"),
         subtitle: String(localized: "使用 AI 自动生成段落"),
-        systemImage: "wand.and.stars"
+        systemImage: "sparkles"
       ) {
         if let applySnippet {
           guard applySnippet("") else { return }
@@ -1180,20 +1156,14 @@ extension MarkdownFrontMatterEditingIssue {
 
 extension MacMarkdownComposerView {
   private func syncFocusToolbarVisibility() {
-    zenModeController.setZenModeActive(isFocusModeActive && isFocusToolbarFadeEnabled)
+    zenModeController.setZenModeActive(isFocusModeActive)
   }
 
   private var integratedFormattingToolbar: MacMarkdownFormattingToolbar {
     MacMarkdownFormattingToolbar(
-      writingToolDensity: writingToolDensity,
       isFocusModeActive: $isFocusModeActive,
       onApplyMarkdownFormatting: applyMarkdownFormatting,
       onApplyAdvancedFormatting: applyAdvancedMarkdownFormatting,
-      onEditLines: applyMarkdownLineEditing,
-      onWrapSelection: { prefix, suffix, placeholder in
-        wrapSelection(prefix: prefix, suffix: suffix, placeholder: placeholder)
-      },
-      onPrefixCurrentLine: prefixCurrentLine,
       onInsertCodeBlock: insertCodeBlock,
       onInsertTable: insertTable,
       onInsertHorizontalRule: insertHorizontalRule,

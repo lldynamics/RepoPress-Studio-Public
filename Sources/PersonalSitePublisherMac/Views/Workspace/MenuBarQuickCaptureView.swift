@@ -94,7 +94,6 @@ private struct MenuBarReadyView: View {
   let store: WorkbenchStore
   @ObservedObject var capture: MenuBarQuickCaptureState
   @ObservedObject private var status: WorkbenchPublishStatusFeatureFacade
-  @ObservedObject private var shell: WorkbenchShellFeatureFacade
   let openWorkbench: () -> Void
   @State private var isRefreshing = false
   @FocusState private var isCaptureFocused: Bool
@@ -107,7 +106,6 @@ private struct MenuBarReadyView: View {
     self.store = store
     self.capture = capture
     _status = ObservedObject(wrappedValue: store.publishStatus)
-    _shell = ObservedObject(wrappedValue: store.shell)
     self.openWorkbench = openWorkbench
   }
 
@@ -126,18 +124,7 @@ private struct MenuBarReadyView: View {
   }
 
   var body: some View {
-    Group {
-      if shell.isQuickHideActive {
-        VStack(alignment: .leading, spacing: 12) {
-          Label("快速隐藏已开启", systemImage: "eye.slash")
-          Button("打开主窗口", action: openWorkbench)
-        }
-        .padding(16)
-        .frame(width: 320, alignment: .leading)
-      } else {
-        readyContent
-      }
-    }
+    readyContent
   }
 
   private var readyContent: some View {

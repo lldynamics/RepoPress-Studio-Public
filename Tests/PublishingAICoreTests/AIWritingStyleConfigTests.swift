@@ -18,6 +18,43 @@ final class AIWritingStyleConfigTests: XCTestCase {
     XCTAssertEqual(decoded.exemplarArticleIDs, [])
   }
 
+  func testDecodesLegacyJinfangZolaPresetAsTechnicalNoteAndPreservesRules() throws {
+    let data = try XCTUnwrap(
+      """
+      {
+        "preset":"jinfangZola",
+        "tone":"保留的语气",
+        "audience":"保留的读者",
+        "summaryGuidance":"保留的摘要规则",
+        "tagGuidance":"保留的标签规则",
+        "seoGuidance":"保留的 SEO 规则",
+        "preferredTerminology":["RepoPress Studio"],
+        "avoidedExpressions":["赋能"]
+      }
+      """.data(using: .utf8)
+    )
+
+    let decoded = try JSONDecoder().decode(AIWritingStyleConfig.self, from: data)
+
+    XCTAssertEqual(decoded.preset, .technicalNote)
+    XCTAssertEqual(decoded.tone, "保留的语气")
+    XCTAssertEqual(decoded.audience, "保留的读者")
+    XCTAssertEqual(decoded.summaryGuidance, "保留的摘要规则")
+    XCTAssertEqual(decoded.tagGuidance, "保留的标签规则")
+    XCTAssertEqual(decoded.seoGuidance, "保留的 SEO 规则")
+    XCTAssertEqual(decoded.preferredTerminology, ["RepoPress Studio"])
+    XCTAssertEqual(decoded.avoidedExpressions, ["赋能"])
+    XCTAssertEqual(
+      try JSONDecoder().decode(String.self, from: JSONEncoder().encode(decoded.preset)),
+      "technicalNote"
+    )
+  }
+
+  func testDefaultPresetIsTechnicalNote() {
+    XCTAssertEqual(AIWritingStyleConfig().preset, .technicalNote)
+    XCTAssertEqual(AIWritingStyleConfig.default.preset, .technicalNote)
+  }
+
   func testPresetDoesNotErasePersonalTerminology() {
     var style = AIWritingStyleConfig(
       preferredTerminology: ["RepoPress Studio"],

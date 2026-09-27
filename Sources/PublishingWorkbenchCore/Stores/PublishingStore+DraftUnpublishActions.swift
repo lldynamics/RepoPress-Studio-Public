@@ -46,14 +46,6 @@ extension PublishingStore {
       return nil
     }
 
-    guard store.canUseProtectedWorkbench else {
-      finishRepositoryCleanupAttempt(
-        requests: [request],
-        remoteFailureMessage: store.quickHideOperationMessage,
-        store: store
-      )
-      return nil
-    }
 
     guard remoteRepositoryMutationContext == nil else {
       let message = CoreL10n.text("已有远端仓库操作正在运行；文章已进入下线队列，稍后可在发布抽屉重试。")

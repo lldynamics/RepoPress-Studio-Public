@@ -21,7 +21,7 @@ extension RSSArticleList {
 
   var titleTranslationInput: RSSListTitleTranslationInput {
     RSSListTitleTranslationInput(
-      enabled: automaticTitleTranslationEnabled && ai.canUseProtectedWorkbench,
+      enabled: automaticTitleTranslationEnabled,
       titles: (preparedList?.visibleArticles ?? []).map {
         RSSArticleTranslationTextRequest(id: $0.id, sourceText: $0.title)
       },

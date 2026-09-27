@@ -8,8 +8,11 @@ struct ContentHealthDetailView: View {
   @Binding var filter: ContentHealthContextFilter
   let sidebarProjection: ContentHealthSidebarProjection
   @StateObject private var healthState: WorkbenchContentHealthFeatureFacade
+  @ObservedObject private var maintenanceState: WorkbenchSiteMaintenanceFeatureFacade
   @State private var healthSnapshot: ContentHealthSnapshot?
   @State private var severityFilter: ContentHealthSeverityFilter = .all
+  @State private var sourceFilter: ContentHealthSourceFilter = .all
+  @State private var aiFixFilter: ContentHealthAIFixFilter = .all
   @State private var articleGrouping: ContentHealthArticleGrouping = .actionQueue
   @State private var healthSnapshotTask: Task<Void, Never>?
   @State private var articlePresentationTask: Task<Void, Never>?
@@ -39,19 +42,27 @@ struct ContentHealthDetailView: View {
     _healthState = StateObject(
       wrappedValue: WorkbenchContentHealthFeatureFacade(store: store)
     )
+    _maintenanceState = ObservedObject(wrappedValue: store.siteMaintenance)
     _articleGrouping = State(initialValue: Self.preferredGrouping(for: filter.wrappedValue))
+    _sourceFilter = State(initialValue: Self.preferredSource(for: filter.wrappedValue))
+    _aiFixFilter = State(initialValue: Self.preferredAIFixFilter(for: filter.wrappedValue))
   }
 
   var body: some View {
     detailContent
       .task {
         refreshContentHealthSnapshotIfNeeded()
+        await store.refreshSiteMaintenanceSnapshot()
       }
       .onChange(of: healthState.snapshotVersion) { _, _ in
         refreshContentHealthSnapshot()
       }
       .onChange(of: filter) { _, newFilter in
         applyPreferredGrouping(for: newFilter)
+        if newFilter != .overview {
+          sourceFilter = Self.preferredSource(for: newFilter)
+          aiFixFilter = Self.preferredAIFixFilter(for: newFilter)
+        }
         rebuildArticlePresentation()
         refreshContentHealthSnapshotIfNeeded()
       }
@@ -88,6 +99,23 @@ struct ContentHealthDetailView: View {
     articleGrouping = Self.preferredGrouping(for: newFilter)
   }
 
+  private static func preferredSource(
+    for filter: ContentHealthContextFilter
+  ) -> ContentHealthSourceFilter {
+    switch filter {
+    case .overview: .all
+    case .publicRisks, .aiFixes: .articles
+    case .siteIssues: .site
+    case .maintenance: .maintenance
+    }
+  }
+
+  private static func preferredAIFixFilter(
+    for filter: ContentHealthContextFilter
+  ) -> ContentHealthAIFixFilter {
+    filter == .aiFixes ? .fixable : .all
+  }
+
   private static func preferredGrouping(
     for filter: ContentHealthContextFilter
   ) -> ContentHealthArticleGrouping {
@@ -114,15 +142,9 @@ struct ContentHealthDetailView: View {
               showsSlugRecoveryVersions = true
             }
           }
-          if filter == .maintenance {
-            SiteMaintenanceDetailView(store: store, isEmbedded: true)
-              .accessibilityElement(children: .contain)
-              .accessibilityIdentifier("content-health-stage-maintenance")
-          } else {
-            healthSnapshotContent(availableWidth: geometry.size.width)
-              .accessibilityElement(children: .contain)
-              .accessibilityIdentifier("content-health-stage-\(filter.rawValue)")
-          }
+          healthSnapshotContent(availableWidth: geometry.size.width)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("content-health-stage-overview")
         }
         .workbenchOperationalPageLayout()
       }
@@ -165,26 +187,42 @@ struct ContentHealthDetailView: View {
     usesSplitLayout: Bool,
     usesCompactHeader: Bool
   ) -> some View {
-    let selectedRow = selectedHealthRow(in: presentation)
+    let visibleRows =
+      sourceFilter.includesArticles
+      ? presentation.rows.filter { aiFixFilter.includes(canUseAI: $0.aiFixItem != nil) }
+      : []
+    let visibleSiteIssues =
+      sourceFilter.includesSite && aiFixFilter != .fixable
+      ? presentation.siteIssues
+      : []
+    let selectedRow = selectedHealthRow(in: presentation, visibleRows: visibleRows)
 
     return VStack(alignment: .leading, spacing: 16) {
       contentHeader(snapshot, usesCompactLayout: usesCompactHeader)
-      contentFilters(presentation)
+      contentFilters
 
-      WorkbenchOperationalSplitLayout(usesSplitLayout: usesSplitLayout) {
-        filteredSections(
-          presentation,
-          selectedDraftID: selectedRow?.draftID,
-          profileName: snapshot.profileName
-        )
-      } context: {
-        contentHealthOperationalContextPanel(
-          presentation,
-          selectedRow: selectedRow,
-          slugChangeImpact: selectedRow.flatMap {
-            snapshot.slugChangeImpacts[$0.draftID]
-          }
-        )
+      if sourceFilter == .maintenance {
+        maintenanceIssueSection
+      } else {
+        WorkbenchOperationalSplitLayout(usesSplitLayout: usesSplitLayout) {
+          filteredSections(
+            presentation,
+            rows: visibleRows,
+            siteIssues: visibleSiteIssues,
+            selectedDraftID: selectedRow?.draftID,
+            profileName: snapshot.profileName
+          )
+          maintenanceIssueSection
+        } context: {
+          contentHealthOperationalContextPanel(
+            presentation,
+            siteIssues: visibleSiteIssues,
+            selectedRow: selectedRow,
+            slugChangeImpact: selectedRow.flatMap {
+              snapshot.slugChangeImpacts[$0.draftID]
+            }
+          )
+        }
       }
     }
   }
@@ -214,9 +252,9 @@ struct ContentHealthDetailView: View {
 
   private func contentTitle(_ snapshot: ContentHealthSnapshot) -> some View {
     VStack(alignment: .leading, spacing: 4) {
-      Text(filter.title)
+      Text("问题列表")
         .font(.workbenchPageTitle)
-      Text("\(snapshot.profileName) · \(filterDescription)")
+      Text("\(snapshot.profileName) · 按严重度、来源和 AI 修复筛选")
         .font(.workbenchPageSubtitle)
         .foregroundStyle(.secondary)
         .lineLimit(2)
@@ -242,7 +280,7 @@ struct ContentHealthDetailView: View {
     Label(
       isHealthSnapshotRefreshing
         ? "正在更新"
-        : "上次检查 \(snapshot.generatedAt.workbenchShortText)",
+        : "上次扫描 \(snapshot.generatedAt.workbenchShortText)",
       systemImage: isHealthSnapshotRefreshing ? "arrow.clockwise" : "clock"
     )
     .font(.caption)
@@ -250,31 +288,24 @@ struct ContentHealthDetailView: View {
     .fixedSize(horizontal: true, vertical: false)
   }
 
-  private func contentFilters(
-    _ presentation: ContentHealthArticlePresentation
-  ) -> some View {
+  private var contentFilters: some View {
     ViewThatFits(in: .horizontal) {
-      HStack(spacing: 12) {
+      HStack(spacing: 10) {
         severityPicker
+        sourcePicker
+        aiFixPicker
         articleGroupingPicker
-        Spacer(minLength: 0)
-        recommendedAction(presentation)
-          .fixedSize(horizontal: true, vertical: false)
       }
 
       VStack(alignment: .leading, spacing: 10) {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
           severityPicker
-          articleGroupingPicker
-          Spacer(minLength: 0)
+          sourcePicker
         }
-        recommendedAction(presentation)
-      }
-
-      VStack(alignment: .leading, spacing: 10) {
-        severityPicker
-        articleGroupingPicker
-        recommendedAction(presentation)
+        HStack(spacing: 10) {
+          aiFixPicker
+          articleGroupingPicker
+        }
       }
     }
   }
@@ -290,6 +321,7 @@ struct ContentHealthDetailView: View {
     .labelsHidden()
     .frame(minWidth: 220, maxWidth: 280)
     .accessibilityLabel("严重级别筛选")
+    .accessibilityIdentifier("content-health-severity-filter")
   }
 
   private var articleGroupingPicker: some View {
@@ -300,27 +332,148 @@ struct ContentHealthDetailView: View {
     }
     .pickerStyle(.menu)
     .fixedSize(horizontal: true, vertical: false)
-    .disabled(filter == .siteIssues)
+    .disabled(!sourceFilter.includesArticles)
     .accessibilityLabel("文章分组方式")
+  }
+
+  private var sourcePicker: some View {
+    Picker(
+      "来源",
+      selection: Binding(
+        get: { sourceFilter },
+        set: { selected in
+          sourceFilter = selected
+          if filter != .overview { filter = .overview }
+        }
+      )
+    ) {
+      ForEach(ContentHealthSourceFilter.allCases) { source in
+        Text(source.title).tag(source)
+      }
+    }
+    .pickerStyle(.menu)
+    .accessibilityLabel("问题来源筛选")
+    .accessibilityIdentifier("content-health-source-filter")
+  }
+
+  private var aiFixPicker: some View {
+    Picker(
+      "AI 修复",
+      selection: Binding(
+        get: { aiFixFilter },
+        set: { selected in
+          aiFixFilter = selected
+          if filter != .overview { filter = .overview }
+        }
+      )
+    ) {
+      ForEach(ContentHealthAIFixFilter.allCases) { option in
+        Text(option.title).tag(option)
+      }
+    }
+    .pickerStyle(.menu)
+    .accessibilityLabel("AI 修复能力筛选")
+    .accessibilityIdentifier("content-health-ai-filter")
   }
 
   @ViewBuilder
   private func filteredSections(
     _ presentation: ContentHealthArticlePresentation,
+    rows: [ContentHealthArticleRowModel],
+    siteIssues: [PreflightIssue],
     selectedDraftID: UUID?,
     profileName: String
   ) -> some View {
-    if filter == .siteIssues {
-      siteIssuesSection(presentation.siteIssues)
-    } else {
+    if sourceFilter == .site {
+      siteIssuesSection(siteIssues)
+    } else if sourceFilter.includesArticles || !siteIssues.isEmpty {
       articleHealthFlow(
-        presentation.rows,
+        rows,
         selectedDraftID: selectedDraftID,
         profileName: profileName,
         duplicateMarkdownPaths: presentation.duplicateMarkdownPaths,
-        siteIssues: presentation.siteIssues
+        siteIssues: siteIssues
       )
     }
+  }
+
+  @ViewBuilder
+  private var maintenanceIssueSection: some View {
+    if sourceFilter.includesMaintenance {
+      if let snapshot = maintenanceState.snapshot {
+        let items = snapshot.report.actionItems.filter { item in
+          let matchesSeverity: Bool
+          switch severityFilter {
+          case .all: matchesSeverity = true
+          case .errors: matchesSeverity = item.priority == .high
+          case .warnings: matchesSeverity = item.priority == .medium
+          }
+          return matchesSeverity
+            && aiFixFilter.includes(canUseAI: item.draftID != nil)
+        }
+        if !items.isEmpty || sourceFilter == .maintenance {
+          VStack(alignment: .leading, spacing: 8) {
+            Label("上次维护扫描 \(snapshot.generatedAt.workbenchShortText)", systemImage: "clock")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            SiteMaintenanceActionQueueSection(
+              report: maintenanceReport(snapshot.report, showing: items),
+              isAIChatRunning: maintenanceState.isAIChatRunning,
+              openDraft: { draftID in
+                store.selectDraft(draftID)
+                store.selectSection(.writing)
+              },
+              copyItem: { item in
+                ClipboardWriter.copy(
+                  item.clipboardMarkdown,
+                  successMessage: String(localized: "已复制维护任务。")
+                ) { message, status in
+                  store.setPublishActionMessage(message, status: status)
+                }
+              },
+              recordItem: { item in store.recordMaintenanceOperation(for: item) },
+              sendToAI: { item in
+                Task { await store.sendMaintenanceActionToAI(item) }
+              },
+              maximumVisibleCount: items.count,
+              allowsExpansion: false
+            )
+          }
+          .padding(14)
+          .background(
+            WorkbenchBackgroundStyle.card,
+            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+          )
+        }
+      } else if let errorMessage = maintenanceState.errorMessage {
+        WorkbenchStateView(
+          presentation: WorkbenchStatePresentation(kind: .failure(reason: errorMessage)),
+          density: .inline,
+          actions: WorkbenchStateActions(
+            primary: WorkbenchStateAction(
+              title: "重试维护扫描",
+              systemImage: "arrow.clockwise",
+              action: {
+                Task { await store.refreshSiteMaintenanceSnapshot(force: true) }
+              }
+            )
+          )
+        )
+      } else {
+        Label("正在后台扫描维护事项…", systemImage: "arrow.clockwise")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+      }
+    }
+  }
+
+  private func maintenanceReport(
+    _ report: SiteMaintenanceReport,
+    showing items: [MaintenanceActionItem]
+  ) -> SiteMaintenanceReport {
+    var filtered = report
+    filtered.actionItems = items
+    return filtered
   }
 
   private func refreshContentHealthSnapshotIfNeeded() {
@@ -539,7 +692,7 @@ struct ContentHealthDetailView: View {
         color: WorkbenchTheme.warning
       )
       healthSummaryBadge(
-        title: "AI",
+        title: "AI 修复",
         value: readiness.contentHealth.aiFixCount,
         systemImage: "sparkles",
         color: WorkbenchTheme.inventoryForeground
@@ -638,6 +791,7 @@ struct ContentHealthDetailView: View {
 
   private func contentHealthOperationalContextPanel(
     _ presentation: ContentHealthArticlePresentation,
+    siteIssues: [PreflightIssue],
     selectedRow: ContentHealthArticleRowModel?,
     slugChangeImpact: SlugChangeImpact?
   ) -> some View {
@@ -645,8 +799,8 @@ struct ContentHealthDetailView: View {
       Label("问题详情", systemImage: "sidebar.right")
         .font(.workbenchSectionTitle)
 
-      if filter == .siteIssues {
-        if let siteIssue = presentation.siteIssues.first {
+      if sourceFilter == .site {
+        if let siteIssue = siteIssues.first {
           ContentHealthIssueCard(issue: siteIssue)
         } else {
           Label("站点路径和仓库状态没有阻塞问题。", systemImage: "checkmark.circle")
@@ -853,22 +1007,27 @@ struct ContentHealthDetailView: View {
   }
 
   private func selectedHealthRow(
-    in presentation: ContentHealthArticlePresentation
+    in presentation: ContentHealthArticlePresentation,
+    visibleRows: [ContentHealthArticleRowModel]
   ) -> ContentHealthArticleRowModel? {
     if let selectedHealthDraftID,
-      let selected = presentation.rowByDraftID[selectedHealthDraftID]
+      let selected = visibleRows.first(where: { $0.draftID == selectedHealthDraftID })
     {
       return selected
     }
     if let selectedDraftID = store.selectedDraftID,
-      let selected = presentation.rowByDraftID[selectedDraftID]
+      let selected = visibleRows.first(where: { $0.draftID == selectedDraftID })
     {
       return selected
     }
     if articleGrouping == .actionQueue {
-      return nextActionQueueRow(in: presentation.actionQueue)
+      return nextActionQueueRow(
+        in: ContentHealthActionQueue(
+          rows: visibleRows,
+          duplicateMarkdownPaths: presentation.duplicateMarkdownPaths
+        ))
     }
-    return presentation.rows.first
+    return visibleRows.first
   }
 
   private func focusContentHealthIssue(_ issue: PreflightIssue, draftID: UUID) {

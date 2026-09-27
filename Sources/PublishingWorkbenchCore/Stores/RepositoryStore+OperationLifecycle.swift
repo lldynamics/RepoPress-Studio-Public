@@ -10,10 +10,6 @@ extension RepositoryStore {
     mergeMessage: String,
     store: WorkbenchStore
   ) async -> Bool {
-    guard store.canUseProtectedWorkbench else {
-      store.setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
-      return false
-    }
     let profile = store.activeProfile
     guard let lifecycle = repositoryMergeConflictSession(for: profile, store: store)?
       .operationLifecycle
@@ -95,10 +91,6 @@ extension RepositoryStore {
   /// rebase, the pre-rebase WIP is then restored by its frozen stash SHA.
   @discardableResult
   public func abortRepositoryOperation(store: WorkbenchStore) async -> Bool {
-    guard store.canUseProtectedWorkbench else {
-      store.setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
-      return false
-    }
     let profile = store.activeProfile
     guard let lifecycle = repositoryMergeConflictSession(for: profile, store: store)?
       .operationLifecycle
@@ -163,10 +155,6 @@ extension RepositoryStore {
   /// keeps the stash as a recoverable backup.
   @discardableResult
   public func finishRepositoryStashConflictRecovery(store: WorkbenchStore) async -> Bool {
-    guard store.canUseProtectedWorkbench else {
-      store.setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
-      return false
-    }
     let profile = store.activeProfile
     guard let recovery = repositoryRebaseRecoveryContext(for: profile),
       recovery.phase == .stashRestoreConflict || recovery.phase == .completed
@@ -215,10 +203,6 @@ extension RepositoryStore {
   /// corrupt, mismatched, or crash-ambiguous recovery record.
   @discardableResult
   public func discardRepositoryRebaseRecoveryRecord(store: WorkbenchStore) async -> Bool {
-    guard store.canUseProtectedWorkbench else {
-      store.setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
-      return false
-    }
     let profile = store.activeProfile
     guard repositoryRebaseRecoveryProfileID == profile.id,
       repositoryRebaseRecoveryContext != nil || repositoryRebaseRecoveryDiagnostic != nil
@@ -265,10 +249,6 @@ extension RepositoryStore {
   /// sequencer remains and the frozen repository identity still matches.
   @discardableResult
   public func restoreRepositoryRebaseWIP(store: WorkbenchStore) async -> Bool {
-    guard store.canUseProtectedWorkbench else {
-      store.setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
-      return false
-    }
     let profile = store.activeProfile
     guard let recovery = repositoryRebaseRecoveryContext(for: profile),
       [.stashedBeforeRebase, .rebaseConflict, .rebaseCompleted].contains(recovery.phase)

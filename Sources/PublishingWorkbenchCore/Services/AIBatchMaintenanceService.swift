@@ -107,7 +107,7 @@ extension WorkbenchAIStore {
   func generateBatchMaintenance(
     operation: AIBatchMaintenanceOperation, draft: ArticleDraft, profile: SiteProfile
   ) async throws -> String {
-    guard store.canUseProtectedWorkbench, !draft.isPrivate, draft.scope == .site(profile.id) else {
+    guard !draft.isPrivate, draft.scope == .site(profile.id) else {
       throw AIBatchMaintenanceError.unavailable
     }
     let token = try aiChatAvailableAPIKey(for: profile)

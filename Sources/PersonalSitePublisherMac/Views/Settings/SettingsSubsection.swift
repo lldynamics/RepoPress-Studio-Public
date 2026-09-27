@@ -15,7 +15,6 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
 
   case tokenRepository
   case tokenDeployment
-  case tokenAnalytics
 
   case aiConnection
   case aiAdvanced
@@ -29,7 +28,6 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
 
   case appearanceBehavior
   case appearanceTheme
-  case appearanceLanguage
 
   case editorPreview
   case editorTypography
@@ -44,7 +42,6 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
   case rssMigration
   case rssCleanup
 
-  case privacyQuickHide
   case privacyMasking
   case privacyStatus
 
@@ -56,7 +53,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
       return .configurationStatus
     case .rulesBasics, .rulesDiscovery, .rulesFrontMatter, .rulesPaths:
       return .defaultRules
-    case .tokenRepository, .tokenDeployment, .tokenAnalytics:
+    case .tokenRepository, .tokenDeployment:
       return .token
     case .aiConnection, .aiAdvanced:
       return .ai
@@ -64,14 +61,14 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
       return .siteAI
     case .dataDrafts, .dataStorage, .dataBackup, .dataMigration:
       return .dataManagement
-    case .appearanceBehavior, .appearanceTheme, .appearanceLanguage:
+    case .appearanceBehavior, .appearanceTheme:
       return .appearance
     case .editorPreview, .editorTypography, .editorAssistance, .editorAutomation,
       .appearanceDefaults:
       return .editor
     case .rssRefresh, .rssReading, .rssOfflineNetwork, .rssMigration, .rssCleanup:
       return .rss
-    case .privacyQuickHide, .privacyMasking, .privacyStatus:
+    case .privacyMasking, .privacyStatus:
       return .privacy
     }
   }
@@ -86,7 +83,6 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
     case .rulesPaths: return String(localized: "路径与模板")
     case .tokenRepository: return String(localized: "代码仓库")
     case .tokenDeployment: return String(localized: "部署平台")
-    case .tokenAnalytics: return String(localized: "阅读数据")
     case .aiConnection: return String(localized: "模型与连接")
     case .aiAdvanced: return String(localized: "参数与网络")
     case .aiSiteConnection: return String(localized: "本站使用的连接")
@@ -97,7 +93,6 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
     case .dataMigration: return String(localized: "迁移与导入")
     case .appearanceBehavior: return String(localized: "应用行为")
     case .appearanceTheme: return String(localized: "外观")
-    case .appearanceLanguage: return String(localized: "语言")
     case .appearanceDefaults: return String(localized: "新建内容默认值")
     case .editorPreview: return String(localized: "效果预览")
     case .editorTypography: return String(localized: "字体与布局")
@@ -108,7 +103,6 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
     case .rssOfflineNetwork: return String(localized: "离线与网络")
     case .rssMigration: return String(localized: "订阅迁移")
     case .rssCleanup: return String(localized: "历史清理")
-    case .privacyQuickHide: return String(localized: "快速隐藏")
     case .privacyMasking: return String(localized: "内容遮挡")
     case .privacyStatus: return String(localized: "当前状态")
     }
@@ -124,31 +118,28 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
     case .rulesPaths: return String(localized: "文章、图片与日期路径规则")
     case .tokenRepository: return String(localized: "远端仓库、权限与访问令牌")
     case .tokenDeployment: return String(localized: "发布目标、自动化与凭据")
-    case .tokenAnalytics: return String(localized: "统计服务和验证状态")
     case .aiConnection: return String(localized: "账号、服务商、模型与凭据")
     case .aiAdvanced: return String(localized: "生成参数、网络与能力检查")
     case .aiSiteConnection: return String(localized: "为当前站点选择或复制 AI 连接")
     case .aiWritingStyle: return String(localized: "当前站点的写作偏好")
     case .dataDrafts: return String(localized: "版本、回收站与保留策略")
     case .dataStorage: return String(localized: "数据位置和空间使用")
-    case .dataBackup: return String(localized: "备份计划、恢复与校验")
+    case .dataBackup: return String(localized: "立即备份、恢复与自动备份")
     case .dataMigration: return String(localized: "导入、导出和工作区迁移")
     case .appearanceBehavior: return String(localized: "启动、检查与扫描行为")
     case .appearanceTheme: return String(localized: "主题、强调色与界面密度")
-    case .appearanceLanguage: return String(localized: "应用语言与翻译")
     case .appearanceDefaults: return String(localized: "所有站点共用的新文章预设")
     case .editorPreview: return String(localized: "即时查看排版与阅读效果")
     case .editorTypography: return String(localized: "字号、行距与正文宽度")
-    case .editorAssistance: return String(localized: "拼写、配对与聚光灯")
+    case .editorAssistance: return String(localized: "拼写、配对与纸张背景")
     case .editorAutomation: return String(localized: "保存、分析与重置行为")
     case .rssRefresh: return String(localized: "本地缓存和后台刷新")
     case .rssReading: return String(localized: "文章打开与阅读体验")
     case .rssOfflineNetwork: return String(localized: "离线范围、图片与网络安全")
     case .rssMigration: return String(localized: "OPML 导入与导出")
     case .rssCleanup: return String(localized: "保留周期和数据库整理")
-    case .privacyQuickHide: return String(localized: "一键保护工作台内容")
     case .privacyMasking: return String(localized: "私密正文、路径和预览")
-    case .privacyStatus: return String(localized: "保护状态、快捷键和支持")
+    case .privacyStatus: return String(localized: "私密内容的遮挡状态和支持")
     }
   }
 
@@ -162,7 +153,6 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
     case .rulesPaths: return "folder.badge.gearshape"
     case .tokenRepository: return "shippingbox"
     case .tokenDeployment: return "rocket"
-    case .tokenAnalytics: return "chart.bar"
     case .aiConnection: return "link"
     case .aiAdvanced: return "dial.medium"
     case .aiSiteConnection: return "link"
@@ -173,18 +163,16 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
     case .dataMigration: return "square.and.arrow.down.on.square"
     case .appearanceBehavior: return "switch.2"
     case .appearanceTheme: return "paintpalette"
-    case .appearanceLanguage: return "globe"
     case .appearanceDefaults: return "doc.badge.plus"
     case .editorPreview: return "eye"
     case .editorTypography: return "text.alignleft"
-    case .editorAssistance: return "wand.and.stars"
+    case .editorAssistance: return "sparkles"
     case .editorAutomation: return "gearshape.2"
     case .rssRefresh: return "arrow.clockwise"
     case .rssReading: return "book"
     case .rssOfflineNetwork: return "network"
     case .rssMigration: return "arrow.up.arrow.down"
     case .rssCleanup: return "trash"
-    case .privacyQuickHide: return "eye.slash"
     case .privacyMasking: return "rectangle.dashed.badge.record"
     case .privacyStatus: return "shield.checkered"
     }
@@ -208,7 +196,6 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
       switch destination {
       case .repository: return .tokenRepository
       case .deployment: return .tokenDeployment
-      case .analytics: return .tokenAnalytics
       }
     case .ai(let destination):
       switch destination {
@@ -233,7 +220,6 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
     case "rules.paths": return .rulesPaths
     case "token.repository": return .tokenRepository
     case "token.deployment": return .tokenDeployment
-    case "token.analytics": return .tokenAnalytics
     case "ai.provider", "ai.credentials": return .aiConnection
     case "ai.advanced": return .aiAdvanced
     case "ai.siteConnection": return .aiSiteConnection
@@ -244,7 +230,6 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
     case "data.migration": return .dataMigration
     case "appearance.launch": return .appearanceBehavior
     case "appearance.theme": return .appearanceTheme
-    case "appearance.language": return .appearanceLanguage
     case "appearance.defaults": return .appearanceDefaults
     case "editor.preview": return .editorPreview
     case "editor.typography": return .editorTypography
@@ -255,7 +240,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
     case "rss.storage": return .rssOfflineNetwork
     case "rss.opml": return .rssMigration
     case "rss.maintenance": return .rssCleanup
-    case "privacy.quickHide": return .privacyQuickHide
+    case "privacy.quickHide": return .privacyMasking
     case "privacy.masking": return .privacyMasking
     case "privacy.status": return .privacyStatus
     default: return nil

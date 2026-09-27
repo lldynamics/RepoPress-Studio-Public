@@ -8,9 +8,7 @@ struct MetadataColumn: View {
   let selectedDraftID: UUID?
   @ObservedObject private var contentPresentation: WorkbenchContentPresentationFeatureFacade
   let rssStore: RSSReaderStore
-  let repositoryContextStage: RepositoryContextStage
   @Binding private var repositoryChangedFileSelection: RepositoryChangedFileSelection?
-  @ObservedObject var repositorySourceSession: RepositoryHTMLSourceSession
   @Binding private var aiChatSurfaceState: AIChatSurfaceState
   @Binding private var knowledgeInspectorPresentation: KnowledgeLibraryInspectorPresentationState
   private let aiChatOperationSession: AIChatSurfaceOperationSession
@@ -25,9 +23,7 @@ struct MetadataColumn: View {
     selectedSection: WorkspaceSection,
     selectedDraftID: UUID?,
     rssStore: RSSReaderStore,
-    repositoryContextStage: RepositoryContextStage,
     repositoryChangedFileSelection: Binding<RepositoryChangedFileSelection?>,
-    repositorySourceSession: RepositoryHTMLSourceSession,
     aiChatSurfaceState: Binding<AIChatSurfaceState>,
     knowledgeInspectorPresentation: Binding<KnowledgeLibraryInspectorPresentationState>,
     aiChatOperationSession: AIChatSurfaceOperationSession,
@@ -41,9 +37,7 @@ struct MetadataColumn: View {
     self.selectedDraftID = selectedDraftID
     _contentPresentation = ObservedObject(wrappedValue: store.contentPresentation)
     self.rssStore = rssStore
-    self.repositoryContextStage = repositoryContextStage
     _repositoryChangedFileSelection = repositoryChangedFileSelection
-    _repositorySourceSession = ObservedObject(wrappedValue: repositorySourceSession)
     _aiChatSurfaceState = aiChatSurfaceState
     _knowledgeInspectorPresentation = knowledgeInspectorPresentation
     self.aiChatOperationSession = aiChatOperationSession
@@ -59,21 +53,13 @@ struct MetadataColumn: View {
         for: selectedSection
       ) {
       case .repository:
-        if repositoryContextStage == .source,
-          repositorySourceSession.activeDocument != nil
-        {
-          RepositoryHTMLSourceInspectorView(
-            store: store,
-            session: repositorySourceSession
-          )
-        } else {
-          RepositoryContextInspectorView(
-            store: store,
-            changedFileSelection: $repositoryChangedFileSelection
-          )
-        }
+        RepositoryContextInspectorView(
+          store: store,
+          changedFileSelection: $repositoryChangedFileSelection
+        )
       case .knowledgeLibrary:
         KnowledgeInspectorContentView(
+          store: store,
           knowledge: store.knowledge,
           presentation: $knowledgeInspectorPresentation
         )
@@ -141,6 +127,7 @@ struct MetadataColumn: View {
 }
 
 private struct KnowledgeInspectorContentView: View {
+  let store: WorkbenchStore
   @ObservedObject var knowledge: KnowledgeStore
   @Binding var presentation: KnowledgeLibraryInspectorPresentationState
 
@@ -148,6 +135,7 @@ private struct KnowledgeInspectorContentView: View {
   var body: some View {
     if let document = knowledge.selectedDocument {
       KnowledgeLibraryInspectorPanel(
+        store: store,
         knowledge: knowledge,
         document: document,
         activeSearchResult: activeKnowledgeSearchResult,

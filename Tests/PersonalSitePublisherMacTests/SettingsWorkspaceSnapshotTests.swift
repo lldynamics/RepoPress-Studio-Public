@@ -20,6 +20,8 @@ import XCTest
       let defaults = UserDefaults.standard
       let previousAccent = defaults.object(forKey: WorkbenchAccentPalette.storageKey)
       let previousDensity = defaults.object(forKey: WorkbenchInterfaceDensity.storageKey)
+      let previousRequest = defaults.object(forKey: SettingsNavigation.requestedTabStorageKey)
+      let previousTab = defaults.object(forKey: SettingsNavigation.lastViewedTabStorageKey)
       defaults.set(
         WorkbenchAccentPalette.emerald.rawValue, forKey: WorkbenchAccentPalette.storageKey)
       defaults.set(
@@ -27,6 +29,8 @@ import XCTest
         forKey: WorkbenchInterfaceDensity.storageKey
       )
       defer {
+        defaults.set(previousRequest, forKey: SettingsNavigation.requestedTabStorageKey)
+        defaults.set(previousTab, forKey: SettingsNavigation.lastViewedTabStorageKey)
         if let previousAccent {
           defaults.set(previousAccent, forKey: WorkbenchAccentPalette.storageKey)
         } else {
@@ -42,10 +46,12 @@ import XCTest
       let environment = ProcessInfo.processInfo.environment
       let requestedTab =
         environment["PERSONAL_SITE_PUBLISHER_SETTINGS_SNAPSHOT_TAB"] ?? "appearance"
-      let route =
+      let requestedID =
         requestedTab == "overview"
-        ? SettingsRoute.tab(.configurationStatus)
-        : SettingsRoute.requestedID(requestedTab) ?? .tab(.appearance)
+        ? SettingsTab.configurationStatus.id
+        : (SettingsRoute.requestedID(requestedTab) != nil
+          ? requestedTab : SettingsTab.appearance.id)
+      defaults.set(requestedID, forKey: SettingsNavigation.requestedTabStorageKey)
       let width =
         Double(environment["PERSONAL_SITE_PUBLISHER_SETTINGS_SNAPSHOT_WIDTH"] ?? "")
         ?? 1_487
@@ -60,11 +66,7 @@ import XCTest
       let contentSize = CGSize(width: width, height: height)
       let rootView = SettingsView(
         store: store,
-        launchCoordinator: launchCoordinator,
-        closeWorkspace: {},
-        workspaceDestination: .tab(route.tab),
-        workspaceSubsection: requestedTab == "appearance" ? .appearanceTheme : route.subsection,
-        workspaceNavigationRequestID: UUID()
+        launchCoordinator: launchCoordinator
       )
       .frame(width: contentSize.width, height: contentSize.height)
       .environment(\.colorScheme, .light)

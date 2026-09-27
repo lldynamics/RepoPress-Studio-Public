@@ -1,9 +1,8 @@
 import SwiftUI
 
-struct OperationLogWindowView: View {
+struct OperationLogView: View {
   let allEntries: [OperationLogPresentation.Entry]
   let siteProfiles: [OperationLogPresentation.SiteProfileOption]
-  let isQuickHideActive: Bool
   let retentionPolicy: OperationLogPresentation.RetentionPolicy
   let statusMessage: String?
   let openSyncWorkspace: () -> Void
@@ -19,15 +18,9 @@ struct OperationLogWindowView: View {
   @State private var exportErrorMessage: String?
 
   var body: some View {
-    Group {
-      if isQuickHideActive {
-        quickHideContent
-      } else {
-        operationLogContent
-      }
-    }
-    .frame(minWidth: 760, minHeight: 520)
-    .accessibilityIdentifier("operation-log-window")
+    operationLogContent
+      .frame(minWidth: 760, minHeight: 440)
+      .accessibilityIdentifier("workspace-task-center-activity")
   }
 
   private var operationLogContent: some View {
@@ -37,17 +30,16 @@ struct OperationLogWindowView: View {
     )
     let filteredEntries = filtered.entries
 
-    return NavigationSplitView {
-      operationList(entries: filteredEntries, sections: filtered.sections)
-    } detail: {
-      operationDetail(entries: filteredEntries)
+    return VStack(spacing: 0) {
+      activityToolbar
+      Divider()
+      HSplitView {
+        operationList(entries: filteredEntries, sections: filtered.sections)
+          .frame(minWidth: 280, idealWidth: 320, maxWidth: 420)
+        operationDetail(entries: filteredEntries)
+          .frame(minWidth: 440, maxWidth: .infinity, maxHeight: .infinity)
+      }
     }
-    .searchable(
-      text: $filters.searchText,
-      placement: .sidebar,
-      prompt: String(localized: "搜索活动记录")
-    )
-    .toolbar { filterToolbar }
     .fileExporter(
       isPresented: $isExportPresented,
       document: exportDocument,
@@ -68,7 +60,7 @@ struct OperationLogWindowView: View {
       }
       Button("取消", role: .cancel) {}
     } message: {
-      Text("活动窗口会清空，但发布记录、维护记录等业务事实不会删除。")
+      Text("活动记录会清空，但发布记录、维护记录等业务事实不会删除。")
     }
     .alert("活动记录状态", isPresented: statusAlertPresented) {
       Button("好") {
@@ -86,14 +78,19 @@ struct OperationLogWindowView: View {
     }
   }
 
-  private var quickHideContent: some View {
-    ContentUnavailableView {
-      Label("活动记录已隐藏", systemImage: "eye.slash")
-    } description: {
-      Text("快速隐藏已启用。请返回主工作台恢复显示后，再查看活动记录。")
+  private var activityToolbar: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "magnifyingglass")
+        .foregroundStyle(.secondary)
+        .accessibilityHidden(true)
+      TextField("搜索活动记录", text: $filters.searchText)
+        .textFieldStyle(.roundedBorder)
+        .accessibilityLabel("搜索活动记录")
+        .accessibilityIdentifier("operation-log-search")
+      filterToolbar
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .accessibilityIdentifier("operation-log-quick-hide")
+    .padding(.horizontal, 12)
+    .padding(.vertical, 10)
   }
 
   private func operationList(
@@ -122,7 +119,6 @@ struct OperationLogWindowView: View {
         .listStyle(.sidebar)
       }
     }
-    .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 420)
   }
 
   @ViewBuilder
@@ -138,9 +134,8 @@ struct OperationLogWindowView: View {
     }
   }
 
-  @ToolbarContentBuilder
-  private var filterToolbar: some ToolbarContent {
-    ToolbarItemGroup(placement: .automatic) {
+  private var filterToolbar: some View {
+    HStack(spacing: 8) {
       Menu {
         Picker("类别", selection: $filters.category) {
           Text("全部类别").tag(OperationLogPresentation.Category?.none)
@@ -201,7 +196,6 @@ struct OperationLogWindowView: View {
 
         Button(role: .destructive) {
           if OperationLogPresentation.canPresentClearConfirmation(
-            isQuickHideActive: isQuickHideActive,
             visibleEntries: allEntries
           ) {
             isClearConfirmationPresented = true
@@ -211,7 +205,6 @@ struct OperationLogWindowView: View {
         }
         .disabled(
           !OperationLogPresentation.canPresentClearConfirmation(
-            isQuickHideActive: isQuickHideActive,
             visibleEntries: allEntries
           )
         )

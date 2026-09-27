@@ -13,8 +13,6 @@ public enum FreshWorkspaceSeedPolicy: Sendable {
 public final class WorkbenchStore: ObservableObject {
   private let imageWorkbenchService: SiteImageWorkbenchService
   let aiCredentialStore: AICredentialStore
-  let siteAnalyticsService: SiteAnalyticsService
-  let siteAnalyticsTokenStore: KeychainTokenStore
   private let aiPublishingAssistantService: AIPublishingAssistantService
   private let aiConnectionTestService: AIConnectionTestService
   private let aiDataSharingConsentStore: AIDataSharingConsentStore
@@ -112,12 +110,6 @@ public final class WorkbenchStore: ObservableObject {
   var safeTerminationProof: WorkbenchSafeTerminationProof?
   @Published public internal(set) var pendingDraftRecoveries: [DraftRecoveryRecord] = []
   @Published public private(set) var draftRecoveryJournalErrorMessage: String?
-  @Published public internal(set) var siteAnalyticsSummaries: [UUID: SiteAnalyticsSummary] = [:]
-  @Published public internal(set) var isSiteAnalyticsLoading = false
-  @Published public internal(set) var siteAnalyticsLoadingDraftID: UUID?
-  @Published public internal(set) var siteAnalyticsMessage: String?
-  @Published public internal(set) var siteAnalyticsTokenAvailability = KeychainTokenAvailability(
-    hasToken: false)
   private var draftTaskQueueStateCache: [UUID: DraftTaskQueueState] = [:]
   /// Coalesces preflight refresh requests by draft. A metadata request keeps
   /// the pending list notification bit set even when a later body-only request
@@ -149,8 +141,6 @@ public final class WorkbenchStore: ObservableObject {
   var siteMaintenanceRefreshGeneration: UInt64 = 0
   var siteLinkAuditRefreshTask: Task<SiteLinkAuditReport, Never>?
   var siteLinkAuditRefreshKey: SiteLinkAuditSnapshotKey?
-  var siteAnalyticsRefreshTask: Task<Void, Never>?
-  var siteAnalyticsRefreshRequestID = UUID()
   var operationalPollingTask: Task<Void, Never>?
   var operationalPollingClientIDs = Set<UUID>()
   var operationalPollingGeneration: UInt64 = 0
@@ -254,7 +244,6 @@ public final class WorkbenchStore: ObservableObject {
     remoteRepositoryPublishService: RemoteRepositoryPublishService =
       RemoteRepositoryPublishService(),
     deploymentStatusService: DeploymentStatusService = DeploymentStatusService(),
-    siteAnalyticsService: SiteAnalyticsService = SiteAnalyticsService(),
     imageWorkbenchService: SiteImageWorkbenchService = SiteImageWorkbenchService(),
     seoAuditService: SEOAuditService = SEOAuditService(),
     seoSocialPreviewService: SEOSocialPreviewService = SEOSocialPreviewService(),
@@ -271,8 +260,6 @@ public final class WorkbenchStore: ObservableObject {
       service: KeychainCredentialServices.repository, accountPrefix: "repository-provider"),
     deploymentTokenStore: KeychainTokenStore = KeychainTokenStore(
       service: KeychainCredentialServices.deployment, accountPrefix: "deployment-provider"),
-    siteAnalyticsTokenStore: KeychainTokenStore = KeychainTokenStore(
-      service: KeychainCredentialServices.analytics, accountPrefix: "analytics-provider"),
     aiPublishingAssistantService: AIPublishingAssistantService = AIPublishingAssistantService(),
     aiConnectionTestService: AIConnectionTestService = AIConnectionTestService(),
     aiDataSharingConsentStore: AIDataSharingConsentStore = AIDataSharingConsentStore()
@@ -312,8 +299,6 @@ public final class WorkbenchStore: ObservableObject {
     self.aiCredentialStore =
       aiCredentialStore
       ?? AICredentialStore(keychainTokenStore: keychainTokenStore)
-    self.siteAnalyticsService = siteAnalyticsService
-    self.siteAnalyticsTokenStore = siteAnalyticsTokenStore
     self.aiPublishingAssistantService = aiPublishingAssistantService
     self.aiConnectionTestService = aiConnectionTestService
     self.aiDataSharingConsentStore = aiDataSharingConsentStore
@@ -694,7 +679,6 @@ public final class WorkbenchStore: ObservableObject {
           validProfileIDs: Set(self.publishingStore.profiles.map(\.id))
         )
         self.aiStore.refreshAIKeyAvailability(for: profile)
-        self.refreshSiteAnalyticsTokenAvailability(for: profile)
       }
       .store(in: &childStoreCancellables)
     repositoryStore.objectWillChange
@@ -717,7 +701,6 @@ public final class WorkbenchStore: ObservableObject {
       .store(in: &childStoreCancellables)
     repositoryDeploymentCoordinator.refreshTokenAvailability(store: self)
     aiStore.refreshAIKeyAvailability()
-    refreshSiteAnalyticsTokenAvailability()
     for failure in snapshot?.deferredProjectFileWrites ?? [] {
       guard initialDrafts.contains(where: {
         $0.id == failure.draftID && $0.siteProfileID == failure.profileID
@@ -986,6 +969,9 @@ public final class WorkbenchStore: ObservableObject {
     siteMaintenanceRefreshTask?.cancel()
     siteMaintenanceRefreshTask = nil
     siteMaintenanceStore.invalidate()
+    if siteMaintenanceStore.snapshot != nil {
+      scheduleSiteMaintenanceSnapshotRefresh()
+    }
   }
 
   public func draftTaskQueueStates(for drafts: [ArticleDraft]) -> [UUID: DraftTaskQueueState] {

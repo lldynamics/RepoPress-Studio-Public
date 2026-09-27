@@ -23,7 +23,7 @@ struct PersonalSitePublisherMacApp: App {
     // Git can close stdin before a background writer finishes. EPIPE must be
     // reported as a write error instead of terminating the entire app.
     _ = Darwin.signal(SIGPIPE, SIG_IGN)
-    AppLanguagePreference.prepareForLaunch()
+    LegacyAppLanguageCleanup.prepareForLaunch()
     // Earlier builds disabled AppKit restoration globally. Remove those sticky
     // overrides now that the main workspace is owned by a native SwiftUI scene.
     #if DEBUG || SCREENSHOT_CAPTURE_BUILD
@@ -113,7 +113,6 @@ struct PersonalSitePublisherMacApp: App {
           minWidth: WorkbenchLayoutMode.minimumWindowWidth,
           minHeight: WorkbenchLayoutMode.minimumWindowHeight
         )
-        .thinRedScrollbars()
         #if DEBUG || SCREENSHOT_CAPTURE_BUILD
           .background(ScreenshotCaptureWindowBridge())
         #endif
@@ -198,32 +197,10 @@ struct PersonalSitePublisherMacApp: App {
     }
     .defaultSize(width: 900, height: 680)
 
-    Window("活动记录", id: "operation-log") {
-      Group {
-        if let store = launchCoordinator.store {
-          OperationLogSceneView(store: store)
-        } else {
-          VStack(spacing: 12) {
-            Image(systemName: "externaldrive.fill.badge.plus")
-              .font(.title)
-              .foregroundStyle(.secondary)
-            Text("请先在主窗口完成数据文件夹设置。")
-              .foregroundStyle(.secondary)
-          }
-          .workbenchSettingsWindowSize()
-        }
-      }
-      .tint(selectedAccentPalette.color)
-      .environment(\.workbenchAccentColor, selectedAccentPalette.color)
-      .preferredColorScheme(selectedAppearanceMode.colorScheme)
-      .controlSize(selectedInterfaceDensity.controlSize)
-    }
-    .defaultSize(width: 960, height: 640)
-
     Settings {
       Group {
         if let store = launchCoordinator.store {
-          ProtectedSettingsView(
+          ApplicationSettingsWindowView(
             store: store,
             rssStore: launchCoordinator.rssStore,
             launchCoordinator: launchCoordinator
@@ -266,148 +243,6 @@ struct PersonalSitePublisherMacApp: App {
   }
 }
 
-private struct OperationLogSceneView: View {
-  @Environment(\.openWindow) private var openWindow
-  @ObservedObject private var operationLog: WorkbenchOperationLogFeatureFacade
-
-  init(store: WorkbenchStore) {
-    _operationLog = ObservedObject(wrappedValue: store.operationLog)
-  }
-
-  var body: some View {
-    if operationLog.isQuickHideActive {
-      OperationLogWindowView(
-        allEntries: [],
-        siteProfiles: [],
-        isQuickHideActive: true,
-        retentionPolicy: .ninetyDays,
-        statusMessage: nil,
-        openSyncWorkspace: {},
-        setRetentionPolicy: { _ in },
-        clearOperationLog: {},
-        dismissStatusMessage: {}
-      )
-    } else {
-      let entries = presentationEntries
-      OperationLogWindowView(
-        allEntries: entries,
-        siteProfiles: siteProfiles(for: entries),
-        isQuickHideActive: false,
-        retentionPolicy: .init(workbenchPolicy: operationLog.retentionPolicy),
-        statusMessage: operationLog.statusMessage,
-        openSyncWorkspace: openSyncWorkspace,
-        setRetentionPolicy: { policy in
-          operationLog.setRetentionPolicy(policy.workbenchPolicy)
-        },
-        clearOperationLog: operationLog.clear,
-        dismissStatusMessage: operationLog.dismissStatusMessage
-      )
-    }
-  }
-
-  private var presentationEntries: [OperationLogPresentation.Entry] {
-    operationLog.entries.map(OperationLogPresentation.Entry.init(operationLogEntry:))
-  }
-
-  private func siteProfiles(
-    for entries: [OperationLogPresentation.Entry]
-  ) -> [OperationLogPresentation.SiteProfileOption] {
-    let loggedProfileIDs = Set(entries.compactMap(\.profileID))
-    return operationLog.profiles
-      .filter { loggedProfileIDs.contains($0.id) }
-      .map { .init(id: $0.id, name: $0.name) }
-      .sorted { lhs, rhs in
-        lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
-      }
-  }
-
-  private func openSyncWorkspace() {
-    operationLog.selectSyncWorkspace()
-    openWindow(id: "main-workbench")
-  }
-}
-
-extension OperationLogPresentation.Entry {
-  fileprivate init(operationLogEntry entry: WorkbenchOperationLogEntry) {
-    let category: OperationLogPresentation.Category
-    switch entry.category {
-    case .publishing: category = .publishing
-    case .maintenance: category = .maintenance
-    case .automation: category = .automation
-    case .ai: category = .ai
-    case .deployment: category = .deployment
-    case .importing: category = .importing
-    case .images: category = .images
-    case .backup: category = .backup
-    }
-
-    let outcome: OperationLogPresentation.Outcome
-    switch entry.outcome {
-    case .succeeded: outcome = .succeeded
-    case .partial: outcome = .partial
-    case .failed: outcome = .failed
-    case .cancelled: outcome = .cancelled
-    case .recorded: outcome = .recorded
-    case .observed: outcome = .observed
-    }
-
-    let actor: OperationLogPresentation.Actor
-    switch entry.actor {
-    case .user: actor = .user
-    case .automation: actor = .automation
-    case .background: actor = .background
-    }
-
-    self.init(
-      id: entry.id,
-      sourceLabel: Self.sourceLabel(for: entry.sourceReference.kind),
-      category: category,
-      categoryDisplayName: category.title,
-      outcome: outcome,
-      outcomeDisplayName: outcome.title,
-      actor: actor,
-      actorDisplayName: actor.title,
-      title: entry.title,
-      summary: entry.summary,
-      profileID: entry.profileID,
-      targetLabel: entry.targetLabel,
-      occurredAt: entry.occurredAt,
-      systemImage: entry.systemImage
-    )
-  }
-
-  private static func sourceLabel(for kind: WorkbenchOperationLogSourceKind) -> String {
-    switch kind {
-    case .releaseRecord: String(localized: "发布记录")
-    case .maintenanceOperation: String(localized: "维护操作")
-    case .automationRun: String(localized: "自动化运行")
-    case .aiMetadataApplication: String(localized: "AI 元数据应用")
-    case .deploymentStatus: String(localized: "部署状态")
-    case .operationEvent: String(localized: "活动事件")
-    }
-  }
-}
-
-extension OperationLogPresentation.RetentionPolicy {
-  fileprivate init(workbenchPolicy: WorkbenchOperationLogRetentionPolicy) {
-    switch workbenchPolicy {
-    case .thirtyDays: self = .thirtyDays
-    case .ninetyDays: self = .ninetyDays
-    case .oneYear: self = .oneYear
-    case .forever: self = .forever
-    }
-  }
-
-  fileprivate var workbenchPolicy: WorkbenchOperationLogRetentionPolicy {
-    switch self {
-    case .thirtyDays: .thirtyDays
-    case .ninetyDays: .ninetyDays
-    case .oneYear: .oneYear
-    case .forever: .forever
-    }
-  }
-}
-
 private struct MainWindowOpenActionRegistration: View {
   @Environment(\.openWindow) private var openWindow
   let register: (@escaping () -> Void) -> Void
@@ -428,12 +263,6 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
   var workbenchStore: WorkbenchStore?
   private var isWaitingForTerminationLedgerFlush = false
   private var didConfirmTerminationLedgerFlush = false
-  private var restartRequested = false
-
-  func requestRestart() {
-    restartRequested = true
-    NSApp.terminate(nil)
-  }
   var openMainWindowAction: (() -> Void)? {
     didSet {
       guard openMainWindowAction != nil,
@@ -748,36 +577,6 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
         sender.reply(toApplicationShouldTerminate: false)
         return
       }
-      if RepositoryHTMLSourceSessionRegistry.shared.hasUnsavedChanges {
-        let alert = NSAlert()
-        alert.messageText = String(localized: "HTML 源文件尚未保存")
-        alert.informativeText = String(localized: "保存后退出可保留源码更改；也可以返回编辑器继续处理。")
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: String(localized: "保存并退出"))
-        alert.addButton(withTitle: String(localized: "继续编辑")).keyEquivalent = "\u{1b}"
-        alert.addButton(withTitle: String(localized: "不保存并退出"))
-        switch await WindowSheetPresenter.response(to: alert) {
-        case .alertFirstButtonReturn:
-          guard RepositoryHTMLSourceSessionRegistry.shared.saveBeforeTermination() else {
-            let failureAlert = NSAlert()
-            failureAlert.messageText = String(localized: "未能保存 HTML 源文件")
-            failureAlert.informativeText =
-              RepositoryHTMLSourceSessionRegistry.shared.lastErrorMessage
-              ?? String(localized: "请返回编辑器检查文件权限或外部修改冲突。")
-            failureAlert.alertStyle = .warning
-            failureAlert.addButton(withTitle: String(localized: "继续编辑"))
-            _ = await WindowSheetPresenter.response(to: failureAlert)
-            finishTerminationRequest(sender, mayExit: false)
-            return
-          }
-        case .alertThirdButtonReturn:
-          break
-        default:
-          finishTerminationRequest(sender, mayExit: false)
-          return
-        }
-      }
-
       guard let workbenchStore = self.workbenchStore else {
         finishTerminationRequest(sender, mayExit: true)
         return
@@ -870,7 +669,6 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
 
   private func finishTerminationRequest(_ sender: NSApplication, mayExit: Bool) {
     isWaitingForTerminationLedgerFlush = false
-    if !mayExit { restartRequested = false }
     sender.reply(toApplicationShouldTerminate: mayExit)
   }
 
@@ -879,29 +677,12 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
     if didConfirmTerminationLedgerFlush || workbenchStore == nil {
       WorkbenchSessionRecovery.shared.markCleanExit()
     }
-    if restartRequested {
-      let launcher = Process()
-      launcher.executableURL = URL(fileURLWithPath: "/bin/sh")
-      launcher.arguments = [
-        "-c",
-        "while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; exec /usr/bin/open -n -a \"$2\"",
-        "repopress-restart",
-        String(getpid()),
-        Bundle.main.bundlePath,
-      ]
-      do {
-        try launcher.run()
-      } catch {
-        NSLog("RepoPress restart helper failed to start: %@", error.localizedDescription)
-      }
-    }
   }
 
 }
 
-private struct ProtectedSettingsView: View {
+private struct ApplicationSettingsWindowView: View {
   let store: WorkbenchStore
-  @ObservedObject private var settingsState: WorkbenchSettingsFeatureFacade
   let rssStore: RSSReaderStore?
   @ObservedObject var launchCoordinator: WorkbenchLaunchCoordinator
 
@@ -911,35 +692,18 @@ private struct ProtectedSettingsView: View {
     launchCoordinator: WorkbenchLaunchCoordinator
   ) {
     self.store = store
-    _settingsState = ObservedObject(wrappedValue: store.settings)
     self.rssStore = rssStore
     self.launchCoordinator = launchCoordinator
   }
 
   var body: some View {
-    ZStack {
-      SettingsView(
-        store: store,
-        rssStore: rssStore,
-        launchCoordinator: launchCoordinator,
-        groups: [.application],
-        openOutOfScopeDestination: { destination in
-          // Hand the site destination to the main window, then close this
-          // window so the workspace that shows it comes to the front.
-          SettingsNavigation.requestSiteSettings(destination)
-          NSApp.keyWindow?.performClose(nil)
-        }
-      )
-      .disabled(!store.canUseProtectedWorkbench)
-      .disabled(launchCoordinator.phase != .ready)
-      .accessibilityHidden(!store.canUseProtectedWorkbench)
-
-      if settingsState.isQuickHideActive {
-        QuickHideOverlay(store: store)
-      }
-    }
+    SettingsView(
+      store: store,
+      rssStore: rssStore,
+      launchCoordinator: launchCoordinator
+    )
+    .disabled(launchCoordinator.phase != .ready)
     .workbenchSettingsWindowSize()
-    .settingsThinRedScrollbars()
     #if DEBUG || SCREENSHOT_CAPTURE_BUILD
       .background(ScreenshotCaptureWindowBridge(role: .settings))
     #endif

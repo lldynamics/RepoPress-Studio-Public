@@ -246,10 +246,6 @@ extension WorkbenchAIStore {
     convergence: AIPublishingActionConvergence? = nil
   ) async -> AIPublishingActionResult? {
     guard !Task.isCancelled else { return nil }
-    guard store.canUseProtectedWorkbench else {
-      aiActionMessage = store.quickHideOperationMessage
-      return nil
-    }
     let effectiveKind = convergence?.canonicalActionKind ?? kind
     let actionName = convergence?.displayName ?? effectiveKind.displayName
     let lane: AIGenerationLane =
@@ -347,9 +343,6 @@ extension WorkbenchAIStore {
     _ article: RSSArticle,
     target: RSSArticleTranslationTarget
   ) async throws -> RSSArticleTranslationResult {
-    guard store.canUseProtectedWorkbench else {
-      throw RSSArticleTranslationError.protectedWorkbenchUnavailable
-    }
 
     let profile = store.activeProfile
     let config = store.aiProviderConfig(for: profile)
@@ -366,9 +359,6 @@ extension WorkbenchAIStore {
     _ titles: [RSSArticleTranslationTextRequest],
     target: RSSArticleTranslationTarget
   ) async throws -> [String: String] {
-    guard store.canUseProtectedWorkbench else {
-      throw RSSArticleTranslationError.protectedWorkbenchUnavailable
-    }
     let profile = store.activeProfile
     let config = store.aiProviderConfig(for: profile)
     let apiKey = try aiChatAvailableAPIKey(for: profile)
@@ -399,10 +389,6 @@ extension WorkbenchAIStore {
     draft: ArticleDraft
   ) async -> AIPublishingMetadataSuggestion? {
     guard !Task.isCancelled else { return nil }
-    guard store.canUseProtectedWorkbench else {
-      aiActionMessage = store.quickHideOperationMessage
-      return nil
-    }
     let lane = AIGenerationLane.metadata(draft.id)
     let generation = beginAIRequest(lane)
     let knowledgePolicy = aiChatKnowledgePolicy
@@ -482,11 +468,6 @@ extension WorkbenchAIStore {
     -> [AIPublishingImageTextSuggestion]
   {
     guard !Task.isCancelled else { return [] }
-    guard store.canUseProtectedWorkbench else {
-      aiActionMessage = store.quickHideOperationMessage
-      store.setImageActionMessage(store.quickHideOperationMessage)
-      return []
-    }
     let lane = AIGenerationLane.imageText(draft.id)
     let generation = beginAIRequest(lane)
     defer { finishAIRequest(lane, generation: generation) }

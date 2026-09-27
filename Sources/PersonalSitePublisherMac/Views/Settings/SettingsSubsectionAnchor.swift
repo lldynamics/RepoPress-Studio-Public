@@ -30,7 +30,7 @@ struct SettingsSubsectionAnchor: View {
 extension View {
   /// Attach to an actual header or content block, never a Section or Group
   /// that can expand into several form elements. Optional anchors allow shared
-  /// sections to retain their existing layout outside the Settings workspace.
+  /// sections to retain their existing layout outside the native Settings scene.
   @ViewBuilder
   func settingsSubsectionAnchor(_ subsection: SettingsSubsection?) -> some View {
     if let subsection {

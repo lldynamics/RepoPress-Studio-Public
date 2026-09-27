@@ -85,7 +85,7 @@ extension PublishingStore {
 
   /// Explicit user action from the history view; verification issues GETs only.
   public func verifyPublishExecution(_ id: UUID, store: WorkbenchStore) async {
-    guard store.canUseProtectedWorkbench,
+    guard
       let record = publishSession.executionRecords.first(where: { $0.id == id }),
       record.state.needsVerification,
       let profile = profiles.first(where: { $0.id == record.plan.target.profileID })

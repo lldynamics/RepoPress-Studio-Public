@@ -61,21 +61,6 @@ extension AIProviderPreset: WorkbenchDisplayNameLocalizable {}
 extension AIWritingStylePreset: WorkbenchDisplayNameLocalizable {}
 extension DeploymentProvider: WorkbenchDisplayNameLocalizable {}
 
-extension SiteAnalyticsProvider: WorkbenchDisplayNameLocalizable {
-  var workbenchDisplayNameSemanticKey: String {
-    switch self {
-    case .plausible:
-      return "display.site-analytics-provider.plausible"
-    case .umami:
-      return "display.site-analytics-provider.umami"
-    case .cloudflare:
-      return "display.site-analytics-provider.cloudflare"
-    }
-  }
-
-  var fallbackDisplayName: String { displayName }
-}
-
 extension DraftStatus: WorkbenchDisplayNameLocalizable {}
 extension ArticleVisibility: WorkbenchDisplayNameLocalizable {}
 extension DraftRepositorySyncState: WorkbenchDisplayNameLocalizable {}

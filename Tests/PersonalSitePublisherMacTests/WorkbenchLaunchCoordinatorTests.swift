@@ -106,6 +106,38 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     XCTAssertNotNil(restartedCoordinator.rssStore)
   }
 
+  func testRecommendedRootCreatesAndPersistsASeparateRootWithoutReusingExistingData() async throws {
+    let parentURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "launch-recommended-data-root-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    defer { try? FileManager.default.removeItem(at: parentURL) }
+    try FileManager.default.createDirectory(at: parentURL, withIntermediateDirectories: false)
+    let existingRootURL = parentURL.appendingPathComponent("RepoPress Data", isDirectory: true)
+    let existingManifest = try WorkbenchDataRootManifestStore().initializeNewRoot(
+      at: existingRootURL,
+      appVersion: "test"
+    )
+    let harness = try makeHarness(rootURL: nil)
+    defer { harness.cleanup() }
+    harness.sessionRecovery.requestSafeModeOnNextLaunch()
+    let coordinator = WorkbenchLaunchCoordinator(
+      pathStore: harness.pathStore,
+      sessionRecovery: harness.sessionRecovery
+    )
+
+    await coordinator.createRecommendedDataRoot(in: parentURL)
+
+    let expectedRootURL = parentURL.appendingPathComponent("RepoPress Data 2", isDirectory: true)
+    XCTAssertEqual(coordinator.phase, .ready)
+    XCTAssertEqual(coordinator.dataRootPath, expectedRootURL.path)
+    XCTAssertEqual(try harness.pathStore.storedRecord()?.path, expectedRootURL.path)
+    XCTAssertEqual(
+      WorkbenchDataRootInspector().probe(at: existingRootURL),
+      .existing(existingManifest)
+    )
+  }
+
   func testCreatingFreshRootReusesEmptyFolderLeftByExternalVolumeFailure() async throws {
     let parentURL = FileManager.default.temporaryDirectory.appendingPathComponent(
       "launch-retry-external-root-\(UUID().uuidString)",

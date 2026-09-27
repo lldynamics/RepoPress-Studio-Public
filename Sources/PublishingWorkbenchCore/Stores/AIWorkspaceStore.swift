@@ -6,7 +6,11 @@ public final class AIWorkspaceStore: ObservableObject {
   @Published public internal(set) var aiTokenAvailability: KeychainTokenAvailability
   @Published public internal(set) var aiActionResult: AIPublishingActionResult?
   @Published public internal(set) var aiActionMessage: String? {
-    didSet { aiActionMessageIsFailure = false }
+    didSet {
+      if aiActionMessageIsFailure {
+        aiActionMessageIsFailure = false
+      }
+    }
   }
   @Published public internal(set) var aiActionMessageIsFailure = false
   @Published public internal(set) var isAIActionRunning: Bool
@@ -30,7 +34,11 @@ public final class AIWorkspaceStore: ObservableObject {
   @Published public internal(set) var activeAIConversationIDsByScope: [String: UUID]
   @Published public internal(set) var pendingAIQuickPrompt: AIPublishingQuickPrompt?
   @Published public internal(set) var aiChatMessage: String? {
-    didSet { aiChatMessageIsFailure = false }
+    didSet {
+      if aiChatMessageIsFailure {
+        aiChatMessageIsFailure = false
+      }
+    }
   }
   @Published public internal(set) var aiChatMessageIsFailure = false
   @Published public internal(set) var isAIChatRunning: Bool

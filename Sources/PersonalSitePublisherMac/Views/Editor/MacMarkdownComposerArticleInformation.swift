@@ -1,13 +1,16 @@
 import SwiftUI
 
 extension MacMarkdownComposerView {
+  var isArticleInformationFolded: Bool {
+    !isArticleInformationExpanded && frontMatterIssue == nil
+  }
+
   /// Shown beside the file path in the title row instead of as a separate
-  /// strip above the editor. Only the basic density folds Front Matter.
+  /// strip above the editor. Front Matter has one explicit disclosure control.
   var articleInformationToggle: MacMarkdownArticleInformationToggle? {
-    guard writingToolDensity == .basic else { return nil }
     return MacMarkdownArticleInformationToggle(
       isExpanded: Binding(
-        get: { isArticleInformationExpanded || frontMatterIssue != nil },
+        get: { !isArticleInformationFolded },
         set: { isArticleInformationExpanded = $0 }
       ),
       isEnabled: frontMatterIssue == nil

@@ -133,6 +133,20 @@ public final class WorkspaceBackupScheduler: ObservableObject {
     _ = await pendingInventory?.value
   }
 
+  /// The simplified settings switch starts a complete daily schedule only on
+  /// explicit opt-in. Loading settings must not broaden an existing cloud
+  /// backup's scope or change its retention policy.
+  public func setAutomaticBackupEnabled(_ enabled: Bool) {
+    guard !isRunning else { return }
+    if enabled {
+      guard settings.frequency == .off else { return }
+      settings.selectedCategoryIDs = nil
+      setFrequency(.daily)
+    } else {
+      setFrequency(.off)
+    }
+  }
+
   public func setFrequency(_ frequency: WorkspaceBackupFrequency) {
     guard !isRunning, settings.frequency != frequency else { return }
     settings.frequency = frequency

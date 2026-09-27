@@ -6,14 +6,12 @@ final class WorkspaceResponsiveLayoutSnapshotTests: XCTestCase {
   func testEqualWithinSameSemanticLayoutBand() {
     assertSameBand(900, 959)
     assertSameBand(960, 1_179)
-    assertSameBand(1_180, 1_239)
-    assertSameBand(1_240, 1_473)
+    assertSameBand(1_180, 1_473)
   }
 
   func testChangesAtEveryLayoutDecisionBoundary() {
     assertBoundaryChanges(at: WorkbenchLayoutMode.minimumCompactInspectorWorkspaceWidth)
     assertBoundaryChanges(at: WorkbenchLayoutMode.minimumInspectorWorkspaceWidth)
-    assertBoundaryChanges(at: WorkbenchLayoutMode.minimumHTMLSourceInspectorWorkspaceWidth)
   }
 
   func testCompactInspectorOverrideIncludesWritingKnowledgeAndRSSOnly() {

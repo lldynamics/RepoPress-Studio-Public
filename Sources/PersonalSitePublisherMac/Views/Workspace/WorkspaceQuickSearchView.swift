@@ -8,9 +8,9 @@ enum WorkspaceQuickSearchScope: Equatable {
   case aiFixes
 }
 
-/// The command palette is the one search entry point.  These scopes only
-/// select local presentation data; they do not change draft indexing or send
-/// a query to an AI/provider.
+/// The command palette is the one search entry point. These scopes select
+/// local search corpora. Article results include live Markdown bodies;
+/// no scope sends a query to an AI/provider.
 enum WorkspaceUnifiedSearchScope: String, CaseIterable, Identifiable, Sendable {
   case all
   case articles

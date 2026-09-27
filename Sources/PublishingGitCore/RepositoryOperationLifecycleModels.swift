@@ -32,6 +32,15 @@ public enum RepositoryOperationLifecycleKind: String, Codable, Hashable, Sendabl
   }
 }
 
+/// Why a repository could not be inspected. The lifecycle remains fail-closed
+/// with kind `ambiguous`, but these cases must not be presented as Git markers.
+public enum RepositoryOperationLifecycleReadFailure: String, Codable, Hashable, Sendable {
+  case repositoryUnavailable
+  case notGitWorktree
+  case notRepositoryRoot
+  case gitReadFailed
+}
+
 /// A read-only, bounded description of a merge or rebase lifecycle. The
 /// unresolved count comes from the Git index, rather than working-tree marker
 /// text, so staging every conflict does not accidentally erase the operation.
@@ -41,19 +50,22 @@ public struct RepositoryOperationLifecycle: Codable, Hashable, Sendable {
   public var kind: RepositoryOperationLifecycleKind
   public var unresolvedConflictCount: Int
   public var diagnostic: String?
+  public var readFailure: RepositoryOperationLifecycleReadFailure?
 
   public init(
     rootPath: String,
     branchName: String? = nil,
     kind: RepositoryOperationLifecycleKind = .none,
     unresolvedConflictCount: Int = 0,
-    diagnostic: String? = nil
+    diagnostic: String? = nil,
+    readFailure: RepositoryOperationLifecycleReadFailure? = nil
   ) {
     self.rootPath = rootPath
     self.branchName = branchName
     self.kind = kind
     self.unresolvedConflictCount = max(0, unresolvedConflictCount)
     self.diagnostic = diagnostic
+    self.readFailure = readFailure
   }
 
   public var isOperationInProgress: Bool {
@@ -70,6 +82,8 @@ public struct RepositoryOperationLifecycle: Codable, Hashable, Sendable {
 /// repository configuration values in its primary localized description.
 public enum RepositoryOperationLifecycleError: Error, LocalizedError, Hashable, Sendable {
   case repositoryUnavailable
+  case notGitWorktree
+  case notRepositoryRoot
   case invalidRepository(String)
   case noOperationInProgress
   case unexpectedOperation(expected: RepositoryOperationLifecycleKind, actual: RepositoryOperationLifecycleKind)
@@ -84,6 +98,10 @@ public enum RepositoryOperationLifecycleError: Error, LocalizedError, Hashable, 
     switch self {
     case .repositoryUnavailable:
       return "未找到可用的本地 Git 仓库。"
+    case .notGitWorktree:
+      return "所选目录不是 Git 工作树。"
+    case .notRepositoryRoot:
+      return "所选目录不是 Git 工作树根目录。"
     case let .invalidRepository(message):
       return "Git 仓库状态无效：\(message)"
     case .noOperationInProgress:

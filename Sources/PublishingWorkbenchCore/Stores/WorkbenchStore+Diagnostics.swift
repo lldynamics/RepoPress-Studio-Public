@@ -24,7 +24,6 @@ extension WorkbenchStore {
       appVersion: appVersion,
       buildVersion: buildVersion,
       isSafeMode: isSafeMode,
-      isQuickHideActive: isQuickHideActive,
       hasPersistenceRecoveryMessage: persistenceRecoveryMessage != nil,
       draftCount: drafts.count,
       pendingDraftRecoveryCount: pendingDraftRecoveries.count,

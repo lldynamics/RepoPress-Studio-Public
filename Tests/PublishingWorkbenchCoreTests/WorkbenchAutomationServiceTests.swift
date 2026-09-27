@@ -55,8 +55,6 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
       advertisedSections,
       WorkspaceVisibilityPolicy.commandPaletteSections.map(\.rawValue)
     )
-    XCTAssertFalse(advertisedSections.contains(WorkspaceSection.images.rawValue))
-    XCTAssertFalse(WorkbenchAutomationRegistry.promptCatalog.contains("section: images"))
   }
 
   func testEveryRegistryCommandSchemaParsesAndPassesTheSharedValidator() throws {
@@ -274,7 +272,7 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
     )
     assertAgentArgumentsRejected(
       command: .openSection,
-      arguments: #"{"section":"images"}"#,
+      arguments: #"{"section":"unknown"}"#,
       draftVersions: draftVersions
     )
     assertAgentArgumentsRejected(

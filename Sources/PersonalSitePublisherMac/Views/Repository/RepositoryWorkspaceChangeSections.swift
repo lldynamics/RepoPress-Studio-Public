@@ -165,14 +165,15 @@ extension RepositoryWorkspaceView {
       {
         Button {
           changedFileSelection = RepositoryChangedFileSelection(source: .local, file: file)
-          sourceSession.requestOpen(repositoryPath: file.displayPath)
+          sourceSession.requestOpen(
+            repositoryPath: file.displayPath,
+            profile: store.activeProfile
+          )
           stage = .source
-          store.setInspectorPresented(true)
         } label: {
-          Label("源码编辑", systemImage: "chevron.left.forwardslash.chevron.right")
+          Label("查看 HTML 文件", systemImage: "doc.text")
         }
         .buttonStyle(.bordered)
-        .help("在高级源码编辑器中打开 \(file.displayPath)")
         .accessibilityIdentifier(
           "repository-local-file-\(file.accessibilityIdentifierToken)-open-source")
       }

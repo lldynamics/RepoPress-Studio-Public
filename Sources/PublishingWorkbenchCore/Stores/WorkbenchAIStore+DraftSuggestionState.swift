@@ -184,7 +184,7 @@ extension WorkbenchAIStore {
     generation: UInt64,
     handler: @escaping () -> Void
   ) {
-    guard !Task.isCancelled, store.canUseProtectedWorkbench,
+    guard !Task.isCancelled,
       aiMetadataSuggestionGenerationsByDraftID[draftID] == generation
     else {
       handler()
@@ -198,7 +198,7 @@ extension WorkbenchAIStore {
     generation: UInt64,
     handler: @escaping () -> Void
   ) {
-    guard !Task.isCancelled, store.canUseProtectedWorkbench,
+    guard !Task.isCancelled,
       aiImageTextSuggestionGenerationsByDraftID[draftID] == generation
     else {
       handler()
@@ -235,7 +235,7 @@ extension WorkbenchAIStore {
     for draftID: UUID,
     generation: UInt64
   ) -> Bool {
-    guard !Task.isCancelled, store.canUseProtectedWorkbench,
+    guard !Task.isCancelled,
       aiMetadataSuggestionGenerationsByDraftID[draftID] == generation
     else {
       return false
@@ -324,7 +324,7 @@ extension WorkbenchAIStore {
     for draftID: UUID,
     generation: UInt64
   ) -> Bool {
-    guard !Task.isCancelled, store.canUseProtectedWorkbench,
+    guard !Task.isCancelled,
       aiImageTextSuggestionGenerationsByDraftID[draftID] == generation
     else {
       return false

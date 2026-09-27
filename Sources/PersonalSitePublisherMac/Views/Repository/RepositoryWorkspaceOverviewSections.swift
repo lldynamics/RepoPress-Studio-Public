@@ -155,11 +155,14 @@ extension RepositoryWorkspaceView {
   private var repositoryOverviewPrimaryColumn: some View {
     VStack(alignment: .leading, spacing: 16) {
       repositoryScanProgress
-      repositoryProblemsSection
       repositoryMergeConflictSection
-      repositorySummary
-      repositoryPublishReadinessSummary
-      onlinePublishCenterSection
+      if store.repositoryReport?.hasGitDirectory != false
+        && store.repositoryOperationLifecycle?.readFailure == nil
+      {
+        repositorySummary
+        repositoryPublishReadinessSummary
+        onlinePublishCenterSection
+      }
     }
   }
 
@@ -171,6 +174,7 @@ extension RepositoryWorkspaceView {
       // workspace so scrolling it offscreen does not collapse the tools.
       DisclosureGroup(isExpanded: $isOverviewMoreToolsExpanded) {
         VStack(alignment: .leading, spacing: 16) {
+          repositoryProblemsSection
           repositoryInformationSection
           repositoryAutoSyncSection
           repositoryOverviewLocalPreviewSection
@@ -192,7 +196,7 @@ extension RepositoryWorkspaceView {
   private var repositoryOverviewLocalPreviewSection: some View {
     if store.localSitePreviewPlan != nil {
       localPreviewSection
-    } else {
+    } else if store.repositoryReport?.hasGitDirectory != false {
       repositoryUnavailableToolCard(
         title: "本地预览",
         detail: "尚未识别可用的本地预览命令。请先扫描仓库，或在站点配置中补充预览设置。",
@@ -206,7 +210,7 @@ extension RepositoryWorkspaceView {
   private var repositoryOverviewSyncPlanSection: some View {
     if store.repositorySyncCommandPlan != nil {
       repositorySyncPlan
-    } else {
+    } else if store.repositoryReport?.hasGitDirectory != false {
       repositoryUnavailableToolCard(
         title: "同步建议",
         detail: "尚未生成同步建议。请先扫描仓库，并确认当前分支已经设置 upstream。",
@@ -240,6 +244,16 @@ extension RepositoryWorkspaceView {
         actionTitle: "取消扫描",
         action: store.repository.cancelScan
       )
+    } else if let readFailure = store.repositoryOperationLifecycle?.readFailure {
+      workflowBanner(
+        title: readFailure.presentationTitle,
+        detail: readFailure.presentationDetail,
+        systemImage: "externaldrive.badge.questionmark",
+        tint: WorkbenchTheme.risk,
+        isExceptional: true,
+        actionTitle: "重新选择仓库",
+        action: chooseRepository
+      )
     } else if let lifecycle = store.repositoryOperationLifecycle,
       lifecycle.isOperationInProgress
     {
@@ -268,6 +282,16 @@ extension RepositoryWorkspaceView {
         isExceptional: true,
         actionTitle: "查看恢复状态",
         action: { stage = .changes }
+      )
+    } else if store.repositoryReport?.hasGitDirectory == false {
+      workflowBanner(
+        title: "未发现 .git",
+        detail: "当前文件夹不是 Git 工作树，需选择正确的站点仓库。",
+        systemImage: "exclamationmark.triangle",
+        tint: WorkbenchTheme.warning,
+        isExceptional: true,
+        actionTitle: "更换站点文件夹",
+        action: chooseRepository
       )
     } else if let report = store.repositoryReport,
       let issue = report.preflightIssues.first(where: { $0.severity == .error })
@@ -377,9 +401,9 @@ extension RepositoryWorkspaceView {
       )
     case .source:
       content = (
-        String(localized: "打开 HTML 高级源码编辑器"),
-        String(localized: "选择仓库中的 HTML 文件后，可在保留编码与换行符的前提下安全编辑。"),
-        "chevron.left.forwardslash.chevron.right"
+        String(localized: "查看仓库中的 HTML 文件"),
+        String(localized: "选择 HTML 文件后，可在 Finder 中显示或用默认应用打开。"),
+        "doc.text"
       )
     case .history:
       content = (
@@ -545,11 +569,6 @@ extension RepositoryWorkspaceView {
   @ViewBuilder
   var repositorySummary: some View {
     if let report = store.repositoryReport {
-      // Count every listed item so this tile always matches the "需要处理"
-      // list below; the icon still escalates only for blocking errors.
-      let attentionIssueCount = report.preflightIssues.count
-      let blockingIssueCount = report.preflightIssues.filter { $0.severity == .error }.count
-
       VStack(alignment: .leading, spacing: 12) {
         HStack {
           Text("同步概况")
@@ -557,9 +576,6 @@ extension RepositoryWorkspaceView {
             .accessibilityAddTraits(.isHeader)
             .help("同步状态只描述本地与网站仓库的差异；公开检查单独显示在下方。")
           Spacer()
-          Label(report.syncStatusTitle, systemImage: "arrow.up.arrow.down")
-            .font(.callout.weight(.medium))
-            .foregroundStyle(.secondary)
         }
 
         Divider()
@@ -570,11 +586,6 @@ extension RepositoryWorkspaceView {
           MetricTile(
             title: "网站更新", value: "\(report.remoteChangedFiles.count)",
             systemImage: "arrow.down.doc")
-          MetricTile(
-            title: "需要处理", value: "\(attentionIssueCount)",
-            systemImage: attentionIssueCount == 0
-              ? "checkmark.circle"
-              : blockingIssueCount == 0 ? "exclamationmark.triangle" : "xmark.octagon")
         }
       }
       .accessibilityElement(children: .contain)
@@ -658,6 +669,7 @@ extension RepositoryWorkspaceView {
             diagnostic: store.repositoryRebaseRecoveryDiagnostic,
             isRunning: store.isLocalRepositoryBranchOperationRunning
               || store.isLocalRepositoryMutationRunning,
+            chooseRepositoryAction: chooseRepository,
             completeAction: { message in
               Task { @MainActor in
                 _ = await store.completeRepositoryOperation(mergeMessage: message)
@@ -825,7 +837,11 @@ extension RepositoryWorkspaceView {
 
   @ViewBuilder
   var repositoryProblemsSection: some View {
-    if let report = store.repositoryReport, !report.preflightIssues.isEmpty {
+    if let report = store.repositoryReport,
+      report.preflightIssues.contains(where: {
+        report.hasGitDirectory || $0.field != "repository"
+      })
+    {
       VStack(alignment: .leading, spacing: 10) {
         Label("需要处理", systemImage: "checklist")
           .font(.workbenchSectionTitle)
@@ -833,7 +849,11 @@ extension RepositoryWorkspaceView {
 
         Divider()
 
-        ForEach(report.preflightIssues) { issue in
+        ForEach(
+          report.preflightIssues.filter {
+            report.hasGitDirectory || $0.field != "repository"
+          }
+        ) { issue in
           HStack(alignment: .top, spacing: 8) {
             Image(systemName: issue.severity.publishDrawerSystemImage)
               .foregroundStyle(issue.severity.publishDrawerColor)

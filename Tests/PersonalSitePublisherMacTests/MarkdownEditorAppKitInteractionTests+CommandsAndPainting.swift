@@ -296,8 +296,8 @@ final class MarkdownEditorAppKitInteractionCommandAndPaintingTests:
     XCTAssertEqual(requestCount, 0)
   }
 
-  func testComfortDefaultsIncludeParagraphSpotlightReset() {
-    XCTAssertFalse(MarkdownEditorComfortConfiguration.defaultParagraphSpotlightEnabled)
+  func testComfortDefaultsLeaveParagraphFocusOff() {
+    XCTAssertFalse(MarkdownEditorComfortConfiguration.defaultParagraphFocusEnabled)
   }
 
   func testSelectionInvalidationOnlyIncludesMarkersWhoseActiveRunChanged() {

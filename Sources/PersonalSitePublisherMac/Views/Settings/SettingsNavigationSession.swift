@@ -1,6 +1,6 @@
 import Foundation
 
-/// Transient navigation state for one Settings workspace presentation.
+/// Transient navigation state for the native Settings window.
 ///
 /// Persisted tab restoration and search presentation deliberately remain
 /// outside this value. This session only coordinates requests that detail
@@ -50,21 +50,6 @@ struct SettingsNavigationSession {
     navigationDestination = destination
     navigationRequestID = UUID()
     return selectRoute(targetRoute ?? .destination(destination))
-  }
-
-  mutating func applyWorkspaceNavigation(
-    destination: SettingsDestination?,
-    subsection: SettingsSubsection?
-  ) -> RouteSelection? {
-    healthDestination = nil
-    healthNavigationRequestID = UUID()
-    navigationDestination = destination
-    navigationRequestID = UUID()
-    guard let route = SettingsRoute.workspace(destination: destination, subsection: subsection)
-    else {
-      return nil
-    }
-    return selectRoute(route)
   }
 
   /// Invalidate detail-page focus requests after the sidebar takes control.

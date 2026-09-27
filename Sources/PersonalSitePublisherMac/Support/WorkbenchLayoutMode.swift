@@ -12,7 +12,6 @@ public enum WorkbenchLayoutMode {
   public static let minimumCompactInspectorWorkspaceWidth: CGFloat = 960
   public static let minimumRSSReaderSplitWidth: CGFloat = 900
   public static let minimumInspectorWorkspaceWidth: CGFloat = 1180
-  public static let minimumHTMLSourceInspectorWorkspaceWidth: CGFloat = 1240
 
   public static func isCompact(width: CGFloat) -> Bool {
     width < expandedWorkspaceWidth

@@ -4,7 +4,7 @@ import PublishingKnowledgeCore
 
 extension WorkbenchStore {
   public var canRestoreBackupArticles: Bool {
-    canUseProtectedWorkbench && !isPersistenceRecoveryWriteProtected
+    !isPersistenceRecoveryWriteProtected
   }
 
   public func workspaceBackupArticleSelectionPreview(from backupURL: URL) async throws

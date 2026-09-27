@@ -5,33 +5,12 @@ import PublishingCoreSupport
 @MainActor
 public final class PrivacyProtectionStore: ObservableObject {
   @Published public internal(set) var privacySettings: PrivacyProtectionSettings
-  @Published public internal(set) var isQuickHideActive: Bool
-  @Published public internal(set) var quickHideReason: String?
-
-  init(
-    privacySettings: PrivacyProtectionSettings = .default,
-    isQuickHideActive: Bool = false,
-    quickHideReason: String? = nil
-  ) {
+  init(privacySettings: PrivacyProtectionSettings = .default) {
     self.privacySettings = privacySettings
-    self.isQuickHideActive = isQuickHideActive
-    self.quickHideReason = quickHideReason
-  }
-
-  public var canUseProtectedWorkbench: Bool {
-    !isQuickHideActive
-  }
-
-  public var quickHideOperationMessage: String {
-    CoreL10n.text("快速隐藏已启用，请返回工作台后再继续。")
   }
 
   public var privacyProtectionStatus: PrivacyProtectionStatus {
-    PrivacyProtectionStatus.make(
-      settings: privacySettings,
-      isQuickHideActive: isQuickHideActive,
-      reason: quickHideReason
-    )
+    PrivacyProtectionStatus.make(settings: privacySettings)
   }
 
   public func updatePrivacySettings(_ settings: PrivacyProtectionSettings, store: WorkbenchStore) {
@@ -89,13 +68,4 @@ public final class PrivacyProtectionStore: ObservableObject {
     return protectedDraft
   }
 
-  public func activateQuickHide(reason: String? = nil) {
-    isQuickHideActive = true
-    quickHideReason = reason?.nilIfEmpty
-  }
-
-  public func deactivateQuickHide() {
-    isQuickHideActive = false
-    quickHideReason = nil
-  }
 }

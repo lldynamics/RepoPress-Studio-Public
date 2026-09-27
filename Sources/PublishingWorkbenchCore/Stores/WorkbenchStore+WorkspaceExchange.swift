@@ -4,7 +4,7 @@ import PublishingBackupCore
 @MainActor
 extension WorkbenchStore {
   public func makeWorkspaceExchangeData() async throws -> Data {
-    guard canUseProtectedWorkbench, !isPersistenceRecoveryWriteProtected else {
+    guard !isPersistenceRecoveryWriteProtected else {
       throw WorkspaceExchangeError.unavailable
     }
     guard flushPendingChanges() else { throw WorkspaceExchangeError.unavailable }
@@ -22,7 +22,7 @@ extension WorkbenchStore {
   }
 
   public func previewWorkspaceExchange(data: Data) async throws -> WorkspaceExchangePreview {
-    guard canUseProtectedWorkbench, !isPersistenceRecoveryWriteProtected else {
+    guard !isPersistenceRecoveryWriteProtected else {
       throw WorkspaceExchangeError.unavailable
     }
     let localProfiles = profiles
@@ -40,7 +40,7 @@ extension WorkbenchStore {
     profileMappings: [UUID: WorkspaceExchangeProfileMapping],
     slugOverrides: [UUID: String] = [:]
   ) async throws -> Int {
-    guard canUseProtectedWorkbench, !isPersistenceRecoveryWriteProtected else {
+    guard !isPersistenceRecoveryWriteProtected else {
       throw WorkspaceExchangeError.unavailable
     }
     let verifiedPackage = try WorkspaceExchangeCodec.decode(preview.sourceData)
@@ -113,7 +113,7 @@ extension WorkbenchStore {
       if let conflict = currentConflicts.first {
         throw WorkspaceExchangeError.duplicatePublishPath(conflict.path)
       }
-      guard canUseProtectedWorkbench, !isPersistenceRecoveryWriteProtected,
+      guard !isPersistenceRecoveryWriteProtected,
         prepared.drafts.allSatisfy({ incoming in
           !drafts.contains(where: { $0.id == incoming.id })
         }),

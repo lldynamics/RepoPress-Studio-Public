@@ -31,7 +31,7 @@ final class SettingsSubsectionNavigationTests: XCTestCase {
     )
     XCTAssertEqual(
       SettingsSubsection.sections(for: .token),
-      [.tokenRepository, .tokenDeployment, .tokenAnalytics]
+      [.tokenRepository, .tokenDeployment]
     )
     XCTAssertEqual(
       SettingsSubsection.sections(for: .ai),
@@ -48,14 +48,7 @@ final class SettingsSubsectionNavigationTests: XCTestCase {
     XCTAssertEqual(
       SettingsRoute.requestedID("appearance.defaults"), .subsection(.appearanceDefaults))
     XCTAssertEqual(SettingsRoute.requestedID("appearance.defaults")?.tab, .editor)
-    XCTAssertEqual(
-      SettingsRoute.workspace(destination: .tab(.appearance), subsection: .appearanceDefaults),
-      .subsection(.appearanceDefaults)
-    )
-    XCTAssertEqual(
-      SettingsRoute.workspace(destination: .tab(.ai), subsection: .aiWritingStyle),
-      .subsection(.aiWritingStyle)
-    )
+
   }
 
   func testStructuredDestinationsCoverEveryDeepLinkRoute() {
@@ -63,7 +56,6 @@ final class SettingsSubsectionNavigationTests: XCTestCase {
       (.rules(.paths), .rulesPaths),
       (.token(.repository), .tokenRepository),
       (.token(.deployment), .tokenDeployment),
-      (.token(.analytics), .tokenAnalytics),
       (.ai(.connection), .aiConnection),
       (.ai(.credentials), .aiConnection),
       (.ai(.writingStyle), .aiWritingStyle),
@@ -78,12 +70,12 @@ final class SettingsSubsectionNavigationTests: XCTestCase {
     }
   }
 
-  func testLegacyRequestedIDsResolveToTheirExactVisibleSubsections() {
-    XCTAssertEqual(SettingsRoute.requestedID("language"), .subsection(.appearanceLanguage))
+  func testLegacyRequestedIDsResolveToVisibleSubsections() {
+    XCTAssertNil(SettingsRoute.requestedID("language"))
     XCTAssertEqual(SettingsRoute.requestedID("storage"), .subsection(.dataStorage))
     XCTAssertEqual(SettingsRoute.requestedID("data"), .tab(.dataManagement))
     XCTAssertEqual(
-      SettingsRoute.restored(lastViewedID: "language"), .subsection(.appearanceLanguage))
+      SettingsRoute.restored(lastViewedID: "language"), .tab(.configurationStatus))
     XCTAssertEqual(SettingsRoute.restored(lastViewedID: "storage"), .subsection(.dataStorage))
   }
 
@@ -91,30 +83,6 @@ final class SettingsSubsectionNavigationTests: XCTestCase {
     XCTAssertEqual(SettingsRoute.restored(lastViewedID: nil), .tab(.configurationStatus))
     XCTAssertEqual(SettingsRoute.restored(lastViewedID: ""), .tab(.configurationStatus))
     XCTAssertEqual(SettingsRoute.restored(lastViewedID: "removed-tab"), .tab(.configurationStatus))
-  }
-
-  func testWorkspaceSubsectionControlsDisplayWithoutDiscardingCompatibleDestination() {
-    XCTAssertEqual(
-      SettingsRoute.workspace(
-        destination: .tab(.appearance),
-        subsection: .appearanceTheme
-      ),
-      .subsection(.appearanceTheme)
-    )
-    XCTAssertEqual(
-      SettingsRoute.workspace(
-        destination: .ai(.credentials),
-        subsection: .aiConnection
-      ),
-      .subsection(.aiConnection)
-    )
-    XCTAssertEqual(
-      SettingsRoute.workspace(
-        destination: .ai(.credentials),
-        subsection: .appearanceTheme
-      ),
-      .subsection(.aiConnection)
-    )
   }
 
   func testGlobalSearchRoutesToFocusedSubsections() {
@@ -127,7 +95,6 @@ final class SettingsSubsectionNavigationTests: XCTestCase {
       "rules.paths": .rulesPaths,
       "token.repository": .tokenRepository,
       "token.deployment": .tokenDeployment,
-      "token.analytics": .tokenAnalytics,
       "ai.provider": .aiConnection,
       "ai.credentials": .aiConnection,
       "ai.advanced": .aiAdvanced,
@@ -139,7 +106,6 @@ final class SettingsSubsectionNavigationTests: XCTestCase {
       "data.migration": .dataMigration,
       "appearance.launch": .appearanceBehavior,
       "appearance.theme": .appearanceTheme,
-      "appearance.language": .appearanceLanguage,
       "appearance.defaults": .appearanceDefaults,
       "editor.preview": .editorPreview,
       "editor.typography": .editorTypography,
@@ -150,7 +116,6 @@ final class SettingsSubsectionNavigationTests: XCTestCase {
       "rss.storage": .rssOfflineNetwork,
       "rss.opml": .rssMigration,
       "rss.maintenance": .rssCleanup,
-      "privacy.quickHide": .privacyQuickHide,
       "privacy.masking": .privacyMasking,
       "privacy.status": .privacyStatus,
     ]
@@ -165,5 +130,7 @@ final class SettingsSubsectionNavigationTests: XCTestCase {
       XCTAssertNotNil(subsection, "Missing subsection for search item \(item.id)")
       XCTAssertEqual(subsection?.tab, item.tab)
     }
+    XCTAssertEqual(
+      SettingsSubsection.section(forSearchItemID: "privacy.quickHide"), .privacyMasking)
   }
 }

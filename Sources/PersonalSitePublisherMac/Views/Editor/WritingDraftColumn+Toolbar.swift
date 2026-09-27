@@ -155,8 +155,8 @@ extension WritingDraftColumn {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
-        .help("搜索正文…")
-        .accessibilityLabel("打开跨文章全文搜索")
+        .help("在命令面板中搜索文章正文")
+        .accessibilityLabel("在命令面板中搜索文章正文")
         .accessibilityIdentifier("writing-draft-full-text-search")
       }
       .padding(.horizontal, 8)

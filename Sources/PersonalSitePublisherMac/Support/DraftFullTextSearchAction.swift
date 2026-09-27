@@ -18,7 +18,7 @@ struct DraftFullTextSearchAction {
   }
 
   /// Lets contextual controls preserve their visible query and corpus when
-  /// moving from metadata search to the dedicated full-text panel.
+  /// opening the article scope of the shared command palette.
   func open(_ request: DraftFullTextSearchRequest) {
     if let openRequestAction {
       openRequestAction(request)

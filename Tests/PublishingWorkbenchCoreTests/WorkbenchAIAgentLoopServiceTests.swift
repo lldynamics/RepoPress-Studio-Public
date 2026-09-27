@@ -1046,7 +1046,7 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
         content: "This round must not be committed.",
         toolCalls: [
           toolCall(id: "valid", name: "showInspector"),
-          toolCall(id: "invalid", name: "openSection", arguments: #"{"section":"images"}"#),
+          toolCall(id: "invalid", name: "openSection", arguments: #"{"section":"unknown"}"#),
         ]
       )
     ])

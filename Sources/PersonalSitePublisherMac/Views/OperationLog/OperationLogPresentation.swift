@@ -268,11 +268,8 @@ enum OperationLogPresentation {
     return selection
   }
 
-  static func canPresentClearConfirmation(
-    isQuickHideActive: Bool,
-    visibleEntries: [Entry]
-  ) -> Bool {
-    !isQuickHideActive && !visibleEntries.isEmpty
+  static func canPresentClearConfirmation(visibleEntries: [Entry]) -> Bool {
+    !visibleEntries.isEmpty
   }
 
   private static func dateInterval(

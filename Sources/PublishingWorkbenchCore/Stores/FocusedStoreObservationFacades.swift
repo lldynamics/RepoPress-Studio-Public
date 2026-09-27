@@ -441,10 +441,6 @@ public final class WorkbenchPublishDrawerObservationFacade: ObservableObject {
     observe(store.repositoryStore.$isRemoteRepositoryPublishing)
     observe(store.repositoryStore.$remoteRepositoryPublishProgress)
     observe(store.aiWorkspaceStore.$seoSocialPreviewSnapshots)
-    observe(store.$siteAnalyticsSummaries)
-    observe(store.$siteAnalyticsLoadingDraftID)
-    observe(store.$siteAnalyticsMessage)
-    observe(store.$siteAnalyticsTokenAvailability)
 
     store.imageStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }

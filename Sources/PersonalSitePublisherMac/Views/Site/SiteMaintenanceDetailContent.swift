@@ -22,13 +22,13 @@ struct SiteMaintenanceSnapshotPlaceholder: View {
       // full-page empty states rather than pinned to the top.
       density: .fullPage,
       detail: errorMessage == nil && !isRefreshing
-        ? LocalizedStringKey("点击生成后才会扫描标签、旧文和链接，避免打开页面时自动重算。")
+        ? LocalizedStringKey("正在准备维护检查；完成后会显示上次扫描时间。")
         : nil,
       actions: isRefreshing
         ? .none
         : WorkbenchStateActions(
           primary: WorkbenchStateAction(
-            title: errorMessage == nil ? "生成维护报告" : "重新生成",
+            title: errorMessage == nil ? "立即检查" : "重新检查",
             systemImage: "arrow.clockwise",
             action: generate
           )

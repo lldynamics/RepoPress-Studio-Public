@@ -819,7 +819,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       overlay.textView = textView
       overlay.ghostText = ghostText
       overlay.isHidden = ghostText.isEmpty
-      overlay.setAccessibilityLabel("AI 预测续写")
+      overlay.setAccessibilityLabel("续写建议")
       overlay.setAccessibilityHelp("按 Tab 采纳预测内容，按 Escape 忽略预测内容")
       overlay.setAccessibilityValue(ghostText)
       textView.addSubview(overlay)

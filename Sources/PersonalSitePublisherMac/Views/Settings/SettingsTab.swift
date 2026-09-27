@@ -72,21 +72,21 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
     case .defaultRules:
       return String(localized: "内容与路径")
     case .token:
-      return String(localized: "发布连接")
+      return String(localized: "发布配置")
     case .ai:
-      return String(localized: "AI 连接")
+      return String(localized: "应用级 AI 连接")
     case .siteAI:
-      return String(localized: "AI 与写作偏好")
+      return String(localized: "当前站点的 AI 与写作偏好")
     case .appearance:
       return String(localized: "通用与外观")
     case .editor:
-      return String(localized: "编辑器")
+      return String(localized: "编辑器偏好")
     case .rss:
       return String(localized: "RSS 阅读")
     case .privacy:
       return String(localized: "隐私与安全")
     case .dataManagement:
-      return String(localized: "数据与备份")
+      return String(localized: "备份与恢复")
     }
   }
 
@@ -122,19 +122,19 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
     case .defaultRules:
       return String(localized: "设置当前站点的文章头信息、文件名和路径模板。")
     case .token:
-      return String(localized: "连接代码仓库、部署平台和阅读数据服务。")
+      return String(localized: "连接代码仓库和部署平台。")
     case .ai:
-      return String(localized: "编辑当前站点所用的共享连接，修改会影响所有引用此连接的站点。")
+      return String(localized: "管理应用内共享的 AI 连接，修改会影响所有引用此连接的站点。")
     case .siteAI:
-      return String(localized: "选择当前站点使用的 AI 连接，并设置本站的写作风格。")
+      return String(localized: "为当前站点选择 AI 连接，并设置本站的写作风格。")
     case .appearance:
-      return String(localized: "设置应用语言、启动行为、主题和强调色。")
+      return String(localized: "设置启动行为、主题和强调色。")
     case .editor:
       return String(localized: "管理文章编辑、写作体验与所有站点共用的新文章预设。")
     case .rss:
       return String(localized: "管理 RSS 正文离线保存、OPML、内网访问和历史文章清理。")
     case .privacy:
-      return String(localized: "控制快速隐藏、私密内容遮挡和快捷键。")
+      return String(localized: "管理私密内容的遮挡与保护状态。")
     case .dataManagement:
       return String(localized: "管理草稿生命周期、工作区备份、恢复和内容迁移。")
     }
@@ -193,13 +193,13 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
     case .defaultRules:
       return ["发布规则", "Front Matter", "作者", "标签", "分类", "Slug", "文件名", "路径", "模板"]
     case .token:
-      return ["仓库", "部署", "阅读数据", "GitHub", "GitLab", "Token", "令牌", "凭据", "权限"]
+      return ["仓库", "部署", "GitHub", "GitLab", "Token", "令牌", "凭据", "权限"]
     case .ai:
       return ["模型", "服务", "API Key", "授权", "连接测试", "共享连接", "本地 AI"]
     case .siteAI:
       return ["写作风格", "语气", "受众", "连接选择", "站点 AI", "提示词"]
     case .appearance:
-      return ["通用", "启动", "自动检查", "扫描", "主题", "强调色", "语言", "外观"]
+      return ["通用", "启动", "自动检查", "扫描", "主题", "强调色", "外观"]
     case .editor:
       return [
         "编辑器", "字号", "行距", "正文宽度", "拼写检查", "打字机模式", "当前段落",
@@ -211,7 +211,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
         "remote image", "translation",
       ]
     case .privacy:
-      return ["隐私", "快速隐藏", "临时遮挡", "遮挡", "快捷键"]
+      return ["隐私", "私密内容", "内容遮挡", "正文", "路径", "预览", "保护状态"]
     case .dataManagement:
       return ["数据", "草稿", "版本", "回收站", "存储", "清理", "备份", "恢复", "迁移", "导入"]
     }

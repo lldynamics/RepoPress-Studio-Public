@@ -25,46 +25,6 @@ final class SettingsScrollPresentationTests: XCTestCase {
     XCTAssertTrue(scrollView.documentView === documentView)
   }
 
-  func testSettingsStylingAppliesOnlyInsideTheProvidedSettingsView() {
-    let settingsRoot = NSView(frame: NSRect(x: 0, y: 0, width: 640, height: 480))
-    let settingsScrollView = NSScrollView(
-      frame: NSRect(x: 0, y: 0, width: 640, height: 480)
-    )
-    settingsScrollView.hasVerticalScroller = true
-    settingsScrollView.hasHorizontalScroller = true
-    settingsRoot.addSubview(settingsScrollView)
-
-    let unrelatedScrollView = NSScrollView(
-      frame: NSRect(x: 0, y: 0, width: 320, height: 240)
-    )
-    unrelatedScrollView.hasVerticalScroller = true
-
-    SettingsScrollViewStyling.install(in: settingsRoot)
-
-    XCTAssertTrue(settingsScrollView.hasVerticalScroller)
-    XCTAssertFalse(settingsScrollView.hasHorizontalScroller)
-    XCTAssertTrue(unrelatedScrollView.hasVerticalScroller)
-  }
-
-  func testSettingsWindowScopeDoesNotIncludeAnUnrelatedWindow() {
-    let settingsWindow = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
-      styleMask: [.titled],
-      backing: .buffered,
-      defer: true
-    )
-    let unrelatedWindow = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
-      styleMask: [.titled],
-      backing: .buffered,
-      defer: true
-    )
-
-    XCTAssertTrue(SettingsScrollViewStyling.belongs(candidate: settingsWindow, to: settingsWindow))
-    XCTAssertFalse(
-      SettingsScrollViewStyling.belongs(candidate: unrelatedWindow, to: settingsWindow))
-  }
-
   func testVisibleSubsectionUsesTheLastAnchorPastTheActivationLine() {
     let frames: [SettingsSubsection: CGRect] = [
       .rulesBasics: CGRect(x: 0, y: -160, width: 1, height: 0),
@@ -86,13 +46,11 @@ final class SettingsScrollPresentationTests: XCTestCase {
     let atTop: [SettingsSubsection: CGRect] = [
       .tokenRepository: CGRect(x: 0, y: 6, width: 1, height: 0),
       .tokenDeployment: CGRect(x: 0, y: 280, width: 1, height: 0),
-      .tokenAnalytics: CGRect(x: 0, y: 540, width: 1, height: 0),
     ]
     let atShortFinalSection: [SettingsSubsection: CGRect] = [
       .tokenRepository: CGRect(x: 0, y: -720, width: 1, height: 0),
-      .tokenDeployment: CGRect(x: 0, y: -260, width: 1, height: 0),
+      .tokenDeployment: CGRect(x: 0, y: 12, width: 1, height: 0),
       // The final group is shorter than the viewport, so it stops below 0.
-      .tokenAnalytics: CGRect(x: 0, y: 12, width: 1, height: 0),
     ]
 
     XCTAssertEqual(
@@ -104,15 +62,14 @@ final class SettingsScrollPresentationTests: XCTestCase {
         in: .token,
         anchorFrames: atShortFinalSection
       ),
-      .tokenAnalytics
+      .tokenDeployment
     )
   }
 
   func testVisibleSubsectionUsesFinalAnchorAtTheNativeBottomEdge() {
     let frames: [SettingsSubsection: CGRect] = [
       .tokenRepository: CGRect(x: 0, y: -720, width: 1, height: 0),
-      .tokenDeployment: CGRect(x: 0, y: -260, width: 1, height: 0),
-      .tokenAnalytics: CGRect(x: 0, y: 120, width: 1, height: 0),
+      .tokenDeployment: CGRect(x: 0, y: 120, width: 1, height: 0),
     ]
 
     XCTAssertEqual(
@@ -121,7 +78,7 @@ final class SettingsScrollPresentationTests: XCTestCase {
         anchorFrames: frames,
         isAtBottom: true
       ),
-      .tokenAnalytics
+      .tokenDeployment
     )
   }
 

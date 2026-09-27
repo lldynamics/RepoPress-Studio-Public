@@ -41,6 +41,7 @@ public struct PrivateContentDisplay: Codable, Hashable, Sendable {
   }
 }
 
+/// Retained only to decode privacy events in older workspace snapshots.
 public enum PrivacyProtectionEventKind: String, Codable, CaseIterable, Hashable, Sendable {
   case lockedOnLaunch
   case manualLock
@@ -120,57 +121,31 @@ public struct PrivacyProtectionEvent: Identifiable, Codable, Hashable, Sendable 
 }
 
 public struct PrivacyProtectionStatus: Hashable, Sendable {
-  public var isQuickHideActive: Bool
   public var title: String
   public var detail: String
   public var activeProtections: [String]
 
-  public init(
-    isQuickHideActive: Bool,
-    title: String,
-    detail: String,
-    activeProtections: [String]
-  ) {
-    self.isQuickHideActive = isQuickHideActive
+  public init(title: String, detail: String, activeProtections: [String]) {
     self.title = title
     self.detail = detail
     self.activeProtections = activeProtections
   }
 
-  public static func make(
-    settings: PrivacyProtectionSettings,
-    isQuickHideActive: Bool,
-    reason: String?
-  ) -> PrivacyProtectionStatus {
-    var protections: [String] = []
-    if settings.masksPrivateContent {
-      protections.append(CoreL10n.text("私密内容遮挡"))
-    }
-
-    return PrivacyProtectionStatus(
-      isQuickHideActive: isQuickHideActive,
-      title: isQuickHideActive
-        ? CoreL10n.text("快速隐藏已启用")
-        : CoreL10n.text("快速隐藏未启用"),
-      detail: isQuickHideActive
-        ? quickHideDetail(reason: reason)
-        : unlockedDetail,
-      activeProtections: protections
+  public static func make(settings: PrivacyProtectionSettings) -> PrivacyProtectionStatus {
+    PrivacyProtectionStatus(
+      title: settings.masksPrivateContent
+        ? CoreL10n.text("私密内容遮挡已开启")
+        : CoreL10n.text("私密内容遮挡已关闭"),
+      detail: settings.masksPrivateContent
+        ? CoreL10n.text("私密文章的标题仍显示，列表、搜索和概览中的摘要、正文和路径会被遮挡。此设置不加密本地数据。")
+        : CoreL10n.text("私密文章的摘要、正文和路径可在列表、搜索和概览中显示。"),
+      activeProtections: settings.masksPrivateContent ? [CoreL10n.text("私密内容遮挡")] : []
     )
   }
 
-  private static func quickHideDetail(reason: String?) -> String {
-    let reasonText = reason?.nilIfEmpty ?? CoreL10n.text("返回工作台后可继续查看文章、仓库和发布信息。")
-    return CoreL10n.format("%@ 快速隐藏仅遮挡当前界面，不加密本地数据。", reasonText)
-  }
-
-  private static var unlockedDetail: String {
-    return CoreL10n.text("当前可查看工作台内容；离席或共享屏幕时可按 ⌃⌘L 快速隐藏。快速隐藏仅遮挡当前界面，不加密本地数据。")
-  }
-
   public var checklistMarkdown: String {
-    var lines: [String] = [
-      CoreL10n.text("# 快速隐藏和私密内容遮挡"),
+    [
+      CoreL10n.text("# 私密内容遮挡"),
       "",
       CoreL10n.format("- 当前状态：%@", title),
       CoreL10n.format("- 说明：%@", detail),
@@ -180,14 +155,8 @@ public struct PrivacyProtectionStatus: Hashable, Sendable {
       ),
       "",
       CoreL10n.text("## 行为确认"),
-    ]
-
-    lines.append(CoreL10n.text("- [ ] 手动快速隐藏后，主窗口和设置窗口都遮挡工作台内容。"))
-    lines.append(CoreL10n.text("- [ ] 工作台隐藏时，设置项以及写作、AI、同步和发布操作不可用。"))
-    lines.append(CoreL10n.text("- [ ] 私密内容遮挡开启时，标题仍可辨认，但列表、搜索和概览不暴露摘要、正文或路径。"))
-    lines.append(CoreL10n.text("- [ ] 快速隐藏只遮挡当前界面，不提供 Touch ID/密码验证或数据加密。"))
-    lines.append(CoreL10n.text("- [ ] 截图、支持页和隐私政策文案不得包含本地路径、Token、授权头或私密正文。"))
-
-    return lines.joined(separator: "\n")
+      CoreL10n.text("- [ ] 私密内容遮挡开启时，标题仍可辨认，但列表、搜索和概览不暴露摘要、正文或路径。"),
+      CoreL10n.text("- [ ] 截图、支持页和隐私政策文案不得包含本地路径、Token、授权头或私密正文。"),
+    ].joined(separator: "\n")
   }
 }

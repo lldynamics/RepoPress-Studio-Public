@@ -62,7 +62,7 @@ extension WorkbenchStore {
   /// changed in both applications is left untouched on both sides.
   public func scanExternalDraftFolder() async -> ExternalDraftFolderScanSummary {
     var summary = ExternalDraftFolderScanSummary()
-    guard !isSafeMode, canUseProtectedWorkbench,
+    guard !isSafeMode,
       let mapping = activeProfile.externalDraftFolder
     else { return summary }
     let profileID = activeProfileID
@@ -70,7 +70,7 @@ extension WorkbenchStore {
     // File-system events from our own atomic replacement may arrive before
     // its new fingerprint is recorded. Read only after that write completes.
     await waitForPendingExternalDraftWrites()
-    guard !Task.isCancelled, !isSafeMode, canUseProtectedWorkbench,
+    guard !Task.isCancelled, !isSafeMode,
       activeProfileID == profileID,
       activeProfile.externalDraftFolder == mapping
     else { return summary }
@@ -198,7 +198,7 @@ extension WorkbenchStore {
   }
 
   func scheduleExternalDraftWrite(for draft: ArticleDraft, immediate: Bool = false) {
-    guard !isSafeMode, canUseProtectedWorkbench,
+    guard !isSafeMode,
       let source = draft.externalDraftSource,
       externalDraftMapping(for: source) != nil,
       Self.externalDraftFingerprint(draft.bodyMarkdown) != source.importedFingerprint,

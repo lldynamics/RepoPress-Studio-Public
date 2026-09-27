@@ -37,13 +37,8 @@ struct AppearanceSettingsView: View {
         Text("外观")
           .settingsSubsectionAnchor(.appearanceTheme)
       }
-      AppLanguageSettingsView(
-        isEmbedded: true,
-        subsectionAnchor: .appearanceLanguage
-      )
     }
     .formStyle(.grouped)
-    .scrollIndicators(.hidden)
     .padding(WorkbenchSpacing.content)
     .tint(selectedPalette.color)
     .onAppear {

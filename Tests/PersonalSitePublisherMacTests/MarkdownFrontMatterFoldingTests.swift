@@ -6,6 +6,46 @@ import XCTest
 
 @MainActor
 final class MarkdownFrontMatterFoldingTests: MarkdownEditorAppKitInteractionTestCase {
+  func testTogglingArticleInformationPreservesAScrolledBodyAndSelection() throws {
+    let prefix = "---\ntitle: 标题\ntags: [写作]\n---\n\n"
+    let body = (1...100).map { "第 \($0) 段正文。" }.joined(separator: "\n\n")
+    let source = prefix + body
+    let scroll = MarkdownEditorScrollView(frame: NSRect(x: 0, y: 0, width: 640, height: 480))
+    scroll.contentView = MarkdownFrontMatterClipView()
+    let view = DroppableMarkdownTextView.makeTextKit2(
+      containerSize: NSSize(width: 640, height: CGFloat.greatestFiniteMagnitude))
+    view.string = source
+    scroll.documentView = view
+    let window = NSWindow(
+      contentRect: scroll.frame, styleMask: .borderless, backing: .buffered, defer: false)
+    window.contentView = scroll
+    defer { window.orderOut(nil) }
+    let bodyOffset = (prefix as NSString).length
+    scroll.foldedFrontMatterBodyOffset = bodyOffset
+    scroll.layoutSubtreeIfNeeded()
+
+    let selection = (source as NSString).range(of: "第 30 段正文。")
+    view.setSelectedRange(selection)
+    let selectedLineY = try XCTUnwrap(
+      MarkdownFrontMatterFoldGeometry.bodyOrigin(at: selection.location, in: view))
+    scroll.invalidateDocumentHeight(immediately: true)
+    scroll.contentView.scroll(to: NSPoint(x: 0, y: selectedLineY - 80))
+    scroll.reflectScrolledClipView(scroll.contentView)
+    let originalOrigin = scroll.contentView.bounds.minY
+    let clip = try XCTUnwrap(scroll.contentView as? MarkdownFrontMatterClipView)
+    XCTAssertGreaterThan(originalOrigin, clip.hiddenPrefixHeight + 100)
+
+    for offset in [0, bodyOffset, 0, bodyOffset] {
+      // The SwiftUI gutter reduces only the folded editor's viewport height.
+      scroll.setFrameSize(NSSize(width: 640, height: offset == 0 ? 480 : 464))
+      scroll.foldedFrontMatterBodyOffset = offset
+      scroll.layoutSubtreeIfNeeded()
+      XCTAssertEqual(scroll.contentView.bounds.minY, originalOrigin, accuracy: 1)
+      XCTAssertEqual(view.selectedRange(), selection)
+      XCTAssertEqual(view.string, source)
+    }
+  }
+
   func testFoldedTextKitLayoutStartsAtBodyIncludingEmptyBody() throws {
     for body in ["正文😀\n第二行", ""] {
       let prefix = "+++\ntitle = \"标题\"\ncustom = [1, 2]\n+++\n\n"

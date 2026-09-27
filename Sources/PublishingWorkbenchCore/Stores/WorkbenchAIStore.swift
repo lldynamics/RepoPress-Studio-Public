@@ -595,7 +595,7 @@ struct AIChatConversationIdentity: Equatable, Sendable {
   public func testAIConnection(
     probeCapabilities: Set<AIProviderCapabilityProbeKind> = []
   ) async -> AIConnectionTestReport? {
-    guard !Task.isCancelled, store.canUseProtectedWorkbench else { return nil }
+    guard !Task.isCancelled else { return nil }
     let lane = AIGenerationLane.connectionTest
     let generation = beginAIRequest(lane, showsActionLoading: true)
     defer { finishAIRequest(lane, generation: generation) }

@@ -122,6 +122,9 @@ Options:
   --release                 Build with SwiftPM's Release configuration.
   --direct                  Build the Developer ID direct-distribution Release variant.
   --configuration <name>   Select debug or release (default: debug).
+
+Environment:
+  PERSONAL_SITE_PUBLISHER_BUNDLE_ID  Override the host bundle ID and both extension ID prefixes.
 EOF
 }
 
@@ -357,6 +360,7 @@ xcodebuild -quiet \
   -configuration "$share_extension_configuration" \
   -destination 'generic/platform=macOS' \
   -derivedDataPath "$share_extension_derived_data" \
+  PRODUCT_BUNDLE_IDENTIFIER="$SHARE_EXTENSION_BUNDLE_ID" \
   CODE_SIGNING_ALLOWED=NO \
   ENABLE_DEBUG_DYLIB=NO \
   build
@@ -376,6 +380,7 @@ xcodebuild -quiet \
   -configuration "$share_extension_configuration" \
   -destination 'generic/platform=macOS' \
   -derivedDataPath "$shortcut_extension_derived_data" \
+  PRODUCT_BUNDLE_IDENTIFIER="$SHORTCUT_EXTENSION_BUNDLE_ID" \
   CODE_SIGNING_ALLOWED=NO \
   ENABLE_DEBUG_DYLIB=NO \
   build

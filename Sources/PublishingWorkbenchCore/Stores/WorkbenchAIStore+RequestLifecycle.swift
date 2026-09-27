@@ -53,7 +53,7 @@ extension WorkbenchAIStore {
 
   func checkAIRequest(_ lane: AIGenerationLane, generation: UInt64) throws {
     try Task.checkCancellation()
-    guard currentAIRequestGeneration(lane) == generation, store.canUseProtectedWorkbench,
+    guard currentAIRequestGeneration(lane) == generation,
       aiRequestContextMatches(lane)
     else {
       throw CancellationError()
@@ -105,7 +105,7 @@ extension WorkbenchAIStore {
   }
 
   func canPresentAIRequest(_ lane: AIGenerationLane, generation: UInt64) -> Bool {
-    !Task.isCancelled && store.canUseProtectedWorkbench
+    !Task.isCancelled
       && currentAIRequestGeneration(lane) == generation
       && aiRequestPresentationGeneration == generation
       && aiRequestContextMatches(lane)

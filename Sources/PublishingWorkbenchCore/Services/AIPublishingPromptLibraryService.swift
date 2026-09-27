@@ -540,7 +540,7 @@ public enum AIPublishingWritingActionCatalog {
   ]
 
   public static let selectionActions: [AIPublishingActionMenuItem] = [
-    AIPublishingActionMenuItem(kind: .rewriteSelection, systemImage: "wand.and.stars"),
+    AIPublishingActionMenuItem(kind: .rewriteSelection, systemImage: "sparkles"),
     AIPublishingActionMenuItem(kind: .expandSelection, systemImage: "arrow.up.left.and.arrow.down.right"),
     AIPublishingActionMenuItem(kind: .continueAfterSelection, systemImage: "text.append"),
     AIPublishingActionMenuItem(kind: .condenseSelection, systemImage: "arrow.down.right.and.arrow.up.left"),
@@ -557,7 +557,7 @@ public enum AIPublishingWritingActionCatalog {
   ]
 
   public static let selectedTextRecommendedEditorActions: [AIPublishingActionMenuItem] = [
-    AIPublishingActionMenuItem(kind: .rewriteSelection, systemImage: "wand.and.stars"),
+    AIPublishingActionMenuItem(kind: .rewriteSelection, systemImage: "sparkles"),
     AIPublishingActionMenuItem(kind: .condenseSelection, systemImage: "arrow.down.right.and.arrow.up.left"),
     AIPublishingActionMenuItem(kind: .translateSelectionToChinese, systemImage: "character.book.closed.zh"),
     AIPublishingActionMenuItem(kind: .translateSelectionToEnglish, systemImage: "character.book.closed"),
@@ -837,7 +837,7 @@ public extension AIPublishingActionKind {
     case .extractArticleActionItems, .checklistSelection:
       return "checklist.checked"
     case .rewriteSelection:
-      return "wand.and.stars"
+      return "sparkles"
     case .polishSelection:
       return "sparkles"
     case .expandSelection:

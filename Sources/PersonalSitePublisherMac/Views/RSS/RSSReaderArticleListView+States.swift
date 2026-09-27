@@ -286,7 +286,6 @@ extension RSSArticleList {
                 )
               }
             }
-            .thinRedScroller()
           }
           .accessibilityLabel("RSS 文章列表")
           .accessibilityIdentifier("rss-article-list")

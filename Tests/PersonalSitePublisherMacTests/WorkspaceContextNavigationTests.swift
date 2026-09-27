@@ -11,7 +11,7 @@ final class WorkspaceContextNavigationTests: XCTestCase {
     XCTAssertEqual(WorkspaceResponsiveLayoutSnapshot(width: 960).band, .compactInspector)
     XCTAssertEqual(WorkspaceResponsiveLayoutSnapshot(width: 1_179).band, .compactInspector)
     XCTAssertEqual(WorkspaceResponsiveLayoutSnapshot(width: 1_180).band, .standardInspector)
-    XCTAssertEqual(WorkspaceResponsiveLayoutSnapshot(width: 1_240).band, .htmlSourceInspector)
+    XCTAssertEqual(WorkspaceResponsiveLayoutSnapshot(width: 1_240).band, .standardInspector)
   }
 
   func testCompactRailExposesTheSixDirectWorkspaceRoutes() {

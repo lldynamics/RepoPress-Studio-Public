@@ -411,7 +411,7 @@ public final class RepositoryContentChangeMonitor: @unchecked Sendable {
 
 /// Binds repository content watching to the active workbench profile while
 /// keeping profile changes out of the root view's high-frequency observation
-/// path. Only low-frequency profile/active-profile/quick-hide publishers are
+/// path. Only low-frequency profile/active-profile publishers are
 /// observed here.
 @MainActor
 public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
@@ -527,14 +527,14 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
   /// Performs the initial/explicit automatic discovery using the full index
   /// path. File events use `requestImport(repositoryPaths:)` below instead.
   public func requestImport() {
-    guard isStarted, !store.isSafeMode, store.canUseProtectedWorkbench,
+    guard isStarted, !store.isSafeMode,
       needsFullDiscovery else { return }
     needsFullDiscovery = false
     requestImport(repositoryPaths: nil)
   }
 
   private func requestImport(repositoryPaths: [String]?) {
-    guard isStarted, !store.isSafeMode, store.canUseProtectedWorkbench else { return }
+    guard isStarted, !store.isSafeMode else { return }
     guard importTask == nil else {
       if let repositoryPaths {
         importPendingPaths.formUnion(repositoryPaths)
@@ -604,7 +604,6 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
 
   private var shouldRunAutomatically: Bool {
     !store.isSafeMode
-      && store.canUseProtectedWorkbench
       && store.activeProfile.resolvedAutomaticallyImportsNewRepositoryArticles
   }
 
@@ -614,7 +613,7 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
   }
 
   private func requestExternalScan() {
-    guard isStarted, !store.isSafeMode, store.canUseProtectedWorkbench,
+    guard isStarted, !store.isSafeMode,
       store.activeProfile.externalDraftFolder?.observesChanges == true
     else { return }
     externalScanGeneration &+= 1
@@ -640,11 +639,6 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
       .dropFirst()
       .sink { [weak self] _ in self?.scheduleConfiguration() }
       .store(in: &cancellables)
-    store.privacyProtectionStore.$isQuickHideActive
-      .removeDuplicates()
-      .dropFirst()
-      .sink { [weak self] _ in self?.scheduleConfiguration() }
-      .store(in: &cancellables)
   }
 
   private func scheduleConfiguration() {
@@ -665,8 +659,7 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
   private func configureMonitorsIfNeeded() {
     let paths: [WatchPath]
     if isStarted,
-      !store.isSafeMode,
-      store.canUseProtectedWorkbench
+      !store.isSafeMode
     {
       paths = repositoryContentWatchPaths(for: store.activeProfile)
     } else {
@@ -687,7 +680,7 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
         allowedRelativePrefixes: path.allowedRelativePrefixes
       )
     }
-    if isStarted, !store.isSafeMode, store.canUseProtectedWorkbench,
+    if isStarted, !store.isSafeMode,
       let mapping = store.activeProfile.externalDraftFolder,
       mapping.observesChanges
     {

@@ -7,13 +7,9 @@ enum MarkdownFormattingToolbarPresentation {
 }
 
 struct MacMarkdownFormattingToolbar: View {
-  let writingToolDensity: MarkdownWritingToolDensity
   @Binding var isFocusModeActive: Bool
   let onApplyMarkdownFormatting: (MarkdownFormattingCommand) -> Void
   let onApplyAdvancedFormatting: (MarkdownAdvancedFormattingCommand) -> Void
-  let onEditLines: (MarkdownLineEditingCommand) -> Void
-  let onWrapSelection: (String, String, String) -> Void
-  let onPrefixCurrentLine: (String) -> Void
   let onInsertCodeBlock: () -> Void
   let onInsertTable: () -> Void
   let onInsertHorizontalRule: () -> Void
@@ -25,165 +21,112 @@ struct MacMarkdownFormattingToolbar: View {
   let onInsertVideo: () -> Void
   var onFormatChineseTypography: (() -> Void)? = nil
   var presentation: MarkdownFormattingToolbarPresentation = .standalone
-  @AppStorage("workspace.customToolbarConfig") private var customToolbarConfigRawValue = ""
-  @State private var isCustomizationSheetPresented = false
+  var layout: MarkdownFormattingToolbarLayout = .automatic
   @EnvironmentObject private var zenModeController: ZenModeController
 
-  private var toolbarConfiguration: MarkdownToolbarConfiguration {
-    MarkdownToolbarConfiguration.decodeFromJSON(customToolbarConfigRawValue)
-  }
-
-  private var toolbarConfigurationBinding: Binding<MarkdownToolbarConfiguration> {
-    Binding(
-      get: { toolbarConfiguration },
-      set: { customToolbarConfigRawValue = $0.normalized.encodeToJSON() }
-    )
-  }
-
-  private var configuredFormattingItemIDs: [MarkdownToolbarItemID] {
-    toolbarConfiguration.formattingItemIDs
-  }
-
-  private var basicFormattingItemIDs: [MarkdownToolbarItemID] {
-    let basicItems: Set<MarkdownToolbarItemID> = [
-      .headingMenu,
-      .heading1,
-      .heading2,
-      .bold,
-      .italic,
-      .listMenu,
-      .unorderedList,
-      .link,
-      .image,
-      .moreInsertions,
-      .formatChineseTypography,
-    ]
-    var items = configuredFormattingItemIDs.filter(basicItems.contains)
-    if !items.contains(.moreInsertions) {
-      items.append(.moreInsertions)
-    }
-    return items
-  }
-
   var body: some View {
-    HStack(spacing: 4) {
+    toolbarContent
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .frame(minHeight: 34)
+      .buttonStyle(WorkbenchFocusRingButtonStyle())
+      .padding(.horizontal, presentation == .integrated ? 0 : 10)
+      .padding(.vertical, presentation == .integrated ? 0 : 6)
+      .background {
+        if presentation == .standalone {
+          Rectangle().fill(.bar)
+        }
+      }
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel("格式工具栏")
+      .accessibilityIdentifier("markdown-formatting-toolbar")
+      .onKeyPress(.tab) {
+        zenModeController.beginKeyboardNavigation()
+        return .ignored
+      }
+      .onKeyPress(.leftArrow) {
+        zenModeController.beginKeyboardNavigation()
+        return .ignored
+      }
+      .onKeyPress(.rightArrow) {
+        zenModeController.beginKeyboardNavigation()
+        return .ignored
+      }
+      .onKeyPress(.upArrow) {
+        zenModeController.beginKeyboardNavigation()
+        return .ignored
+      }
+      .onKeyPress(.downArrow) {
+        zenModeController.beginKeyboardNavigation()
+        return .ignored
+      }
+      .onExitCommand {
+        zenModeController.endKeyboardNavigation()
+      }
+      .onDisappear {
+        zenModeController.endKeyboardNavigation()
+      }
+  }
+
+  func withLayout(_ layout: MarkdownFormattingToolbarLayout) -> Self {
+    var toolbar = self
+    toolbar.layout = layout
+    return toolbar
+  }
+
+  @ViewBuilder
+  private var toolbarContent: some View {
+    switch layout {
+    case .automatic:
+      ViewThatFits(in: .horizontal) {
+        formattingRow(items: MarkdownToolbarLayout.expandedFormattingItems)
+        formattingRow(items: MarkdownToolbarLayout.primaryFormattingItems)
+        scrollingFormattingRow
+      }
+    case .expanded:
+      formattingRow(items: MarkdownToolbarLayout.expandedFormattingItems)
+    case .compact:
+      formattingRow(items: MarkdownToolbarLayout.primaryFormattingItems)
+    case .scrollable:
+      scrollingFormattingRow
+    }
+  }
+
+  private func formattingRow(items: [MarkdownToolbarFormattingItem]) -> some View {
+    HStack(spacing: 5) {
+      ForEach(items) { item in
+        formattingItem(item, showsTitle: false)
+      }
+      Divider().frame(height: 18)
+      fixedTrailingControls(showsTitle: false)
+    }
+    .fixedSize(horizontal: true, vertical: false)
+    .padding(.horizontal, 4)
+  }
+
+  private var scrollingFormattingRow: some View {
+    HStack(spacing: 5) {
       ScrollView(.horizontal, showsIndicators: true) {
-        Group {
-          if writingToolDensity == .basic {
-            formattingRow(itemIDs: basicFormattingItemIDs, showsTitle: false)
-          } else {
-            formattingRow(itemIDs: configuredFormattingItemIDs, showsTitle: false)
+        HStack(spacing: 5) {
+          ForEach(MarkdownToolbarLayout.primaryFormattingItems) { item in
+            formattingItem(item, showsTitle: false)
           }
         }
         .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, 4)
       }
-
-      formattingToolbarOptions
+      Divider().frame(height: 18)
+      fixedTrailingControls(showsTitle: false)
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .frame(minHeight: 34)
-    .buttonStyle(WorkbenchFocusRingButtonStyle())
-    .padding(.horizontal, presentation == .integrated ? 0 : 10)
-    .padding(.vertical, presentation == .integrated ? 0 : 6)
-    .background {
-      if presentation == .standalone {
-        Rectangle().fill(.bar)
-      }
-    }
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("格式工具栏")
-    .accessibilityIdentifier("markdown-formatting-toolbar")
-    .sheet(isPresented: $isCustomizationSheetPresented) {
-      MacMarkdownToolbarCustomizationView(
-        configuration: toolbarConfigurationBinding,
-        onDismiss: { isCustomizationSheetPresented = false }
-      )
-    }
-    .onKeyPress(.tab) {
-      zenModeController.beginKeyboardNavigation()
-      return .ignored
-    }
-    .onKeyPress(.leftArrow) {
-      zenModeController.beginKeyboardNavigation()
-      return .ignored
-    }
-    .onKeyPress(.rightArrow) {
-      zenModeController.beginKeyboardNavigation()
-      return .ignored
-    }
-    .onKeyPress(.upArrow) {
-      zenModeController.beginKeyboardNavigation()
-      return .ignored
-    }
-    .onKeyPress(.downArrow) {
-      zenModeController.beginKeyboardNavigation()
-      return .ignored
-    }
-    .onExitCommand {
-      zenModeController.endKeyboardNavigation()
-    }
-    .onDisappear {
-      zenModeController.endKeyboardNavigation()
-    }
-  }
-
-  private func formattingRow(
-    itemIDs: [MarkdownToolbarItemID],
-    showsTitle: Bool
-  ) -> some View {
-    HStack(spacing: 5) {
-      ForEach(itemIDs) { item in
-        formattingItem(item, showsTitle: showsTitle)
-      }
-      Spacer(minLength: 8)
-      fixedTrailingControls(showsTitle: showsTitle)
-    }
-  }
-
-  private var formattingToolbarOptions: some View {
-    Menu {
-      Section("全部格式") {
-        ForEach(configuredFormattingItemIDs) { item in
-          formattingItem(item, showsTitle: true)
-        }
-      }
-      Divider()
-      fixedTrailingControls(showsTitle: true)
-      Divider()
-      Button {
-        isCustomizationSheetPresented = true
-      } label: {
-        Label("自定义工具栏…", systemImage: "slider.horizontal.3")
-      }
-    } label: {
-      Label("格式与自定义", systemImage: "ellipsis.circle")
-        .font(.workbenchButtonLabel)
-        .frame(minHeight: 30)
-    }
-    .menuIndicator(.hidden)
-    .buttonStyle(WorkbenchFocusRingButtonStyle())
-    .help("打开全部格式与自定义工具栏")
-    .accessibilityLabel("格式与自定义工具栏")
-    .accessibilityIdentifier("markdown-formatting-options")
   }
 
   @ViewBuilder
   private func formattingItem(
-    _ item: MarkdownToolbarItemID,
+    _ item: MarkdownToolbarFormattingItem,
     showsTitle: Bool
   ) -> some View {
     switch item {
     case .headingMenu:
       headingMenuButton(showsTitle: showsTitle)
-    case .listMenu:
-      listMenuButton(showsTitle: showsTitle)
-    case .heading1:
-      headingButton(level: 1, title: "一级标题", showsTitle: showsTitle)
-    case .heading2:
-      headingButton(level: 2, title: "二级标题", showsTitle: showsTitle)
-    case .heading3:
-      headingButton(level: 3, title: "三级标题", showsTitle: showsTitle)
     case .bold:
       toolbarButton(title: "粗体", systemName: "bold", showsTitle: showsTitle) {
         onApplyMarkdownFormatting(.bold)
@@ -192,11 +135,32 @@ struct MacMarkdownFormattingToolbar: View {
       toolbarButton(title: "斜体", systemName: "italic", showsTitle: showsTitle) {
         onApplyMarkdownFormatting(.italic)
       }
+    case .listMenu:
+      listMenuButton(showsTitle: showsTitle)
+    case .link:
+      toolbarButton(title: "Markdown 链接", systemName: "link", showsTitle: showsTitle) {
+        onApplyMarkdownFormatting(.link)
+      }
+    case .image:
+      toolbarButton(title: "插图", systemName: "photo", showsTitle: showsTitle) {
+        onInsertImage()
+      }
+    case .moreFormatting:
+      moreFormattingMenu(showsTitle: showsTitle)
+    default:
+      secondaryFormattingItem(item, showsTitle: showsTitle)
+    }
+  }
+
+  @ViewBuilder
+  private func secondaryFormattingItem(
+    _ item: MarkdownToolbarFormattingItem,
+    showsTitle: Bool
+  ) -> some View {
+    switch item {
     case .inlineCode:
       toolbarButton(
-        title: "行内代码",
-        systemName: "chevron.left.forwardslash.chevron.right",
-        showsTitle: showsTitle
+        title: "行内代码", systemName: "chevron.left.forwardslash.chevron.right", showsTitle: showsTitle
       ) {
         onApplyAdvancedFormatting(.inlineCode)
       }
@@ -208,85 +172,56 @@ struct MacMarkdownFormattingToolbar: View {
       toolbarButton(title: "代码块", systemName: "curlybraces.square", showsTitle: showsTitle) {
         onInsertCodeBlock()
       }
-    case .unorderedList:
-      toolbarButton(title: "无序列表", systemName: "list.bullet", showsTitle: showsTitle) {
-        onApplyAdvancedFormatting(.unorderedList)
+    case .strikethrough:
+      toolbarButton(title: "删除线", systemName: "strikethrough", showsTitle: showsTitle) {
+        onApplyAdvancedFormatting(.strikethrough)
       }
-    case .orderedList:
-      toolbarButton(title: "有序列表", systemName: "list.number", showsTitle: showsTitle) {
-        onApplyAdvancedFormatting(.orderedList)
+    case .table:
+      toolbarButton(title: "表格", systemName: "tablecells", showsTitle: showsTitle) {
+        onInsertTable()
       }
-    case .taskList:
-      toolbarButton(title: "任务列表", systemName: "checklist", showsTitle: showsTitle) {
-        onApplyAdvancedFormatting(.taskList)
+    case .horizontalRule:
+      toolbarButton(title: "分隔线", systemName: "minus", showsTitle: showsTitle) {
+        onInsertHorizontalRule()
       }
-    case .link:
-      toolbarButton(title: "Markdown 链接", systemName: "link", showsTitle: showsTitle) {
-        onApplyMarkdownFormatting(.link)
+    case .internalLink:
+      toolbarButton(title: "站内文章链接", systemName: "doc.on.doc", showsTitle: showsTitle) {
+        onInsertInternalLink()
       }
-    case .image:
-      toolbarButton(title: "插图", systemName: "photo", showsTitle: showsTitle) {
-        onInsertImage()
+    case .snippets:
+      toolbarButton(title: "组件与片段", systemName: "rectangle.3.group", showsTitle: showsTitle) {
+        onShowSnippets()
       }
-    case .moreInsertions:
-      moreInsertionsMenu(showsTitle: showsTitle)
-    case .diagnostics:
-      diagnosticButton(showsTitle: showsTitle)
-    case .formatChineseTypography:
+    case .video:
+      toolbarButton(title: "插入视频", systemName: "video", showsTitle: showsTitle) {
+        onInsertVideo()
+      }
+    case .chineseTypography:
       toolbarButton(title: "中英文排版", systemName: "character.textbox", showsTitle: showsTitle) {
         onFormatChineseTypography?()
       }
+    case .diagnostics:
+      diagnosticButton(showsTitle: showsTitle)
     default:
       EmptyView()
     }
   }
 
-  @ViewBuilder
-  private func moreInsertionsMenu(showsTitle: Bool) -> some View {
+  private func moreFormattingMenu(showsTitle: Bool) -> some View {
     Menu {
-      Button {
-        onApplyAdvancedFormatting(.strikethrough)
-      } label: {
-        Label("删除线", systemImage: "strikethrough")
-      }
-
-      Divider()
-
-      Button {
-        onInsertTable()
-      } label: {
-        Label("表格", systemImage: "tablecells")
-      }
-      Button {
-        onInsertHorizontalRule()
-      } label: {
-        Label("分隔线", systemImage: "minus")
-      }
-      Button {
-        onInsertInternalLink()
-      } label: {
-        Label("站内文章链接", systemImage: "doc.on.doc")
-      }
-      Button {
-        onShowSnippets()
-      } label: {
-        Label("组件与片段", systemImage: "rectangle.3.group")
-      }
-      Button {
-        onInsertVideo()
-      } label: {
-        Label("插入视频", systemImage: "video")
+      ForEach(MarkdownToolbarLayout.moreFormattingItems) { item in
+        secondaryFormattingItem(item, showsTitle: true)
       }
     } label: {
-      toolbarLabel("更多插入选项", systemName: "ellipsis.circle", showsTitle: showsTitle)
+      toolbarLabel("更多格式", systemName: "ellipsis.circle", showsTitle: showsTitle)
     }
     .menuIndicator(.hidden)
     .foregroundStyle(.secondary)
-    .help("更多插入选项")
-    .accessibilityLabel("更多插入选项")
+    .help("更多格式")
+    .accessibilityLabel("更多格式")
+    .accessibilityIdentifier("markdown-more-formatting-menu")
   }
 
-  @ViewBuilder
   private func diagnosticButton(showsTitle: Bool) -> some View {
     Button {
       onShowDiagnostics()
@@ -327,7 +262,6 @@ struct MacMarkdownFormattingToolbar: View {
     MarkdownEditorComfortControl(showsTitle: showsTitle)
   }
 
-  @ViewBuilder
   private func headingMenuButton(showsTitle: Bool) -> some View {
     Menu {
       MarkdownHeadingMenuItems { level in
@@ -354,7 +288,6 @@ struct MacMarkdownFormattingToolbar: View {
     .accessibilityLabel("标题层级")
   }
 
-  @ViewBuilder
   private func listMenuButton(showsTitle: Bool) -> some View {
     Menu {
       MarkdownListMenuItems(
@@ -380,34 +313,6 @@ struct MacMarkdownFormattingToolbar: View {
     .foregroundStyle(.secondary)
     .help("插入或切换列表（无序、有序、任务列表）")
     .accessibilityLabel("列表")
-  }
-
-  private func headingButton(
-    level: Int,
-    title: LocalizedStringKey,
-    showsTitle: Bool
-  ) -> some View {
-    Button {
-      onApplyMarkdownFormatting(.heading(level: level))
-    } label: {
-      if showsTitle {
-        Label {
-          Text(title)
-        } icon: {
-          Text("H\(level)")
-            .font(.workbenchMetadata.weight(.semibold))
-            .monospaced()
-        }
-      } else {
-        Text("H\(level)")
-          .font(.workbenchMetadata.weight(.semibold))
-          .monospaced()
-          .frame(width: 28, height: 28)
-      }
-    }
-    .foregroundStyle(.secondary)
-    .help(title)
-    .accessibilityLabel(Text(title))
   }
 
   private func toolbarButton(
@@ -442,45 +347,43 @@ struct MacMarkdownFormattingToolbar: View {
         .frame(width: 28, height: 28)
     }
   }
-
 }
 
 private struct FocusModeMenu: View {
   @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @Binding var isActive: Bool
-  @AppStorage(MarkdownEditorComfortPreferences.focusToolbarFadeEnabledKey)
-  private var isFocusToolbarFadeEnabled = true
-  @AppStorage(MarkdownEditorComfortPreferences.typewriterModeEnabledKey)
-  private var isTypewriterModeEnabled = MarkdownEditorComfortConfiguration
-    .defaultTypewriterModeEnabled
-  @AppStorage(MarkdownEditorComfortPreferences.paragraphSpotlightEnabledKey)
-  private var isParagraphSpotlightEnabled = MarkdownEditorComfortConfiguration
-    .defaultParagraphSpotlightEnabled
+  @AppStorage(MarkdownEditorComfortPreferences.paragraphFocusEnabledKey)
+  private var isParagraphFocusEnabled =
+    MarkdownEditorComfortPreferences.initialParagraphFocusEnabled()
   let showsTitle: Bool
+
+  private var isAnyModeActive: Bool { isActive || isParagraphFocusEnabled }
+
+  private var accessibilitySummary: String {
+    String(
+      format: String(localized: "专注模式：%@；段落专注：%@"),
+      isActive ? String(localized: "已开启") : String(localized: "未开启"),
+      isParagraphFocusEnabled ? String(localized: "已开启") : String(localized: "未开启")
+    )
+  }
 
   var body: some View {
     Menu {
       Toggle("专注模式", isOn: $isActive)
-      Divider()
-      Toggle("打字时淡出工具栏", isOn: $isFocusToolbarFadeEnabled)
-      Toggle("打字机模式", isOn: $isTypewriterModeEnabled)
-      Toggle("段落聚光灯", isOn: $isParagraphSpotlightEnabled)
+      Toggle("段落专注", isOn: $isParagraphFocusEnabled)
     } label: {
       if showsTitle {
-        Label(
-          "专注模式",
-          systemImage: isActive ? "leaf.fill" : "leaf"
-        )
+        Label("专注模式", systemImage: isAnyModeActive ? "leaf.fill" : "leaf")
       } else {
-        Image(systemName: isActive ? "leaf.fill" : "leaf")
+        Image(systemName: isAnyModeActive ? "leaf.fill" : "leaf")
           .frame(width: 28, height: 28)
       }
     }
     .menuIndicator(.hidden)
-    .foregroundStyle(isActive ? workbenchAccentColor : Color.secondary)
-    .help("专注模式与选项（⇧⌘F）")
-    .accessibilityLabel("专注模式与选项")
-    .accessibilityValue(isActive ? "已开启" : "未开启")
+    .foregroundStyle(isAnyModeActive ? workbenchAccentColor : Color.secondary)
+    .help("专注模式会收起侧栏并在打字时淡出工具栏；段落专注会让光标居中并高亮当前段落。")
+    .accessibilityLabel("专注模式与段落专注")
+    .accessibilityValue(accessibilitySummary)
     .accessibilityIdentifier("markdown-focus-mode-menu")
   }
 }

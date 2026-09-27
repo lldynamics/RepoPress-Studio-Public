@@ -36,12 +36,27 @@ struct WorkbenchDataRootSetupView: View {
 
       VStack(spacing: 10) {
         Button {
+          Task { await coordinator.useRecommendedDataRoot() }
+        } label: {
+          Label("使用推荐位置并开始", systemImage: "play.fill")
+            .frame(maxWidth: .infinity)
+        }
+        .workbenchProminentActionStyle()
+        .controlSize(.large)
+        .accessibilityIdentifier("workbench-data-root-use-recommended")
+
+        Text("存储在此 Mac 的“应用程序支持”文件夹中，之后可在“备份与恢复”中迁移到其他位置。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .multilineTextAlignment(.center)
+
+        Button {
           Task { await coordinator.restoreExistingDataRoot() }
         } label: {
           Label("恢复已有数据文件夹…", systemImage: "arrow.clockwise.circle")
             .frame(maxWidth: .infinity)
         }
-        .workbenchProminentActionStyle()
+        .buttonStyle(.bordered)
         .controlSize(.large)
 
         Button {

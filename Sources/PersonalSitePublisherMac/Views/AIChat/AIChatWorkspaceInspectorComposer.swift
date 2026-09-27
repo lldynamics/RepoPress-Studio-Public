@@ -39,7 +39,7 @@ extension AIChatContextInspectorView {
       let actionTitle = availability.actionTitle
     {
       HStack(alignment: .center, spacing: 10) {
-        Label(message, systemImage: "wand.and.stars")
+        Label(message, systemImage: "sparkles")
           .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)

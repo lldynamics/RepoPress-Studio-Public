@@ -121,8 +121,7 @@ struct ReleaseFailureReviewSheet: View {
   }
 
   private var canContinueReview: Bool {
-    guard !store.isQuickHideActive,
-      store.activeProfileReleaseRecords.contains(where: { $0.id == record.id }),
+    guard store.activeProfileReleaseRecords.contains(where: { $0.id == record.id }),
       ReleaseFailureReviewContext.canReview(
         record,
         profile: publishing.activeProfile,

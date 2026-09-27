@@ -9,7 +9,7 @@ struct SettingsTaskShortcutsTests {
 
     #expect(
       destinations == [
-        .rules(.paths),
+        .token(.deployment),
         .ai(.connection),
         .tab(.editor),
         .data(.backup),
@@ -29,5 +29,12 @@ struct SettingsTaskShortcutsTests {
     #expect(SettingsTaskShortcut.aiConnection.scopePresentation == .sharedConnection)
     #expect(SettingsTaskShortcut.editor.scopePresentation == .shared)
     #expect(SettingsTaskShortcut.backup.scopePresentation == .shared)
+  }
+
+  @Test
+  func shortcutNamesMatchTheSidebarDestination() {
+    for shortcut in SettingsTaskShortcut.allCases {
+      #expect(shortcut.title == shortcut.destination.tab.title)
+    }
   }
 }

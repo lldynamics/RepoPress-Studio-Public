@@ -328,31 +328,6 @@ enum MarkdownWritingContextPanel: String, CaseIterable, Identifiable {
   }
 }
 
-enum MarkdownWritingToolDensity: String, CaseIterable, Identifiable {
-  case basic
-  case professional
-
-  var id: String { rawValue }
-
-  var title: String {
-    switch self {
-    case .basic:
-      return String(localized: "基础写作")
-    case .professional:
-      return String(localized: "专业 Markdown")
-    }
-  }
-
-  var systemImage: String {
-    switch self {
-    case .basic:
-      return "pencil.line"
-    case .professional:
-      return "chevron.left.forwardslash.chevron.right"
-    }
-  }
-}
-
 struct MarkdownComposerPresentationState {
   var isShortcutHelpPresented = false
   var activeWritingContextPanel: MarkdownWritingContextPanel?

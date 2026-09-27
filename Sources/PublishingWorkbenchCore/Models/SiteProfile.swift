@@ -54,8 +54,8 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
   public var deploymentStatusEndpointUsesToken: Bool?
   public var deploymentProjectID: String?
   public var deploymentAccountID: String?
-  /// Optional read-only traffic reporting configuration. Access tokens stay
-  /// in the Keychain and are never serialized into the profile.
+  /// Legacy reading analytics settings are preserved when older profiles are
+  /// loaded and saved. Access tokens were never serialized in this profile.
   public var siteAnalytics: SiteAnalyticsSettings?
 
   public init(

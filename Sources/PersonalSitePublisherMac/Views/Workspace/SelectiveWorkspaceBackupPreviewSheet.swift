@@ -9,12 +9,23 @@ struct SelectiveWorkspaceBackupPreviewSheet: View {
   let prepareRestore: @MainActor (Set<WorkspaceBackupCategory>) async throws -> Void
 
   @Environment(\.dismiss) private var dismiss
-  @State private var selectedCategories = Set<WorkspaceBackupCategory>()
+  @State private var selectedCategories: Set<WorkspaceBackupCategory>
   @State private var isConfirmingRestore = false
   @State private var isConfirmingCompatibility = false
   @State private var isPreparingRestore = false
   @State private var isArticleSelectionPresented = false
   @State private var restoreError: String?
+
+  init(
+    preview: WorkspaceBackupSelectiveRestorePreview,
+    dataManagement: WorkbenchDataManagementFeatureFacade,
+    prepareRestore: @escaping @MainActor (Set<WorkspaceBackupCategory>) async throws -> Void
+  ) {
+    self.preview = preview
+    self.dataManagement = dataManagement
+    self.prepareRestore = prepareRestore
+    _selectedCategories = State(initialValue: Set(preview.availableCategories))
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {
@@ -30,6 +41,7 @@ struct SelectiveWorkspaceBackupPreviewSheet: View {
         Spacer()
         Button("完成") { dismiss() }
           .keyboardShortcut(.cancelAction)
+          .disabled(isPreparingRestore)
       }
 
       LabeledContent("备份时间", value: preview.backupPreview.createdAt.formatted(date: .abbreviated, time: .shortened))
@@ -61,6 +73,7 @@ struct SelectiveWorkspaceBackupPreviewSheet: View {
             }
           }
           .toggleStyle(.checkbox)
+          .disabled(isPreparingRestore)
           if category == .workbench {
             Text("草稿、历史版本、站点和工作台配置、发布历史、AI 对话及引用附件")
               .font(.caption)
@@ -88,6 +101,7 @@ struct SelectiveWorkspaceBackupPreviewSheet: View {
         Spacer()
         Button("取消") { dismiss() }
           .keyboardShortcut(.cancelAction)
+          .disabled(isPreparingRestore)
         Button("准备恢复所选类别…", systemImage: "arrow.counterclockwise", role: .destructive) {
           if preview.backupPreview.compatibility.requiresConfirmation {
             isConfirmingCompatibility = true
@@ -111,6 +125,7 @@ struct SelectiveWorkspaceBackupPreviewSheet: View {
     .padding(WorkbenchSpacing.page)
     .frame(minWidth: 560, minHeight: 480)
     .accessibilityIdentifier("selective-workspace-backup-preview")
+    .interactiveDismissDisabled(isPreparingRestore)
     .confirmationDialog(
       "确认替换所选类别？",
       isPresented: $isConfirmingRestore,

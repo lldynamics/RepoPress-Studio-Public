@@ -847,7 +847,12 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     var profile = SiteProfile.defaultProfile
     profile.siteKind = .zola
     profile.localRepositoryRootPath = "/tmp/site"
-    let service = LocalSitePreviewService { name in "/trusted/tools/\(name)" }
+    let service = LocalSitePreviewService(
+      executableResolver: { name in "/trusted/tools/\(name)" },
+      portAllocator: LocalSitePreviewPortAllocator(
+        isPortAvailable: { _ in true }, dynamicPort: { nil }
+      )
+    )
 
     let plan = try XCTUnwrap(service.plan(profile: profile))
 

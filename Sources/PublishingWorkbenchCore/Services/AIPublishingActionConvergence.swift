@@ -34,7 +34,7 @@ public enum AIPublishingActionConvergence: Hashable, Sendable {
     case .publishAssetPack:
       return "shippingbox"
     case .rewriteSelection:
-      return "wand.and.stars"
+      return "sparkles"
     case .contentReview:
       return "checkmark.shield"
     }
@@ -153,7 +153,7 @@ public enum AIPublishingRewriteOperation: String, CaseIterable, Hashable, Identi
     case .rewrite:
       return "arrow.triangle.2.circlepath"
     case .polish:
-      return "wand.and.stars"
+      return "sparkles"
     case .expand:
       return "text.append"
     case .condense:

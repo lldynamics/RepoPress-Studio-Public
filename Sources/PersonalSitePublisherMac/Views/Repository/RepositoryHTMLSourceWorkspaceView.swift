@@ -4,22 +4,17 @@ import SwiftUI
 
 struct RepositoryHTMLSourceWorkspaceView: View {
   @Environment(\.workbenchAccentColor) private var workbenchAccentColor
-  private let store: WorkbenchStore
   @ObservedObject private var shell: WorkbenchShellFeatureFacade
   @ObservedObject var session: RepositoryHTMLSourceSession
   @State private var searchQuery = ""
   @State private var displayedFiles: [RepositoryHTMLFileDescriptor] = []
+  @State private var displayedRepositoryIdentity: RepositoryHTMLSourceRepositoryIdentity?
   @State private var selectedRepositoryPath: String?
   @State private var fileFilterTask: Task<Void, Never>?
   @State private var fileFilterGeneration = 0
-  @State private var findRequest: HTMLSourceFindRequest?
-  @State private var pendingAction: PendingAction?
   @FocusState private var isFileListFocused: Bool
-  @EnvironmentObject private var sceneCommandRouter: WorkspaceSceneCommandRouter
-  @State private var sceneCommandOwnerID = UUID()
 
   init(store: WorkbenchStore, session: RepositoryHTMLSourceSession) {
-    self.store = store
     _shell = ObservedObject(wrappedValue: store.shell)
     _session = ObservedObject(wrappedValue: session)
   }
@@ -27,86 +22,39 @@ struct RepositoryHTMLSourceWorkspaceView: View {
   var body: some View {
     HSplitView {
       sourceFileSidebar
-        .frame(minWidth: 240, idealWidth: 280, maxWidth: 340)
+        .frame(minWidth: 240, idealWidth: 300, maxWidth: 380)
 
-      sourceEditor
-        .frame(minWidth: 440, maxWidth: .infinity, maxHeight: .infinity)
+      fileActions
+        .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
     }
     .background(Color(nsColor: .windowBackgroundColor))
     .accessibilityIdentifier("html-source-workspace")
-    .onChange(of: commandActions.sceneCommandPresentation, initial: true) { _, _ in
-      sceneCommandRouter.registerRepositorySource(
-        commandActions,
-        owner: sceneCommandOwnerID
-      )
-    }
     .task(id: repositoryIdentity) {
-      if session.activeDocument == nil || !session.hasUnsavedChanges {
-        if !session.isDocumentFromCurrentRepository(shell.activeProfile) {
-          session.close()
-        }
-      }
+      selectedRepositoryPath = nil
+      displayedFiles = []
+      displayedRepositoryIdentity = nil
+      searchQuery = ""
       await session.refreshFiles(profile: shell.activeProfile)
       scheduleFileFilter()
       handleQueuedOpenRequest()
     }
-    .onChange(of: searchQuery) { _, _ in
-      scheduleFileFilter()
-    }
+    .onChange(of: searchQuery) { _, _ in scheduleFileFilter() }
     .onChange(of: session.files) { _, _ in
       scheduleFileFilter()
-    }
-    .onChange(of: session.activeDocument?.repositoryPath) { _, path in
-      if let path {
-        selectedRepositoryPath = path
-      }
-    }
-    .onChange(of: session.openRequest) { _, _ in
       handleQueuedOpenRequest()
     }
-    .onChange(of: session.isSaving) { _, isSaving in
-      if !isSaving {
-        handleQueuedOpenRequest()
-      }
-    }
-    .onDisappear {
-      sceneCommandRouter.unregisterRepositorySource(owner: sceneCommandOwnerID)
-      fileFilterTask?.cancel()
-    }
+    .onChange(of: session.openRequest) { _, _ in handleQueuedOpenRequest() }
+    .onDisappear { fileFilterTask?.cancel() }
     .alert(
-      "HTML 源码操作失败",
+      "无法访问 HTML 文件",
       isPresented: Binding(
         get: { session.errorMessage != nil },
         set: { if !$0 { session.dismissError() } }
       )
     ) {
-      Button("好", role: .cancel) {
-        session.dismissError()
-      }
-      if session.hasExternalConflict {
-        Button("重新载入磁盘版本") {
-          pendingAction = .reload
-        }
-      }
+      Button("好", role: .cancel) { session.dismissError() }
     } message: {
       Text(session.errorMessage ?? "")
-    }
-    .confirmationDialog(
-      pendingAction?.confirmationTitle ?? "",
-      isPresented: Binding(
-        get: { pendingAction != nil },
-        set: { if !$0 { pendingAction = nil } }
-      ),
-      titleVisibility: .visible
-    ) {
-      Button(pendingAction?.confirmationButtonTitle ?? "继续", role: .destructive) {
-        performPendingAction()
-      }
-      Button("取消", role: .cancel) {
-        pendingAction = nil
-      }
-    } message: {
-      Text("当前文件还有未保存的更改。继续会丢弃这些更改。")
     }
   }
 
@@ -122,8 +70,7 @@ struct RepositoryHTMLSourceWorkspaceView: View {
         }
         Spacer()
         if session.isLoading {
-          ProgressView()
-            .controlSize(.small)
+          ProgressView().controlSize(.small)
         } else {
           Button {
             Task { await session.refreshFiles(profile: shell.activeProfile) }
@@ -132,7 +79,6 @@ struct RepositoryHTMLSourceWorkspaceView: View {
               .frame(width: 22, height: 22)
           }
           .buttonStyle(.borderless)
-          .disabled(session.isSaving)
           .help("刷新 HTML 文件列表")
           .accessibilityLabel("刷新 HTML 文件列表")
         }
@@ -145,12 +91,12 @@ struct RepositoryHTMLSourceWorkspaceView: View {
         .accessibilityHint("按文件名或仓库相对路径筛选")
         .onSubmit {
           if selectedRepositoryPath == nil {
-            selectedRepositoryPath = displayedFiles.first(where: \.isEditable)?.repositoryPath
+            selectedRepositoryPath = displayedFiles.first?.repositoryPath
           }
-          openSelectedFile()
+          revealSelectedFile()
         }
         .onKeyPress(.downArrow) {
-          selectFirstVisibleFile()
+          selectedRepositoryPath = displayedFiles.first?.repositoryPath
           isFileListFocused = true
           return .handled
         }
@@ -159,10 +105,9 @@ struct RepositoryHTMLSourceWorkspaceView: View {
 
       Divider()
 
-      if session.isLoading && session.files.isEmpty && displayedFiles.isEmpty {
+      if session.isLoading && displayedFiles.isEmpty {
         VStack(spacing: 10) {
           ProgressView()
-            .controlSize(.regular)
           Text("正在扫描 HTML 文件…")
             .font(.callout)
             .foregroundStyle(.secondary)
@@ -170,7 +115,7 @@ struct RepositoryHTMLSourceWorkspaceView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else if displayedFiles.isEmpty {
         VStack(spacing: 10) {
-          Image(systemName: searchQuery.isEmpty ? "chevron.left.forwardslash.chevron.right" : "magnifyingglass")
+          Image(systemName: searchQuery.isEmpty ? "doc.text" : "magnifyingglass")
             .font(.system(size: 26, weight: .medium))
             .foregroundStyle(.secondary)
           Text(searchQuery.isEmpty ? "没有 HTML 源文件" : "没有匹配文件")
@@ -188,9 +133,9 @@ struct RepositoryHTMLSourceWorkspaceView: View {
       } else {
         List(displayedFiles, selection: $selectedRepositoryPath) { file in
           HStack(spacing: 9) {
-            Image(systemName: file.isEditable ? "chevron.left.forwardslash.chevron.right" : "exclamationmark.triangle")
-            .foregroundStyle(file.isEditable ? workbenchAccentColor : WorkbenchTheme.warning)
-            .frame(width: 18)
+            Image(systemName: "doc.text")
+              .foregroundStyle(workbenchAccentColor)
+              .frame(width: 18)
             VStack(alignment: .leading, spacing: 3) {
               Text(URL(fileURLWithPath: file.repositoryPath).lastPathComponent)
                 .font(.callout.weight(.medium))
@@ -202,29 +147,20 @@ struct RepositoryHTMLSourceWorkspaceView: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
             }
-            Spacer(minLength: 4)
-            if session.activeDocument?.repositoryPath == file.repositoryPath {
-              Circle()
-                .fill(session.hasUnsavedChanges ? WorkbenchTheme.warning : WorkbenchTheme.success)
-                .frame(width: 7, height: 7)
-                .accessibilityHidden(true)
-            }
           }
           .padding(.vertical, 4)
-          .contentShape(Rectangle())
           .tag(file.repositoryPath)
-          .onTapGesture {
-            selectedRepositoryPath = file.repositoryPath
-            requestOpen(file)
+          .contextMenu {
+            Button("在 Finder 中显示") { reveal(file) }
+            Button("用默认应用打开") { openWithDefaultApplication(file) }
           }
-          .help(file.isEditable ? file.repositoryPath : "文件超过 4 MB，只能在外部编辑器中打开。")
           .accessibilityLabel(URL(fileURLWithPath: file.repositoryPath).lastPathComponent)
           .accessibilityValue(file.repositoryPath)
         }
         .listStyle(.sidebar)
         .focused($isFileListFocused)
         .onKeyPress(.return) {
-          openSelectedFile()
+          revealSelectedFile()
           return .handled
         }
       }
@@ -234,7 +170,6 @@ struct RepositoryHTMLSourceWorkspaceView: View {
         Text(status)
           .font(.caption)
           .foregroundStyle(.secondary)
-          .lineLimit(2)
           .padding(.horizontal, 12)
           .padding(.vertical, 8)
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -244,213 +179,72 @@ struct RepositoryHTMLSourceWorkspaceView: View {
   }
 
   @ViewBuilder
-  private var sourceEditor: some View {
-    if let document = session.activeDocument {
-      VStack(spacing: 0) {
-        sourceEditorToolbar(document)
-        Divider()
-
-        if !session.isDocumentFromCurrentRepository(shell.activeProfile) {
-          Label(
-            "当前站点已切换。此文件仍保留在编辑器中，但必须切回原仓库才能保存。",
-            systemImage: "exclamationmark.triangle.fill"
-          )
-          .font(.callout)
-          .foregroundStyle(WorkbenchTheme.warning)
-          .padding(10)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .background(WorkbenchTheme.warning.opacity(0.08))
+  private var fileActions: some View {
+    if let file = selectedFile {
+      VStack(alignment: .leading, spacing: 16) {
+        Image(systemName: "doc.text")
+          .font(.system(size: 36))
+          .foregroundStyle(workbenchAccentColor)
+        Text(URL(fileURLWithPath: file.repositoryPath).lastPathComponent)
+          .font(.title2.weight(.semibold))
+          .lineLimit(2)
+          .truncationMode(.middle)
+        Text(file.repositoryPath)
+          .font(.callout.monospaced())
+          .foregroundStyle(.secondary)
+          .textSelection(.enabled)
+        Text(ByteCountFormatter.string(fromByteCount: Int64(file.byteSize), countStyle: .file))
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        if let date = file.modificationDate {
+          Text("修改于 \(date.formatted(date: .abbreviated, time: .shortened))")
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
-
-        if document.hasMixedLineEndings {
-          Label(
-            "此文件混用了多种换行符。为避免产生整文件差异，源码编辑保持只读；请先在外部工具中统一换行符。",
-            systemImage: "exclamationmark.triangle.fill"
-          )
-          .font(.callout)
-          .foregroundStyle(WorkbenchTheme.warning)
-          .padding(10)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .background(WorkbenchTheme.warning.opacity(0.08))
-        }
-
-        if let firstDiagnostic = session.diagnostics.first {
-          HStack(spacing: 8) {
-            Image(systemName: firstDiagnostic.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
-            Text("第 \(firstDiagnostic.line) 行：\(firstDiagnostic.title)")
-              .font(.callout.weight(.medium))
-            Text(firstDiagnostic.message)
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .lineLimit(1)
-            Spacer()
-            if session.diagnostics.count > 1 {
-              Text("另有 \(session.diagnostics.count - 1) 项")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
+        HStack(spacing: 10) {
+          Button {
+            reveal(file)
+          } label: {
+            Label("在 Finder 中显示", systemImage: "folder")
           }
-          .foregroundStyle(firstDiagnostic.severity == .error ? WorkbenchTheme.risk : WorkbenchTheme.warning)
-          .padding(.horizontal, 12)
-          .padding(.vertical, 8)
-          .background(WorkbenchBackgroundStyle.card)
-        }
+          .workbenchProminentActionStyle()
+          .accessibilityIdentifier("html-source-reveal-in-finder")
 
-        MacHTMLSourceTextView(
-          text: Binding(
-            get: { session.activeDocument?.text ?? document.text },
-            set: { newValue in
-              session.updateText(newValue)
-            }
-          ),
-          isEditable: !session.isOpeningDocument
-            && session.isDocumentFromCurrentRepository(shell.activeProfile)
-            && !document.hasMixedLineEndings,
-          findRequest: findRequest
-        )
-        .id(document.id + "|\(session.editorResetGeneration)")
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+          Button {
+            openWithDefaultApplication(file)
+          } label: {
+            Label("用默认应用打开", systemImage: "arrow.up.forward.app")
+          }
+          .accessibilityIdentifier("html-source-open-with-default-app")
+        }
+        Text("如需编辑 HTML 模板，可在 Finder 中选择文件并使用你常用的编辑器打开。")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+        Spacer()
       }
+      .padding(24)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     } else {
       EmptyStateView(
         title: "选择一个 HTML 文件",
-        message: "高级源码编辑会保留文件编码和换行符，并在保存前检查外部修改。",
-        systemImage: "chevron.left.forwardslash.chevron.right",
+        message: "选择文件后，可在 Finder 中显示，或用 macOS 的默认应用打开。",
+        systemImage: "doc.text",
         density: .compactPane
       )
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .background(Color(nsColor: .windowBackgroundColor))
     }
   }
 
-  private func sourceEditorToolbar(_ document: RepositoryTextDocument) -> some View {
-    HStack(spacing: 10) {
-      VStack(alignment: .leading, spacing: 2) {
-        HStack(spacing: 7) {
-          Text(URL(fileURLWithPath: document.repositoryPath).lastPathComponent)
-            .font(.headline)
-            .lineLimit(1)
-            .truncationMode(.middle)
-          Label(
-            session.hasUnsavedChanges ? "未保存" : "已保存",
-            systemImage: session.hasUnsavedChanges ? "circle.fill" : "checkmark.circle.fill"
-          )
-          .font(.caption)
-          .foregroundStyle(session.hasUnsavedChanges ? WorkbenchTheme.warning : WorkbenchTheme.success)
-        }
-        Text(document.repositoryPath)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-          .truncationMode(.middle)
-          .help(document.repositoryPath)
-          .contextMenu {
-            Button("复制路径") {
-              NSPasteboard.general.clearContents()
-              NSPasteboard.general.setString(document.repositoryPath, forType: .string)
-            }
-          }
-      }
-
-      Spacer(minLength: 8)
-
-      Button {
-        findRequest = HTMLSourceFindRequest(action: .show)
-      } label: {
-        Label("查找", systemImage: "magnifyingglass")
-      }
-      .help("查找源码（⌘F）")
-
-      Button {
-        requestReload()
-      } label: {
-        Label("重新载入", systemImage: "arrow.clockwise")
-      }
-      .disabled(session.isSaving || session.isOpeningDocument)
-      .help("重新读取磁盘内容")
-
-      Button {
-        openInSystemBrowser(document)
-      } label: {
-        Label("系统预览", systemImage: "safari")
-      }
-      .disabled(document.dialect != .html || session.hasUnsavedChanges)
-      .help(systemPreviewHelp(document))
-
-      Button {
-        save()
-      } label: {
-        if session.isSaving {
-          ProgressView()
-            .controlSize(.small)
-        } else {
-          Label("保存", systemImage: "square.and.arrow.down")
-        }
-      }
-      .workbenchProminentActionStyle()
-      .disabled(!canSave)
-      .accessibilityIdentifier("html-source-save")
-
-      Button {
-        requestClose()
-      } label: {
-        Image(systemName: "xmark")
-          .frame(width: 22, height: 22)
-      }
-      .buttonStyle(.borderless)
-      .disabled(session.isSaving)
-      .help("关闭源码文件")
-      .accessibilityLabel("关闭源码文件")
-    }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 10)
-    .background(.bar)
-  }
-
-  private var repositoryIdentity: String {
-    "\(shell.activeProfile.id.uuidString)|\(shell.activeProfile.localRepositoryRootPath)"
-  }
-
-  private var canSave: Bool {
-    session.hasUnsavedChanges
-      && !session.isSaving
-      && session.activeDocument?.hasMixedLineEndings != true
-      && session.isDocumentFromCurrentRepository(shell.activeProfile)
-  }
-
-  private var commandActions: RepositorySourceEditorCommandActions {
-    RepositorySourceEditorCommandActions(
-      hasDocument: session.activeDocument != nil,
-      canSave: canSave,
-      save: save,
-      showFind: { findRequest = HTMLSourceFindRequest(action: .show) },
-      findNext: { performFindAction(.next) },
-      findPrevious: { performFindAction(.previous) },
-      reload: requestReload
-    )
-  }
-
-  private func requestOpen(_ file: RepositoryHTMLFileDescriptor) {
-    guard file.isEditable, !session.isSaving else { return }
-    guard session.activeDocument?.repositoryPath != file.repositoryPath else { return }
-    if session.hasUnsavedChanges {
-      pendingAction = .open(file.repositoryPath)
-    } else {
-      Task { await open(file.repositoryPath) }
-    }
-  }
-
-  private func openSelectedFile() {
+  private var selectedFile: RepositoryHTMLFileDescriptor? {
     guard let selectedRepositoryPath,
-          let file = displayedFiles.first(where: { $0.repositoryPath == selectedRepositoryPath }) else {
-      return
-    }
-    requestOpen(file)
+      displayedRepositoryIdentity == repositoryIdentity,
+      session.repositoryIdentity == repositoryIdentity
+    else { return nil }
+    return displayedFiles.first { $0.repositoryPath == selectedRepositoryPath }
   }
 
-  private func selectFirstVisibleFile() {
-    guard let path = displayedFiles.first(where: \.isEditable)?.repositoryPath else { return }
-    selectedRepositoryPath = path
+  private var repositoryIdentity: RepositoryHTMLSourceRepositoryIdentity {
+    RepositoryHTMLSourceRepositoryIdentity(profile: shell.activeProfile)
   }
 
   private func scheduleFileFilter() {
@@ -459,9 +253,16 @@ struct RepositoryHTMLSourceWorkspaceView: View {
     let generation = fileFilterGeneration
     let files = session.files
     let query = searchQuery
-    let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-    if normalizedQuery.isEmpty {
+    let identity = session.repositoryIdentity
+    guard identity == repositoryIdentity else {
+      displayedFiles = []
+      displayedRepositoryIdentity = nil
+      selectedRepositoryPath = nil
+      return
+    }
+    if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       displayedFiles = files
+      displayedRepositoryIdentity = identity
       restoreFileSelectionIfNeeded(in: files)
       return
     }
@@ -473,145 +274,98 @@ struct RepositoryHTMLSourceWorkspaceView: View {
       }.value
       guard !Task.isCancelled, fileFilterGeneration == generation else { return }
       displayedFiles = filtered
+      displayedRepositoryIdentity = identity
       restoreFileSelectionIfNeeded(in: filtered)
     }
   }
 
   private func restoreFileSelectionIfNeeded(in files: [RepositoryHTMLFileDescriptor]) {
-    if let activePath = session.activeDocument?.repositoryPath,
-       files.contains(where: { $0.repositoryPath == activePath }) {
-      selectedRepositoryPath = activePath
-    } else if let selectedRepositoryPath,
-              !files.contains(where: { $0.repositoryPath == selectedRepositoryPath }) {
+    if let selectedRepositoryPath,
+      !files.contains(where: { $0.repositoryPath == selectedRepositoryPath })
+    {
       self.selectedRepositoryPath = nil
     }
   }
 
   private func handleQueuedOpenRequest() {
-    guard !session.isSaving, let request = session.openRequest else { return }
-    session.consumeOpenRequest(id: request.id)
-    if session.activeDocument?.repositoryPath == request.repositoryPath {
-      store.setInspectorPresented(true)
+    guard let request = session.openRequest else { return }
+    guard request.repositoryIdentity == repositoryIdentity else {
+      session.consumeOpenRequest(id: request.id)
       return
     }
-    if session.hasUnsavedChanges {
-      pendingAction = .open(request.repositoryPath)
-    } else {
-      Task { await open(request.repositoryPath) }
-    }
-  }
-
-  private func requestReload() {
-    guard session.activeDocument != nil, !session.isSaving else { return }
-    if session.hasUnsavedChanges {
-      pendingAction = .reload
-    } else {
-      Task { await session.reload(profile: shell.activeProfile) }
-    }
-  }
-
-  private func requestClose() {
-    guard !session.isSaving else { return }
-    if session.hasUnsavedChanges {
-      pendingAction = .close
-    } else {
-      session.close()
-    }
-  }
-
-  private func performPendingAction() {
-    guard let action = pendingAction else { return }
-    pendingAction = nil
-    switch action {
-    case let .open(path):
-      Task { await open(path) }
-    case .reload:
-      Task { await session.reload(profile: shell.activeProfile) }
-    case .close:
-      session.close()
-    }
-  }
-
-  private func open(_ path: String) async {
-    await session.open(path: path, profile: shell.activeProfile)
-    if session.activeDocument?.repositoryPath == path {
-      store.setInspectorPresented(true)
-      EditorAccessibilityAnnouncementCenter.announce(
-        String(localized: "已打开 HTML 源文件：\(path)"),
-        priority: .high
-      )
-    }
-  }
-
-  private func save() {
-    guard canSave else { return }
-    Task {
-      if await session.save(profile: shell.activeProfile) {
-        EditorAccessibilityAnnouncementCenter.announce(
-          String(localized: "HTML 源文件已保存。"),
-          priority: .high
-        )
-        await store.repository.scanAsync()
-        await session.refreshFiles(profile: shell.activeProfile)
-      }
-    }
-  }
-
-  private func openInSystemBrowser(_ document: RepositoryTextDocument) {
-    guard document.dialect == .html, !session.hasUnsavedChanges else { return }
+    guard session.repositoryIdentity == repositoryIdentity, !session.isLoading else { return }
+    session.consumeOpenRequest(id: request.id)
     do {
-      _ = try HTMLSourceEditingService().withResolvedFileURL(
+      let file = try RepositoryHTMLFileService().descriptor(
         profile: shell.activeProfile,
-        repositoryPath: document.repositoryPath
+        repositoryPath: request.repositoryPath
+      )
+      session.includeValidatedFile(file, profile: shell.activeProfile)
+      searchQuery = ""
+      displayedFiles = session.files
+      displayedRepositoryIdentity = repositoryIdentity
+      selectedRepositoryPath = request.repositoryPath
+    } catch {
+      session.reportError(error)
+    }
+  }
+
+  private func canActOnDisplayedFile() -> Bool {
+    guard displayedRepositoryIdentity == repositoryIdentity,
+      session.repositoryIdentity == repositoryIdentity
+    else {
+      session.reportError(HTMLFileOpenError.repositoryChanged)
+      return false
+    }
+    return true
+  }
+
+  private func revealSelectedFile() {
+    guard let selectedFile else { return }
+    reveal(selectedFile)
+  }
+
+  private func reveal(_ file: RepositoryHTMLFileDescriptor) {
+    guard canActOnDisplayedFile() else { return }
+    do {
+      try RepositoryHTMLFileService().withOriginalFileURL(
+        profile: shell.activeProfile,
+        repositoryPath: file.repositoryPath
       ) { url in
-        NSWorkspace.shared.open(url)
+        NSWorkspace.shared.activateFileViewerSelecting([url])
       }
     } catch {
-      EditorAccessibilityAnnouncementCenter.announce(error.localizedDescription, priority: .high)
+      session.reportError(error)
     }
   }
 
-  private func systemPreviewHelp(_ document: RepositoryTextDocument) -> String {
-    if document.dialect != .html {
-      return String(localized: "模板文件请使用资料库中的本地站点预览。")
+  private func openWithDefaultApplication(_ file: RepositoryHTMLFileDescriptor) {
+    guard canActOnDisplayedFile() else { return }
+    do {
+      try RepositoryHTMLFileService().withOriginalFileURL(
+        profile: shell.activeProfile,
+        repositoryPath: file.repositoryPath
+      ) { url in
+        guard NSWorkspace.shared.open(url) else {
+          throw HTMLFileOpenError.defaultApplicationUnavailable
+        }
+      }
+    } catch {
+      session.reportError(error)
     }
-    if session.hasUnsavedChanges {
-      return String(localized: "先保存更改，再用系统浏览器预览。")
-    }
-    return String(localized: "使用系统默认浏览器打开这个 HTML 文件。")
   }
+}
 
-  private func performFindAction(_ action: HTMLSourceFindRequest.Action) {
-    findRequest = HTMLSourceFindRequest(action: action)
-  }
+private enum HTMLFileOpenError: LocalizedError {
+  case repositoryChanged
+  case defaultApplicationUnavailable
 
-  private enum PendingAction: Identifiable {
-    case open(String)
-    case reload
-    case close
-
-    var id: String {
-      switch self {
-      case let .open(path): "open-\(path)"
-      case .reload: "reload"
-      case .close: "close"
-      }
-    }
-
-    var confirmationTitle: String {
-      switch self {
-      case .open: String(localized: "放弃更改并打开其他文件？")
-      case .reload: String(localized: "放弃更改并重新载入？")
-      case .close: String(localized: "放弃更改并关闭文件？")
-      }
-    }
-
-    var confirmationButtonTitle: String {
-      switch self {
-      case .open: String(localized: "放弃并打开")
-      case .reload: String(localized: "放弃并重新载入")
-      case .close: String(localized: "放弃并关闭")
-      }
+  var errorDescription: String? {
+    switch self {
+    case .repositoryChanged:
+      return String(localized: "当前仓库已切换，请重新选择 HTML 文件。")
+    case .defaultApplicationUnavailable:
+      return String(localized: "macOS 无法用默认应用打开该 HTML 文件。")
     }
   }
 }

@@ -10,10 +10,6 @@ extension WorkbenchAIStore {
     exemplarArticleIDs: [UUID]
   ) async -> AIWritingStyleProfilePreview? {
     guard !Task.isCancelled else { return nil }
-    guard store.canUseProtectedWorkbench else {
-      aiActionMessage = aiChatQuickHideOperationMessage()
-      return nil
-    }
     // Read editor-owned buffers before freezing the public text selection.
     store.flushDraftBodyEditorBuffers()
     aiWritingStylePreview = nil
@@ -173,10 +169,6 @@ extension WorkbenchAIStore {
   public func applyAIWritingStyleProfile(
     _ preview: AIWritingStyleProfilePreview
   ) -> Bool {
-    guard store.canUseProtectedWorkbench else {
-      aiActionMessage = aiChatQuickHideOperationMessage()
-      return false
-    }
     store.flushDraftBodyEditorBuffers()
     let service = AIWritingStyleProfileService()
     guard

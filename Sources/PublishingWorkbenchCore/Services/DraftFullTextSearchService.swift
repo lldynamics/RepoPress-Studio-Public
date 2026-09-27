@@ -251,8 +251,14 @@ public struct DraftFullTextSearchQuery: Equatable, Sendable {
 public struct DraftFullTextSavedQuery: Identifiable, Codable, Equatable, Sendable {
   public var id: UUID
   public var query: String
-  public var searchesAllSites: Bool
+  public var scope: DraftFullTextSearchScope
   public var savedAt: Date
+
+  /// Compatibility projection for clients that only distinguish the current site from all sites.
+  public var searchesAllSites: Bool {
+    get { scope == .allSites }
+    set { scope = newValue ? .allSites : .currentSite }
+  }
 
   public init(
     id: UUID = UUID(),
@@ -262,8 +268,54 @@ public struct DraftFullTextSavedQuery: Identifiable, Codable, Equatable, Sendabl
   ) {
     self.id = id
     self.query = query
-    self.searchesAllSites = searchesAllSites
+    self.scope = searchesAllSites ? .allSites : .currentSite
     self.savedAt = savedAt
+  }
+
+  public init(
+    query: String,
+    scope: DraftFullTextSearchScope,
+    id: UUID = UUID(),
+    savedAt: Date = Date()
+  ) {
+    self.id = id
+    self.query = query
+    self.scope = scope
+    self.savedAt = savedAt
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id
+    case query
+    case scope
+    case searchesAllSites
+    case savedAt
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = try container.decode(UUID.self, forKey: .id)
+    query = try container.decode(String.self, forKey: .query)
+    savedAt = try container.decode(Date.self, forKey: .savedAt)
+
+    let legacySearchesAllSites =
+      try container.decodeIfPresent(Bool.self, forKey: .searchesAllSites) ?? false
+    if let rawScope = try container.decodeIfPresent(String.self, forKey: .scope),
+      let decodedScope = DraftFullTextSearchScope(rawValue: rawScope)
+    {
+      scope = decodedScope
+    } else {
+      scope = legacySearchesAllSites ? .allSites : .currentSite
+    }
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(id, forKey: .id)
+    try container.encode(query, forKey: .query)
+    try container.encode(scope.rawValue, forKey: .scope)
+    try container.encode(scope == .allSites, forKey: .searchesAllSites)
+    try container.encode(savedAt, forKey: .savedAt)
   }
 }
 
@@ -277,10 +329,26 @@ public enum DraftFullTextSavedQueryService {
     id: UUID = UUID(),
     savedAt: Date = Date()
   ) -> [DraftFullTextSavedQuery] {
+    saving(
+      query: query,
+      scope: searchesAllSites ? .allSites : .currentSite,
+      in: existing,
+      id: id,
+      savedAt: savedAt
+    )
+  }
+
+  public static func saving(
+    query: String,
+    scope: DraftFullTextSearchScope,
+    in existing: [DraftFullTextSavedQuery],
+    id: UUID = UUID(),
+    savedAt: Date = Date()
+  ) -> [DraftFullTextSavedQuery] {
     let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !normalizedQuery.isEmpty else { return existing }
     var result = existing.filter {
-      $0.searchesAllSites != searchesAllSites
+      $0.scope != scope
         || $0.query.compare(
           normalizedQuery,
           options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
@@ -288,9 +356,9 @@ public enum DraftFullTextSavedQueryService {
     }
     result.insert(
       DraftFullTextSavedQuery(
-        id: id,
         query: normalizedQuery,
-        searchesAllSites: searchesAllSites,
+        scope: scope,
+        id: id,
         savedAt: savedAt
       ),
       at: 0

@@ -218,10 +218,6 @@ extension PublishingStore {
     store: WorkbenchStore
   ) async -> Bool {
     guard !blockPublishingIfGeneralDraftSelected(store: store) else { return false }
-    guard store.canUseProtectedWorkbench else {
-      setPublishingActionMessage(store.quickHideOperationMessage, status: .warning)
-      return false
-    }
 
     let refresh = await store.refreshRepositoryStateForPublishing()
     guard !Task.isCancelled else { return false }
@@ -350,10 +346,6 @@ extension PublishingStore {
   /// package is inspected before its immutable confirmation snapshot is made.
   @discardableResult
   public func prepareBatchOnlinePublish(store: WorkbenchStore) async -> Bool {
-    guard store.canUseProtectedWorkbench else {
-      setPublishingActionMessage(store.quickHideOperationMessage, status: .warning)
-      return false
-    }
     let refresh = await store.refreshRepositoryStateForPublishing()
     guard !Task.isCancelled else { return false }
     guard refresh != nil else {

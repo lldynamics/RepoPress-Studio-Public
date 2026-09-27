@@ -28,7 +28,7 @@ struct SelectionActionBar: View {
         Image(systemName: "sparkles")
           .font(.workbenchMetadata)
           .foregroundStyle(workbenchAccentColor)
-        Text("AI 选区魔法")
+        Text("AI 操作")
           .font(.caption.weight(.semibold))
       }
 
@@ -128,7 +128,7 @@ struct SelectionActionBar: View {
             .rewriteSelection(AIPublishingRewriteConfiguration(style: style))
           )
         } label: {
-          Label(style.localizedDisplayName, systemImage: "wand.and.stars")
+          Label(style.localizedDisplayName, systemImage: "sparkles")
         }
         .disabled(!availabilityForSelectionAction(.rewriteSelection).isEnabled)
       }
@@ -140,7 +140,7 @@ struct SelectionActionBar: View {
             .rewriteSelection(AIPublishingRewriteConfiguration(operation: operation))
           )
         } label: {
-          Label(operation.localizedDisplayName, systemImage: "wand.and.stars")
+          Label(operation.localizedDisplayName, systemImage: "sparkles")
         }
         .disabled(!availabilityForSelectionAction(.rewriteSelection).isEnabled)
       }

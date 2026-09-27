@@ -1230,7 +1230,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(store.aiMetadataSuggestionDraftID, draft.id)
     XCTAssertEqual(store.aiMetadataSuggestion?.tags, ["Mac", "AI", "Publishing"])
     XCTAssertTrue(store.aiMetadataSuggestion?.titles.isEmpty == true)
-    XCTAssertEqual(store.aiActionMessage, "Tags 建议完成。")
+    XCTAssertEqual(store.aiActionMessage, "AI 操作已完成。")
   }
 
   func testStoreKeepsPartialStreamingReplyWhenGenerationIsCanceled() async throws {

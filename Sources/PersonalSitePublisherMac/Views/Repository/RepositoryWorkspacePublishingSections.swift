@@ -1,4 +1,5 @@
 import AppKit
+import PublishingGitCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -59,6 +60,9 @@ extension RepositoryWorkspaceView {
   var onlinePublishCenterSection: some View {
     let latestEntry = store.activeProfileReleaseLedger.entries.first
     let permissionAction = repositoryPermissionActionPresentation
+    let repositoryNeedsCheck =
+      store.repositoryReport?.hasGitDirectory == false
+      || store.repositoryOperationLifecycle?.readFailure != nil
 
     return VStack(alignment: .leading, spacing: 12) {
       VStack(alignment: .leading, spacing: 3) {
@@ -70,7 +74,18 @@ extension RepositoryWorkspaceView {
           .foregroundStyle(.secondary)
       }
 
-      if let preview = store.remotePublishPreviewSnapshot {
+      if repositoryNeedsCheck
+        || store.repositoryOperationLifecycle?.isOperationInProgress == true
+      {
+        Label(
+          repositoryNeedsCheck
+            ? String(localized: "当前发布状态：仓库待检查")
+            : String(localized: "当前发布状态：Git 操作待处理"),
+          systemImage: "exclamationmark.triangle"
+        )
+        .font(.callout)
+        .foregroundStyle(WorkbenchTheme.risk)
+      } else if let preview = store.remotePublishPreviewSnapshot {
         Label(
           "当前发布状态：\(preview.readiness.localizedDisplayName)",
           systemImage: preview.readiness.systemImage

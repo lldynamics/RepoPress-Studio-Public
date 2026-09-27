@@ -282,7 +282,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertTrue(editor.waitForExistence(timeout: 10))
     let originalBody = try XCTUnwrap(editor.value as? String)
 
-    application.typeKey("p", modifierFlags: [.command])
+    application.typeKey("k", modifierFlags: [.shift, .command])
     let palette = element(identifier: "workspace-command-palette")
     XCTAssertTrue(palette.waitForExistence(timeout: 10))
     let paletteQueryField = palette.textFields.firstMatch
@@ -324,15 +324,16 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       .completed
     )
     application.typeKey("f", modifierFlags: [.option, .command])
-    // macOS exposes the NavigationStack as a native sheet; its outer SwiftUI
-    // identifier is not necessarily represented in the accessibility tree.
-    let search = window.sheets.firstMatch
+    let search = element(identifier: "workspace-command-palette")
     XCTAssertTrue(search.waitForExistence(timeout: 10))
-    let queryField = search.textFields["搜索文章或输入结构化条件"]
+    XCTAssertTrue(element(identifier: "workspace-command-palette-article-scope").exists)
+    let queryField = search.textFields["workspace-command-palette-query"]
     XCTAssertTrue(queryField.waitForExistence(timeout: 5))
     queryField.click()
     queryField.typeText("客户复盘")
-    let open = search.buttons["打开所选结果"]
+    let open = search.buttons.matching(
+      NSPredicate(format: "identifier BEGINSWITH %@", "workspace-command-palette-result-article:")
+    ).firstMatch
     XCTAssertTrue(open.waitForExistence(timeout: 10))
     XCTAssertEqual(
       XCTWaiter.wait(
@@ -364,6 +365,42 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     )
   }
 
+  func testArticlePaletteFindsLiveBodyAndKeepsBatchReplacementSeparate() throws {
+    launchApplication(surface: "writing")
+    let editor = element(identifier: "markdown-document-editor")
+    XCTAssertTrue(editor.waitForExistence(timeout: 10))
+    editor.click()
+    application.typeKey(.downArrow, modifierFlags: [.command])
+    application.typeText("\nPaletteBodyOnlyMatch")
+
+    application.typeKey("f", modifierFlags: [.option, .command])
+    let palette = element(identifier: "workspace-command-palette")
+    XCTAssertTrue(palette.waitForExistence(timeout: 10))
+    let query = palette.textFields["workspace-command-palette-query"]
+    XCTAssertTrue(query.waitForExistence(timeout: 5))
+    query.click()
+    query.typeText("PaletteBodyOnlyMatch")
+    let bodyHit = palette.buttons.matching(
+      NSPredicate(
+        format: "identifier BEGINSWITH %@ AND identifier CONTAINS %@",
+        "workspace-command-palette-result-article:", ":body:"
+      )
+    ).firstMatch
+    XCTAssertTrue(bodyHit.waitForExistence(timeout: 10))
+    application.typeKey(.return, modifierFlags: [])
+    assertDisappears(palette)
+
+    application.typeKey("f", modifierFlags: [.option, .command])
+    XCTAssertTrue(palette.waitForExistence(timeout: 10))
+    element(identifier: "workspace-command-palette-batch-replace").click()
+    let batchQuery = element(identifier: "markdown-batch-find-query")
+    XCTAssertTrue(batchQuery.waitForExistence(timeout: 10))
+    XCTAssertTrue(element(identifier: "markdown-batch-preview-button").exists)
+    application.typeKey(.escape, modifierFlags: [])
+    assertDisappears(batchQuery)
+    XCTAssertTrue(palette.exists)
+  }
+
   /// Focused responsive/accessibility smoke: this deliberately uses the
   /// smallest supported window and a large Dynamic Type size, then exercises
   /// the existing editor keyboard path. It is not a substitute for a manual
@@ -385,8 +422,8 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "markdown-document-editor",
       "markdown-editor-toolbar",
       "markdown-formatting-toolbar",
-      "markdown-zen-mode-toggle",
-      "markdown-outline-button",
+      "markdown-focus-mode-menu",
+      "markdown-editor-settings",
     ]
     for identifier in requiredIdentifiers {
       assertUniqueIdentifier(identifier)
@@ -398,6 +435,16 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       XCTAssertFalse(control.frame.isEmpty, "Accessibility frame must exist for \(identifier).")
     }
 
+    let hasInlineWritingTools = [
+      "markdown-outline-button",
+      "markdown-inline-ai-completion",
+      "markdown-document-export-menu",
+    ].allSatisfy { element(identifier: $0).exists }
+    XCTAssertTrue(
+      element(identifier: "markdown-writing-tools-menu").exists || hasInlineWritingTools,
+      "Writing tools must remain accessible inline when they fit or through overflow otherwise."
+    )
+
     let editor = element(identifier: "markdown-document-editor")
     editor.click()
     application.typeKey(XCUIKeyboardKey.tab.rawValue, modifierFlags: [])
@@ -407,6 +454,19 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     )
     application.typeKey(.escape, modifierFlags: [])
     XCTAssertTrue(editor.exists, "Escape must not remove the editor from the workspace.")
+  }
+
+  func testEditorAppearanceButtonOpensTheEditorSettingsPage() throws {
+    launchApplication(surface: "writing")
+    let appearanceButton = element(identifier: "markdown-editor-settings")
+    XCTAssertTrue(appearanceButton.waitForExistence(timeout: 10))
+    appearanceButton.click()
+
+    assertIdentifierExists("editor-settings")
+    assertUniqueIdentifier("editor-font-size")
+    XCTAssertFalse(element(identifier: "editor-typewriter-mode").exists)
+    XCTAssertFalse(element(identifier: "editor-paragraph-spotlight").exists)
+    XCTAssertFalse(element(identifier: "editor-current-paragraph-highlight").exists)
   }
 
   func testRSSReaderUsesTheMainWorkspaceFramework() throws {
@@ -498,8 +558,8 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
   }
 
   /// The PR lane deliberately keeps this to one isolated fixture: it proves
-  /// that article navigation remains local to each WindowGroup instance while
-  /// the privacy-wide Quick Hide masks both, then stops at final confirmation.
+  /// that article navigation remains local to each WindowGroup instance,
+  /// then stops at final confirmation.
   func testPRSmokeKeepsWindowsIsolatedAndCancelsPublishConfirmation() throws {
     launchApplication(surface: "sync-api-publish")
 
@@ -553,26 +613,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       firstEditor.value as? String,
       firstEditorValue,
       "The first window must keep its article after the second window changes selection."
-    )
-
-    secondWindow.click()
-    application.typeKey("l", modifierFlags: [.control, .command])
-    let secondQuickHide = secondWindow.descendants(matching: .any)
-      .matching(identifier: "quick-hide-overlay")
-      .firstMatch
-    XCTAssertTrue(secondQuickHide.waitForExistence(timeout: 10))
-    XCTAssertTrue(
-      firstWindow.descendants(matching: .any)
-        .matching(identifier: "quick-hide-overlay")
-        .firstMatch.waitForExistence(timeout: 10),
-      "Quick Hide must mask every workbench window because privacy state is shared."
-    )
-    application.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
-    assertDisappears(secondQuickHide)
-    assertDisappears(
-      firstWindow.descendants(matching: .any)
-        .matching(identifier: "quick-hide-overlay")
-        .firstMatch
     )
 
     // Capture fixtures use identical window frames. A coordinate click on the
@@ -1229,7 +1269,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     )
   }
 
-  func testContentHealthIdentifiersRemainUniqueAcrossAllStages() throws {
+  func testContentHealthHasOneProblemListWithFilters() throws {
     launchApplication(surface: "writing")
     select(
       "workspace-sidebar-contentHealth",
@@ -1241,36 +1281,16 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "workspace-quick-search-field",
       "content-health-sidebar-stage-navigation",
       "content-health-sidebar-stage-overview",
-      "content-health-sidebar-stage-publicRisks",
-      "content-health-sidebar-stage-aiFixes",
-      "content-health-sidebar-stage-siteIssues",
-      "content-health-sidebar-stage-maintenance",
       "content-health-workspace",
       "content-health-stage-overview",
+      "content-health-severity-filter",
+      "content-health-source-filter",
+      "content-health-ai-filter",
     ] {
       assertUniqueIdentifier(identifier)
     }
 
-    for stage in ["publicRisks", "aiFixes", "siteIssues", "maintenance"] {
-      select(
-        "content-health-sidebar-stage-\(stage)",
-        revealing: "content-health-stage-\(stage)"
-      )
-      assertUniqueIdentifier("content-health-workspace")
-      assertUniqueIdentifier("content-health-stage-\(stage)")
-    }
-
-    let generateReport = application.buttons["生成维护报告"]
-    XCTAssertTrue(generateReport.waitForExistence(timeout: 10))
-    generateReport.click()
-
-    for identifier in [
-      "site-maintenance-refresh",
-      "site-maintenance-copy-sprint-plan",
-      "site-maintenance-copy-checklist",
-    ] {
-      assertUniqueIdentifier(identifier)
-    }
+    XCTAssertFalse(application.buttons["content-health-sidebar-stage-maintenance"].exists)
   }
 
   func testAIComposerUsesReturnForNewlineAndKeepsCommandReturnOutOfText() throws {
@@ -1460,34 +1480,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     let unsentDraft = try XCTUnwrap(input.value as? String)
     XCTAssertFalse(unsentDraft.isEmpty, "Typing must leave a composer draft to preserve.")
 
-    application.typeKey("l", modifierFlags: [.control, .command])
-    let quickHideOverlays = mainWindow.descendants(matching: .any)
-      .matching(identifier: "quick-hide-overlay")
-    XCTAssertTrue(
-      quickHideOverlays.firstMatch.waitForExistence(timeout: 10),
-      "Quick Hide must cover the AI collaboration workspace."
-    )
-    XCTAssertFalse(
-      mainWindow.descendants(matching: .any)
-        .matching(identifier: "ai-assistant-input")
-        .firstMatch.exists,
-      "Quick Hide must remove the AI composer from the accessibility tree."
-    )
-
-    application.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
-    let restoredInput = mainWindow.descendants(matching: .any)
-      .matching(identifier: "ai-assistant-input")
-      .firstMatch
-    XCTAssertTrue(
-      restoredInput.waitForExistence(timeout: 10),
-      "Returning to the workbench must restore the AI composer."
-    )
-    XCTAssertEqual(
-      restoredInput.value as? String,
-      unsentDraft,
-      "Quick Hide must preserve an unsent AI composer draft."
-    )
-
     toggleAIInspectorForUITest(toolbarButton, shouldBePresented: false)
     XCTAssertFalse(
       element(identifier: "ai-assistant-inspector").waitForExistence(timeout: 2),
@@ -1641,7 +1633,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       ("workspace-publishing-status", ["文章状态"]),
       ("workspace-command-search", ["全局搜索"]),
       ("workspace-preview", ["预览"]),
-      ("workspace-task-center-toggle", ["任务", "统一任务中心"]),
+      ("workspace-task-center-toggle", ["任务", "任务中心"]),
     ]
 
     for (identifier, labels) in expectedNames {
@@ -1718,27 +1710,26 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       (tab: "siteAI", content: "site-ai-settings"),
     ]
 
-    // The standard Settings window owns app preferences only.
-    for page in applicationPages {
+    let settingsWindow = currentSettingsWindow()
+    let windowCount = application.windows.count
+    let allPages = applicationPages + sitePages
+    for page in allPages {
       assertUniqueIdentifier("settings-tab-\(page.tab)")
-    }
-    for page in sitePages {
-      XCTAssertFalse(
-        identifierExists("settings-tab-\(page.tab)", in: currentSettingsWindow()),
-        "Site settings must not appear in the Settings window."
-      )
     }
     assertSettingsWindowBaseline()
-    visitSettingsPages(applicationPages, in: currentSettingsWindow())
+    visitSettingsPages(allPages, in: settingsWindow)
+    XCTAssertEqual(application.windows.count, windowCount)
 
-    // Site configuration opens in the main window's settings workspace.
-    element(identifier: "settings-open-other-scope").click()
-    assertIdentifierExists("settings-return-to-workbench")
-    let workspaceWindow = currentSettingsWindow()
-    for page in sitePages {
-      assertUniqueIdentifier("settings-tab-\(page.tab)")
-    }
-    visitSettingsPages(sitePages, in: workspaceWindow)
+    let mainWindow = application.windows
+      .containing(.any, identifier: "workspace-command-search")
+      .firstMatch
+    XCTAssertTrue(
+      mainWindow.exists, "The main workspace must remain available while Settings is open.")
+    XCTAssertFalse(identifierExists("settings-content", in: mainWindow))
+    settingsWindow.buttons[XCUIIdentifierCloseWindow].click()
+    assertIdentifierDisappears("settings-content")
+    XCTAssertTrue(
+      mainWindow.exists, "Closing Settings must preserve the original workspace window.")
   }
 
   private func visitSettingsPages(
@@ -1778,10 +1769,9 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
   func testSettingsSharedConnectionAndMovedSearchKeepTheirScopes() throws {
     openSettings()
-    // Site AI lives in the main window; the shared connection it edits lives
-    // in the Settings window, and each hop must land on the right page.
-    element(identifier: "settings-open-other-scope").click()
-    assertIdentifierExists("settings-return-to-workbench")
+    // Site selection and shared connection editing stay in the same window.
+    let settingsWindow = currentSettingsWindow()
+    let windowCount = application.windows.count
     select("settings-tab-siteAI", revealing: "site-ai-settings")
     let picker = element(identifier: "settings-site-ai-connection-picker")
     XCTAssertTrue(picker.waitForExistence(timeout: 10))
@@ -1789,13 +1779,13 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertNotNil(originalSelection)
 
     element(identifier: "settings-site-ai-edit-shared-connection").click()
-    assertIdentifierExists("ai-settings", in: currentSettingsWindow())
+    assertIdentifierExists("ai-settings", in: settingsWindow)
+    XCTAssertFalse(identifierExists("settings-site-ai-connection-picker", in: settingsWindow))
     element(identifier: "settings-ai-open-site-connection").click()
     assertIdentifierExists("site-ai-settings")
     XCTAssertEqual(picker.value as? String, originalSelection)
 
-    showSettingsWindow()
-    let settingsWindow = currentSettingsWindow()
+    XCTAssertEqual(application.windows.count, windowCount)
 
     let search = element(identifier: "settings-search-field")
     search.click()
@@ -2287,7 +2277,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "Repository detection must enable the real rules step before continuing."
     )
     next.click()
-    XCTAssertTrue(application.staticTexts["开启 AI 辅助（可选）"].waitForExistence(timeout: 10))
+    XCTAssertTrue(application.staticTexts["启用 AI 助手（可选）"].waitForExistence(timeout: 10))
     let finish = application.buttons["完成并开始写作"]
     XCTAssertTrue(finish.waitForExistence(timeout: 10))
     finish.click()

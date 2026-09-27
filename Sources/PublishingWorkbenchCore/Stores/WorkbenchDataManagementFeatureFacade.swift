@@ -37,7 +37,6 @@ public final class WorkbenchDataManagementFeatureFacade: ObservableObject {
     observe(store.knowledge.$documents.map(\.count).removeDuplicates())
     observe(store.knowledge.$recycledDocuments.map(\.count).removeDuplicates())
     observe(store.knowledge.$isBusy.removeDuplicates())
-    observe(store.privacyProtectionStore.$isQuickHideActive.removeDuplicates())
     observe(store.persistenceStore.$isRecoveryWriteProtected.removeDuplicates())
   }
 

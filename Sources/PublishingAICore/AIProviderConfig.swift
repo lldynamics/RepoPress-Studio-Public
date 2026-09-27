@@ -792,7 +792,6 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
 }
 
 public enum AIWritingStylePreset: String, Codable, CaseIterable, Identifiable, Sendable {
-  case jinfangZola
   case wechatArticle
   case techTutorial
   case newsBriefing
@@ -803,10 +802,31 @@ public enum AIWritingStylePreset: String, Codable, CaseIterable, Identifiable, S
 
   public var id: String { rawValue }
 
+  /// Maps profiles saved before the public preset was generalized to the
+  /// equivalent technical-note preset. Encoding always writes the public ID.
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    let rawValue = try container.decode(String.self)
+    if rawValue == "jinfangZola" {
+      self = .technicalNote
+      return
+    }
+    guard let preset = Self(rawValue: rawValue) else {
+      throw DecodingError.dataCorruptedError(
+        in: container,
+        debugDescription: "Unknown AI writing style preset: \(rawValue)"
+      )
+    }
+    self = preset
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    try container.encode(rawValue)
+  }
+
   public var displayName: String {
     switch self {
-    case .jinfangZola:
-      return CoreL10n.text("锦方 Zola")
     case .wechatArticle:
       return CoreL10n.text("微信公众号")
     case .techTutorial:
@@ -826,8 +846,6 @@ public enum AIWritingStylePreset: String, Codable, CaseIterable, Identifiable, S
 
   fileprivate var defaultTone: String {
     switch self {
-    case .jinfangZola:
-      return "克制、实用、直接，避免营销口吻和夸张形容。"
     case .wechatArticle:
       return "生动、亲切、通透，善用故事化引入与结构化小标题，语言通俗且有说服力。"
     case .techTutorial:
@@ -847,8 +865,6 @@ public enum AIWritingStylePreset: String, Codable, CaseIterable, Identifiable, S
 
   fileprivate var defaultAudience: String {
     switch self {
-    case .jinfangZola:
-      return "关注个人网站、静态博客、工程工具和内容维护的读者。"
     case .wechatArticle:
       return "中文自媒体受众、关注效率、个人成长、实用技巧与深度思考的读者。"
     case .techTutorial:
@@ -868,8 +884,6 @@ public enum AIWritingStylePreset: String, Codable, CaseIterable, Identifiable, S
 
   fileprivate var defaultSummaryGuidance: String {
     switch self {
-    case .jinfangZola:
-      return "生成 80 到 140 字中文摘要，先说文章解决的问题，再说主要结论。"
     case .wechatArticle:
       return "生成 60 到 100 字引人入胜的导读摘要，抛出核心痛点或悬念，吸引读者阅读全文。"
     case .techTutorial:
@@ -889,8 +903,6 @@ public enum AIWritingStylePreset: String, Codable, CaseIterable, Identifiable, S
 
   fileprivate var defaultTagGuidance: String {
     switch self {
-    case .jinfangZola:
-      return "优先提取工具、框架、站点类型和维护场景，3 到 6 个短标签，不要泛泛使用“随笔”。"
     case .wechatArticle:
       return "优先提取热点关键词、受众兴趣和内容分类标签，3 到 5 个。"
     case .techTutorial:
@@ -910,8 +922,6 @@ public enum AIWritingStylePreset: String, Codable, CaseIterable, Identifiable, S
 
   fileprivate var defaultSEOGuidance: String {
     switch self {
-    case .jinfangZola:
-      return "重点检查 description、tags/categories、og_preview_img、标题清晰度和旧文章维护问题。"
     case .wechatArticle:
       return "检查标题是否具有吸引力、头图与朋友圈分享卡片是否工整、文章首尾互动引导是否完整。"
     case .techTutorial:
@@ -953,7 +963,7 @@ public struct AIWritingStyleConfig: Codable, Hashable, Sendable {
   public var exemplarArticleIDs: [UUID]
 
   public init(
-    preset: AIWritingStylePreset = .jinfangZola,
+    preset: AIWritingStylePreset = .technicalNote,
     tone: String? = nil,
     audience: String? = nil,
     summaryGuidance: String? = nil,
@@ -1057,7 +1067,9 @@ public struct AIWritingStyleConfig: Codable, Hashable, Sendable {
 
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    let preset = try container.decodeIfPresent(AIWritingStylePreset.self, forKey: .preset) ?? .jinfangZola
+    let preset =
+      try container.decodeIfPresent(AIWritingStylePreset.self, forKey: .preset)
+      ?? .technicalNote
     self.init(
       preset: preset,
       tone: try container.decodeIfPresent(String.self, forKey: .tone),

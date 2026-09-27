@@ -4,7 +4,6 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct ReleaseHistoryDetailView: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let store: WorkbenchStore
   let focusedRecordID: UUID?
   @ObservedObject private var historyObservation: WorkbenchReleaseHistoryObservationFacade
@@ -38,20 +37,17 @@ struct ReleaseHistoryDetailView: View {
           if let focusedRecordID, !showsAllRecords {
             focusedReleaseRecordContent(focusedRecordID)
           } else {
-            // Records written before execution logging existed still appear in
-            // the ledger; an empty execution section beside them would read as
-            // "no releases", so it is shown only when it has something to say.
+            // Show execution details only when this site has an attempt to
+            // inspect; the release-record empty state covers a new site.
             if store.publishExecutionRecords.contains(where: {
               $0.plan.target.profileID == store.activeProfileID
-            }) || ledger.entries.isEmpty {
+            }) {
               PublishExecutionHistorySection(
                 store: store,
                 activeProfileID: store.activeProfileID,
                 records: store.publishExecutionRecords
               )
             }
-            releasePrimaryMetrics(ledger.summary)
-            releaseSecondaryMetrics(ledger.summary)
             releaseOperationalContent(
               ledger,
               usesSplitLayout: WorkbenchPageMetrics.usesOperationalSplit(
@@ -86,7 +82,7 @@ struct ReleaseHistoryDetailView: View {
   }
 
   func beginFailureReview(_ record: ReleaseRecord) {
-    guard !store.isQuickHideActive, !store.isRemoteRepositoryPublishing,
+    guard !store.isRemoteRepositoryPublishing,
       store.activeProfileReleaseRecords.contains(where: { $0.id == record.id }),
       ReleaseFailureReviewContext.canReview(
         record,
@@ -163,9 +159,6 @@ struct ReleaseHistoryDetailView: View {
       }
       .accessibilityIdentifier("release-history-copy-ledger")
 
-      Text("\(ledger.summary.totalCount) 条")
-        .font(.callout.monospacedDigit())
-        .foregroundStyle(.secondary)
     }
   }
 
@@ -219,9 +212,7 @@ struct ReleaseHistoryDetailView: View {
     } else {
       VStack(alignment: .leading, spacing: 16) {
         releaseActionQueueSection(ledger)
-        deploymentOverviewSummary(ledger.deploymentOverview)
         deploymentPollingSummary
-        deploymentStatusSummary
         releaseRecordsSection(ledger)
       }
       .accessibilityElement(children: .contain)
@@ -241,9 +232,7 @@ struct ReleaseHistoryDetailView: View {
 
   private func releaseDeploymentColumn(_ ledger: ReleaseLedger) -> some View {
     VStack(alignment: .leading, spacing: 16) {
-      deploymentOverviewSummary(ledger.deploymentOverview)
       deploymentPollingSummary
-      deploymentStatusSummary
     }
     .frame(maxWidth: .infinity, alignment: .topLeading)
     .accessibilityElement(children: .contain)
@@ -257,9 +246,11 @@ struct ReleaseHistoryDetailView: View {
           .font(.workbenchSectionTitle)
           .accessibilityAddTraits(.isHeader)
         Spacer()
-        Text("\(ledger.entries.count) 条")
-          .font(.callout.monospacedDigit())
-          .foregroundStyle(.secondary)
+        if !ledger.entries.isEmpty {
+          Text("\(ledger.entries.count) 条")
+            .font(.callout.monospacedDigit())
+            .foregroundStyle(.secondary)
+        }
       }
 
       if ledger.entries.isEmpty {
@@ -339,76 +330,29 @@ struct ReleaseHistoryDetailView: View {
     )
   }
 
-  private func releasePrimaryMetrics(_ summary: ReleaseLedgerSummary) -> some View {
-    PrimaryStatusMetricGrid {
-      MetricTile(
-        title: "阻断",
-        value: "\(summary.failedCount)",
-        semantic: summary.failedCount == 0 ? .passed : .blocking
-      )
-      MetricTile(
-        title: "待处理",
-        value: "\(summary.actionItemCount)",
-        semantic: summary.actionItemCount == 0 ? .passed : .warning
-      )
-      MetricTile(title: "已上线", value: "\(summary.succeededCount)", semantic: .passed)
-    }
-    .accessibilityIdentifier("release-history-primary-metrics")
-  }
-
-  private func releaseSecondaryMetrics(_ summary: ReleaseLedgerSummary) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Label("发布统计", systemImage: "chart.bar.xaxis")
-        .font(.workbenchSectionTitle)
-        .accessibilityAddTraits(.isHeader)
-
-      LazyVGrid(
-        columns: [GridItem(.adaptive(minimum: 138, maximum: 220))],
-        spacing: 10
-      ) {
-        MetricTile(title: "全部记录", value: "\(summary.totalCount)", semantic: .neutral)
-        MetricTile(title: "仅本地", value: "\(summary.localPendingCount)", semantic: .neutral)
-        MetricTile(title: "等待合并", value: "\(summary.reviewPendingCount)", semantic: .progress)
-        MetricTile(title: "等待部署", value: "\(summary.deploymentPendingCount)", semantic: .progress)
-        MetricTile(
-          title: "远端待确认",
-          value: "\(summary.remoteRecoveryPendingCount)",
-          semantic: summary.remoteRecoveryPendingCount == 0 ? .passed : .warning
-        )
-        MetricTile(title: "可回滚", value: "\(summary.rollbackAvailableCount)", semantic: .neutral)
-      }
-    }
-    .padding(12)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("release-history-secondary-metrics")
-  }
-
+  @ViewBuilder
   private func releaseActionQueueSection(_ ledger: ReleaseLedger) -> some View {
-    LazyVStack(alignment: .leading, spacing: 10) {
-      HStack {
-        Label("发布行动队列", systemImage: "checklist")
-          .font(.workbenchSectionTitle)
-          .accessibilityAddTraits(.isHeader)
-        Spacer()
-        Text("\(ledger.actionItems.count) 项")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
+    if !ledger.actionItems.isEmpty {
+      LazyVStack(alignment: .leading, spacing: 10) {
+        HStack {
+          Label("发布行动队列", systemImage: "checklist")
+            .font(.workbenchSectionTitle)
+            .accessibilityAddTraits(.isHeader)
+          Spacer()
+        }
 
-      if ledger.actionItems.isEmpty {
-        Label("当前没有需要处理的发布事项。", systemImage: "checkmark.circle")
-          .foregroundStyle(.secondary)
-      } else {
         ForEach(ledger.actionItems) { item in
           releaseActionRow(item)
         }
       }
+      .padding(12)
+      .background(
+        WorkbenchBackgroundStyle.card,
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+      )
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("release-history-action-queue")
     }
-    .padding(12)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("release-history-action-queue")
   }
 
   private func releaseActionRow(_ item: ReleaseLedgerActionItem) -> some View {
@@ -637,74 +581,6 @@ struct ReleaseHistoryDetailView: View {
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
-  private func deploymentOverviewSummary(_ overview: ReleaseDeploymentOverview) -> some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Label(overview.title, systemImage: overview.level.systemImage)
-        .font(.workbenchSectionTitle)
-        .foregroundStyle(statusForeground(overview.level))
-        .accessibilityAddTraits(.isHeader)
-      Text(overview.message)
-        .font(.callout)
-        .foregroundStyle(.secondary)
-      Text(overview.nextActionTitle)
-        .font(.callout.weight(.medium))
-        .foregroundStyle(statusForeground(overview.level))
-
-      LazyVGrid(
-        columns: [GridItem(.adaptive(minimum: 112), spacing: 8)],
-        spacing: 8
-      ) {
-        MetricTile(title: "已检查", value: "\(overview.checkedRecordCount)", semantic: .passed)
-        MetricTile(
-          title: "未检查",
-          value: "\(overview.uncheckedDeploymentCount)",
-          semantic: overview.uncheckedDeploymentCount == 0 ? .passed : .warning
-        )
-        MetricTile(
-          title: "运行中",
-          value: "\(overview.runningDeploymentCount)",
-          semantic: overview.runningDeploymentCount == 0 ? .neutral : .progress
-        )
-        MetricTile(
-          title: "失败",
-          value: "\(overview.failedDeploymentCount)",
-          semantic: overview.failedDeploymentCount == 0 ? .passed : .blocking
-        )
-      }
-
-      if let lastCheckedAt = overview.lastCheckedAt {
-        Label("最近检查：\(lastCheckedAt.workbenchShortText)", systemImage: "clock.arrow.circlepath")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-
-      Text(overview.nextActionMessage)
-        .font(.callout)
-        .foregroundStyle(.secondary)
-
-      ForEach(overview.highlightedSignals) { signal in
-        HStack(alignment: .top, spacing: 8) {
-          Image(systemName: signal.level.systemImage)
-            .foregroundStyle(statusForeground(signal.level))
-            .frame(width: 16)
-          VStack(alignment: .leading, spacing: 2) {
-            Text(signal.title)
-              .font(.callout.weight(.medium))
-            Text(signal.message)
-              .font(.callout)
-              .foregroundStyle(.secondary)
-              .fixedSize(horizontal: false, vertical: true)
-          }
-          Spacer()
-        }
-      }
-    }
-    .padding(14)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("release-history-deployment-overview")
-  }
-
   @ViewBuilder
   private var deploymentPollingSummary: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -732,81 +608,19 @@ struct ReleaseHistoryDetailView: View {
         .accessibilityIdentifier("release-history-polling-copy-checklist")
         Button {
           Task {
-            await store.runDeploymentPolling()
+            await store.runDeploymentPollingManually()
           }
         } label: {
           releaseHistoryActionLabel("立即检查", systemImage: "arrow.clockwise")
         }
-        .disabled(!store.deploymentPollingSettings.isEnabled || store.isDeploymentStatusChecking)
+        .disabled(store.isDeploymentStatusChecking)
         .accessibilityLabel("立即检查 PR/MR 与部署状态")
         .accessibilityIdentifier("release-history-polling-run-now")
       }
 
-      VStack(alignment: .leading, spacing: 8) {
-        Toggle("启用 PR/MR 与部署状态自动检查", isOn: deploymentPollingEnabledBinding)
-          .toggleStyle(.switch)
-          .accessibilityLabel("启用 PR/MR 与部署状态自动检查")
-          .accessibilityValue(store.deploymentPollingSettings.isEnabled ? "开启" : "关闭")
-          .accessibilityIdentifier("release-history-polling-enabled")
-
-        Picker("最短检查间隔", selection: deploymentPollingIntervalBinding) {
-          ForEach(deploymentPollingIntervalOptions, id: \.self) { minutes in
-            Text("\(minutes) 分钟").tag(minutes)
-          }
-        }
-        .pickerStyle(.segmented)
-        .tint(workbenchAccentColor)
-        .frame(maxWidth: 320)
-        .disabled(!store.deploymentPollingSettings.isEnabled || store.isDeploymentStatusChecking)
-        .accessibilityLabel("远端发布状态自动检查最短间隔")
-        .accessibilityValue("\(store.deploymentPollingSettings.normalizedIntervalMinutes) 分钟")
-        .accessibilityIdentifier("release-history-polling-interval")
-      }
-
-      LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 8)], spacing: 8) {
-        MetricTile(
-          title: "状态",
-          value: store.deploymentPollingSettings.isEnabled ? store.deploymentPollingState.status.localizedDisplayName : "已关闭",
-          systemImage: store.deploymentPollingState.status.systemImage
-        )
-        MetricTile(
-          title: "待合并",
-          value: "\(store.remoteReviewPollingEligibleRecordCount)",
-          systemImage: "arrow.triangle.pull"
-        )
-        MetricTile(
-          title: "待部署",
-          value: "\(store.deploymentPollingEligibleRecords.count)",
-          systemImage: "hourglass"
-        )
-        MetricTile(
-          title: "最短间隔",
-          value: store.deploymentPollingSettings.isEnabled ? "\(store.deploymentPollingSettings.normalizedIntervalMinutes) 分钟" : "-",
-          systemImage: "timer"
-        )
-        MetricTile(
-          title: "正常",
-          value: "\(store.deploymentPollingState.successCount)",
-          systemImage: DeploymentStatusLevel.success.systemImage
-        )
-        MetricTile(
-          title: "部署中",
-          value: "\(store.deploymentPollingState.runningCount)",
-          systemImage: DeploymentStatusLevel.running.systemImage
-        )
-        MetricTile(
-          title: "需处理",
-          value: "\(store.deploymentPollingState.attentionCount)",
-          systemImage: store.deploymentPollingState.attentionCount > 0 ? DeploymentStatusLevel.failed.systemImage : "checkmark.circle"
-        )
-      }
-
       HStack(spacing: 12) {
         if let lastRunAt = store.deploymentPollingState.lastRunAt {
-          Label("上次：\(lastRunAt.workbenchShortText)", systemImage: "clock.arrow.circlepath")
-        }
-        if let nextRunAt = store.deploymentPollingState.nextRunAt, store.deploymentPollingSettings.isEnabled {
-          Label("可再次自动检查：\(nextRunAt.workbenchShortText)", systemImage: "clock")
+          Label("上次检查：\(lastRunAt.workbenchShortText)", systemImage: "clock.arrow.circlepath")
         }
       }
       .font(.caption)
@@ -855,115 +669,6 @@ struct ReleaseHistoryDetailView: View {
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("release-history-deployment-polling")
-  }
-
-  private var deploymentPollingIntervalOptions: [Int] {
-    [
-      DeploymentPollingSettings.minimumIntervalMinutes,
-      10,
-      15,
-      30,
-      DeploymentPollingSettings.maximumIntervalMinutes,
-    ]
-  }
-
-  private var deploymentPollingEnabledBinding: Binding<Bool> {
-    Binding(
-      get: { store.deploymentPollingSettings.isEnabled },
-      set: { isEnabled in
-        store.updateDeploymentPollingSettings(
-          DeploymentPollingSettings(
-            isEnabled: isEnabled,
-            intervalMinutes: store.deploymentPollingSettings.normalizedIntervalMinutes
-          )
-        )
-      }
-    )
-  }
-
-  private var deploymentPollingIntervalBinding: Binding<Int> {
-    Binding(
-      get: { store.deploymentPollingSettings.normalizedIntervalMinutes },
-      set: { intervalMinutes in
-        store.updateDeploymentPollingSettings(
-          DeploymentPollingSettings(
-            isEnabled: store.deploymentPollingSettings.isEnabled,
-            intervalMinutes: intervalMinutes
-          )
-        )
-      }
-    )
-  }
-
-  @ViewBuilder
-  private var deploymentStatusSummary: some View {
-    let readiness = store.activeDeploymentStatusReadiness
-
-    VStack(alignment: .leading, spacing: 10) {
-      Text("部署状态")
-        .font(.workbenchSectionTitle)
-        .accessibilityAddTraits(.isHeader)
-      Text("检查 GitHub Pages / Actions、GitLab Pipeline，或 Netlify、Vercel、Cloudflare Pages、自定义状态端点。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
-      if let latestRecord = store.activeProfileReleaseRecords.first,
-         store.canCheckDeploymentStatus(for: latestRecord) {
-        Button {
-          Task {
-            await store.refreshDeploymentStatus(for: latestRecord)
-          }
-        } label: {
-          releaseHistoryActionLabel("刷新最新", systemImage: "arrow.clockwise")
-        }
-        .disabled(store.isDeploymentStatusChecking)
-        .accessibilityIdentifier("release-history-deployment-refresh-latest")
-      }
-
-      Label(
-        readiness.statusTitle,
-        systemImage: readiness.isAPIReady ? "checkmark.seal" : readiness.canCheckAnyStatus ? "exclamationmark.triangle" : "xmark.octagon"
-      )
-      .font(.callout.weight(.medium))
-      .foregroundStyle(readiness.isAPIReady ? WorkbenchTheme.success : readiness.canCheckAnyStatus ? WorkbenchTheme.warning : WorkbenchTheme.risk)
-
-      VStack(alignment: .leading, spacing: 4) {
-        Label(readiness.provider.integrationDepth.title, systemImage: readiness.provider.systemImage)
-          .font(.callout.weight(.semibold))
-        Text(readiness.provider.integrationDepth.detail)
-          .font(.callout)
-          .foregroundStyle(.secondary)
-      }
-      .padding(8)
-      .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
-
-      if !readiness.missingRequirements.isEmpty {
-        Text("待补齐：\(readiness.missingRequirements.joined(separator: "、"))")
-          .font(.callout)
-          .foregroundStyle(WorkbenchTheme.warning)
-      }
-
-      if store.isDeploymentStatusChecking {
-        HStack(spacing: 8) {
-          ProgressView()
-            .controlSize(.small)
-          Text("正在检查部署状态…")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-        }
-      } else if let message = store.deploymentStatusMessage {
-        Text(message)
-          .font(.callout)
-          .foregroundStyle(.secondary)
-      } else {
-        Text("发布后可在每条记录上手动检查部署状态；线上发布成功后会自动检查一次。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-      }
-    }
-    .padding(14)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("release-history-deployment-status")
   }
 
 

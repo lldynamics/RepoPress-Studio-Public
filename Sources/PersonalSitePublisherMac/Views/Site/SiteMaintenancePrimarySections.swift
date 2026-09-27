@@ -192,7 +192,7 @@ struct SiteMaintenanceActionQueueSection: View {
         Button {
           sendToAI(item)
         } label: {
-          Label("交给 AI", systemImage: "sparkles")
+          Label("AI 修复", systemImage: "sparkles")
         }
         .disabled(item.draftID == nil || isAIChatRunning)
 

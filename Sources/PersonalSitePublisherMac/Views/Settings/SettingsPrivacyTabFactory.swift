@@ -6,9 +6,6 @@ struct SettingsPrivacyTabFactory {
     PrivacySettingsView(
       privacySettings: context.store.privacySettings,
       status: context.store.privacyProtectionStatus,
-      onQuickHide: {
-        context.actions.quickHideFromSettings()
-      },
       updatePrivacySettings: { settings in
         context.actions.updatePrivacySettings(settings)
       }

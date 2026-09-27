@@ -19,6 +19,22 @@ struct SettingsSearchItem: Identifiable, Hashable, Sendable {
 }
 
 enum SettingsSearchIndex {
+  private static func subsectionItem(
+    _ subsection: SettingsSubsection,
+    id: String,
+    keywords: [String]
+  ) -> SettingsSearchItem {
+    SettingsSearchItem(
+      id: id,
+      tab: subsection.tab,
+      sectionTitle: subsection.title,
+      destination: .tab(subsection.tab),
+      keywords: keywords,
+      detail: subsection.subtitle,
+      systemImage: subsection.systemImage
+    )
+  }
+
   static let allItems: [SettingsSearchItem] = [
     // 站点概览
     SettingsSearchItem(
@@ -77,14 +93,10 @@ enum SettingsSearchIndex {
       detail: String(localized: "管理站点的静态生成引擎类型、网站主域名和目标 Git 分支。"),
       systemImage: "globe"
     ),
-    SettingsSearchItem(
+    subsectionItem(
+      .rulesDiscovery,
       id: "rules.discovery",
-      tab: .defaultRules,
-      sectionTitle: SettingsSubsection.rulesDiscovery.title,
-      destination: .tab(.defaultRules),
-      keywords: ["仓库发现", "扫描内容目录", "识别结构", "Discovery"],
-      detail: SettingsSubsection.rulesDiscovery.subtitle,
-      systemImage: SettingsSubsection.rulesDiscovery.systemImage
+      keywords: ["仓库发现", "扫描内容目录", "识别结构", "Discovery"]
     ),
 
     // 发布连接
@@ -112,18 +124,6 @@ enum SettingsSearchIndex {
       detail: String(localized: "配置自动化构建触发钩子与各静态托管平台的部署令牌。"),
       systemImage: "arrow.up.icloud"
     ),
-    SettingsSearchItem(
-      id: "token.analytics",
-      tab: .token,
-      sectionTitle: String(localized: "站点阅读统计与分析"),
-      destination: .token(.analytics),
-      keywords: [
-        "Umami", "Plausible", "Google Analytics", "阅读统计", "访问量", "PV", "UV", "Analytics", "统计 API",
-      ],
-      detail: String(localized: "连接私有或云端统计平台，在发布后查看文章访问与互动数据。"),
-      systemImage: "chart.bar.xaxis"
-    ),
-
     // AI 助手
     SettingsSearchItem(
       id: "ai.provider",
@@ -147,14 +147,10 @@ enum SettingsSearchIndex {
       detail: String(localized: "设置 API Key 存储在系统钥匙串、受限本地配置还是仅本次运行保留。"),
       systemImage: "lock.shield"
     ),
-    SettingsSearchItem(
+    subsectionItem(
+      .aiSiteConnection,
       id: "ai.siteConnection",
-      tab: .siteAI,
-      sectionTitle: SettingsSubsection.aiSiteConnection.title,
-      destination: .tab(.siteAI),
-      keywords: ["连接选择", "连接档案", "复制配置", "站点 AI", "connection profile"],
-      detail: SettingsSubsection.aiSiteConnection.subtitle,
-      systemImage: SettingsSubsection.aiSiteConnection.systemImage
+      keywords: ["连接选择", "连接档案", "复制配置", "站点 AI", "connection profile"]
     ),
     SettingsSearchItem(
       id: "ai.writingStyle",
@@ -163,16 +159,12 @@ enum SettingsSearchIndex {
       destination: .ai(.writingStyle),
       keywords: ["写作风格", "System Prompt", "语气", "润色偏好", "审稿规则", "提示词", "Template", "style"],
       detail: String(localized: "自定义 AI 润色、审稿、起标题时的专属写作语调与排版习惯。"),
-      systemImage: "wand.and.stars"
+      systemImage: "sparkles"
     ),
-    SettingsSearchItem(
+    subsectionItem(
+      .aiAdvanced,
       id: "ai.advanced",
-      tab: .ai,
-      sectionTitle: SettingsSubsection.aiAdvanced.title,
-      destination: .tab(.ai),
-      keywords: ["温度", "超时", "代理", "网络", "能力检查", "参数"],
-      detail: SettingsSubsection.aiAdvanced.subtitle,
-      systemImage: SettingsSubsection.aiAdvanced.systemImage
+      keywords: ["温度", "超时", "代理", "网络", "能力检查", "参数"]
     ),
 
     // 通用与外观
@@ -189,15 +181,6 @@ enum SettingsSearchIndex {
       systemImage: "paintpalette"
     ),
     SettingsSearchItem(
-      id: "appearance.language",
-      tab: .appearance,
-      sectionTitle: String(localized: "应用语言与本地化"),
-      destination: .tab(.appearance),
-      keywords: ["语言", "Language", "简体中文", "English", "多语言", "本地化", "Locale"],
-      detail: String(localized: "切换应用界面显示语言（跟随系统、简体中文或 English）。"),
-      systemImage: "character.book.closed"
-    ),
-    SettingsSearchItem(
       id: "appearance.launch",
       tab: .appearance,
       sectionTitle: String(localized: "启动与自动扫描行为"),
@@ -206,14 +189,10 @@ enum SettingsSearchIndex {
       detail: String(localized: "控制应用启动时是否自动扫描 Git 仓库与内容健康状态。"),
       systemImage: "gearshape.arrow.triangle.2.circlepath"
     ),
-    SettingsSearchItem(
+    subsectionItem(
+      .appearanceDefaults,
       id: "appearance.defaults",
-      tab: .editor,
-      sectionTitle: SettingsSubsection.appearanceDefaults.title,
-      destination: .tab(.editor),
-      keywords: ["新文章", "默认值", "Front Matter", "全局预设"],
-      detail: SettingsSubsection.appearanceDefaults.subtitle,
-      systemImage: SettingsSubsection.appearanceDefaults.systemImage
+      keywords: ["新文章", "默认值", "Front Matter", "全局预设"]
     ),
 
     // 编辑器
@@ -232,29 +211,25 @@ enum SettingsSearchIndex {
     SettingsSearchItem(
       id: "editor.comfort",
       tab: .editor,
-      sectionTitle: String(localized: "专注模式与写作辅助"),
+      sectionTitle: String(localized: "编辑辅助"),
       destination: .tab(.editor),
-      keywords: ["打字机模式", "Typewriter", "段落聚光灯", "光标居中", "纸张背景", "Zen Mode", "专注模式", "高亮当前段落"],
-      detail: String(localized: "启用打字机垂直居中滚动、当前段落聚光灯以及极简专注界面。"),
-      systemImage: "text.aligncenter"
+      keywords: ["拼写检查", "自动配对", "纸张背景", "Spell Check", "Automatic Pairing"],
+      detail: String(localized: "调整拼写检查、符号自动配对与柔和纸张背景。"),
+      systemImage: "sparkles"
     ),
     SettingsSearchItem(
       id: "editor.tools",
       tab: .editor,
-      sectionTitle: String(localized: "工具栏定制与排版自动化"),
+      sectionTitle: String(localized: "编辑器自动化"),
       destination: .tab(.editor),
-      keywords: ["格式工具栏", "工具栏定制", "气泡工具栏", "自动配对", "中英文空格", "排版净化", "字数统计", "快捷键", "Toolbar"],
-      detail: String(localized: "自定义顶部格式栏按钮、括号符号自动闭合与中英文排版规范。"),
+      keywords: ["自动化", "实时分析", "正文诊断", "文章大纲", "Analysis", "Outline"],
+      detail: String(localized: "设置输入时是否自动更新正文诊断与文章大纲。"),
       systemImage: "wrench.and.screwdriver"
     ),
-    SettingsSearchItem(
+    subsectionItem(
+      .editorPreview,
       id: "editor.preview",
-      tab: .editor,
-      sectionTitle: SettingsSubsection.editorPreview.title,
-      destination: .tab(.editor),
-      keywords: ["效果预览", "排版预览", "阅读效果", "Preview"],
-      detail: SettingsSubsection.editorPreview.subtitle,
-      systemImage: SettingsSubsection.editorPreview.systemImage
+      keywords: ["效果预览", "排版预览", "阅读效果", "Preview"]
     ),
 
     // RSS 阅读
@@ -294,43 +269,22 @@ enum SettingsSearchIndex {
       detail: String(localized: "设置已读文章的自动清理周期与数据库空间压缩。"),
       systemImage: "trash"
     ),
-    SettingsSearchItem(
+    subsectionItem(
+      .rssRefresh,
       id: "rss.refresh",
-      tab: .rss,
-      sectionTitle: SettingsSubsection.rssRefresh.title,
-      destination: .tab(.rss),
-      keywords: ["刷新频率", "后台刷新", "缓存", "Refresh"],
-      detail: SettingsSubsection.rssRefresh.subtitle,
-      systemImage: SettingsSubsection.rssRefresh.systemImage
+      keywords: ["刷新频率", "后台刷新", "缓存", "Refresh"]
     ),
 
     // 隐私与安全
-    SettingsSearchItem(
-      id: "privacy.quickHide",
-      tab: .privacy,
-      sectionTitle: String(localized: "快速隐藏与临时遮挡"),
-      destination: .tab(.privacy),
-      keywords: ["老板键", "Quick Hide", "快捷键", "临时遮挡", "模糊遮罩", "私密模式", "Privacy"],
-      detail: String(localized: "配置快速隐藏工作区界面的全局快捷键与临时遮挡遮罩。"),
-      systemImage: "eye.slash"
-    ),
-    SettingsSearchItem(
+    subsectionItem(
+      .privacyMasking,
       id: "privacy.masking",
-      tab: .privacy,
-      sectionTitle: SettingsSubsection.privacyMasking.title,
-      destination: .tab(.privacy),
-      keywords: ["遮挡", "路径隐藏", "正文隐藏", "预览保护"],
-      detail: SettingsSubsection.privacyMasking.subtitle,
-      systemImage: SettingsSubsection.privacyMasking.systemImage
+      keywords: ["遮挡", "路径隐藏", "正文隐藏", "预览保护"]
     ),
-    SettingsSearchItem(
+    subsectionItem(
+      .privacyStatus,
       id: "privacy.status",
-      tab: .privacy,
-      sectionTitle: SettingsSubsection.privacyStatus.title,
-      destination: .tab(.privacy),
-      keywords: ["保护状态", "快捷键", "安全状态"],
-      detail: SettingsSubsection.privacyStatus.subtitle,
-      systemImage: SettingsSubsection.privacyStatus.systemImage
+      keywords: ["保护状态", "快捷键", "安全状态"]
     ),
 
     // 数据与备份
@@ -359,20 +313,23 @@ enum SettingsSearchIndex {
       tab: .dataManagement,
       sectionTitle: String(localized: "工作区完整备份与恢复"),
       destination: .data(.backup),
-      keywords: ["工作区备份", "导出备份", "恢复工作区", "Zip 备份", "灾备", "迁移", "Backup", "Restore"],
-      detail: String(localized: "导出包含文章、素材和配置的完整工作区归档，或从已有备份还原。"),
+      keywords: [
+        "工作区备份", "导出备份", "恢复工作区", "立即备份", "自动备份", "保存位置", "资料库备份", "RSS 备份", "iCloud", "灾备",
+        "Backup", "Restore",
+      ],
+      detail: String(localized: "立即创建完整备份、预览恢复，或设置自动备份及保存位置。"),
       systemImage: "archivebox"
     ),
     SettingsSearchItem(
       id: "data.migration",
       tab: .dataManagement,
-      sectionTitle: String(localized: "外部站点内容迁移助手"),
+      sectionTitle: String(localized: "内容迁移与跨端交换"),
       destination: .data(.migration),
       keywords: [
         "内容迁移", "WordPress 导入", "Ghost 导入", "Notion 导入", "Hexo 迁移", "Markdown 批量迁移", "Migration",
-        "Import",
+        "Import", "跨端交换", "导出交换文件", "导入交换文件", "rpworkspaceexchange",
       ],
-      detail: String(localized: "从 WordPress、Ghost、Notion 或其他 Markdown 目录批量导入文章与素材。"),
+      detail: String(localized: "导入外部站点内容，或交换 iPhone、iPad 与 Mac 的站点配置、草稿和附件。"),
       systemImage: "arrow.triangle.2.circlepath.doc.on.clipboard"
     ),
   ]

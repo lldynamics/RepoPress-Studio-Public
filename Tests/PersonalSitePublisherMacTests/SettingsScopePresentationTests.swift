@@ -7,9 +7,12 @@ final class SettingsScopePresentationTests: XCTestCase {
   func testSharedConnectionsAndSiteWritingPreferencesHaveDistinctScopes() {
     XCTAssertFalse(SettingsTab.ai.isSiteScoped)
     XCTAssertEqual(SettingsTab.ai.scopePresentation, .sharedConnection)
+    XCTAssertEqual(SettingsTab.ai.title, "应用级 AI 连接")
+    XCTAssertEqual(SettingsTab.ai.scopePresentation.badgeTitle, "应用级共享连接")
     XCTAssertTrue(SettingsTab.ai.scopePresentation.accessibilityDescription.contains("所有引用"))
     XCTAssertTrue(SettingsTab.siteAI.isSiteScoped)
     XCTAssertEqual(SettingsTab.siteAI.scopePresentation, .currentSite)
+    XCTAssertEqual(SettingsTab.siteAI.title, "当前站点的 AI 与写作偏好")
     XCTAssertEqual(SettingsDestination.ai(.writingStyle).tab, .siteAI)
     XCTAssertEqual(SettingsDestination.ai(.credentials).tab, .ai)
   }

@@ -77,16 +77,4 @@ final class WorkbenchLayoutModeTests: XCTestCase {
     XCTAssertEqual(width(1_473), 300)
   }
 
-  func testHTMLSourceInspectorRequiresRoomForBothSourceColumns() {
-    XCTAssertEqual(WorkbenchLayoutMode.minimumHTMLSourceInspectorWorkspaceWidth, 1240)
-    XCTAssertEqual(
-      WorkbenchLayoutMode.sidebarWidth(
-        storedWidth: 380,
-        workspaceWidth: 1240,
-        centerMinimumWidth: 680,
-        inspectorPresented: true
-      ),
-      240
-    )
-  }
 }

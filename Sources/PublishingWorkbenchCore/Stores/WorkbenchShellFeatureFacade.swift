@@ -14,7 +14,6 @@ public final class WorkbenchShellFeatureFacade: ObservableObject {
     observe(store.publishingStore.$selectedDraftID)
     observe(store.publishingStore.$selectedSection)
     observe(store.publishingStore.$isInspectorPresented)
-    observe(store.privacyProtectionStore.$isQuickHideActive)
     observe(store.repositoryStore.$repositoryScanState)
     observe(store.persistenceStore.$recoveryMessage)
     observe(store.persistenceStore.$isRecoveryWriteProtected)
@@ -48,13 +47,7 @@ public final class WorkbenchShellFeatureFacade: ObservableObject {
     store.isInspectorPresented
   }
 
-  public var isQuickHideActive: Bool {
-    store.isQuickHideActive
-  }
 
-  public var canUseProtectedWorkbench: Bool {
-    !isQuickHideActive
-  }
 
   public var isRepositoryScanning: Bool {
     store.repositoryScanState.isScanning

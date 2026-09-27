@@ -782,21 +782,6 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     XCTAssertFalse(facade.dataSharingConsent.isGranted)
     revokeObserver.cancel()
 
-    let quickHideChange = expectation(description: "RSS quick hide changed")
-    let quickHideObserver = facade.objectWillChange.sink { quickHideChange.fulfill() }
-    store.activateQuickHide(reason: "RSS privacy test")
-    await fulfillment(of: [quickHideChange], timeout: 1)
-    XCTAssertTrue(facade.isQuickHideActive)
-    XCTAssertFalse(facade.canUseProtectedWorkbench)
-    quickHideObserver.cancel()
-
-    let quickHideRelease = expectation(description: "RSS quick hide released")
-    let quickHideReleaseObserver = facade.objectWillChange.sink { quickHideRelease.fulfill() }
-    store.deactivateQuickHide()
-    await fulfillment(of: [quickHideRelease], timeout: 1)
-    XCTAssertFalse(facade.isQuickHideActive)
-    XCTAssertTrue(facade.canUseProtectedWorkbench)
-    quickHideReleaseObserver.cancel()
   }
 
   func testActivityStatusFacadeObservesAIWithoutRebroadcastingRootStore() {

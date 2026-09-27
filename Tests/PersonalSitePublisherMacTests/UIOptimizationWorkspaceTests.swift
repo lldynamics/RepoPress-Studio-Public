@@ -37,7 +37,7 @@ final class UIOptimizationWorkspaceTests: XCTestCase {
     XCTAssertNil(state.consume(isKeyWindow: true))
   }
 
-  func testQuickHideCancelsDeferredAIRequest() {
+  func testCancellingDeferredAIRequestClearsItsActivationTarget() {
     var state = WorkspaceDeferredAIRequestState()
     state.enqueue(draftID: UUID(), quickPrompt: nil)
     state.cancel()

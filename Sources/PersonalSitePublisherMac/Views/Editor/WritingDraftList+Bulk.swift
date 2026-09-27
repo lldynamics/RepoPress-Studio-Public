@@ -29,7 +29,6 @@ extension WritingDraftColumn {
           Label("移动到文件夹", systemImage: "folder")
         }
         .controlSize(.small)
-        .disabled(!store.canUseProtectedWorkbench)
       }
 
       Button {

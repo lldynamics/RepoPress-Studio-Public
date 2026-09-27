@@ -8,7 +8,11 @@ struct TaxonomySuggestionField: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
+      Text(LocalizedStringKey(title))
+        .font(.caption)
+        .foregroundStyle(.secondary)
       TextField(title, text: textBinding)
+        .textFieldStyle(.roundedBorder)
         .accessibilityLabel("文章\(title)")
         .accessibilityValue(values.isEmpty ? "未填写" : values.joined(separator: "，"))
 

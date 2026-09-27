@@ -5,10 +5,6 @@ extension RepositoryStore {
   public func prepareRepositoryRebaseSync(
     store: WorkbenchStore
   ) async -> RepositoryRebaseSyncPreparation? {
-    guard store.canUseProtectedWorkbench else {
-      store.setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
-      return nil
-    }
     let profile = store.activeProfile
     guard repositoryRebaseRecoveryContext(for: profile) == nil,
       repositoryRebaseRecoveryDiagnostic == nil
@@ -56,10 +52,6 @@ extension RepositoryStore {
     _ confirmation: RepositoryRebaseSyncConfirmation,
     store: WorkbenchStore
   ) async -> RepositoryRebaseSyncResult? {
-    guard store.canUseProtectedWorkbench else {
-      store.setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
-      return nil
-    }
     let profile = store.activeProfile
     guard repositoryRebaseSyncConfirmation(confirmation, belongsTo: profile) else { return nil }
     guard repositoryRebaseRecoveryContext(for: profile) == nil,
@@ -156,10 +148,6 @@ extension RepositoryStore {
   public func prepareRepositorySafeSync(
     store: WorkbenchStore
   ) async -> RepositorySafeSyncPreparation? {
-    guard store.canUseProtectedWorkbench else {
-      store.setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
-      return nil
-    }
     let profile = store.activeProfile
     guard repositoryRebaseRecoveryContext(for: profile) == nil,
       repositoryRebaseRecoveryDiagnostic == nil
@@ -213,10 +201,6 @@ extension RepositoryStore {
     _ confirmation: RepositorySafeSyncConfirmation,
     store: WorkbenchStore
   ) async -> RepositorySafeSyncResult? {
-    guard store.canUseProtectedWorkbench else {
-      store.setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
-      return nil
-    }
     let profile = store.activeProfile
     guard repositorySafeSyncConfirmation(confirmation, belongsTo: profile) else { return nil }
     guard repositoryRebaseRecoveryContext(for: profile) == nil,

@@ -1,12 +1,12 @@
 import Foundation
+import PublishingWorkbenchCore
 import XCTest
 
 @testable import PersonalSitePublisherMac
-import PublishingWorkbenchCore
 
 @MainActor
 final class RepositoryHTMLSourceSessionTests: XCTestCase {
-  func testRefreshOpenEditAndSaveRoundTrip() async throws {
+  func testRefreshListsHTMLWithoutChangingRepositoryFiles() async throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture.root) }
     try Data("<main>initial</main>\n".utf8)
@@ -18,48 +18,82 @@ final class RepositoryHTMLSourceSessionTests: XCTestCase {
     await session.refreshFiles(profile: fixture.profile)
     XCTAssertEqual(session.files.map(\.repositoryPath), ["index.html"])
 
-    await session.open(path: "index.html", profile: fixture.profile)
-    XCTAssertEqual(session.activeDocument?.text, "<main>initial</main>\n")
-    session.updateText("<main>saved</main>\n")
-    XCTAssertTrue(session.hasUnsavedChanges)
-
-    let didSave = await session.save(profile: fixture.profile)
-    XCTAssertTrue(didSave)
-    XCTAssertFalse(session.hasUnsavedChanges)
     XCTAssertEqual(
       try String(
         contentsOf: fixture.root.appendingPathComponent("index.html"),
         encoding: .utf8
       ),
-      "<main>saved</main>\n"
+      "<main>initial</main>\n"
     )
-    session.close()
   }
 
-  func testExternalModificationKeepsEditedDocumentAndReportsConflict() async throws {
+  func testQueuedFileRequestCanBeConsumed() throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture.root) }
-    let fileURL = fixture.root.appendingPathComponent("index.html")
-    try Data("<p>initial</p>\n".utf8).write(to: fileURL)
-
     let session = RepositoryHTMLSourceSession()
-    await session.open(path: "index.html", profile: fixture.profile)
-    session.updateText("<p>editor</p>\n")
-    try Data("<p>external</p>\n".utf8).write(to: fileURL)
+    session.requestOpen(repositoryPath: "index.html", profile: fixture.profile)
+    let request = session.openRequest
+    XCTAssertEqual(request?.repositoryPath, "index.html")
+    XCTAssertEqual(
+      request?.repositoryIdentity,
+      RepositoryHTMLSourceRepositoryIdentity(profile: fixture.profile)
+    )
+    session.consumeOpenRequest(id: UUID())
+    XCTAssertEqual(session.openRequest?.id, request?.id)
+    if let request { session.consumeOpenRequest(id: request.id) }
+    XCTAssertNil(session.openRequest)
+  }
 
-    let didSave = await session.save(profile: fixture.profile)
-    XCTAssertFalse(didSave)
-    XCTAssertTrue(session.hasExternalConflict)
-    XCTAssertEqual(session.activeDocument?.text, "<p>editor</p>\n")
-    XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), "<p>external</p>\n")
-    session.close()
+  func testRepositorySwitchDropsOldRequestAndFileList() async throws {
+    let first = try makeFixture()
+    let second = try makeFixture()
+    defer {
+      try? FileManager.default.removeItem(at: first.root)
+      try? FileManager.default.removeItem(at: second.root)
+    }
+    try Data("first".utf8).write(to: first.root.appendingPathComponent("same.html"))
+    try Data("second".utf8).write(to: second.root.appendingPathComponent("other.html"))
+    let session = RepositoryHTMLSourceSession()
+    await session.refreshFiles(profile: first.profile)
+    session.requestOpen(repositoryPath: "same.html", profile: first.profile)
+
+    await session.refreshFiles(profile: second.profile)
+
+    XCTAssertNil(session.openRequest)
+    XCTAssertEqual(session.files.map(\.repositoryPath), ["other.html"])
+    XCTAssertEqual(
+      session.repositoryIdentity,
+      RepositoryHTMLSourceRepositoryIdentity(profile: second.profile)
+    )
+  }
+
+  func testValidatedDeepLinkAddsFileOutsideBrowserScan() async throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    let path = ".well-known/site.html"
+    let url = fixture.root.appendingPathComponent(path)
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try Data("<p>tracked</p>".utf8).write(to: url)
+    let session = RepositoryHTMLSourceSession()
+    await session.refreshFiles(profile: fixture.profile)
+    XCTAssertTrue(session.files.isEmpty)
+
+    let file = try RepositoryHTMLFileService().descriptor(
+      profile: fixture.profile,
+      repositoryPath: path
+    )
+    session.includeValidatedFile(file, profile: fixture.profile)
+    XCTAssertEqual(session.files.map(\.repositoryPath), [path])
   }
 
   func testFileFilterMatchesPathCaseInsensitivelyAndPreservesOrdering() {
     let files = [
       descriptor("pages/About.HTML"),
       descriptor("index.html"),
-      descriptor("templates/post.htm")
+      descriptor("templates/post.htm"),
     ]
     XCTAssertEqual(
       RepositoryHTMLSourceFileFilter.filtered(files, query: "  PAGES  ").map(\.repositoryPath),
@@ -79,8 +113,7 @@ final class RepositoryHTMLSourceSessionTests: XCTestCase {
     RepositoryHTMLFileDescriptor(
       repositoryPath: path,
       byteSize: 128,
-      modificationDate: nil,
-      isEditable: true
+      modificationDate: nil
     )
   }
 
@@ -98,12 +131,12 @@ final class RepositoryContextStageTests: XCTestCase {
   func testPrimaryNavigationOnlyContainsRepositoryInspectionCategories() {
     XCTAssertEqual(
       RepositoryContextStage.navigationStages,
-      [.overview, .changes, .history]
+      [.overview, .changes, .source, .history]
     )
   }
 
-  func testSourceEditorRemainsAContextualDestination() {
-    XCTAssertEqual(RepositoryContextStage.source.primaryNavigationStage, .changes)
+  func testSourceFileBrowserHasItsOwnNavigationDestination() {
+    XCTAssertEqual(RepositoryContextStage.source.primaryNavigationStage, .source)
   }
 
   func testOnlyRepositoryIndependentCategoriesRemainAvailableWithoutARepository() {
@@ -126,10 +159,8 @@ final class OperationalWorkspaceContextStageTests: XCTestCase {
     )
   }
 
-  func testContentHealthNavigationKeepsEveryActionScopeVisible() {
-    let expectedFilters: [ContentHealthContextFilter] = [
-      .overview, .publicRisks, .aiFixes, .siteIssues, .maintenance,
-    ]
+  func testContentHealthNavigationUsesOneProblemList() {
+    let expectedFilters: [ContentHealthContextFilter] = [.overview]
     XCTAssertEqual(
       ContentHealthContextFilter.navigationFilters,
       expectedFilters

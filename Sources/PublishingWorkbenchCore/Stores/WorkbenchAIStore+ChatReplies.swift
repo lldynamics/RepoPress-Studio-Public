@@ -11,10 +11,6 @@ extension WorkbenchAIStore {
     expectedContextMode: AIPublishingChatContextMode? = nil,
     expectedDraftConversation: AIChatDraftConversationExpectation? = nil
   ) async -> AIPublishingChatMessage? {
-    guard store.canUseProtectedWorkbench else {
-      store.setAIChatMessage(aiChatQuickHideOperationMessage())
-      return nil
-    }
 
     let trimmed = text.trimmedForPublishing
     guard !trimmed.isEmpty || !imageAttachments.isEmpty else {

@@ -2,12 +2,9 @@ import SwiftUI
 
 /// Application-wide editor preferences.
 ///
-/// These controls intentionally bind to the same `@AppStorage` keys used by
-/// the composer. The settings page is only another presentation of those
-/// persisted values; it does not introduce a second editor configuration
-/// source.
+/// The single complete editor appearance surface. The Aa toolbar button opens
+/// this page, while writing modes remain in the editor's focus menu.
 struct EditorSettingsView: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @AppStorage(MarkdownEditorComfortPreferences.bodyFontStyleKey)
   private var bodyFontStyleRawValue = MarkdownEditorBodyFontStyle.defaultStyle.rawValue
   @AppStorage(MarkdownEditorComfortPreferences.fontSizeKey)
@@ -18,21 +15,12 @@ struct EditorSettingsView: View {
   private var bodyWidth = MarkdownEditorComfortConfiguration.defaultBodyWidth
   @AppStorage(MarkdownEditorComfortPreferences.spellCheckEnabledKey)
   private var isSpellCheckEnabled = MarkdownEditorComfortConfiguration.defaultSpellCheckEnabled
-  @AppStorage(MarkdownEditorComfortPreferences.typewriterModeEnabledKey)
-  private var isTypewriterModeEnabled = MarkdownEditorComfortConfiguration
-    .defaultTypewriterModeEnabled
-  @AppStorage(MarkdownEditorComfortPreferences.currentParagraphHighlightEnabledKey)
-  private var isCurrentParagraphHighlightEnabled = MarkdownEditorComfortConfiguration
-    .defaultCurrentParagraphHighlightEnabled
   @AppStorage(MarkdownEditorComfortPreferences.warmPaperBackgroundEnabledKey)
   private var isWarmPaperBackgroundEnabled = MarkdownEditorComfortConfiguration
     .defaultWarmPaperBackgroundEnabled
   @AppStorage(MarkdownEditorComfortPreferences.automaticPairingEnabledKey)
   private var isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration
     .defaultAutomaticPairingEnabled
-  @AppStorage(MarkdownEditorComfortPreferences.paragraphSpotlightEnabledKey)
-  private var isParagraphSpotlightEnabled = MarkdownEditorComfortConfiguration
-    .defaultParagraphSpotlightEnabled
   @AppStorage(MarkdownEditorComfortPreferences.realtimeAnalysisEnabledKey)
   private var isRealtimeAnalysisEnabled = MarkdownEditorComfortConfiguration
     .defaultRealtimeAnalysisEnabled
@@ -46,7 +34,6 @@ struct EditorSettingsView: View {
       EditorArticleDefaultsSection()
     }
     .formStyle(.grouped)
-    .scrollIndicators(.hidden)
     .padding(WorkbenchSpacing.content)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("editor-settings")
@@ -120,18 +107,6 @@ struct EditorSettingsView: View {
         accessibilityIdentifier: "editor-spell-check"
       )
       preferenceToggle(
-        title: "打字机模式（光标保持居中）",
-        detail: String(localized: "输入时让当前行保持在编辑区域中央。"),
-        isOn: $isTypewriterModeEnabled,
-        accessibilityIdentifier: "editor-typewriter-mode"
-      )
-      preferenceToggle(
-        title: "高亮当前段落",
-        detail: String(localized: "让当前编辑段落更容易被定位。"),
-        isOn: $isCurrentParagraphHighlightEnabled,
-        accessibilityIdentifier: "editor-current-paragraph-highlight"
-      )
-      preferenceToggle(
         title: "柔和纸张背景",
         detail: String(localized: "为编辑器使用自适应的暖白或暖黑背景。"),
         isOn: $isWarmPaperBackgroundEnabled,
@@ -142,12 +117,6 @@ struct EditorSettingsView: View {
         detail: String(localized: "输入左侧符号时自动补全右侧符号；可随时撤销。"),
         isOn: $isAutomaticPairingEnabled,
         accessibilityIdentifier: "editor-automatic-pairing"
-      )
-      preferenceToggle(
-        title: "段落焦点聚光灯（非焦点段落柔和淡出）",
-        detail: String(localized: "降低非当前段落的视觉干扰。"),
-        isOn: $isParagraphSpotlightEnabled,
-        accessibilityIdentifier: "editor-paragraph-spotlight"
       )
     } header: {
       Text("编辑辅助")
@@ -242,12 +211,6 @@ struct EditorSettingsView: View {
           if isWarmPaperBackgroundEnabled {
             previewTag(title: "暖纸", icon: "sun.max")
           }
-          if isParagraphSpotlightEnabled {
-            previewTag(title: "聚焦模式", icon: "scope")
-          }
-          if isTypewriterModeEnabled {
-            previewTag(title: "打字机居中", icon: "text.aligncenter")
-          }
         }
       }
       .padding(.bottom, 2)
@@ -257,30 +220,12 @@ struct EditorSettingsView: View {
         .fontDesign(previewBodyFontDesign)
         .lineSpacing(CGFloat(lineSpacing))
         .foregroundStyle(.primary)
-        .opacity(isParagraphSpotlightEnabled ? 0.45 : 1.0)
 
-      HStack(spacing: 0) {
-        if isCurrentParagraphHighlightEnabled {
-          RoundedRectangle(cornerRadius: 2)
-            .fill(workbenchAccentColor)
-            .frame(width: 3)
-            .padding(.trailing, 8)
-        }
-
-        Text("段落聚光灯与当前段落高亮能够帮助创作者排除视觉杂音，将心流完全凝聚在当下的字里行间。")
-          .font(previewBodyFont)
-          .fontDesign(previewBodyFontDesign)
-          .lineSpacing(CGFloat(lineSpacing))
-          .foregroundStyle(.primary)
-      }
-      .padding(.vertical, isCurrentParagraphHighlightEnabled ? 4 : 0)
-      .padding(.horizontal, isCurrentParagraphHighlightEnabled ? 6 : 0)
-      .background(
-        isCurrentParagraphHighlightEnabled
-          ? workbenchAccentColor.opacity(0.08)
-          : Color.clear,
-        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-      )
+      Text("合适的字体与留白，让长篇写作更舒适。代码与代码块始终使用等宽字体。")
+        .font(previewBodyFont)
+        .fontDesign(previewBodyFontDesign)
+        .lineSpacing(CGFloat(lineSpacing))
+        .foregroundStyle(.secondary)
     }
     .padding(14)
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -360,19 +305,18 @@ struct EditorSettingsView: View {
   }
 
   private func resetDefaults() {
+    UserDefaults.standard.set(
+      MarkdownEditorComfortConfiguration.defaultParagraphFocusEnabled,
+      forKey: MarkdownEditorComfortPreferences.paragraphFocusEnabledKey
+    )
     bodyFontStyleRawValue = MarkdownEditorBodyFontStyle.defaultStyle.rawValue
     fontSize = MarkdownEditorComfortConfiguration.defaultFontSize
     lineSpacing = MarkdownEditorComfortConfiguration.defaultLineSpacing
     bodyWidth = MarkdownEditorComfortConfiguration.defaultBodyWidth
     isSpellCheckEnabled = MarkdownEditorComfortConfiguration.defaultSpellCheckEnabled
-    isTypewriterModeEnabled = MarkdownEditorComfortConfiguration.defaultTypewriterModeEnabled
-    isCurrentParagraphHighlightEnabled =
-      MarkdownEditorComfortConfiguration.defaultCurrentParagraphHighlightEnabled
     isWarmPaperBackgroundEnabled =
       MarkdownEditorComfortConfiguration.defaultWarmPaperBackgroundEnabled
     isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration.defaultAutomaticPairingEnabled
-    isParagraphSpotlightEnabled =
-      MarkdownEditorComfortConfiguration.defaultParagraphSpotlightEnabled
     isRealtimeAnalysisEnabled =
       MarkdownEditorComfortConfiguration
       .defaultRealtimeAnalysisEnabled

@@ -107,7 +107,7 @@ extension KnowledgeSourceListColumn {
       EmptyStateView(
         title: "没有符合条件的资料",
         message: "智能集合会在资料元数据变化后自动更新。",
-        systemImage: "wand.and.stars",
+        systemImage: "line.3.horizontal.decrease.circle",
         density: .inline,
         actionTitle: "查看全部资料",
         actionSystemImage: "books.vertical",

@@ -6,7 +6,6 @@ struct WorkspaceResponsiveLayoutSnapshot: Equatable, Sendable {
     case constrained
     case compactInspector
     case standardInspector
-    case htmlSourceInspector
   }
 
   let band: Band
@@ -16,9 +15,7 @@ struct WorkspaceResponsiveLayoutSnapshot: Equatable, Sendable {
   )
 
   init(width: CGFloat) {
-    if width >= WorkbenchLayoutMode.minimumHTMLSourceInspectorWorkspaceWidth {
-      band = .htmlSourceInspector
-    } else if WorkbenchLayoutMode.allowsInspector(width: width) {
+    if WorkbenchLayoutMode.allowsInspector(width: width) {
       band = .standardInspector
     } else if WorkbenchLayoutMode.canManuallyRevealInspector(width: width) {
       band = .compactInspector
@@ -32,10 +29,9 @@ struct WorkspaceResponsiveLayoutSnapshot: Equatable, Sendable {
   }
 
   var allowsStandardInspector: Bool {
-    band == .standardInspector || band == .htmlSourceInspector
+    band == .standardInspector
   }
 
-  var allowsHTMLSourceInspector: Bool { band == .htmlSourceInspector }
   var canManuallyRevealInspector: Bool { band == .compactInspector }
 
   func canManuallyRevealInspector(for section: WorkspaceSection) -> Bool {

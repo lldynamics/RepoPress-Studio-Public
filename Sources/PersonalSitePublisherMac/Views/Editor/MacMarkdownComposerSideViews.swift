@@ -104,12 +104,12 @@ struct MarkdownShortcutHelpPanel: View {
         [
           (String(localized: "切换写作 / 资料库 / RSS / 站点 / 检查 / 图片"), "⌘1–6"),
           (String(localized: "命令面板与快速打开"), "⇧⌘K"),
-          (String(localized: "跨文章全文搜索"), "⌥⌘F"),
+          (String(localized: "任务中心"), "⌥⌘L"),
+          (String(localized: "搜索文章"), "⌥⌘F"),
           (String(localized: "专注模式"), "⇧⌘F"),
           (String(localized: "显示或隐藏侧栏"), "⌃⌘S"),
           (String(localized: "显示或隐藏详情栏"), "⌥⌘I"),
           (String(localized: "发布所有变更"), "⌥⌘P"),
-          (String(localized: "快速隐藏"), "⌃⌘L"),
           (String(localized: "查看快捷键说明"), "⌥⌘/"),
         ]
       ),
@@ -167,7 +167,7 @@ struct MarkdownShortcutHelpPanel: View {
           (String(localized: "采纳 AI 续写"), "⇥"),
           (String(localized: "丢弃 AI 续写"), "Esc"),
           (String(localized: "改写选中文本"), "⌥⌘R"),
-          (String(localized: "打开 AI 对话"), String(localized: "AI > 打开 AI 对话")),
+          (String(localized: "打开 AI 助手"), String(localized: "AI > 打开 AI 助手")),
           (String(localized: "复制上下文 Prompt"), String(localized: "AI > 复制上下文 Prompt")),
         ]
       )

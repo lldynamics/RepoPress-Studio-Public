@@ -329,7 +329,6 @@ struct RSSMaintenanceSettingsView: View {
       }
     }
     .formStyle(.grouped)
-    .scrollIndicators(.hidden)
     .padding(WorkbenchSpacing.content)
     .onAppear {
       normalizeBackgroundRefreshInterval()

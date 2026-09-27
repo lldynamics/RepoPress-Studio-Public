@@ -10,11 +10,9 @@ final class EditorAndRSSSettingsTests: XCTestCase {
       MarkdownEditorComfortPreferences.lineSpacingKey,
       MarkdownEditorComfortPreferences.bodyWidthKey,
       MarkdownEditorComfortPreferences.spellCheckEnabledKey,
-      MarkdownEditorComfortPreferences.typewriterModeEnabledKey,
-      MarkdownEditorComfortPreferences.currentParagraphHighlightEnabledKey,
+      MarkdownEditorComfortPreferences.paragraphFocusEnabledKey,
       MarkdownEditorComfortPreferences.warmPaperBackgroundEnabledKey,
       MarkdownEditorComfortPreferences.automaticPairingEnabledKey,
-      MarkdownEditorComfortPreferences.paragraphSpotlightEnabledKey,
     ]
 
     XCTAssertEqual(Set(keys).count, keys.count)

@@ -219,11 +219,12 @@ struct ArticleInspectorTabs: View {
   private var actionFooter: some View {
     HStack(spacing: 10) {
       if availableTabs.contains(.metadata) || availableTabs.contains(.seo) || availableTabs.contains(.images) {
-        Button {
-          store.save()
-        } label: {
-          Label("保存", systemImage: "tray.and.arrow.down")
-        }
+        MacMarkdownEditorSaveStatusIcon(
+          store: store,
+          draftID: draft.id,
+          isCompact: false,
+          accessibilityIdentifier: "article-inspector-save-status"
+        )
       }
 
       if availableTabs.contains(.checks) {

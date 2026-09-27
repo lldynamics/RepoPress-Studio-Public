@@ -610,6 +610,35 @@ public final class DeploymentStore: ObservableObject {
     store: WorkbenchStore,
     now: Date = Date()
   ) async -> Bool {
+    await runDeploymentPolling(
+      for: profileID,
+      store: store,
+      now: now,
+      allowsDisabledAutomation: false
+    )
+  }
+
+  /// An explicit user request may check pending records even when scheduled
+  /// polling is off. The scheduled tick continues to honor the setting.
+  @discardableResult
+  public func runDeploymentPollingManually(
+    store: WorkbenchStore,
+    now: Date = Date()
+  ) async -> Bool {
+    await runDeploymentPolling(
+      for: store.activeProfileID,
+      store: store,
+      now: now,
+      allowsDisabledAutomation: true
+    )
+  }
+
+  private func runDeploymentPolling(
+    for profileID: UUID,
+    store: WorkbenchStore,
+    now: Date,
+    allowsDisabledAutomation: Bool
+  ) async -> Bool {
     guard !activeDeploymentPollingProfileIDs.contains(profileID),
       let frozenProfile = store.profiles.first(where: { $0.id == profileID })
     else {
@@ -622,7 +651,7 @@ public final class DeploymentStore: ObservableObject {
       refreshDeploymentStatusChecking(for: profileID)
     }
     let settings = deploymentPollingSettings(for: profileID)
-    guard settings.isEnabled else {
+    guard settings.isEnabled || allowsDisabledAutomation else {
       setPollingState(
         DeploymentPollingState(
           status: .disabled,
@@ -656,7 +685,7 @@ public final class DeploymentStore: ObservableObject {
         DeploymentPollingState(
           status: .noEligibleRecords,
           lastRunAt: now,
-          nextRunAt: settings.nextRunDate(after: now),
+          nextRunAt: settings.isEnabled ? settings.nextRunDate(after: now) : nil,
           checkedRecordCount: 0,
           checkedRecords: [],
           message: CoreL10n.text("当前没有需要轮询的 PR/MR 或部署记录。")
@@ -787,7 +816,7 @@ public final class DeploymentStore: ObservableObject {
         reviewFailureCount: reviewFailureCount
       ),
       lastRunAt: now,
-      nextRunAt: settings.nextRunDate(after: now),
+      nextRunAt: settings.isEnabled ? settings.nextRunDate(after: now) : nil,
       checkedRecordCount: reviewCheckedCount + deploymentCheckedCount,
       checkedRecords: checkedRecords,
       reviewCheckedRecordCount: reviewCheckedCount,

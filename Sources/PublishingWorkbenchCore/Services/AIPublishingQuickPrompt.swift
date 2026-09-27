@@ -99,7 +99,7 @@ public enum AIPublishingChatQuickAction: String, CaseIterable, Identifiable, Sen
   public var systemImage: String {
     switch self {
     case .polishSuggestions:
-      return "wand.and.stars"
+      return "sparkles"
     case .tagSuggestions:
       return "tag"
     case .summary:

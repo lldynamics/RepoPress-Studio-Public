@@ -182,7 +182,6 @@ extension AIProviderPreset {
 extension AIWritingStylePreset {
   var workbenchDisplayNameSemanticKey: String {
     switch self {
-    case .jinfangZola: "display.ai-writing-style-preset.jinfang-zola"
     case .wechatArticle: "display.ai-writing-style-preset.wechat-article"
     case .techTutorial: "display.ai-writing-style-preset.tech-tutorial"
     case .newsBriefing: "display.ai-writing-style-preset.news-briefing"
@@ -195,7 +194,6 @@ extension AIWritingStylePreset {
 
   var fallbackDisplayName: String {
     switch self {
-    case .jinfangZola: "Jinfang Zola"
     case .wechatArticle: "微信公众号"
     case .techTutorial: "技术实战"
     case .newsBriefing: "快讯简报"

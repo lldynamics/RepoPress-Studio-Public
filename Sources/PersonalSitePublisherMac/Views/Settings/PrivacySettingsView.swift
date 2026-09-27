@@ -2,17 +2,11 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct PrivacySettingsView: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
-  @AppStorage("quickHideRequiresDeviceAuthenticationV1")
-  private var quickHideRequiresDeviceAuthentication = false
   let privacySettings: PrivacyProtectionSettings
   let status: PrivacyProtectionStatus
-  let onQuickHide: () -> Void
   let updatePrivacySettings: (PrivacyProtectionSettings) -> Void
   var body: some View {
     Form {
-      quickHideSection
-      quickHideAuthenticationSection
       PrivacySettingsVisibilitySection(
         masksPrivateContent: privacySettingBinding(keyPath: \.masksPrivateContent),
         subsectionAnchor: .privacyMasking
@@ -22,68 +16,9 @@ struct PrivacySettingsView: View {
       supportSection
     }
     .formStyle(.grouped)
-    .scrollIndicators(.hidden)
     .padding(WorkbenchSpacing.content)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("privacy-settings")
-  }
-
-  private var quickHideSection: some View {
-    Section {
-      HStack(spacing: 10) {
-        ZStack {
-          Circle()
-            .fill(workbenchAccentColor.opacity(0.14))
-            .frame(width: 32, height: 32)
-          Image(systemName: "keyboard")
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(workbenchAccentColor)
-        }
-        .accessibilityHidden(true)
-
-        VStack(alignment: .leading, spacing: 4) {
-          HStack(spacing: 4) {
-            Text("快速隐藏 / 临时遮挡")
-              .font(.subheadline.weight(.semibold))
-            Spacer()
-            HStack(spacing: 2) {
-              Text("⌃").font(.caption.monospaced().weight(.semibold)).padding(.horizontal, 4)
-                .padding(.vertical, 1).background(
-                  Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 3))
-              Text("⌘").font(.caption.monospaced().weight(.semibold)).padding(.horizontal, 4)
-                .padding(.vertical, 1).background(
-                  Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 3))
-              Text("L").font(.caption.monospaced().weight(.semibold)).padding(.horizontal, 4)
-                .padding(.vertical, 1).background(
-                  Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 3))
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("快捷键 Control Command L")
-          }
-          Text("在软件任何界面按下全局快捷键即可快速遮挡或隐藏工作台。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-      }
-      .padding(.vertical, 4)
-      .settingsSubsectionAnchor(.privacyQuickHide)
-    }
-  }
-
-  private var quickHideAuthenticationSection: some View {
-    Section("解除快速隐藏") {
-      Toggle("使用 Touch ID 或登录密码解除", isOn: $quickHideRequiresDeviceAuthentication)
-        .disabled(!QuickHideUnlockCoordinator.isAvailable && !quickHideRequiresDeviceAuthentication)
-        .accessibilityIdentifier("quick-hide-requires-authentication-toggle")
-      Text("开启后，返回工作台前须通过此 Mac 的身份验证。未开启时可直接返回。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-      if !QuickHideUnlockCoordinator.isAvailable {
-        Text("此 Mac 当前无法使用系统身份验证。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-    }
   }
 
   private var maskingPreviewSection: some View {
@@ -127,7 +62,6 @@ struct PrivacySettingsView: View {
   private var currentStatusSection: some View {
     PrivacySettingsCurrentStatusSection(
       status: status,
-      onQuickHide: onQuickHide,
       subsectionAnchor: .privacyStatus
     )
   }

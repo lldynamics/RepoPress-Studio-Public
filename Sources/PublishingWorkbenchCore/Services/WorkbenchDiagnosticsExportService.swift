@@ -7,7 +7,6 @@ public struct WorkbenchDiagnosticsContext: Codable, Equatable, Sendable {
   public var osVersion: String
   public var localeIdentifier: String
   public var isSafeMode: Bool
-  public var isQuickHideActive: Bool
   public var hasPersistenceRecoveryMessage: Bool
   public var draftCount: Int
   public var pendingDraftRecoveryCount: Int
@@ -27,7 +26,6 @@ public struct WorkbenchDiagnosticsContext: Codable, Equatable, Sendable {
     osVersion: String = ProcessInfo.processInfo.operatingSystemVersionString,
     localeIdentifier: String = Locale.current.identifier,
     isSafeMode: Bool,
-    isQuickHideActive: Bool,
     hasPersistenceRecoveryMessage: Bool,
     draftCount: Int,
     pendingDraftRecoveryCount: Int,
@@ -46,7 +44,6 @@ public struct WorkbenchDiagnosticsContext: Codable, Equatable, Sendable {
     self.osVersion = osVersion
     self.localeIdentifier = localeIdentifier
     self.isSafeMode = isSafeMode
-    self.isQuickHideActive = isQuickHideActive
     self.hasPersistenceRecoveryMessage = hasPersistenceRecoveryMessage
     self.draftCount = max(0, draftCount)
     self.pendingDraftRecoveryCount = max(0, pendingDraftRecoveryCount)

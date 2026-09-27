@@ -15,10 +15,6 @@ extension RepositoryStore {
     store: WorkbenchStore,
     commitMessage: String = "Publish all site changes"
   ) async -> RepositoryWorktreePublishConfirmation? {
-    guard store.canUseProtectedWorkbench else {
-      store.setGitActionMessage(store.quickHideOperationMessage, status: .warning)
-      return nil
-    }
     guard !isRemoteRepositoryPublishing,
       !isRemoteRepositoryChecking,
       !isLocalRepositoryBranchOperationRunning,
@@ -80,10 +76,6 @@ extension RepositoryStore {
     _ confirmation: RepositoryWorktreePublishConfirmation,
     store: WorkbenchStore
   ) async -> RepositoryWorktreePublishResult? {
-    guard store.canUseProtectedWorkbench else {
-      store.setGitActionMessage(store.quickHideOperationMessage, status: .warning)
-      return nil
-    }
     guard !isRemoteRepositoryPublishing,
       !isRemoteRepositoryChecking,
       !isLocalRepositoryBranchOperationRunning,

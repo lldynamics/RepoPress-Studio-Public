@@ -86,6 +86,11 @@ extension WorkbenchStore {
     await deploymentStore.runDeploymentPolling(store: self, now: now)
   }
 
+  @discardableResult
+  public func runDeploymentPollingManually(now: Date = Date()) async -> Bool {
+    await deploymentStore.runDeploymentPollingManually(store: self, now: now)
+  }
+
   public func canCheckDeploymentStatus(for record: ReleaseRecord) -> Bool {
     deploymentStore.canCheckDeploymentStatus(for: record, store: self)
   }

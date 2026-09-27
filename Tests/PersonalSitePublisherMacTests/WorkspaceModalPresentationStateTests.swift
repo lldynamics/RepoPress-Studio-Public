@@ -14,12 +14,12 @@ final class WorkspaceModalPresentationStateTests: XCTestCase {
 
   func testExpectedDismissDoesNotCloseADifferentModal() {
     var state = WorkspaceModalPresentationState()
-    state.present(.draftFullTextSearch)
+    state.present(.commandPalette)
 
     state.dismiss(.publishDrawer)
-    XCTAssertEqual(state.presented, .draftFullTextSearch)
+    XCTAssertEqual(state.presented, .commandPalette)
 
-    state.dismiss(.draftFullTextSearch)
+    state.dismiss(.commandPalette)
     XCTAssertNil(state.presented)
   }
 }

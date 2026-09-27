@@ -34,7 +34,7 @@ public final class AIBatchMaintenanceStore: ObservableObject {
   public func create(
     draftIDs: Set<UUID>, operation: AIBatchMaintenanceOperation, siteProfileID: UUID
   ) -> Bool {
-    guard let store, store.canUseProtectedWorkbench, !loadFailed, runningSiteID == nil,
+    guard let store, !loadFailed, runningSiteID == nil,
       let profile = store.profiles.first(where: { $0.id == siteProfileID })
     else { return false }
     guard store.flushPendingChanges() else {
@@ -64,7 +64,7 @@ public final class AIBatchMaintenanceStore: ObservableObject {
   }
 
   public func start(siteProfileID: UUID, retryFailed: Bool = false) {
-    guard task == nil, !loadFailed, let store, store.canUseProtectedWorkbench,
+    guard task == nil, !loadFailed, store != nil,
       var queue = queues[siteProfileID]
     else { return }
     let retryIDs = retryFailed ? Set(queue.items.filter { $0.status == .failed }.map(\.id)) : nil
@@ -83,7 +83,7 @@ public final class AIBatchMaintenanceStore: ObservableObject {
   }
 
   public func isCurrent(item: AIBatchMaintenanceItem, siteProfileID: UUID) -> Bool {
-    guard let store, store.canUseProtectedWorkbench,
+    guard let store,
       let draft = store.draft(for: item.draftID), !draft.isPrivate,
       draft.scope == .site(siteProfileID),
       let profile = store.profiles.first(where: { $0.id == siteProfileID }),
@@ -102,7 +102,7 @@ public final class AIBatchMaintenanceStore: ObservableObject {
       let text = item.resultText,
       let suggestion = service.suggestion(operation: queue.operation, text: text)
     else { return false }
-    guard store.canUseProtectedWorkbench, store.flushPendingChanges() else {
+    guard store.flushPendingChanges() else {
       message = CoreL10n.text("当前修改未保存成功，AI 建议尚未应用。")
       return false
     }
@@ -183,7 +183,7 @@ public final class AIBatchMaintenanceStore: ObservableObject {
   /// and runs only that item. Existing results in the queue are retained.
   @discardableResult
   public func regenerate(itemID: UUID, siteProfileID: UUID) -> Bool {
-    guard task == nil, !loadFailed, let store, store.canUseProtectedWorkbench,
+    guard task == nil, !loadFailed, let store,
       var queue = queues[siteProfileID],
       let item = queue.items.first(where: { $0.id == itemID }), item.status != .running,
       let draft = store.draft(for: item.draftID), !draft.isPrivate,
@@ -228,7 +228,7 @@ public final class AIBatchMaintenanceStore: ObservableObject {
         break
       }
       do {
-        guard let store, store.canUseProtectedWorkbench,
+        guard let store,
           let draft = store.draft(for: item.draftID),
           let profile = store.profiles.first(where: { $0.id == siteProfileID })
         else { throw AIBatchMaintenanceError.unavailable }
@@ -264,7 +264,7 @@ public final class AIBatchMaintenanceStore: ObservableObject {
         queues[siteProfileID]?.complete(id: item.id, resultText: trimmed)
       } catch {
         queues[siteProfileID]?.fail(id: item.id, message: error.localizedDescription)
-        if store?.canUseProtectedWorkbench != true { queues[siteProfileID]?.pause() }
+        if store == nil { queues[siteProfileID]?.pause() }
         if let authorizationError = error as? AIPublishingAssistantError {
           switch authorizationError {
           case .missingAPIKey, .dataSharingConsentRequired:

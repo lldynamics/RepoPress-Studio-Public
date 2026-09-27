@@ -1,5 +1,7 @@
+import AppKit
 import Foundation
 import PublishingWorkbenchCore
+import SwiftUI
 import XCTest
 
 @testable import PersonalSitePublisherMac
@@ -79,7 +81,6 @@ final class WorkspaceTopBarPresentationTests: XCTestCase {
 
   func testPreviewDefaultsToBrowserAndFallsBackToInAppWhenUnavailable() {
     let browserReady = WorkspaceTopBarPresentation.PreviewAvailability(
-      isLivePreviewEnabled: true,
       isLivePreviewRunning: true,
       isBrowserPreviewEnabled: true
     )
@@ -87,20 +88,18 @@ final class WorkspaceTopBarPresentationTests: XCTestCase {
     XCTAssertEqual(browserReady.accessibilityValue, "在浏览器中预览当前文章")
 
     let inAppOnly = WorkspaceTopBarPresentation.PreviewAvailability(
-      isLivePreviewEnabled: true,
       isLivePreviewRunning: true,
       isBrowserPreviewEnabled: false
     )
     XCTAssertEqual(inAppOnly.defaultAction, .inApp)
     XCTAssertEqual(inAppOnly.accessibilityValue, "正在运行")
 
-    let unavailable = WorkspaceTopBarPresentation.PreviewAvailability(
-      isLivePreviewEnabled: false,
+    let readyToStart = WorkspaceTopBarPresentation.PreviewAvailability(
       isLivePreviewRunning: false,
       isBrowserPreviewEnabled: false
     )
-    XCTAssertEqual(unavailable.defaultAction, .unavailable)
-    XCTAssertEqual(unavailable.accessibilityValue, "不可用")
+    XCTAssertEqual(readyToStart.defaultAction, .inApp)
+    XCTAssertEqual(readyToStart.accessibilityValue, "准备就绪")
   }
 
   func testSidebarVisibilityProvidesShownAndHiddenAccessibilitySemantics() {
@@ -135,5 +134,38 @@ final class WorkspaceTopBarPresentationTests: XCTestCase {
       WorkspaceToolbarContextPolicy.primaryActionContext(for: .sync),
       .publishing
     )
+  }
+}
+
+@MainActor
+final class LocalSitePreviewPanelRenderingTests: XCTestCase {
+  func testPreviewPanelRendersWithoutAnEnvironmentObject() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+      UUID().uuidString, isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: directory.appendingPathComponent("workspace.json")),
+      safeMode: true
+    )
+    let previewState = WorkbenchLocalSitePreviewFeatureFacade(store: store)
+    let hostingView = NSHostingView(
+      rootView: LocalSitePreviewPanelView(store: store, state: previewState)
+        .frame(width: 800, height: 600)
+    )
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+      styleMask: [.borderless],
+      backing: .buffered,
+      defer: false
+    )
+    window.contentView = hostingView
+    window.layoutIfNeeded()
+    hostingView.displayIfNeeded()
+
+    XCTAssertGreaterThan(hostingView.fittingSize.width, 0)
   }
 }

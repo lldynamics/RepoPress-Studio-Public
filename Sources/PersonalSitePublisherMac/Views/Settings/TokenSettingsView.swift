@@ -6,10 +6,8 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
   let readiness: DeploymentStatusProviderReadiness
   let repositoryTokenAvailability: KeychainTokenAvailability
   let deploymentTokenAvailability: KeychainTokenAvailability
-  let siteAnalyticsTokenAvailability: KeychainTokenAvailability
   let publishActionMessage: String?
   let deploymentStatusMessage: String?
-  let siteAnalyticsMessage: String?
   let navigationDestination: SettingsDestination?
   let navigationRequestID: UUID
   let shouldFocusRepositoryToken: Bool
@@ -23,9 +21,6 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
   let saveDeploymentAccessToken: (String) -> Bool
   let deleteDeploymentAccessToken: () -> Void
   let refreshDeploymentTokenAvailability: () -> Void
-  let saveSiteAnalyticsAccessToken: (String) -> Bool
-  let deleteSiteAnalyticsAccessToken: () -> Void
-  let refreshSiteAnalyticsTokenAvailability: () -> Void
   let repositoryPermissionContent: (Binding<Bool>) -> RepositoryPermissionContent
 
   @StateObject private var automationSettings: WorkbenchAutomationSettingsFeatureFacade
@@ -38,10 +33,8 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
     readiness: DeploymentStatusProviderReadiness,
     repositoryTokenAvailability: KeychainTokenAvailability,
     deploymentTokenAvailability: KeychainTokenAvailability,
-    siteAnalyticsTokenAvailability: KeychainTokenAvailability,
     publishActionMessage: String?,
     deploymentStatusMessage: String?,
-    siteAnalyticsMessage: String?,
     navigationDestination: SettingsDestination?,
     navigationRequestID: UUID,
     shouldFocusRepositoryToken: Bool,
@@ -55,9 +48,6 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
     saveDeploymentAccessToken: @escaping (String) -> Bool,
     deleteDeploymentAccessToken: @escaping () -> Void,
     refreshDeploymentTokenAvailability: @escaping () -> Void,
-    saveSiteAnalyticsAccessToken: @escaping (String) -> Bool,
-    deleteSiteAnalyticsAccessToken: @escaping () -> Void,
-    refreshSiteAnalyticsTokenAvailability: @escaping () -> Void,
     @ViewBuilder repositoryPermissionContent:
       @escaping (Binding<Bool>) -> RepositoryPermissionContent
   ) {
@@ -68,10 +58,8 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
     self.readiness = readiness
     self.repositoryTokenAvailability = repositoryTokenAvailability
     self.deploymentTokenAvailability = deploymentTokenAvailability
-    self.siteAnalyticsTokenAvailability = siteAnalyticsTokenAvailability
     self.publishActionMessage = publishActionMessage
     self.deploymentStatusMessage = deploymentStatusMessage
-    self.siteAnalyticsMessage = siteAnalyticsMessage
     self.navigationDestination = navigationDestination
     self.navigationRequestID = navigationRequestID
     self.shouldFocusRepositoryToken = shouldFocusRepositoryToken
@@ -85,9 +73,6 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
     self.saveDeploymentAccessToken = saveDeploymentAccessToken
     self.deleteDeploymentAccessToken = deleteDeploymentAccessToken
     self.refreshDeploymentTokenAvailability = refreshDeploymentTokenAvailability
-    self.saveSiteAnalyticsAccessToken = saveSiteAnalyticsAccessToken
-    self.deleteSiteAnalyticsAccessToken = deleteSiteAnalyticsAccessToken
-    self.refreshSiteAnalyticsTokenAvailability = refreshSiteAnalyticsTokenAvailability
     self.repositoryPermissionContent = repositoryPermissionContent
   }
 
@@ -95,10 +80,8 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
     Form {
       repositorySections
       deploymentSections
-      analyticsSections
     }
     .formStyle(.grouped)
-    .scrollIndicators(.hidden)
     .padding(WorkbenchSpacing.content)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .sheet(isPresented: $isRepositoryPermissionPresented) {
@@ -114,10 +97,6 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
     .onChange(of: activeDeploymentProvider) { _, _ in
       credentialDrafts.deployment = ""
       refreshDeploymentTokenAvailability()
-    }
-    .onChange(of: activeAnalyticsProvider) { _, _ in
-      credentialDrafts.analytics = ""
-      refreshSiteAnalyticsTokenAvailability()
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("token-settings")
@@ -280,34 +259,6 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
     TokenDeploymentAutomationSection(automationSettings: automationSettings)
   }
 
-  @ViewBuilder
-  private var analyticsSections: some View {
-    TokenAnalyticsSettingsSection(
-      settings: analyticsSettingsBinding,
-      tokenInput: $credentialDrafts.analytics,
-      tokenAvailability: siteAnalyticsTokenAvailability,
-      onSaveToken: {
-        guard saveSiteAnalyticsAccessToken(credentialDrafts.analytics) else { return }
-        credentialDrafts.analytics = ""
-      },
-      onDeleteToken: {
-        deleteSiteAnalyticsAccessToken()
-        credentialDrafts.analytics = ""
-      },
-      onRefreshTokenState: refreshSiteAnalyticsTokenAvailability,
-      subsectionAnchor: .tokenAnalytics
-    )
-    .id(activeProfile.id)
-
-    if let siteAnalyticsMessage {
-      Section("最近结果") {
-        Text(siteAnalyticsMessage)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-    }
-  }
-
   private var activeProfile: SiteProfile {
     activeProfileBinding.wrappedValue
   }
@@ -315,22 +266,6 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
   private var activeDeploymentProvider: DeploymentProvider {
     activeProfile.deploymentProvider
       ?? (activeProfile.repositoryProvider == .github ? .githubPages : .gitlabPages)
-  }
-
-  private var activeAnalyticsProvider: SiteAnalyticsProvider {
-    activeProfile.siteAnalytics?.provider ?? .plausible
-  }
-
-  private var analyticsSettingsBinding: Binding<SiteAnalyticsSettings> {
-    Binding(
-      get: { activeProfileBinding.wrappedValue.siteAnalytics ?? .default },
-      set: { settings in
-        var profile = activeProfileBinding.wrappedValue
-        profile.siteAnalytics = settings
-        activeProfileBinding.wrappedValue = profile
-        refreshSiteAnalyticsTokenAvailability()
-      }
-    )
   }
 
   private var repositoryProviderBinding: Binding<RepositoryProvider> {
@@ -378,44 +313,12 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
   }
 }
 
-enum TokenSettingsScope: String, CaseIterable, Identifiable {
-  case repository
-  case deployment
-  case analytics
-
-  var id: String { rawValue }
-
-  init(destination: SettingsTokenDestination) {
-    switch destination {
-    case .repository:
-      self = .repository
-    case .deployment:
-      self = .deployment
-    case .analytics:
-      self = .analytics
-    }
-  }
-
-  var title: String {
-    switch self {
-    case .repository:
-      return String(localized: "仓库")
-    case .deployment:
-      return String(localized: "部署")
-    case .analytics:
-      return String(localized: "阅读数据")
-    }
-  }
-}
-
 struct TokenCredentialDrafts: Equatable {
   var repository = ""
   var deployment = ""
-  var analytics = ""
 
   mutating func clearAll() {
     repository = ""
     deployment = ""
-    analytics = ""
   }
 }

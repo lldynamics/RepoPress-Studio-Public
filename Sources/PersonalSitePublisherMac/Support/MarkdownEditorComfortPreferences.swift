@@ -6,16 +6,27 @@ enum MarkdownEditorComfortPreferences {
   static let lineSpacingKey = "markdownEditorLineSpacing"
   static let bodyWidthKey = "markdownEditorBodyWidth"
   static let spellCheckEnabledKey = "markdownEditorSpellCheckEnabled"
-  static let typewriterModeEnabledKey = "markdownEditorTypewriterModeEnabled"
-  static let focusToolbarFadeEnabledKey = "markdownEditorFocusToolbarFadeEnabled"
-  static let currentParagraphHighlightEnabledKey = "markdownEditorCurrentParagraphHighlightEnabled"
+  static let paragraphFocusEnabledKey = "markdownEditorParagraphFocusEnabled"
   static let warmPaperBackgroundEnabledKey = "markdownEditorWarmPaperBackgroundEnabled"
   static let automaticPairingEnabledKey = "markdownEditorAutomaticPairingEnabled"
-  static let paragraphSpotlightEnabledKey = "markdownEditorParagraphSpotlightEnabled"
   static let realtimeAnalysisEnabledKey = "markdownEditorRealtimeAnalysisEnabled"
   static let bodyFontStyleKey = "markdownEditorBodyFontStyle"
 
   static let defaultRealtimeAnalysisEnabled = true
+
+  /// Preserve an explicitly enabled legacy writing aid without turning the
+  /// old, default-on paragraph highlight into unexpected automatic scrolling.
+  /// Once saved, the new preference wins even when the user switches it off.
+  static func initialParagraphFocusEnabled(defaults: UserDefaults = .standard) -> Bool {
+    if defaults.object(forKey: paragraphFocusEnabledKey) != nil {
+      return defaults.bool(forKey: paragraphFocusEnabledKey)
+    }
+    let enabled =
+      defaults.bool(forKey: "markdownEditorTypewriterModeEnabled")
+      || defaults.bool(forKey: "markdownEditorParagraphSpotlightEnabled")
+    defaults.set(enabled, forKey: paragraphFocusEnabledKey)
+    return enabled
+  }
 }
 
 /// Shared gate for work that may be triggered by editor input.
@@ -78,11 +89,9 @@ struct MarkdownEditorComfortConfiguration: Equatable {
   static let defaultLineSpacing = 4.0
   static let defaultBodyWidth = 720.0
   static let defaultSpellCheckEnabled = false
-  static let defaultTypewriterModeEnabled = false
-  static let defaultCurrentParagraphHighlightEnabled = true
+  static let defaultParagraphFocusEnabled = false
   static let defaultWarmPaperBackgroundEnabled = false
   static let defaultAutomaticPairingEnabled = true
-  static let defaultParagraphSpotlightEnabled = false
   static let defaultRealtimeAnalysisEnabled = MarkdownEditorComfortPreferences
     .defaultRealtimeAnalysisEnabled
 
@@ -91,8 +100,9 @@ struct MarkdownEditorComfortConfiguration: Equatable {
   let bodyWidth: Double
   let bodyFontStyle: MarkdownEditorBodyFontStyle
   let spellCheckEnabled: Bool
-  let typewriterModeEnabled: Bool
-  let currentParagraphHighlightEnabled: Bool
+  let paragraphFocusEnabled: Bool
+  var typewriterModeEnabled: Bool { paragraphFocusEnabled }
+  var currentParagraphHighlightEnabled: Bool { paragraphFocusEnabled }
   let warmPaperBackgroundEnabled: Bool
   let automaticPairingEnabled: Bool
   let accessibilityReduceMotionEnabled: Bool
@@ -103,8 +113,7 @@ struct MarkdownEditorComfortConfiguration: Equatable {
     bodyWidth: Double = defaultBodyWidth,
     bodyFontStyle: MarkdownEditorBodyFontStyle = .defaultStyle,
     spellCheckEnabled: Bool = defaultSpellCheckEnabled,
-    typewriterModeEnabled: Bool = defaultTypewriterModeEnabled,
-    currentParagraphHighlightEnabled: Bool = defaultCurrentParagraphHighlightEnabled,
+    paragraphFocusEnabled: Bool = defaultParagraphFocusEnabled,
     warmPaperBackgroundEnabled: Bool = defaultWarmPaperBackgroundEnabled,
     automaticPairingEnabled: Bool = defaultAutomaticPairingEnabled,
     accessibilityReduceMotionEnabled: Bool = false
@@ -114,8 +123,7 @@ struct MarkdownEditorComfortConfiguration: Equatable {
     self.bodyWidth = bodyWidth.clamped(to: Self.bodyWidthRange)
     self.bodyFontStyle = bodyFontStyle
     self.spellCheckEnabled = spellCheckEnabled
-    self.typewriterModeEnabled = typewriterModeEnabled
-    self.currentParagraphHighlightEnabled = currentParagraphHighlightEnabled
+    self.paragraphFocusEnabled = paragraphFocusEnabled
     self.warmPaperBackgroundEnabled = warmPaperBackgroundEnabled
     self.automaticPairingEnabled = automaticPairingEnabled
     self.accessibilityReduceMotionEnabled = accessibilityReduceMotionEnabled

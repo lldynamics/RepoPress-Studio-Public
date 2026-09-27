@@ -16,17 +16,16 @@ final class ReleaseHistoryPresentationTests: XCTestCase {
     XCTAssertEqual(DeploymentSourceContext.profile(for: record, in: [profile]), profile)
   }
 
-  func testSourcePreviewRequestRejectsConfigurationChangesAndQuickHide() {
+  func testSourcePreviewRequestRejectsConfigurationChanges() {
     let profile = SiteProfile.defaultProfile
     let request = DeploymentSourceRequest(
       profile: profile,
       entry: DeploymentLogEntry(level: .error, source: "test", message: "failure", filePath: "a.md")
     )
-    XCTAssertTrue(request.isValid(activeProfile: profile, canUseProtectedWorkbench: true))
-    XCTAssertFalse(request.isValid(activeProfile: profile, canUseProtectedWorkbench: false))
+    XCTAssertTrue(request.isValid(activeProfile: profile))
     var changed = profile
     changed.localRepositoryRootPath = "/another/repository"
-    XCTAssertFalse(request.isValid(activeProfile: changed, canUseProtectedWorkbench: true))
+    XCTAssertFalse(request.isValid(activeProfile: changed))
   }
 
   @MainActor

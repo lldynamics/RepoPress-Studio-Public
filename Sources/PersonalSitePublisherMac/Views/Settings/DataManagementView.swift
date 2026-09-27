@@ -36,9 +36,9 @@ enum DataManagementSection: String, CaseIterable, Identifiable {
     case .drafts:
       return String(localized: "版本、回收站、仓库待清理和草稿归属")
     case .backup:
-      return String(localized: "选择工作区类别，创建本机或 iCloud 备份并预览恢复")
+      return String(localized: "立即备份、预览恢复和自动备份保存位置")
     case .migration:
-      return String(localized: "导入外部内容并在写入前审阅转换计划")
+      return String(localized: "导入外部内容或跨端交换文件，写入前先预览")
     }
   }
 }
@@ -75,9 +75,9 @@ enum DataManagementTask: String, CaseIterable, Identifiable {
     case .storage:
       return String(localized: "查看空间占用，清理资料库数据，或更改存储位置。")
     case .backup:
-      return String(localized: "选择数据类别，创建本机或 iCloud 备份，并管理自动快照。")
+      return String(localized: "完整备份工作区、从备份恢复，并设置自动备份。")
     case .migration:
-      return String(localized: "导入 WordPress、RSS、Markdown 等内容，写入前先审阅转换计划。")
+      return String(localized: "导入外部内容，或在设备之间交换站点配置、草稿和附件。")
     }
   }
 
@@ -177,7 +177,6 @@ struct DataManagementView: View {
       .padding(WorkbenchSpacing.content)
       .frame(maxWidth: .infinity, alignment: .topLeading)
     }
-    .scrollIndicators(.hidden)
     // Match the horizontal content inset used by Form-backed Settings pages so
     // this page's native scroll view and visible thumb share the same trailing
     // content-panel edge.
@@ -460,7 +459,6 @@ struct DataManagementView: View {
     switch task {
     case .drafts:
       DraftLifecycleCenterView(store: store, presentation: .standalone)
-        .settingsThinRedScroller()
     case .storage, .backup:
       if let rssStore {
         DataManagementStorageTaskSheet(
@@ -472,12 +470,10 @@ struct DataManagementView: View {
         )
       } else {
         DataManagementUnavailableTaskSheet(task: task)
-          .settingsThinRedScroller()
       }
     case .migration:
       ContentMigrationAssistantView(store: store)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .settingsThinRedScroller()
     }
   }
 }
@@ -505,7 +501,6 @@ private struct DataManagementStorageTaskSheet: View {
         scope: task == .storage ? .storageAndCleanup : .backupAndRestore
       )
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .settingsThinRedScroller()
     }
     .workbenchSheetSize(.wide)
     .accessibilityElement(children: .contain)

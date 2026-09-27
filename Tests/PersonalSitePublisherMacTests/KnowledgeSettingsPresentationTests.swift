@@ -3,15 +3,6 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class KnowledgeSettingsPresentationTests: XCTestCase {
-  func testAdvancedKnowledgeSettingsStartFullyCollapsed() {
-    let state = KnowledgeAdvancedSettingsExpansionState()
-
-    XCTAssertTrue(state.isFullyCollapsed)
-    XCTAssertFalse(state.vectorSearch)
-    XCTAssertFalse(state.smartCollections)
-    XCTAssertFalse(state.backup)
-  }
-
   func testSettingsTabsAreCompleteAcrossSiteAndApplicationGroups() {
     XCTAssertEqual(
       SettingsTab.siteSettings,
@@ -31,17 +22,18 @@ final class KnowledgeSettingsPresentationTests: XCTestCase {
 
     XCTAssertEqual(SettingsTab.configurationStatus.title, "站点概览")
     XCTAssertEqual(SettingsTab.defaultRules.title, "内容与路径")
-    XCTAssertEqual(SettingsTab.token.title, "发布连接")
-    XCTAssertEqual(SettingsTab.ai.title, "AI 连接")
+    XCTAssertEqual(SettingsTab.token.title, "发布配置")
+    XCTAssertEqual(SettingsTab.ai.title, "应用级 AI 连接")
+    XCTAssertEqual(SettingsTab.siteAI.title, "当前站点的 AI 与写作偏好")
     XCTAssertEqual(SettingsTab.appearance.title, "通用与外观")
     XCTAssertEqual(SettingsTab.appearance.systemImage, "paintpalette")
     XCTAssertFalse(SettingsTab.appearance.isSiteScoped)
-    XCTAssertEqual(SettingsTab.editor.title, "编辑器")
+    XCTAssertEqual(SettingsTab.editor.title, "编辑器偏好")
     XCTAssertEqual(SettingsTab.editor.systemImage, "pencil.line")
     XCTAssertFalse(SettingsTab.editor.isSiteScoped)
     XCTAssertEqual(SettingsTab.rss.title, "RSS 阅读")
     XCTAssertEqual(SettingsTab.privacy.title, "隐私与安全")
-    XCTAssertEqual(SettingsTab.dataManagement.title, "数据与备份")
+    XCTAssertEqual(SettingsTab.dataManagement.title, "备份与恢复")
     XCTAssertFalse(SettingsTab.rss.isSiteScoped)
   }
 
@@ -66,7 +58,7 @@ final class KnowledgeSettingsPresentationTests: XCTestCase {
   }
 
   func testMergedSettingsKeepLegacyRequestedTabIDsUsable() {
-    XCTAssertEqual(SettingsTab.tab(forRequestedID: "language"), .appearance)
+    XCTAssertNil(SettingsTab.tab(forRequestedID: "language"))
     XCTAssertEqual(SettingsTab.tab(forRequestedID: "storage"), .dataManagement)
     XCTAssertEqual(SettingsTab.tab(forRequestedID: "defaultRules"), .defaultRules)
     XCTAssertNil(SettingsTab.tab(forRequestedID: "removed-tab"))
@@ -76,7 +68,7 @@ final class KnowledgeSettingsPresentationTests: XCTestCase {
     XCTAssertEqual(SettingsDestination(requestedID: "rules.paths"), .rules(.paths))
     XCTAssertEqual(SettingsDestination(requestedID: "token.repository"), .token(.repository))
     XCTAssertEqual(SettingsDestination(requestedID: "token.deployment"), .token(.deployment))
-    XCTAssertEqual(SettingsDestination(requestedID: "token.analytics"), .token(.analytics))
+    XCTAssertEqual(SettingsDestination(requestedID: "token.analytics"), .tab(.token))
     XCTAssertEqual(SettingsDestination(requestedID: "ai.connection"), .ai(.connection))
     XCTAssertEqual(SettingsDestination(requestedID: "ai.credentials"), .ai(.credentials))
     XCTAssertEqual(SettingsDestination(requestedID: "ai.writingStyle"), .ai(.writingStyle))

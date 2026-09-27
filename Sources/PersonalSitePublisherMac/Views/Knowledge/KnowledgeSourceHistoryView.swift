@@ -114,7 +114,7 @@ struct KnowledgeSourceHistoryView: View {
               ? "当前正文使用解析器 v\(revision.parserVersion)，可以在本机升级到 v\(KnowledgeLibraryService.parserVersion)。"
               : "正文有缺失、混入导航或网页页脚时，可以使用本机原始归档重新净化。",
             systemImage: revision.parserVersion < KnowledgeLibraryService.parserVersion
-              ? "wand.and.stars"
+              ? "arrow.clockwise"
               : "doc.text.magnifyingglass"
           )
           .font(.callout)

@@ -4,11 +4,10 @@ import SwiftUI
 enum RepositoryDraftDiscoveryPolicy {
   static func shouldRunAutomatically(
     isSafeMode: Bool,
-    canUseProtectedWorkbench: Bool,
     isEnabled: Bool,
     isRefreshRunning: Bool
   ) -> Bool {
-    !isSafeMode && canUseProtectedWorkbench && isEnabled && !isRefreshRunning
+    !isSafeMode && isEnabled && !isRefreshRunning
   }
 
   static func canRunManually(hasRepositoryRoot: Bool, isRunning: Bool) -> Bool {
@@ -37,7 +36,7 @@ struct RepositoryDraftDiscoverySettingsSection: View {
           isOn: automaticallyImportsNewArticlesBinding
         )
         .accessibilityHint(
-          "开启后，工作台启动、回到前台或从快速隐藏恢复时会查找当前站点仓库中的新文章。"
+          "开启后，工作台启动或回到前台时会查找当前站点仓库中的新文章。"
         )
         .accessibilityIdentifier("repository-draft-discovery-automatic")
 

@@ -454,10 +454,6 @@ extension WorkbenchAIStore {
     expectedConversation: AIChatGeneralConversationExpectation? = nil
   ) async -> AIPublishingChatMessage? {
     guard !Task.isCancelled else { return nil }
-    guard store.canUseProtectedWorkbench else {
-      store.setAIChatMessage(aiChatQuickHideOperationMessage())
-      return nil
-    }
     let trimmed = text.trimmedForPublishing
     guard !trimmed.isEmpty || !imageAttachments.isEmpty else {
       store.setAIChatMessage("请先输入要发送给 AI 的内容。")

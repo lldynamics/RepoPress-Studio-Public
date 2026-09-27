@@ -464,7 +464,12 @@ final class ImageWorkbenchBackgroundRefreshTests: XCTestCase {
     XCTAssertEqual(store.imageWorkbenchReport?.draftID, draftA.id)
 
     store.setDrafts([draftA])
-    try await Task.sleep(for: .milliseconds(10))
+    // Draft reconciliation is delivered on the next main run-loop turn.
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(2))
+    while store.isImageWorkbenchReportLoading(for: draftB) && clock.now < deadline {
+      try await Task.sleep(for: .milliseconds(10))
+    }
 
     XCTAssertNotNil(store.cachedImageWorkbenchReport(for: draftA))
     XCTAssertNil(store.cachedImageWorkbenchReport(for: draftB))

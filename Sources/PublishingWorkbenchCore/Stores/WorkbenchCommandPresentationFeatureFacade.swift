@@ -16,24 +16,17 @@ public final class WorkbenchCommandPresentationFeatureFacade: ObservableObject {
     observe(store.publishingStore.$selectedDraftID)
     observe(store.publishingStore.$selectedSection)
     observe(store.publishingStore.$isInspectorPresented)
-    observe(store.privacyProtectionStore.$isQuickHideActive)
     observe(store.publishingStore.$draftNavigationHistory)
     observe(store.publishingStore.documents.$drafts.map { $0.map(\.id) })
     observe(store.publishingStore.publishSession.$localSitePreviewRuntimeStatus.map(\.isRunning))
     observe(store.aiWorkspaceStore.$isAIPublishingAssistantPresented)
   }
 
-  public var canUseProtectedWorkbench: Bool {
-    !store.isQuickHideActive
-  }
 
   public var isInspectorPresented: Bool {
     store.isInspectorPresented
   }
 
-  public var isQuickHideActive: Bool {
-    store.isQuickHideActive
-  }
 
   public var selectedDraftID: UUID? {
     store.selectedDraftID

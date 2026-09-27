@@ -17,17 +17,14 @@ enum WorkspaceTopBarPresentation {
     enum DefaultAction: Equatable {
       case browser
       case inApp
-      case unavailable
     }
 
-    let isLivePreviewEnabled: Bool
     let isLivePreviewRunning: Bool
     let isBrowserPreviewEnabled: Bool
 
     var defaultAction: DefaultAction {
       if isBrowserPreviewEnabled { return .browser }
-      if isLivePreviewEnabled { return .inApp }
-      return .unavailable
+      return .inApp
     }
 
     var accessibilityValue: String {
@@ -35,7 +32,6 @@ enum WorkspaceTopBarPresentation {
       case .browser: return String(localized: "在浏览器中预览当前文章")
       case .inApp:
         return isLivePreviewRunning ? String(localized: "正在运行") : String(localized: "准备就绪")
-      case .unavailable: return String(localized: "不可用")
       }
     }
   }
@@ -107,9 +103,9 @@ enum WorkspaceTopBarPresentation {
 extension WorkspaceSection {
   var showsPublishingStatusToolbar: Bool {
     switch self {
-    case .writing, .sync, .contentHealth:
+    case .writing, .contentHealth:
       return true
-    case .library, .rss, .images:
+    case .sync, .library, .rss, .images:
       return false
     }
   }
@@ -153,20 +149,15 @@ struct WorkspaceToolbarMenuLabel: View {
 struct WorkspaceTaskCenterToolbarButton: View {
   @Environment(\.colorScheme) private var colorScheme
   @ObservedObject private var activityStatus: WorkbenchActivityStatusFacade
-  let store: WorkbenchStore
-  let isCompact: Bool
-  @State private var isPresented = false
+  let open: () -> Void
 
-  init(store: WorkbenchStore, isCompact: Bool) {
-    self.store = store
+  init(store: WorkbenchStore, open: @escaping () -> Void) {
     _activityStatus = ObservedObject(wrappedValue: store.activityStatus)
-    self.isCompact = isCompact
+    self.open = open
   }
 
   var body: some View {
-    Button {
-      isPresented.toggle()
-    } label: {
+    Button(action: open) {
       Label(
         "任务",
         systemImage: activityStatus.activeTaskCount > 0
@@ -191,13 +182,10 @@ struct WorkspaceTaskCenterToolbarButton: View {
           .allowsHitTesting(false)
       }
     }
-    .help(String(localized: "统一任务中心"))
-    .accessibilityLabel("统一任务中心")
+    .help(String(localized: "任务中心（⌥⌘L）"))
+    .accessibilityLabel("任务中心")
     .accessibilityValue(taskCenterAccessibilityValue)
     .accessibilityIdentifier("workspace-task-center-toggle")
-    .popover(isPresented: $isPresented, arrowEdge: .bottom) {
-      WorkspaceTaskCenterView(store: store)
-    }
   }
 
   private var taskCenterAccessibilityValue: String {
@@ -435,14 +423,13 @@ struct WorkspaceToolbarActionButton: View {
 
 struct WorkspaceKnowledgeToolbar: View {
   @ObservedObject var commandRouter: WorkspaceSceneCommandRouter
-  let isEnabled: Bool
 
   var body: some View {
     WorkspaceToolbarActionButton(
       title: String(localized: "导入资料"),
       systemImage: "square.and.arrow.down",
       accessibilityIdentifier: "workspace-library-import",
-      isEnabled: isEnabled && commandRouter.knowledgeLibraryCommandActions != nil,
+      isEnabled: commandRouter.knowledgeLibraryCommandActions != nil,
       action: { commandRouter.knowledgeLibraryCommandActions?.importSources() }
     )
 
@@ -450,7 +437,7 @@ struct WorkspaceKnowledgeToolbar: View {
       title: String(localized: "新建笔记"),
       systemImage: "note.text.badge.plus",
       accessibilityIdentifier: "workspace-library-new-note",
-      isEnabled: isEnabled && commandRouter.knowledgeLibraryCommandActions != nil,
+      isEnabled: commandRouter.knowledgeLibraryCommandActions != nil,
       action: { commandRouter.knowledgeLibraryCommandActions?.createNote() }
     )
   }
@@ -475,7 +462,6 @@ struct WorkspacePreviewToolbarButton: View {
           systemImage: availability.isLivePreviewRunning ? "play.rectangle.fill" : "play.rectangle"
         )
       }
-      .disabled(!availability.isLivePreviewEnabled)
     } label: {
       // Menus ignore the toolbar ButtonStyle, so the title visibility must be
       // chosen on the label itself.
@@ -488,7 +474,6 @@ struct WorkspacePreviewToolbarButton: View {
       switch availability.defaultAction {
       case .browser: openBrowserPreview()
       case .inApp: openLivePreview()
-      case .unavailable: break
       }
     }
     .menuStyle(.borderlessButton)
@@ -499,7 +484,6 @@ struct WorkspacePreviewToolbarButton: View {
         showsTitle: showsTitle
       )
     )
-    .disabled(availability.defaultAction == .unavailable)
     .help(
       availability.defaultAction == .browser
         ? String(localized: "在系统浏览器中打开当前文章；按住可打开菜单")
@@ -519,10 +503,8 @@ struct WorkspacePreviewToolbarButton: View {
 }
 
 /// A semantic blue publish CTA for the end of a primary-action toolbar group.
-/// Availability remains a caller-provided value so the component never bypasses
-/// the publishing flow's existing readiness checks.
+/// Opens the publishing review; readiness checks belong to the publishing flow.
 struct WorkspacePreparePublishToolbarButton: View {
-  let isEnabled: Bool
   let density: WorkspaceTopBarPresentation.Density
   let action: () -> Void
 
@@ -537,7 +519,6 @@ struct WorkspacePreparePublishToolbarButton: View {
         prominence: .primaryAction
       )
     )
-    .disabled(!isEnabled)
     .help(String(localized: "打开本次发布清单和一键发布流程"))
     .accessibilityLabel(String(localized: "准备发布"))
     .accessibilityIdentifier("workspace-prepare-publish")
@@ -670,7 +651,6 @@ private enum PublishingStatusSeverity: Int {
 struct PublishingStatusToolbarControl: View {
   let store: WorkbenchStore
   @ObservedObject private var statusState: WorkbenchPublishStatusFeatureFacade
-  let canUseProtectedWorkbench: Bool
   let selectedDraftID: UUID?
   let selectedSection: WorkspaceSection
   let isCompact: Bool
@@ -682,7 +662,6 @@ struct PublishingStatusToolbarControl: View {
 
   init(
     store: WorkbenchStore,
-    canUseProtectedWorkbench: Bool,
     selectedDraftID: UUID?,
     selectedSection: WorkspaceSection,
     isCompact: Bool,
@@ -693,7 +672,6 @@ struct PublishingStatusToolbarControl: View {
   ) {
     self.store = store
     _statusState = ObservedObject(wrappedValue: store.publishStatus)
-    self.canUseProtectedWorkbench = canUseProtectedWorkbench
     self.selectedDraftID = selectedDraftID
     self.selectedSection = selectedSection
     self.isCompact = isCompact
@@ -723,7 +701,6 @@ struct PublishingStatusToolbarControl: View {
         .contentShape(Capsule())
     }
     .buttonStyle(WorkbenchFocusRingButtonStyle(cornerRadius: 13, lineWidth: 1.5))
-    .disabled(!canUseProtectedWorkbench)
     .help(
       String(
         localized: "\(contextualStatusTitle)：\(currentToolbarStatus.value)。点击查看状态和发布操作。"
@@ -976,7 +953,7 @@ struct PublishingStatusToolbarControl: View {
     if warningCount > 0 {
       return PublishingStatusPopoverItem(
         area: area,
-        value: String(localized: "\(warningCount) 个待确认项"),
+        value: String(localized: "\(warningCount) 个文章警告"),
         detail: draft.title.nilIfEmpty ?? String(localized: "当前文章需要审阅发布提示。"),
         statusImage: "exclamationmark.triangle",
         color: WorkbenchTheme.warning,

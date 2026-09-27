@@ -4,13 +4,14 @@ import SwiftUI
 
 struct LocalSitePreviewPanelView: View {
   let store: WorkbenchStore
-  @EnvironmentObject private var state: WorkbenchLocalSitePreviewFeatureFacade
+  @ObservedObject private var state: WorkbenchLocalSitePreviewFeatureFacade
   @StateObject private var externalBrowserPreviewCoordinator: ExternalBrowserPreviewCoordinator
   @State private var navigationError: String?
   @State private var pendingAuthorizationRequest: LocalSitePreviewAuthorizationRequest?
 
-  init(store: WorkbenchStore) {
+  init(store: WorkbenchStore, state: WorkbenchLocalSitePreviewFeatureFacade) {
     self.store = store
+    _state = ObservedObject(wrappedValue: state)
     _externalBrowserPreviewCoordinator = StateObject(
       wrappedValue: ExternalBrowserPreviewCoordinator(store: store)
     )

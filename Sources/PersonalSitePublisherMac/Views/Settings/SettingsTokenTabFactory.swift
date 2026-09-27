@@ -9,10 +9,8 @@ struct SettingsTokenTabFactory {
       readiness: context.store.activeDeploymentStatusReadiness,
       repositoryTokenAvailability: context.store.repositoryTokenAvailability,
       deploymentTokenAvailability: context.store.deploymentTokenAvailability,
-      siteAnalyticsTokenAvailability: context.store.siteAnalyticsTokenAvailability,
       publishActionMessage: context.store.publishActionMessage,
       deploymentStatusMessage: context.store.deploymentStatusMessage,
-      siteAnalyticsMessage: context.store.siteAnalyticsMessage,
       navigationDestination: context.navigationDestination,
       navigationRequestID: context.navigationRequestID,
       shouldFocusRepositoryToken: context.healthDestination == .repositoryToken,
@@ -44,15 +42,6 @@ struct SettingsTokenTabFactory {
       },
       refreshDeploymentTokenAvailability: {
         context.store.refreshDeploymentTokenAvailability()
-      },
-      saveSiteAnalyticsAccessToken: { token in
-        context.store.saveSiteAnalyticsAccessToken(token)
-      },
-      deleteSiteAnalyticsAccessToken: {
-        context.store.deleteSiteAnalyticsAccessToken()
-      },
-      refreshSiteAnalyticsTokenAvailability: {
-        context.store.refreshSiteAnalyticsTokenAvailability()
       },
       repositoryPermissionContent: { isPresented in
         RepositoryPermissionSettingsView(

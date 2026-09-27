@@ -433,7 +433,11 @@ final class MarkdownEditorScrollView: NSScrollView {
     }
     if abs(previousPrefixHeight - foldedPrefixHeight) > 0.5 {
       let origin = contentView.bounds.origin
-      let targetY = foldedPrefixHeight == 0 ? 0 : max(origin.y, foldedPrefixHeight)
+      // Reveal metadata when expanding at the beginning of the body, but
+      // keep a scrolled paragraph in place when toggling farther down.
+      let expandsAtBodyStart =
+        foldedPrefixHeight == 0 && origin.y <= previousPrefixHeight + 0.5
+      let targetY = expandsAtBodyStart ? 0 : max(origin.y, foldedPrefixHeight)
       contentView.scroll(to: NSPoint(x: origin.x, y: targetY))
       reflectScrolledClipView(contentView)
     }

@@ -4,10 +4,6 @@ extension RepositoryStore {
   public func prepareRepositoryWorktreePushRetry(
     store: WorkbenchStore
   ) async -> RepositoryWorktreePushRetryConfirmation? {
-    guard store.canUseProtectedWorkbench else {
-      store.setGitActionMessage(store.quickHideOperationMessage, status: .warning)
-      return nil
-    }
     guard !isRemoteRepositoryPublishing,
       !isRemoteRepositoryChecking,
       !isLocalRepositoryBranchOperationRunning,
@@ -61,10 +57,6 @@ extension RepositoryStore {
     _ confirmation: RepositoryWorktreePushRetryConfirmation,
     store: WorkbenchStore
   ) async -> RepositoryWorktreePublishResult? {
-    guard store.canUseProtectedWorkbench else {
-      store.setGitActionMessage(store.quickHideOperationMessage, status: .warning)
-      return nil
-    }
     guard !isRemoteRepositoryPublishing,
       !isRemoteRepositoryChecking,
       !isLocalRepositoryBranchOperationRunning,

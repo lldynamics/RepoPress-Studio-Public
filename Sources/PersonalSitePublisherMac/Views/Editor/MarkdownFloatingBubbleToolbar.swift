@@ -46,6 +46,7 @@ struct MarkdownFloatingBubbleToolbar: View {
   let onApplyAdvancedFormatting: (MarkdownAdvancedFormattingCommand) -> Void
   let onPerformSelectionAIAction: (AIPublishingActionKind) -> Void
   let onPerformConvergedSelectionAIAction: (AIPublishingActionConvergence) -> Void
+  let onShowSelectionTools: () -> Void
   @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
   var body: some View {
@@ -119,7 +120,7 @@ struct MarkdownFloatingBubbleToolbar: View {
                 .rewriteSelection(AIPublishingRewriteConfiguration(style: style))
               )
             } label: {
-              Label(style.localizedDisplayName, systemImage: "wand.and.stars")
+              Label(style.localizedDisplayName, systemImage: "sparkles")
             }
           }
         }
@@ -135,14 +136,14 @@ struct MarkdownFloatingBubbleToolbar: View {
           }
         }
       } label: {
-        Label("AI 润色", systemImage: "wand.and.stars")
+        Label("AI 操作", systemImage: "sparkles")
           .font(.workbenchButtonLabel)
       }
       .menuIndicator(.hidden)
       .foregroundStyle(WorkbenchTheme.progress)
       .disabled(!selectionAIActionAvailability(.rewriteSelection).isEnabled)
-      .help(selectionAIActionAvailability(.rewriteSelection).unavailableReason ?? "AI 润色")
-      .accessibilityLabel("AI 润色与处理")
+      .help(selectionAIActionAvailability(.rewriteSelection).unavailableReason ?? "润色与改写选区")
+      .accessibilityLabel("AI 操作")
 
       Menu {
         Button {
@@ -164,6 +165,11 @@ struct MarkdownFloatingBubbleToolbar: View {
       .disabled(isSelectionAIActionRunning)
       .help(isSelectionAIActionRunning ? "AI 正在处理" : "翻译")
       .accessibilityLabel("AI 翻译")
+
+      iconButton(
+        "ellipsis", title: String(localized: "更多选区操作"), action: onShowSelectionTools
+      )
+      .accessibilityIdentifier("markdown-selection-more-actions")
 
       if isSelectionAIActionRunning {
         ProgressView()

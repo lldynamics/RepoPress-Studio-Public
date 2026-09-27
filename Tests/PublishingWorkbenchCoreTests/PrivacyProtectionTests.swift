@@ -47,7 +47,6 @@ final class PrivacyProtectionTests: XCTestCase {
 
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
 
-    XCTAssertFalse(store.isQuickHideActive)
     XCTAssertTrue(store.privacySettings.masksPrivateContent)
   }
 
@@ -67,17 +66,6 @@ final class PrivacyProtectionTests: XCTestCase {
     XCTAssertEqual(PrivacyProtectionEventKind.unlocked.systemImage, "eye")
   }
 
-  func testManualQuickHideAndReturnToWorkbench() throws {
-    let url = try temporaryPersistenceURL()
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
-
-    XCTAssertFalse(store.isQuickHideActive)
-    store.activateQuickHide(reason: "Manual review")
-    XCTAssertTrue(store.isQuickHideActive)
-    store.deactivateQuickHide()
-    XCTAssertFalse(store.isQuickHideActive)
-  }
-
   func testPrivacyProtectionEventsAreNotPersisted() async throws {
     let url = try temporaryPersistenceURL()
     let persistence = WorkbenchPersistence(fileURL: url)
@@ -92,8 +80,7 @@ final class PrivacyProtectionTests: XCTestCase {
       )
     )
     let store = WorkbenchStore(persistence: persistence)
-    store.activateQuickHide(reason: "Manual review")
-    store.deactivateQuickHide()
+    store.save()
     await store.waitForPendingSave()
 
     XCTAssertNil(store.lastSaveError)
@@ -125,74 +112,6 @@ final class PrivacyProtectionTests: XCTestCase {
     XCTAssertTrue(snapshot.privacyProtectionEvents.isEmpty)
   }
 
-  func testProtectedWorkbenchAvailabilityFollowsQuickHideState() throws {
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
-    store.setAIPublishingAssistantPresented(true)
-
-    XCTAssertTrue(store.canUseProtectedWorkbench)
-
-    store.activateQuickHide(reason: "Manual")
-    XCTAssertTrue(store.isQuickHideActive)
-    XCTAssertFalse(store.canUseProtectedWorkbench)
-    XCTAssertTrue(store.isAIPublishingAssistantPresented)
-    XCTAssertEqual(store.privacyProtectionStatus.title, "快速隐藏已启用")
-    XCTAssertEqual(
-      store.privacyProtectionStatus.detail,
-      "Manual 快速隐藏仅遮挡当前界面，不加密本地数据。"
-    )
-
-    store.deactivateQuickHide()
-    XCTAssertFalse(store.isQuickHideActive)
-    XCTAssertTrue(store.canUseProtectedWorkbench)
-    XCTAssertTrue(store.isAIPublishingAssistantPresented)
-    XCTAssertEqual(store.privacyProtectionStatus.title, "快速隐藏未启用")
-  }
-
-  func testQuickHideBlocksRemotePublishingBeforeRepositoryAPIUse() async throws {
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
-    store.activateQuickHide(reason: "Manual")
-
-    let selectedResult = await store.publishSelectedDraftOnlineUsingPreferredStrategy()
-    let batchResult = await store.publishBatchReadyDraftsOnlineUsingPreferredStrategy()
-    let accessCheck = await store.checkRepositoryTokenAccess()
-    let creationResult = await store.createGitHubRepositoryForActiveProfile()
-
-    XCTAssertNil(selectedResult)
-    XCTAssertNil(batchResult)
-    XCTAssertNil(accessCheck)
-    XCTAssertNil(creationResult)
-    XCTAssertEqual(store.publishActionMessage, "快速隐藏已启用，请返回工作台后再继续。")
-    XCTAssertFalse(store.isRemoteRepositoryPublishing)
-    XCTAssertFalse(store.isRemoteRepositoryChecking)
-  }
-
-  func testQuickHideBlocksAIRequestsBeforeConversationChanges() async throws {
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
-    let draft = try XCTUnwrap(store.selectedDraft)
-    store.activateQuickHide(reason: "Manual")
-
-    let action = await store.performAIAction(.privacyReview, draft: draft)
-    let metadataSuggestion = await store.generateAIMetadataSuggestions(draft: draft)
-    let chatReply = await store.sendAIChatMessage("检查标题", draft: draft)
-    let imageSuggestions = await store.generateAIImageTextSuggestions(draft: draft)
-
-    XCTAssertNil(action)
-    XCTAssertNil(metadataSuggestion)
-    XCTAssertNil(chatReply)
-    XCTAssertTrue(imageSuggestions.isEmpty)
-    XCTAssertTrue(store.aiChatMessages.isEmpty)
-    XCTAssertFalse(store.isAIActionRunning)
-    XCTAssertFalse(store.isAIMetadataSuggestionRunning)
-    XCTAssertFalse(store.isAIChatRunning)
-    XCTAssertFalse(store.isAIImageTextRunning)
-    XCTAssertEqual(store.aiActionMessage, "快速隐藏已启用，请返回工作台后再继续。")
-    XCTAssertEqual(store.aiChatMessage, "快速隐藏已启用，请返回工作台后再继续。")
-    XCTAssertEqual(store.imageActionMessage, "快速隐藏已启用，请返回工作台后再继续。")
-  }
-
   func testPrivacyProtectionStatusSummarizesEnabledProtections() throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
@@ -204,29 +123,27 @@ final class PrivacyProtectionTests: XCTestCase {
 
     let status = store.privacyProtectionStatus
 
-    XCTAssertFalse(status.isQuickHideActive)
     XCTAssertEqual(status.activeProtections, ["私密内容遮挡"])
-    XCTAssertTrue(status.detail.contains("⌃⌘L"))
+    XCTAssertEqual(status.title, "私密内容遮挡已开启")
+    XCTAssertTrue(status.detail.contains("不加密本地数据"))
+    store.updatePrivacySettings(PrivacyProtectionSettings(masksPrivateContent: false))
+    XCTAssertEqual(store.privacyProtectionStatus.title, "私密内容遮挡已关闭")
+    XCTAssertTrue(store.privacyProtectionStatus.activeProtections.isEmpty)
   }
 
   func testPrivacyProtectionStatusChecklistSummarizesReviewableBehavior() throws {
     let status = PrivacyProtectionStatus.make(
       settings: PrivacyProtectionSettings(
         masksPrivateContent: true
-      ),
-      isQuickHideActive: true,
-      reason: "已手动快速隐藏。"
+      )
     )
 
     let markdown = status.checklistMarkdown
 
-    XCTAssertTrue(markdown.contains("# 快速隐藏和私密内容遮挡"))
-    XCTAssertTrue(markdown.contains("- 当前状态：快速隐藏已启用"))
+    XCTAssertTrue(markdown.contains("# 私密内容遮挡"))
+    XCTAssertTrue(markdown.contains("- 当前状态：私密内容遮挡已开启"))
     XCTAssertTrue(markdown.contains("- 已启用的遮挡设置：私密内容遮挡"))
     XCTAssertTrue(markdown.contains("私密内容遮挡"))
-    XCTAssertTrue(markdown.contains("手动快速隐藏后"))
-    XCTAssertTrue(markdown.contains("写作、AI、同步和发布操作不可用"))
-    XCTAssertTrue(markdown.contains("主窗口和设置窗口都遮挡工作台内容"))
     XCTAssertTrue(markdown.contains("标题仍可辨认"))
     XCTAssertTrue(markdown.contains("不暴露摘要、正文或路径"))
     XCTAssertTrue(markdown.contains("不得包含本地路径、Token、授权头或私密正文"))

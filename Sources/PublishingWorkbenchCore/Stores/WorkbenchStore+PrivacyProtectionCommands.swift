@@ -1,14 +1,6 @@
 import Foundation
 
 extension WorkbenchStore {
-  public var canUseProtectedWorkbench: Bool {
-    privacyProtectionStore.canUseProtectedWorkbench
-  }
-
-  public var quickHideOperationMessage: String {
-    privacyProtectionStore.quickHideOperationMessage
-  }
-
   public var privacyProtectionStatus: PrivacyProtectionStatus {
     privacyProtectionStore.privacyProtectionStatus
   }

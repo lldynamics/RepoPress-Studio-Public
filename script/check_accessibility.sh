@@ -116,11 +116,6 @@ require_literal \
   "global navigation controls must use the selected app accent palette"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
-  ".keyboardShortcut(\"l\", modifiers: [.command, .control])" \
-  "quick hide must have a keyboard shortcut"
-
-require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
   ".focusedSceneObject(sceneCommandRouter)" \
   "content view must expose the scene command router to menu commands"
@@ -144,19 +139,34 @@ if [[ -n "$unexpected_publish_execution_references" ]]; then
 fi
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
-  "modalPresentation.dismiss()" \
-  "quick hide must close all transient presentations"
-
-require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftListComponents.swift" \
   "display.title.nilIfEmpty" \
   "private draft rows must render the privacy-safe title"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPalette.swift" \
-  "matchesPrivacyProtectedDraftSearch(" \
-  "command palette search must honor private-content masking"
+  "masksPrivateContent: store.privacySettings.masksPrivateContent" \
+  "command palette article search must pass the private-content masking policy"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPaletteArticleSearch.swift" \
+  "DraftFullTextSearchPreparation.prepare" \
+  "command palette article search must prepare privacy-safe drafts before searching"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPaletteArticleSearch.swift" \
+  "let hits = await search(normalizedQuery, searchableDrafts, resultLimit)" \
+  "command palette article search must search the prepared drafts"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Support/DraftFullTextSearchPresentation.swift" \
+  "draft.bodyMarkdown = \"\"" \
+  "private article search preparation must clear hidden content"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Support/DraftFullTextSearchPresentation.swift" \
+  "guard masksPrivateContent, draft.isPrivate else { return draft }" \
+  "private article search preparation must honor the masking preference"
 
 require_absent_literal \
   "Sources/PersonalSitePublisherMac/Views/Shared/SharedViews.swift" \
@@ -217,41 +227,6 @@ require_literal \
   "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
   "EditorAccessibilityAnnouncementCenter.announce(" \
   "draft history navigation must announce the destination article"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Shared/SharedViews.swift" \
-  ".keyboardShortcut(.return, modifiers: [])" \
-  "quick-hide overlay must support return-key return"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Shared/SharedViews.swift" \
-  ".accessibilityIdentifier(\"quick-hide-overlay\")" \
-  "quick-hide overlay must expose an accessibility identifier"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Shared/SharedViews.swift" \
-  ".accessibilityLabel(status.title)" \
-  "quick-hide overlay must expose an accessibility label"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Shared/SharedViews.swift" \
-  ".accessibilityHint(status.detail)" \
-  "quick-hide overlay must expose an accessibility hint"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift" \
-  "ProtectedSettingsView" \
-  "settings scene must be wrapped by privacy protection"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift" \
-  ".disabled(!store.canUseProtectedWorkbench)" \
-  "settings scene must disable controls while workbench content is hidden"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift" \
-  "QuickHideOverlay(store: store)" \
-  "settings scene must show the quick-hide overlay"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTopBarView.swift" \
@@ -406,14 +381,14 @@ require_literal \
   "runtime coverage must switch from the publish drawer to both toolbar inspector destinations"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
-  ".accessibilityIdentifier(\"markdown-ai-assistant-entry\")" \
-  "the writing page must expose a direct AI collaboration entry point"
+  "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
+  ".accessibilityIdentifier(\"ai-assistant-toolbar-button\")" \
+  "the workspace toolbar must expose a direct AI collaboration entry point"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
-  "case .aiChat:" \
-  "the configurable writing toolbar must keep a dedicated AI collaboration item"
+  "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
+  ".accessibilityLabel(String(localized: \"AI 助手\"))" \
+  "the workspace AI collaboration entry must have an accessible name"
 
 require_literal \
   "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
@@ -692,44 +667,54 @@ require_literal \
   "draft search field must expose an accessibility label"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/DraftFullTextSearchPanel.swift" \
-  ".accessibilityLabel(\"搜索文章或输入结构化条件\")" \
-  "structured full-text search field must expose an accessibility label"
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPalette.swift" \
+  ".accessibilityLabel(\"搜索范围\")" \
+  "command palette article search must expose its search scope label"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/DraftFullTextSearchPanel.swift" \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPaletteArticleControls.swift" \
   ".accessibilityLabel(\"保存的全文搜索查询\")" \
   "saved full-text queries must expose an accessibility label"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/DraftFullTextSearchPanel.swift" \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPalette.swift" \
   ".onKeyPress(.downArrow)" \
-  "full-text search must support down-arrow result selection"
+  "command palette article search must support down-arrow result selection"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/DraftFullTextSearchPanel.swift" \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPalette.swift" \
   ".onKeyPress(.upArrow)" \
-  "full-text search must support up-arrow result selection"
+  "command palette article search must support up-arrow result selection"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/DraftFullTextSearchPanel.swift" \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPalette.swift" \
   ".onExitCommand" \
-  "full-text search must close with Escape"
+  "command palette article search must close with Escape"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/DraftFullTextSearchPanel.swift" \
-  ".accessibilityAddTraits(selectedHitID == hit.id ? .isSelected : [])" \
-  "full-text search must expose its keyboard selection to accessibility"
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPalette.swift" \
+  ".onSubmit(performSelectedResult)" \
+  "command palette article search must open the selected result with Return"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/DraftFullTextSearchPanel.swift" \
-  "title: \"清除条件\"" \
-  "empty full-text search results must offer to clear filters"
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPalette.swift" \
+  ".accessibilityAddTraits(selectedResultID == id ? .isSelected : [])" \
+  "command palette article search must expose keyboard selection to accessibility"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/DraftFullTextSearchPanel.swift" \
-  "title: \"搜索全部站点\"" \
-  "empty full-text search results must offer an all-sites search"
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPalette.swift" \
+  "id: \"workspace:full-text-search\"" \
+  "command palette must retain the unified article search entry"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPalette.swift" \
+  "id: \"workspace:batch-replace\"" \
+  "command palette must retain the batch replacement entry"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Editor/MarkdownBatchFindReplacePanel.swift" \
+  ".accessibilityIdentifier(\"markdown-batch-find-replace-panel\")" \
+  "batch replacement must retain its accessibility contract"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/DraftVersionComparisonView.swift" \
@@ -737,7 +722,6 @@ require_literal \
   "version comparison must identify the fixed left-side restore source"
 
 sheet_action_files=(
-  "Sources/PersonalSitePublisherMac/Views/Editor/DraftFullTextSearchPanel.swift"
   "Sources/PersonalSitePublisherMac/Views/Editor/DraftVersionComparisonView.swift"
   "Sources/PersonalSitePublisherMac/Views/AIChat/AIChatDraftDiffPreview.swift"
   "Sources/PersonalSitePublisherMac/Views/Editor/MarkdownEditorEnhancementPanels.swift"
@@ -837,9 +821,14 @@ require_literal \
   "local preview toolbar control must announce when the preview is running"
 
 require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Settings/TokenDeploymentAutomationSection.swift" \
+  ".accessibilityLabel(\"启用当前工作区 PR/MR 与部署状态自动检查\")" \
+  "deployment status automation toggle must expose an accessibility label"
+
+require_literal \
   "Sources/PersonalSitePublisherMac/Views/Publishing/ReleaseHistoryDetailView.swift" \
-  ".accessibilityLabel(\"启用 PR/MR 与部署状态自动检查\")" \
-  "on-demand deployment status toggle must expose an accessibility label"
+  ".accessibilityLabel(\"立即检查 PR/MR 与部署状态\")" \
+  "on-demand deployment status action must expose an accessibility label"
 
 require_literal_any_file \
   ".accessibilityLabel(\"复制全部外部调试链接\")" \
@@ -1123,19 +1112,20 @@ assert "DisclosureGroup(" in commands and "expandedCommandActionIDs" in commands
 assert 'release-action-\\(item.id)-advanced-commands' in commands
 PY
 
-# The overview may collapse configuration tools, while problems, publication
-# status and Git management must remain available before that disclosure.
+# The overview keeps scan and publication status visible. Git management stays
+# outside the disclosure, while the secondary problem summary remains reachable.
 python3 - "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspaceOverviewSections.swift" <<'PY'
 import pathlib
 import sys
 source = pathlib.Path(sys.argv[1]).read_text()
 primary = source.split('private var repositoryOverviewPrimaryColumn: some View {', 1)[1].split('private var repositoryOverviewContextColumn:', 1)[0]
 context = source.split('private var repositoryOverviewContextColumn: some View {', 1)[1].split('@ViewBuilder', 1)[0]
-assert 'DisclosureGroup' not in primary, 'overview problems and publish status must remain visible'
-assert all(item in primary for item in ('repositoryProblemsSection', 'repositoryMergeConflictSection', 'onlinePublishCenterSection'))
+assert 'DisclosureGroup' not in primary, 'overview scan and publish status must remain visible'
+assert all(item in primary for item in ('repositoryScanProgress', 'repositoryMergeConflictSection', 'repositoryPublishReadinessSummary', 'onlinePublishCenterSection'))
 before, disclosure = context.split('DisclosureGroup', 1)
 assert 'RepositoryWorkspaceGitManagementSection(store: store)' in before, 'Git management must remain outside collapsed tools'
 assert 'RepositoryWorkspaceGitManagementSection' not in disclosure
+assert 'repositoryProblemsSection' in disclosure, 'secondary problem summary must remain reachable'
 assert 'repository-section-more-tools' in disclosure, 'collapsed tools need an accessible stable entry'
 PY
 
@@ -1257,8 +1247,8 @@ require_literal \
 
 require_literal \
   "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
-  "testContentHealthIdentifiersRemainUniqueAcrossAllStages" \
-  "runtime accessibility coverage must verify every content-health stage"
+  "testContentHealthHasOneProblemListWithFilters" \
+  "runtime accessibility coverage must verify the unified problem list and filters"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Images/RepositoryImageBrowserView.swift" \
@@ -1347,7 +1337,7 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
-  ".accessibilityLabel(\"AI 常用操作\")" \
+  ".accessibilityLabel(\"AI 操作\")" \
   "the editor AI quick actions menu must expose a descriptive accessibility label"
 
 require_literal \
@@ -1372,43 +1362,43 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
-  "private var configuredIconToolbarControls: some View" \
-  "writing-page tools must render the persisted toolbar configuration"
+  "private var editingTools: some View" \
+  "writing-page tools must keep a dedicated responsive row"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
-  "MarkdownEditorToolbarLayoutPlanner.variant(" \
-  "fixed icon toolbar must remain usable in narrow writing windows"
+  "editingToolsRow(formattingLayout: .scrollable, collapsesWritingTools: true)" \
+  "writing tools must remain available in narrow writing windows"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownFormattingToolbar.swift" \
-  "formattingRow(itemIDs: basicFormattingItemIDs, showsTitle: false)" \
-  "basic writing tools must honor configured visibility and order"
+  "formattingRow(items: MarkdownToolbarLayout.primaryFormattingItems)" \
+  "compact formatting must preserve primary actions"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownFormattingToolbar.swift" \
-  "formattingRow(itemIDs: configuredFormattingItemIDs, showsTitle: false)" \
-  "professional writing tools must honor configured visibility and order"
+  "formattingRow(items: MarkdownToolbarLayout.expandedFormattingItems)" \
+  "expanded formatting must expose the full primary row"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
-  "MarkdownEditorToolbarLayoutPlanner.variant(" \
-  "writing-page toolbar must preserve enabled actions in responsive layouts"
-
-require_absent_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
-  "compactToolbarControls(" \
-  "writing-page tools must not collapse into a compact toolbar"
+  "private var writingToolsMenu: some View" \
+  "collapsed writing tools must remain accessible through a menu"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
-  "overflowMenu(reservedIDs:" \
-  "responsive overflow must contain only enabled actions omitted from the main row"
+  "aiActionsMenuButton(showsTitle: true)" \
+  "collapsed writing tools must retain AI quick actions"
 
-require_absent_literal \
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
+  "exportMenuButton(showsTitle: true)" \
+  "collapsed writing tools must retain export actions"
+
+require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownFormattingToolbar.swift" \
-  "compactRows(" \
-  "professional writing tools must not collapse into a secondary row layout"
+  "ScrollView(.horizontal, showsIndicators: true)" \
+  "formatting actions must remain reachable in narrow writing windows"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
@@ -1452,8 +1442,8 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MarkdownEditorComfortControl.swift" \
-  "Label(\"编辑显示与辅助功能\", systemImage: \"textformat.size\")" \
-  "editor display accessibility control must expose text when space permits"
+  "Label(\"编辑器设置…\", systemImage: \"textformat.size\")" \
+  "editor settings control must expose text when space permits"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MarkdownSlashCommandMenu.swift" \

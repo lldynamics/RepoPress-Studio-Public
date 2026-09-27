@@ -630,7 +630,7 @@ struct FirstRunSetupView: View {
   private var aiAssistanceStep: some View {
     VStack(alignment: .leading, spacing: 18) {
       stepTitle(
-        String(localized: "开启 AI 辅助（可选）"),
+        String(localized: "启用 AI 助手（可选）"),
         detail: String(localized: "可以直接开始写作；只有选择已有连接时，才会把它关联到这个站点。")
       )
 
@@ -1034,7 +1034,7 @@ struct FirstRunSetupView: View {
       switch self {
       case .repository: String(localized: "仓库")
       case .rules: String(localized: "发布规则")
-      case .ai: String(localized: "AI 辅助")
+      case .ai: String(localized: "AI 助手")
       }
     }
   }

@@ -58,8 +58,8 @@ article content or search ranking:
 - Core localization resolves the packaged resource bundle and each explicit
   language bundle lazily once per process. It continues to look up strings and
   format values for each request; explicit locale calls can alternate languages.
-  The existing next-launch application language setting and automatic formatting
-  locale remain unchanged.
+  App display language now follows macOS's per-app language setting; automatic
+  formatting locale behavior remains unchanged.
 - Automatic custom slash snippets first check for an exact shortcut on the
   current line. Partial or unknown commands no longer scan the whole document
   for code ranges on each keystroke. A complete match still checks code ranges

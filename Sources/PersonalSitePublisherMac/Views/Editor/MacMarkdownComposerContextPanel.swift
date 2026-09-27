@@ -68,17 +68,6 @@ extension MacMarkdownComposerView {
     )
   }
 
-  func preparePublish() {
-    guard store.ensureEditableDraftSelected() != nil else { return }
-    store.runPreflight()
-    let message = String(localized: "已完成发布前检查，发布准备已打开。")
-    if let publishDrawerCommandAction {
-      publishDrawerCommandAction.open(message)
-    } else {
-      store.setPublishActionMessage(message, status: .success)
-    }
-  }
-
   @ViewBuilder
   func writingContextPanelContent(for panel: MarkdownWritingContextPanel) -> some View {
     switch panel {

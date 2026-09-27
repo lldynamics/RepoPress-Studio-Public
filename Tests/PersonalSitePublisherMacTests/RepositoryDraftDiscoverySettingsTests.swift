@@ -3,11 +3,10 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class RepositoryDraftDiscoverySettingsTests: XCTestCase {
-  func testAutomaticDiscoveryRequiresEverySafetyAndPreferenceGate() {
+  func testAutomaticDiscoveryRequiresSafetyAndPreferenceGates() {
     XCTAssertTrue(
       RepositoryDraftDiscoveryPolicy.shouldRunAutomatically(
         isSafeMode: false,
-        canUseProtectedWorkbench: true,
         isEnabled: true,
         isRefreshRunning: false
       )
@@ -15,7 +14,6 @@ final class RepositoryDraftDiscoverySettingsTests: XCTestCase {
     XCTAssertFalse(
       RepositoryDraftDiscoveryPolicy.shouldRunAutomatically(
         isSafeMode: true,
-        canUseProtectedWorkbench: true,
         isEnabled: true,
         isRefreshRunning: false
       )
@@ -23,15 +21,6 @@ final class RepositoryDraftDiscoverySettingsTests: XCTestCase {
     XCTAssertFalse(
       RepositoryDraftDiscoveryPolicy.shouldRunAutomatically(
         isSafeMode: false,
-        canUseProtectedWorkbench: false,
-        isEnabled: true,
-        isRefreshRunning: false
-      )
-    )
-    XCTAssertFalse(
-      RepositoryDraftDiscoveryPolicy.shouldRunAutomatically(
-        isSafeMode: false,
-        canUseProtectedWorkbench: true,
         isEnabled: false,
         isRefreshRunning: false
       )
@@ -39,7 +28,6 @@ final class RepositoryDraftDiscoverySettingsTests: XCTestCase {
     XCTAssertFalse(
       RepositoryDraftDiscoveryPolicy.shouldRunAutomatically(
         isSafeMode: false,
-        canUseProtectedWorkbench: true,
         isEnabled: true,
         isRefreshRunning: true
       )

@@ -10,13 +10,13 @@ enum ContentHealthContextFilter: String, CaseIterable, Identifiable, Sendable {
   var id: String { rawValue }
 
   static var navigationFilters: [Self] {
-    [.overview, .publicRisks, .aiFixes, .siteIssues, .maintenance]
+    [.overview]
   }
 
   var title: LocalizedStringKey {
     switch self {
     case .overview:
-      return "行动队列"
+      return "问题列表"
     case .publicRisks:
       return "公开风险"
     case .aiFixes:
@@ -31,7 +31,7 @@ enum ContentHealthContextFilter: String, CaseIterable, Identifiable, Sendable {
   var accessibilityTitle: String {
     switch self {
     case .overview:
-      return String(localized: "行动队列")
+      return String(localized: "问题列表")
     case .publicRisks:
       return String(localized: "公开风险")
     case .aiFixes:
@@ -109,14 +109,13 @@ enum RepositoryContextStage: String, Identifiable {
   static let navigationStages: [Self] = [
     .overview,
     .changes,
+    .source,
     .history,
   ]
 
   var primaryNavigationStage: Self {
     switch self {
-    case .source:
-      return .changes
-    case .overview, .changes, .history:
+    case .overview, .changes, .source, .history:
       return self
     }
   }

@@ -381,8 +381,8 @@ struct KnowledgeLibraryDetailView: View {
         systemImage: document.folderID == nil ? "tray" : "folder"
       )
       Label(
-        ByteCountFormatter.string(fromByteCount: document.sourceByteCount, countStyle: .file),
-        systemImage: "internaldrive"
+        readingStatsLabel(for: document),
+        systemImage: "textformat.size"
       )
       Label(
         "添加于 \(document.importedAt.formatted(date: .abbreviated, time: .shortened))",
@@ -428,6 +428,43 @@ struct KnowledgeLibraryDetailView: View {
       .foregroundStyle(document.allowsRemoteAIUse ? Color.primary : Color.secondary)
     }
     .font(.callout)
+  }
+
+  private func readingStatsLabel(for document: KnowledgeDocument) -> String {
+    guard document.kind == .webpage else {
+      return ByteCountFormatter.string(fromByteCount: document.sourceByteCount, countStyle: .file)
+    }
+
+    let text = displayedContentText.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !text.isEmpty else {
+      return String(localized: "正文尚未提取")
+    }
+
+    let scalars = text.unicodeScalars
+    let cjkCount = scalars.reduce(into: 0) { count, scalar in
+      if (0x2E80...0x9FFF).contains(scalar.value)
+        || (0xF900...0xFAFF).contains(scalar.value)
+      {
+        count += 1
+      }
+    }
+    let nonCJKWords =
+      text
+      .components(separatedBy: .whitespacesAndNewlines)
+      .filter { token in
+        token.unicodeScalars.contains { scalar in
+          !(0x2E80...0x9FFF).contains(scalar.value)
+            && !(0xF900...0xFAFF).contains(scalar.value)
+        }
+      }
+      .count
+    let wordCount = max(1, cjkCount + nonCJKWords)
+    let minutes = max(1, Int(ceil(Double(wordCount) / 300.0)))
+    return String(
+      format: String(localized: "%lld 字 · 约 %lld 分钟阅读"),
+      wordCount,
+      minutes
+    )
   }
 
   private func documentFolderMenu(_ document: KnowledgeDocument) -> some View {
@@ -577,7 +614,7 @@ struct KnowledgeLibraryDetailView: View {
             preparesLocalRepairOnAppear: true
           )
         } label: {
-          Label(String(localized: "重新清洗…"), systemImage: "wand.and.stars")
+          Label(String(localized: "重新清洗…"), systemImage: "arrow.clockwise")
         }
         .disabled(knowledge.isBusy || currentRevision == nil)
         .help(String(localized: "使用本机保存的原始网页归档预览新版清洗结果"))

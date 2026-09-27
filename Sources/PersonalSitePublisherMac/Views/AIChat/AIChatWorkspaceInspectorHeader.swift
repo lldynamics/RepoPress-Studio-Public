@@ -380,7 +380,7 @@ extension AIChatContextInspectorView {
     items.append(
       (
         "Agent · \(localizedAgentModeTitle(agentModeBinding.wrappedValue))",
-        agentModeBinding.wrappedValue == .textOnly ? "text.bubble" : "wand.and.stars"
+        agentModeBinding.wrappedValue == .textOnly ? "text.bubble" : "sparkles"
       ))
     return items
   }

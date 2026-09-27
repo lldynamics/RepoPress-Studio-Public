@@ -201,7 +201,6 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
       XCTAssertTrue(prompt.contains("Article Context"), action.rawValue)
       XCTAssertTrue(prompt.contains("A focused publishing workflow."), action.rawValue)
       XCTAssertTrue(prompt.contains("The article explains"), action.rawValue)
-      XCTAssertTrue(prompt.contains("不要"), action.rawValue)
       XCTAssertFalse(prompt.contains("选中文本："), action.rawValue)
     }
   }

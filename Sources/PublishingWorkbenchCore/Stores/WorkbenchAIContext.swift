@@ -62,13 +62,11 @@ extension WorkbenchAIKnowledgeCapability {
   }
 }
 
-/// AI provider selection, protected-workbench gate, and private-content
+/// AI provider selection and private-content
 /// presentation inputs. Credentials themselves remain in their dedicated
 /// credential store and are never exposed by this context.
 @MainActor
 protocol WorkbenchAIPreferencesCapability: AnyObject {
-  var canUseProtectedWorkbench: Bool { get }
-  var quickHideOperationMessage: String { get }
   var activeAIConnectionProfile: AIConnectionProfile { get }
   var aiChatContextMode: AIPublishingChatContextMode { get }
   var aiChatDraftID: UUID? { get }
@@ -201,8 +199,6 @@ final class WorkbenchAIContextAdapter: WorkbenchAIContext {
     await root.refreshSiteMaintenanceSnapshot(force: force)
   }
 
-  var canUseProtectedWorkbench: Bool { root.canUseProtectedWorkbench }
-  var quickHideOperationMessage: String { root.quickHideOperationMessage }
   var activeAIConnectionProfile: AIConnectionProfile { root.activeAIConnectionProfile }
   var aiChatContextMode: AIPublishingChatContextMode { root.aiChatContextMode }
   var aiChatDraftID: UUID? { root.aiChatDraftID }

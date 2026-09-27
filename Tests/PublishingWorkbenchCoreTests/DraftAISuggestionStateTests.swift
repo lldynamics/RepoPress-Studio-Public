@@ -175,7 +175,7 @@ final class DraftAISuggestionStateTests: XCTestCase {
     XCTAssertFalse(store.isAIMetadataSuggestionRunning(for: drafts[0]))
   }
 
-  func testQuickHideAndRevealInvalidatesPendingMetadataSuccess() async throws {
+  func testExplicitCancellationInvalidatesPendingMetadataSuccess() async throws {
     let transport = NonCooperativeSuggestionTransport()
     let (store, drafts) = try makeStore(transport: transport)
     store.aiStore.aiActionResult = AIPublishingActionResult(
@@ -186,13 +186,10 @@ final class DraftAISuggestionStateTests: XCTestCase {
     let task = Task { await store.generateAIMetadataSuggestions(draft: drafts[0]) }
 
     await transport.waitForRequest(1)
-    store.activateQuickHide(reason: "AI request privacy test")
-    XCTAssertTrue(store.isQuickHideActive)
+    store.aiStore.cancelAIGenerationRequests()
     XCTAssertFalse(store.isAIMetadataSuggestionRunning(for: drafts[0]))
-    store.deactivateQuickHide()
-    XCTAssertFalse(store.isQuickHideActive)
 
-    await transport.complete(1, with: .success("TITLE: hidden request"))
+    await transport.complete(1, with: .success("TITLE: cancelled request"))
     let result = await task.value
 
     XCTAssertNil(result)
@@ -218,13 +215,15 @@ final class DraftAISuggestionStateTests: XCTestCase {
     let newerResult = await newerTask.value
     XCTAssertEqual(newerResult?.content, "newer conclusion")
     XCTAssertFalse(store.isAIActionRunning)
+    let newerMessage = store.aiActionMessage
+    XCTAssertNotNil(newerMessage)
 
     await transport.complete(1, with: .success("older conclusion"))
     let olderResult = await olderTask.value
 
     XCTAssertNil(olderResult)
     XCTAssertEqual(store.aiActionResult?.content, "newer conclusion")
-    XCTAssertEqual(store.aiActionMessage, "生成结尾完成。")
+    XCTAssertEqual(store.aiActionMessage, newerMessage)
     XCTAssertFalse(store.isAIActionRunning)
   }
 
@@ -271,6 +270,8 @@ final class DraftAISuggestionStateTests: XCTestCase {
     let newerResult = await newerTask.value
     XCTAssertEqual(newerResult?.content, "newer title")
     XCTAssertEqual(store.aiMetadataSuggestion(for: drafts[0])?.titles, ["newer title"])
+    let newerMessage = store.aiActionMessage
+    XCTAssertNotNil(newerMessage)
 
     await transport.complete(1, with: .success("TITLE: older title"))
     let olderResult = await olderTask.value
@@ -278,7 +279,7 @@ final class DraftAISuggestionStateTests: XCTestCase {
     XCTAssertNil(olderResult)
     XCTAssertEqual(store.aiActionResult?.content, "newer title")
     XCTAssertEqual(store.aiMetadataSuggestion(for: drafts[0])?.titles, ["newer title"])
-    XCTAssertEqual(store.aiActionMessage, "标题建议完成。")
+    XCTAssertEqual(store.aiActionMessage, newerMessage)
   }
 
   func testLateNonMetadataActionFailureDoesNotOverwriteNewerCompletionMessage() async throws {
@@ -296,13 +297,15 @@ final class DraftAISuggestionStateTests: XCTestCase {
     await transport.complete(2, with: .success("retained conclusion"))
     let newerResult = await newerTask.value
     XCTAssertEqual(newerResult?.content, "retained conclusion")
+    let newerMessage = store.aiActionMessage
+    XCTAssertNotNil(newerMessage)
 
     await transport.complete(1, with: .httpFailure(statusCode: 500, message: "late failure"))
     let olderResult = await olderTask.value
 
     XCTAssertNil(olderResult)
     XCTAssertEqual(store.aiActionResult?.content, "retained conclusion")
-    XCTAssertEqual(store.aiActionMessage, "生成结尾完成。")
+    XCTAssertEqual(store.aiActionMessage, newerMessage)
     XCTAssertFalse(store.isAIActionRunning)
   }
 

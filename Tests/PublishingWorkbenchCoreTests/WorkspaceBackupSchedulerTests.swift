@@ -6,6 +6,38 @@ import XCTest
 
 @MainActor
 final class WorkspaceBackupSchedulerTests: XCTestCase {
+  func testAutomaticBackupSwitchPreservesExistingPlanUntilExplicitReenable() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let legacy = WorkspaceBackupScheduleSettings(
+      frequency: .weekly,
+      destinationPath: harness.injectedBackupURL.path,
+      lastBackupAt: Date.distantFuture,
+      selectedCategoryIDs: [WorkspaceBackupCategory.workbench.rawValue],
+      preserveAutomaticBackupHistoryOnSelectedDisk: true
+    )
+    try persist(legacy, in: harness.defaults)
+    let scheduler = WorkspaceBackupScheduler(store: harness.store, defaults: harness.defaults)
+
+    XCTAssertEqual(
+      scheduler.settings, legacy, "Opening settings must not expand a saved backup scope")
+    scheduler.setAutomaticBackupEnabled(true)
+    XCTAssertEqual(scheduler.settings, legacy)
+
+    scheduler.setAutomaticBackupEnabled(false)
+    XCTAssertEqual(scheduler.settings.frequency, .off)
+    XCTAssertEqual(scheduler.selectedCategories, [.workbench])
+    scheduler.setAutomaticBackupEnabled(true)
+    XCTAssertEqual(scheduler.settings.frequency, .daily)
+    XCTAssertEqual(scheduler.selectedCategories, Set(WorkspaceBackupCategory.allCases))
+    XCTAssertEqual(scheduler.settings.destinationPath, legacy.destinationPath)
+    XCTAssertTrue(scheduler.settings.preserveAutomaticBackupHistoryOnSelectedDisk)
+    let reloaded = WorkspaceBackupScheduler(store: harness.store, defaults: harness.defaults)
+    XCTAssertEqual(reloaded.settings, scheduler.settings)
+    await Task.yield()
+    scheduler.stop()
+  }
+
   func testContentFingerprintIgnoresAutomaticBackupEventsAndNestedManifestTime() throws {
     let harness = try makeHarness()
     defer { harness.cleanup() }
@@ -884,6 +916,7 @@ final class WorkspaceBackupSchedulerTests: XCTestCase {
       scheduler.setFrequency(initialFrequency == .off ? .daily : .off)
       scheduler.setICloudDestinationFolder(harness.rootURL.appendingPathComponent("Other"))
       scheduler.setSelectedCategories([.workbench])
+      scheduler.setAutomaticBackupEnabled(true)
       return .localCopyComplete
     }
     await scheduler.performBackup(isAutomatic: true)

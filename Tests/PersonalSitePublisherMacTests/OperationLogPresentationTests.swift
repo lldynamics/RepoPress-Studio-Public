@@ -214,24 +214,16 @@ final class OperationLogPresentationTests: XCTestCase {
     )
   }
 
-  func testClearConfirmationIsHiddenForQuickHideAndEmptyProjection() {
+  func testClearConfirmationRequiresNonEmptyProjection() {
     let visibleEntry = entry("visible", dayOffset: 0)
 
     XCTAssertTrue(
       OperationLogPresentation.canPresentClearConfirmation(
-        isQuickHideActive: false,
         visibleEntries: [visibleEntry]
       )
     )
     XCTAssertFalse(
       OperationLogPresentation.canPresentClearConfirmation(
-        isQuickHideActive: true,
-        visibleEntries: [visibleEntry]
-      )
-    )
-    XCTAssertFalse(
-      OperationLogPresentation.canPresentClearConfirmation(
-        isQuickHideActive: false,
         visibleEntries: []
       )
     )

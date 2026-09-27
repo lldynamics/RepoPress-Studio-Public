@@ -13,10 +13,6 @@ extension PublishingStore {
     _ record: ReleaseRecord,
     store: WorkbenchStore
   ) async -> RemoteRepositoryPublishResult? {
-    guard store.canUseProtectedWorkbench else {
-      setPublishingActionMessage(store.quickHideOperationMessage, status: .warning)
-      return nil
-    }
 
     let profile = store.profile(for: record)
     let draft: RemoteRepositoryReviewRecoveryDraft
@@ -304,10 +300,6 @@ extension PublishingStore {
     expectedReview: SinglePublishReviewExpectation? = nil
   ) async -> RemoteRepositoryPublishResult? {
     guard !blockPublishingIfGeneralDraftSelected(store: store) else { return nil }
-    guard store.canUseProtectedWorkbench else {
-      setPublishingActionMessage(store.quickHideOperationMessage, status: .warning)
-      return nil
-    }
 
     guard let package = publishPackageForSelectedDraft(store: store) else {
       setPublishingActionMessage(CoreL10n.text("没有可线上发布的文章。"), status: .warning)
@@ -333,10 +325,6 @@ extension PublishingStore {
     store: WorkbenchStore
   ) async -> RemoteRepositoryPublishResult? {
     guard !blockPublishingIfGeneralDraftSelected(store: store) else { return nil }
-    guard store.canUseProtectedWorkbench else {
-      setPublishingActionMessage(store.quickHideOperationMessage, status: .warning)
-      return nil
-    }
 
     guard let package = publishPackageForSelectedDraft(store: store) else {
       setPublishingActionMessage(CoreL10n.text("没有可线上预览的文章。"), status: .warning)
@@ -732,10 +720,6 @@ extension PublishingStore {
     _ record: ReleaseRecord,
     store: WorkbenchStore
   ) async -> RemoteRepositoryRollbackResult? {
-    guard store.canUseProtectedWorkbench else {
-      setPublishingActionMessage(store.quickHideOperationMessage, status: .warning)
-      return nil
-    }
 
     let profile = store.profile(for: record)
     let draft: RemoteRepositoryRollbackDraft

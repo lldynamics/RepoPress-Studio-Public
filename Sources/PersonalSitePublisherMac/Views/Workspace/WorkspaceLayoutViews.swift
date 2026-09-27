@@ -153,9 +153,6 @@ struct WorkspaceShellSplitLayout: View {
   }
 
   private var centerMinimumWidth: CGFloat {
-    if selectedSection == .sync, repositoryContextStage == .source {
-      return 680
-    }
     return isCompact ? 460 : 560
   }
 

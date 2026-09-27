@@ -898,14 +898,12 @@
     case maintenance
     case settings
     case generalDrafts = "general-drafts"
-    case quickHide = "privacy-lock"
     case knowledgeLibrary = "knowledge-library"
 
     public var id: String { rawValue }
 
     @MainActor
     public func apply(to store: WorkbenchStore) {
-      store.deactivateQuickHide()
       if let draft = preferredDraft(in: store) {
         store.selectDraft(draft.id)
       }
@@ -955,10 +953,6 @@
         store.selectSection(.writing)
         store.setDraftListContentScope(.general)
         store.setPublishActionMessage(String(localized: "截图模式：通用草稿已载入。"), status: .information)
-      case .quickHide:
-        store.selectSection(.writing)
-        store.setInspectorPresented(true)
-        store.activateQuickHide(reason: CoreL10n.text("工作台已手动隐藏，私密内容已遮挡。"))
       case .knowledgeLibrary:
         store.selectSection(.library)
         store.setInspectorPresented(false)

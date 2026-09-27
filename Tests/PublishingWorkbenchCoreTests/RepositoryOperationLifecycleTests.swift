@@ -6,6 +6,61 @@ import PublishingGitCore
 @testable import PublishingWorkbenchCore
 
 final class RepositoryOperationLifecycleTests: XCTestCase {
+  func testRepositoryReadFailuresRemainBlockedAndIdentifyTheirCause() throws {
+    let service = LocalRepositoryService()
+    let missing = service.operationLifecycle(profile: SiteProfile(name: "Missing"))
+    XCTAssertEqual(missing.kind, .ambiguous)
+    XCTAssertEqual(missing.readFailure, .repositoryUnavailable)
+    XCTAssertTrue(missing.isOperationInProgress)
+
+    let plainDirectory = try makeTemporaryRepository()
+    defer { try? FileManager.default.removeItem(at: plainDirectory) }
+    let notGit = service.operationLifecycle(
+      profile: SiteProfile(name: "Plain", localRepositoryRootPath: plainDirectory.path)
+    )
+    XCTAssertEqual(notGit.kind, .ambiguous)
+    XCTAssertEqual(notGit.readFailure, .notGitWorktree)
+
+    try initializeRepository(plainDirectory)
+    let nestedDirectory = plainDirectory.appendingPathComponent("content", isDirectory: true)
+    try FileManager.default.createDirectory(at: nestedDirectory, withIntermediateDirectories: true)
+    let notRoot = service.operationLifecycle(
+      profile: SiteProfile(name: "Nested", localRepositoryRootPath: nestedDirectory.path)
+    )
+    XCTAssertEqual(notRoot.kind, .ambiguous)
+    XCTAssertEqual(notRoot.readFailure, .notRepositoryRoot)
+
+    let unreadableGit = try makeTemporaryRepository()
+    defer { try? FileManager.default.removeItem(at: unreadableGit) }
+    try write("gitdir: missing-git-directory\n", to: unreadableGit.appendingPathComponent(".git"))
+    let gitFailure = service.operationLifecycle(
+      profile: SiteProfile(name: "Invalid Git", localRepositoryRootPath: unreadableGit.path)
+    )
+    XCTAssertEqual(gitFailure.kind, .ambiguous)
+    XCTAssertEqual(gitFailure.readFailure, .gitReadFailed)
+  }
+
+  func testMultipleGitOperationMarkersAreNotReportedAsRepositoryReadFailure() throws {
+    let rootURL = try makeTemporaryRepository()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try initializeRepository(rootURL)
+    try write("base\n", to: rootURL.appendingPathComponent("article.md"))
+    try runGit(["add", "article.md"], rootURL: rootURL)
+    try runGit(["commit", "-q", "-m", "base"], rootURL: rootURL)
+    let head = try runGit(["rev-parse", "HEAD"], rootURL: rootURL).output
+    try write(head, to: rootURL.appendingPathComponent(".git/MERGE_HEAD"))
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent(".git/rebase-merge", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+
+    let lifecycle = LocalRepositoryService().operationLifecycle(
+      profile: SiteProfile(name: "Markers", localRepositoryRootPath: rootURL.path)
+    )
+    XCTAssertEqual(lifecycle.kind, .ambiguous)
+    XCTAssertNil(lifecycle.readFailure)
+  }
+
   func testMergeConflictCanBeStagedThenCommittedWithoutLosingMergeLifecycle() throws {
     let rootURL = try makeTemporaryRepository()
     defer { try? FileManager.default.removeItem(at: rootURL) }

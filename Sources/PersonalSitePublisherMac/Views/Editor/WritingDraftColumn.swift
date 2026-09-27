@@ -455,11 +455,6 @@ struct WritingDraftColumn: View {
     .onChange(of: store.activeProfileID) { _, _ in
       synchronizeFolderExpansionState()
     }
-    .onChange(of: store.isQuickHideActive) { _, isActive in
-      if isActive {
-        draftPendingUnpublish = nil
-      }
-    }
     .onChange(of: writingListState.restorationRevision) { _, _ in
       applyWindowListState()
     }
@@ -492,7 +487,6 @@ struct WritingDraftColumn: View {
           return store.privateContentDisplay(for: source).isMasked
         },
         loadSnapshot: {
-          guard store.canUseProtectedWorkbench else { throw CancellationError() }
           store.flushDraftBodyEditorBuffers()
           guard let current = store.draft(for: draft.id), !current.isGeneralDraft else {
             throw NSError(
@@ -508,12 +502,11 @@ struct WritingDraftColumn: View {
           )
         },
         onOpenSource: { sourceID in
-          guard store.canUseProtectedWorkbench, store.draft(for: sourceID) != nil else { return }
+          guard store.draft(for: sourceID) != nil else { return }
           draftPendingUnpublish = nil
           onFocusDraft(sourceID, .writing)
         },
         onConfirm: { preview in
-          guard store.canUseProtectedWorkbench else { return false }
           store.flushDraftBodyEditorBuffers()
           guard let current = store.draft(for: draft.id),
             preview.remainsValid(

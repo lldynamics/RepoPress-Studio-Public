@@ -34,6 +34,7 @@ enum ContentMigrationLayout {
 }
 
 struct ContentMigrationAssistantView: View {
+  private let workbenchStore: WorkbenchStore
   @ObservedObject private var dataManagement: WorkbenchDataManagementFeatureFacade
   @Environment(\.dismiss) private var dismiss
   @State private var plan: ContentMigrationPlan?
@@ -44,6 +45,7 @@ struct ContentMigrationAssistantView: View {
   @State private var applyTask: Task<Void, Never>?
 
   init(store: WorkbenchStore) {
+    workbenchStore = store
     _dataManagement = ObservedObject(wrappedValue: store.dataManagement)
   }
 
@@ -54,6 +56,7 @@ struct ContentMigrationAssistantView: View {
       ScrollView(.vertical) {
         VStack(alignment: .leading, spacing: 18) {
           sourceSection
+          WorkspaceExchangeSection(store: workbenchStore)
           if let plan {
             planSummary(plan)
             draftPreview(plan)

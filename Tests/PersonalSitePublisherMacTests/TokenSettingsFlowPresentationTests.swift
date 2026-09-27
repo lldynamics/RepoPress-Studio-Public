@@ -5,17 +5,10 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class TokenSettingsFlowPresentationTests: XCTestCase {
-  func testStructuredTokenDestinationsSelectTheirExactScope() {
-    XCTAssertEqual(TokenSettingsScope(destination: .repository), .repository)
-    XCTAssertEqual(TokenSettingsScope(destination: .deployment), .deployment)
-    XCTAssertEqual(TokenSettingsScope(destination: .analytics), .analytics)
-  }
-
   func testProfileChangeCanClearEveryUnsavedCredentialDraft() {
     var drafts = TokenCredentialDrafts(
       repository: "repository-secret",
-      deployment: "deployment-secret",
-      analytics: "analytics-secret"
+      deployment: "deployment-secret"
     )
 
     XCTAssertNotEqual(drafts, TokenCredentialDrafts())

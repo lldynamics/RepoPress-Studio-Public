@@ -15,22 +15,13 @@ enum SettingsTaskShortcut: CaseIterable, Hashable, Identifiable {
   }
 
   var title: String {
-    switch self {
-    case .publishing:
-      return String(localized: "发布配置")
-    case .aiConnection:
-      return String(localized: "AI 连接")
-    case .editor:
-      return String(localized: "编辑器偏好")
-    case .backup:
-      return String(localized: "备份与恢复")
-    }
+    destination.tab.title
   }
 
   var detail: String {
     switch self {
     case .publishing:
-      return String(localized: "调整内容路径和发布规则")
+      return String(localized: "调整发布连接和部署方式")
     case .aiConnection:
       return String(localized: "检查账户、凭据和连接状态")
     case .editor:
@@ -56,7 +47,7 @@ enum SettingsTaskShortcut: CaseIterable, Hashable, Identifiable {
   var destination: SettingsDestination {
     switch self {
     case .publishing:
-      return .rules(.paths)
+      return .token(.deployment)
     case .aiConnection:
       return .ai(.connection)
     case .editor:
@@ -69,10 +60,6 @@ enum SettingsTaskShortcut: CaseIterable, Hashable, Identifiable {
   var scopePresentation: SettingsScopePresentation {
     destination.tab.scopePresentation
   }
-
-  var opensApplicationSettingsWindow: Bool {
-    !destination.tab.isSiteScoped
-  }
 }
 
 @MainActor
@@ -81,13 +68,8 @@ struct SettingsTaskShortcutsView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
-      VStack(alignment: .leading, spacing: 3) {
-        Text("常用任务")
-          .font(.workbenchSectionTitle)
-        Text("应用偏好会在单独的设置窗口打开")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-      }
+      Text("常用任务")
+        .font(.workbenchSectionTitle)
 
       ViewThatFits(in: .horizontal) {
         LazyVGrid(
@@ -157,10 +139,7 @@ struct SettingsTaskShortcutsView: View {
 
           Spacer(minLength: 4)
 
-          Image(
-            systemName: shortcut.opensApplicationSettingsWindow
-              ? "arrow.up.right.square" : "chevron.right"
-          )
+          Image(systemName: "chevron.right")
             .font(.caption.weight(.semibold))
             .foregroundStyle(.tertiary)
             .accessibilityHidden(true)
@@ -174,15 +153,10 @@ struct SettingsTaskShortcutsView: View {
         )
       }
       .buttonStyle(.plain)
-      .help(
-        shortcut.opensApplicationSettingsWindow
-          ? String(localized: "在应用设置窗口打开") : shortcut.detail
-      )
+      .help(shortcut.detail)
       .accessibilityLabel(shortcut.title)
       .accessibilityHint(
         "\(shortcut.detail)。\(shortcut.scopePresentation.accessibilityDescription)"
-          + (shortcut.opensApplicationSettingsWindow
-            ? "。" + String(localized: "在应用设置窗口打开") : "")
       )
       .accessibilityIdentifier("settings-task-shortcut-\(shortcut.id)")
     }

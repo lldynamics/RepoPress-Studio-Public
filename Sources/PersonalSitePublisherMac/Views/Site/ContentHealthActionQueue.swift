@@ -25,7 +25,7 @@ enum ContentHealthArticleGrouping: String, CaseIterable, Identifiable, Sendable 
   var systemImage: String {
     switch self {
     case .actionQueue: "list.bullet.clipboard"
-    case .automaticFix: "wand.and.stars"
+    case .automaticFix: "sparkles"
     case .site: "globe"
     case .file: "doc.text"
     }

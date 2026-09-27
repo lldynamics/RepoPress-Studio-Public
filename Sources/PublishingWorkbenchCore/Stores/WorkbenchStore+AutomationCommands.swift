@@ -443,11 +443,6 @@ public enum WorkbenchAutomationExecutor {
       return success(step, message)
 
     case .searchDrafts:
-      guard store.canUseProtectedWorkbench else {
-        throw WorkbenchAutomationExecutionError.operationDidNotComplete(
-          store.quickHideOperationMessage
-        )
-      }
       guard let query = step.arguments.query?.trimmedForPublishing.nilIfEmpty else {
         throw WorkbenchAutomationValidationError.missingArgument("query")
       }
@@ -480,11 +475,6 @@ public enum WorkbenchAutomationExecutor {
       )
 
     case .knowledgeSearch:
-      guard store.canUseProtectedWorkbench else {
-        throw WorkbenchAutomationExecutionError.operationDidNotComplete(
-          store.quickHideOperationMessage
-        )
-      }
       guard let query = step.arguments.query?.trimmedForPublishing.nilIfEmpty else {
         throw WorkbenchAutomationValidationError.missingArgument("query")
       }
@@ -523,11 +513,6 @@ public enum WorkbenchAutomationExecutor {
       )
 
     case .knowledgeRead:
-      guard store.canUseProtectedWorkbench else {
-        throw WorkbenchAutomationExecutionError.operationDidNotComplete(
-          store.quickHideOperationMessage
-        )
-      }
       guard let documentID = step.arguments.documentID else {
         throw WorkbenchAutomationValidationError.missingArgument("documentID")
       }

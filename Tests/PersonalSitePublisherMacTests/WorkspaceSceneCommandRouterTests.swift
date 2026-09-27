@@ -117,9 +117,7 @@ final class WorkspaceSceneCommandRouterTests: XCTestCase {
       ),
       workspaceFirstRunSetupCommandAction: WorkspaceFirstRunSetupCommandAction(open: {}),
       settingsWorkspaceCommandAction: SettingsWorkspaceCommandAction(
-        isPresented: false,
-        open: { _ in },
-        close: {}
+        open: { _ in }
       ),
       draftFullTextSearchAction: DraftFullTextSearchAction(open: {}),
       workspaceFocusModeCommandAction: WorkspaceFocusModeCommandAction(
@@ -132,11 +130,7 @@ final class WorkspaceSceneCommandRouterTests: XCTestCase {
         canToggle: true,
         toggle: {}
       ),
-      repositorySourceSessionCommandActions: RepositorySourceSessionCommandActions(
-        hasUnsavedChanges: false,
-        save: { true },
-        lastErrorMessage: { nil }
-      )
+      showTaskCenter: {},
     )
     router.registerMarkdownEditor(
       makeMarkdownActions(draftID: UUID()) {},
@@ -154,9 +148,61 @@ final class WorkspaceSceneCommandRouterTests: XCTestCase {
     XCTAssertNil(router.draftFullTextSearchAction)
     XCTAssertNil(router.workspaceFocusModeCommandAction)
     XCTAssertNil(router.workspaceInspectorCommandAction)
-    XCTAssertNil(router.repositorySourceSessionCommandActions)
+    XCTAssertNil(router.showTaskCenter)
     XCTAssertNil(router.markdownEditorCommandActions)
     XCTAssertNil(router.knowledgeLibraryCommandActions)
+  }
+
+  func testTaskCenterActionBelongsToEachRouterInstanceAndIsCleared() {
+    let firstRouter = WorkspaceSceneCommandRouter()
+    let secondRouter = WorkspaceSceneCommandRouter()
+    var firstInvocationCount = 0
+    var secondInvocationCount = 0
+
+    firstRouter.updateRoot(
+      publishDrawerCommandAction: PublishDrawerCommandAction { _ in },
+      localSitePreviewCommandAction: LocalSitePreviewCommandAction {},
+      workspaceCommandPaletteAction: WorkspaceCommandPaletteAction(
+        open: {}, openMaintenance: {}, openReleaseHistory: {}
+      ),
+      workspaceFirstRunSetupCommandAction: WorkspaceFirstRunSetupCommandAction(open: {}),
+      settingsWorkspaceCommandAction: SettingsWorkspaceCommandAction(open: { _ in }),
+      draftFullTextSearchAction: DraftFullTextSearchAction(open: {}),
+      workspaceFocusModeCommandAction: WorkspaceFocusModeCommandAction(
+        isActive: false, canToggle: true, toggle: {}
+      ),
+      workspaceInspectorCommandAction: WorkspaceInspectorCommandAction(
+        isPresented: false, canToggle: true, toggle: {}
+      ),
+      showTaskCenter: { firstInvocationCount += 1 }
+    )
+    secondRouter.updateRoot(
+      publishDrawerCommandAction: PublishDrawerCommandAction { _ in },
+      localSitePreviewCommandAction: LocalSitePreviewCommandAction {},
+      workspaceCommandPaletteAction: WorkspaceCommandPaletteAction(
+        open: {}, openMaintenance: {}, openReleaseHistory: {}
+      ),
+      workspaceFirstRunSetupCommandAction: WorkspaceFirstRunSetupCommandAction(open: {}),
+      settingsWorkspaceCommandAction: SettingsWorkspaceCommandAction(open: { _ in }),
+      draftFullTextSearchAction: DraftFullTextSearchAction(open: {}),
+      workspaceFocusModeCommandAction: WorkspaceFocusModeCommandAction(
+        isActive: false, canToggle: true, toggle: {}
+      ),
+      workspaceInspectorCommandAction: WorkspaceInspectorCommandAction(
+        isPresented: false, canToggle: true, toggle: {}
+      ),
+      showTaskCenter: { secondInvocationCount += 1 }
+    )
+
+    firstRouter.showTaskCenter?()
+    secondRouter.showTaskCenter?()
+    XCTAssertEqual(firstInvocationCount, 1)
+    XCTAssertEqual(secondInvocationCount, 1)
+
+    firstRouter.clearAll()
+    secondRouter.clearAll()
+    XCTAssertNil(firstRouter.showTaskCenter)
+    XCTAssertNil(secondRouter.showTaskCenter)
   }
 
   private func drainDefaultRunLoop() {

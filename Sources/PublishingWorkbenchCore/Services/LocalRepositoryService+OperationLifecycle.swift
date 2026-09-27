@@ -13,7 +13,8 @@ extension LocalRepositoryService {
         return RepositoryOperationLifecycle(
           rootPath: "",
           kind: .ambiguous,
-          diagnostic: RepositoryOperationLifecycleError.repositoryUnavailable.localizedDescription
+          diagnostic: RepositoryOperationLifecycleError.repositoryUnavailable.localizedDescription,
+          readFailure: .repositoryUnavailable
         )
       }
       return lifecycle
@@ -22,8 +23,24 @@ extension LocalRepositoryService {
       return RepositoryOperationLifecycle(
         rootPath: rootPath,
         kind: .ambiguous,
-        diagnostic: error.localizedDescription
+        diagnostic: error.localizedDescription,
+        readFailure: repositoryLifecycleReadFailure(for: error)
       )
+    }
+  }
+
+  private func repositoryLifecycleReadFailure(for error: Error)
+    -> RepositoryOperationLifecycleReadFailure
+  {
+    switch error as? RepositoryOperationLifecycleError {
+    case .repositoryUnavailable:
+      return .repositoryUnavailable
+    case .notGitWorktree:
+      return .notGitWorktree
+    case .notRepositoryRoot:
+      return .notRepositoryRoot
+    default:
+      return .gitReadFailed
     }
   }
 
@@ -211,8 +228,14 @@ extension LocalRepositoryService {
     }
 
     let result = runGitCommand(["rev-parse", "--show-toplevel"], rootURL: suppliedRoot)
-    guard result.terminationStatus == 0, !result.didTimeOut, !result.wasOutputTruncated else {
+    guard !result.didTimeOut, !result.wasOutputTruncated else {
       throw RepositoryOperationLifecycleError.invalidRepository("无法确认 Git 工作树根目录。")
+    }
+    guard result.terminationStatus == 0 else {
+      let gitMarker = suppliedRoot.appendingPathComponent(".git", isDirectory: false)
+      throw fileManager.fileExists(atPath: gitMarker.path)
+        ? RepositoryOperationLifecycleError.invalidRepository("无法确认 Git 工作树根目录。")
+        : RepositoryOperationLifecycleError.notGitWorktree
     }
     let reportedPath = result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !reportedPath.isEmpty else {
@@ -222,7 +245,7 @@ extension LocalRepositoryService {
       .standardizedFileURL
       .resolvingSymlinksInPath()
     guard reportedRoot.path == suppliedRoot.path else {
-      throw RepositoryOperationLifecycleError.invalidRepository("配置目录不是 Git 工作树根目录。")
+      throw RepositoryOperationLifecycleError.notRepositoryRoot
     }
     return reportedRoot
   }

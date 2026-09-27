@@ -44,19 +44,21 @@ final class SettingsNavigationSessionTests: XCTestCase {
     XCTAssertTrue(selection.dismissesSearchHighlight)
   }
 
-  func testWorkspaceSubsectionTakesPriorityOverItsCompatibleDestination() {
+  func testRepeatingADeepLinkInTheOpenWindowRefreshesFocusAndScroll() {
     var session = SettingsNavigationSession(selectedRoute: .tab(.appearance))
+    _ = session.selectDestination(.ai(.credentials), healthDestination: .aiKey)
+    let previousNavigationID = session.navigationRequestID
+    let previousHealthID = session.healthNavigationRequestID
+    let previousScrollID = session.detailScrollRequest?.id
 
-    let selection = session.applyWorkspaceNavigation(
-      destination: .token(.repository),
-      subsection: .tokenDeployment
-    )
+    let selection = session.selectDestination(.ai(.credentials), healthDestination: .aiKey)
 
-    XCTAssertEqual(session.navigationDestination, .token(.repository))
-    XCTAssertNil(session.healthDestination)
-    XCTAssertEqual(session.selectedRoute, .subsection(.tokenDeployment))
-    XCTAssertEqual(session.detailScrollRequest?.subsection, .tokenDeployment)
-    XCTAssertTrue(selection?.clearsSubsectionAnchors == true)
+    XCTAssertEqual(session.navigationDestination, .ai(.credentials))
+    XCTAssertNotEqual(session.navigationRequestID, previousNavigationID)
+    XCTAssertNotEqual(session.healthNavigationRequestID, previousHealthID)
+    XCTAssertNotEqual(session.detailScrollRequest?.id, previousScrollID)
+    XCTAssertFalse(selection.clearsSubsectionAnchors)
+    XCTAssertTrue(selection.dismissesSearchHighlight)
   }
 
   func testManualScrollSynchronizesRouteWithoutReplacingPendingRequests() throws {
@@ -66,12 +68,12 @@ final class SettingsNavigationSessionTests: XCTestCase {
     let healthNavigationRequestID = session.healthNavigationRequestID
     let detailScrollRequestID = try XCTUnwrap(session.detailScrollRequest?.id)
 
-    XCTAssertTrue(session.synchronizeManuallyScrolledSubsection(.tokenAnalytics))
-    XCTAssertEqual(session.selectedRoute, .subsection(.tokenAnalytics))
+    XCTAssertTrue(session.synchronizeManuallyScrolledSubsection(.tokenDeployment))
+    XCTAssertEqual(session.selectedRoute, .subsection(.tokenDeployment))
     XCTAssertEqual(session.navigationRequestID, navigationRequestID)
     XCTAssertEqual(session.healthNavigationRequestID, healthNavigationRequestID)
     XCTAssertEqual(session.detailScrollRequest?.id, detailScrollRequestID)
-    XCTAssertFalse(session.synchronizeManuallyScrolledSubsection(.tokenAnalytics))
+    XCTAssertFalse(session.synchronizeManuallyScrolledSubsection(.tokenDeployment))
   }
 
   func testStaleGeometryCannotNavigateBackToThePreviousPage() {

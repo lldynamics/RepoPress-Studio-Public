@@ -3,6 +3,11 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class SettingsSearchSessionTests: XCTestCase {
+  func testIndexedResultIDsAreUnique() {
+    let ids = SettingsSearchIndex.allItems.map(\.id)
+    XCTAssertEqual(Set(ids).count, ids.count)
+  }
+
   func testOpeningAndReturningToResultsPreservesTheOriginalQuery() throws {
     var session = SettingsSearchSession()
     session.updateQuery("主题")
@@ -65,11 +70,11 @@ final class SettingsSearchSessionTests: XCTestCase {
   }
 
   func testHighlightClipsToTheViewportAndStopsBeforeTheNextSection() {
-    let highlight = SettingsSearchHighlight(subsection: .appearanceTheme)
+    let highlight = SettingsSearchHighlight(subsection: .appearanceBehavior)
     let frame = highlight.visibleFrame(
       anchorFrames: [
-        .appearanceTheme: CGRect(x: 20, y: -40, width: 560, height: 0),
-        .appearanceLanguage: CGRect(x: 20, y: 180, width: 560, height: 0),
+        .appearanceBehavior: CGRect(x: 20, y: -40, width: 560, height: 0),
+        .appearanceTheme: CGRect(x: 20, y: 180, width: 560, height: 0),
         // A stale frame from another page must not shorten this section.
         .aiConnection: CGRect(x: 20, y: 30, width: 560, height: 0),
       ],

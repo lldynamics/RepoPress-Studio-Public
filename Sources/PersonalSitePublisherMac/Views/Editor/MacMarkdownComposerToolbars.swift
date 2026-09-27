@@ -1,108 +1,18 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
-enum MarkdownEditorToolbarLayoutVariant: Equatable {
-  case full
-  case medium
-  case compact
-}
-
-enum MarkdownEditorToolbarLayoutPlanner {
-  private static let controlWidth: CGFloat = 30
-  private static let itemSpacing: CGFloat = 5
-  private static let groupDividerWidth: CGFloat = 11
-
-  static func variant(
-    availableWidth: CGFloat,
-    fullItemIDs: [MarkdownToolbarItemID],
-    mediumItemIDs: [MarkdownToolbarItemID],
-    compactItemIDs: [MarkdownToolbarItemID]
-  ) -> MarkdownEditorToolbarLayoutVariant {
-    if availableWidth >= requiredWidth(for: fullItemIDs, showsOverflow: false) {
-      return .full
-    }
-    if availableWidth >= requiredWidth(for: mediumItemIDs, showsOverflow: true) {
-      return .medium
-    }
-    return .compact
-  }
-
-  static func requiredWidth(
-    for itemIDs: [MarkdownToolbarItemID],
-    showsOverflow: Bool
-  ) -> CGFloat {
-    let itemCount = itemIDs.count + (showsOverflow ? 1 : 0)
-    guard itemCount > 0 else { return 0 }
-    let containsGroupDivider = itemIDs.contains(where: \.isAIGroupItem)
-    let dividerCount = containsGroupDivider ? 1 : 0
-    let childCount = itemCount + dividerCount
-    let controlsWidth = itemIDs.reduce(CGFloat.zero) { width, item in
-      width + (item == .saveStatus ? 138 : controlWidth)
-    } + (showsOverflow ? controlWidth : 0)
-    return controlsWidth
-      + CGFloat(max(0, childCount - 1)) * itemSpacing
-      + CGFloat(dividerCount) * groupDividerWidth
-  }
-}
-
-/// The workspace toolbar already owns navigation to AI chat, preview, and
-/// publication. Keep the article toolbar focused on writing actions while
-/// preserving its direct, high-frequency AI utilities.
-enum MarkdownArticleToolbarScope {
-  private static let workspaceOwnedItems: Set<MarkdownToolbarItemID> = [
-    .aiChat,
-    .localPreview,
-    .preparePublish,
-  ]
-
-  static func articleItemIDs(from itemIDs: [MarkdownToolbarItemID]) -> [MarkdownToolbarItemID] {
-    itemIDs.filter { !workspaceOwnedItems.contains($0) }
-  }
-
-  static func isWorkspaceOwned(_ item: MarkdownToolbarItemID) -> Bool {
-    workspaceOwnedItems.contains(item)
-  }
-}
-
 struct MacMarkdownEditorToolbar: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @Binding var title: String
   let store: WorkbenchStore
   let draftID: UUID
   let markdownPath: String
   let isSelectionAIActionRunning: Bool
-  let canOpenAIChat: Bool
-  let aiChatUnavailableReason: String?
-  @ObservedObject var externalBrowserPreviewCoordinator: ExternalBrowserPreviewCoordinator
-  let writingToolDensity: MarkdownWritingToolDensity
-  let availableWritingContextPanels: [MarkdownWritingContextPanel]
   let actions: MarkdownEditorToolbarActions
   let articleInformationToggle: MacMarkdownArticleInformationToggle?
   let formattingToolbar: MacMarkdownFormattingToolbar
   @EnvironmentObject private var zenModeController: ZenModeController
   @State private var selectedPublishAssets = AIPublishingAssetKind.defaultSelection
   @State private var isPublishAssetPickerPresented = false
-  @AppStorage("workspace.customToolbarConfig") private var customToolbarConfigRawValue = ""
-  @State private var isCustomizationSheetPresented = false
-
-  // Keep the chat symbol in one place. The previous multi-bubble sparkle
-  // symbol is not available in the macOS 14 SF Symbols set.
-  private static let aiChatSystemImage = "bubble.left"
-
-  private var currentToolbarConfig: MarkdownToolbarConfiguration {
-    MarkdownToolbarConfiguration.decodeFromJSON(customToolbarConfigRawValue)
-  }
-
-  private var toolbarConfiguration: Binding<MarkdownToolbarConfiguration> {
-    Binding(
-      get: {
-        currentToolbarConfig
-      },
-      set: { newConfig in
-        customToolbarConfigRawValue = newConfig.normalized.encodeToJSON()
-      }
-    )
-  }
 
   init(
     title: Binding<String>,
@@ -110,11 +20,6 @@ struct MacMarkdownEditorToolbar: View {
     draftID: UUID,
     markdownPath: String,
     isSelectionAIActionRunning: Bool,
-    canOpenAIChat: Bool,
-    aiChatUnavailableReason: String?,
-    externalBrowserPreviewCoordinator: ExternalBrowserPreviewCoordinator,
-    writingToolDensity: MarkdownWritingToolDensity,
-    availableWritingContextPanels: [MarkdownWritingContextPanel],
     actions: MarkdownEditorToolbarActions,
     articleInformationToggle: MacMarkdownArticleInformationToggle? = nil,
     formattingToolbar: MacMarkdownFormattingToolbar
@@ -124,13 +29,6 @@ struct MacMarkdownEditorToolbar: View {
     self.draftID = draftID
     self.markdownPath = markdownPath
     self.isSelectionAIActionRunning = isSelectionAIActionRunning
-    self.canOpenAIChat = canOpenAIChat
-    self.aiChatUnavailableReason = aiChatUnavailableReason
-    _externalBrowserPreviewCoordinator = ObservedObject(
-      wrappedValue: externalBrowserPreviewCoordinator
-    )
-    self.writingToolDensity = writingToolDensity
-    self.availableWritingContextPanels = availableWritingContextPanels
     self.actions = actions
     self.articleInformationToggle = articleInformationToggle
     self.formattingToolbar = formattingToolbar
@@ -139,26 +37,21 @@ struct MacMarkdownEditorToolbar: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       titleArea
-      HStack(spacing: 8) {
-        formattingToolbar
-          .frame(minWidth: 80, idealWidth: 220, maxWidth: 280)
-        configuredIconToolbarControls
-      }
+      editingTools
     }
     .padding(.horizontal, WorkbenchSpacing.section)
     .padding(.vertical, 9)
     .background(.bar)
-    .contextMenu {
-      Button {
-        isCustomizationSheetPresented = true
-      } label: {
-        Label("自定义工具栏…", systemImage: "slider.horizontal.3")
-      }
-    }
-    .sheet(isPresented: $isCustomizationSheetPresented) {
-      MacMarkdownToolbarCustomizationView(
-        configuration: toolbarConfiguration,
-        onDismiss: { isCustomizationSheetPresented = false }
+    .popover(isPresented: $isPublishAssetPickerPresented) {
+      MacMarkdownPublishAssetPickerPopover(
+        selectedAssets: $selectedPublishAssets,
+        isGenerationEnabled: actions.articleAIActionAvailability(.draftPublishAssetPack).isEnabled,
+        onGenerate: {
+          actions.onPerformConvergedArticleAIAction(
+            .publishAssetPack(AIPublishingAssetPackConfiguration(assets: selectedPublishAssets))
+          )
+          isPublishAssetPickerPresented = false
+        }
       )
     }
     .onKeyPress(.tab) {
@@ -199,144 +92,86 @@ struct MacMarkdownEditorToolbar: View {
     )
   }
 
-  private var enabledHeaderItemIDs: [MarkdownToolbarItemID] {
-    MarkdownArticleToolbarScope.articleItemIDs(from: currentToolbarConfig.headerItemIDs)
-  }
-
-  /// 中度折叠时保留的项目：取 collapseOrder 小于等于阈值的所有已启用项。
-  private var mediumHeaderItemIDs: [MarkdownToolbarItemID] {
-    enabledHeaderItemIDs.filter { $0.collapseOrder <= 6 }
-  }
-
-  /// 紧凑折叠时保留的项目：取 collapseOrder 小于等于阈值的所有已启用项。
-  private var compactHeaderItemIDs: [MarkdownToolbarItemID] {
-    // The save label is intentionally readable at the minimum editor width.
-    // Secondary AI actions remain available in overflow at this size.
-    enabledHeaderItemIDs.filter { $0.collapseOrder <= 1 }
-  }
-
-  private var configuredIconToolbarControls: some View {
-    GeometryReader { geometry in
-      let variant = MarkdownEditorToolbarLayoutPlanner.variant(
-        availableWidth: geometry.size.width,
-        fullItemIDs: enabledHeaderItemIDs,
-        mediumItemIDs: mediumHeaderItemIDs,
-        compactItemIDs: compactHeaderItemIDs
-      )
-      Group {
-        switch variant {
-        case .full:
-          toolbarItemRow(ids: enabledHeaderItemIDs, showsOverflow: false)
-        case .medium:
-          toolbarItemRow(
-            ids: mediumHeaderItemIDs,
-            showsOverflow: true,
-            reservedIDs: mediumHeaderItemIDs
-          )
-        case .compact:
-          toolbarItemRow(
-            ids: compactHeaderItemIDs,
-            showsOverflow: true,
-            reservedIDs: compactHeaderItemIDs,
-            compactSaveStatus: true
-          )
-        }
-      }
-      .frame(
-        maxWidth: .infinity,
-        maxHeight: .infinity,
-        alignment: .trailing
-      )
+  private var editingTools: some View {
+    ViewThatFits(in: .horizontal) {
+      editingToolsRow(formattingLayout: .expanded, collapsesWritingTools: false)
+        .fixedSize(horizontal: true, vertical: false)
+      editingToolsRow(formattingLayout: .compact, collapsesWritingTools: false)
+        .fixedSize(horizontal: true, vertical: false)
+      editingToolsRow(formattingLayout: .compact, collapsesWritingTools: true)
+        .fixedSize(horizontal: true, vertical: false)
+      editingToolsRow(formattingLayout: .scrollable, collapsesWritingTools: true)
     }
-    .frame(minWidth: 70, maxWidth: .infinity, alignment: .trailing)
-    .frame(minHeight: 34, idealHeight: 34, maxHeight: 34)
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private func editingToolsRow(
+    formattingLayout: MarkdownFormattingToolbarLayout,
+    collapsesWritingTools: Bool
+  ) -> some View {
+    HStack(spacing: 8) {
+      formattingToolbar.withLayout(formattingLayout)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .layoutPriority(1)
+      writingTools(isCollapsed: collapsesWritingTools)
+    }
+  }
+
+  private func writingTools(isCollapsed: Bool) -> some View {
+    HStack(spacing: 4) {
+      MacMarkdownEditorSaveStatusIcon(store: store, draftID: draftID, isCompact: true)
+      if isCollapsed {
+        writingToolsMenu
+      } else {
+        findReplaceButton(showsTitle: false)
+        outlineButton(showsTitle: false)
+        imageInfoButton(showsTitle: false)
+        Divider().frame(height: 18)
+        aiActionsMenuButton(showsTitle: false)
+        inlineAICompletionButton(showsTitle: false)
+        Divider().frame(height: 18)
+        exportMenuButton(showsTitle: false)
+        shortcutHelpButton(showsTitle: false)
+      }
+    }
+    .fixedSize(horizontal: true, vertical: false)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("写作工具栏")
     .accessibilityIdentifier("markdown-editor-toolbar")
   }
 
-  /// 渲染一行工具栏按钮，在文档工具组和 AI 工具组之间自动插入分隔线。
-  @ViewBuilder
-  private func toolbarItemRow(
-    ids: [MarkdownToolbarItemID],
-    showsOverflow: Bool,
-    reservedIDs: [MarkdownToolbarItemID] = [],
-    compactSaveStatus: Bool = false
-  ) -> some View {
-    HStack(spacing: 5) {
-      ForEach(ids) { item in
-        // 在 AI 工具组第一项之前插入分隔线
-        if item == ids.first(where: \.isAIGroupItem) {
-          Divider().frame(height: 18)
-        }
-        headerItem(item, showsTitle: false, compactSaveStatus: compactSaveStatus)
-      }
-      if showsOverflow {
-        overflowMenu(reservedIDs: reservedIDs)
-      }
-    }
-  }
-
-  @ViewBuilder
-  private func headerItem(
-    _ item: MarkdownToolbarItemID,
-    showsTitle: Bool,
-    compactSaveStatus: Bool = false
-  ) -> some View {
-    switch item {
-    case .saveStatus:
-      MacMarkdownEditorSaveStatusIcon(
-        store: store, draftID: draftID, isCompact: compactSaveStatus)
-    case .writingToolDensity:
-      writingToolDensityControl(showsTitle: showsTitle)
-    case .findReplace:
-      findReplaceButton(showsTitle: showsTitle)
-    case .outline:
-      outlineButton(showsTitle: showsTitle)
-    case .contextPanelMenu:
-      contextPanelMenu(showsTitle: showsTitle)
-    case .shortcutHelp:
-      shortcutHelpButton(showsTitle: showsTitle)
-    case .exportMenu:
-      exportMenuButton(showsTitle: showsTitle)
-    case .aiActions:
-      aiActionsMenuButton(showsTitle: showsTitle)
-    case .autoInlineAI:
-      inlineAICompletionButton(showsTitle: showsTitle)
-    case .aiChat:
-      aiChatButton(showsTitle: showsTitle)
-    case .localPreview:
-      localSitePreviewButton(showsTitle: showsTitle)
-    case .preparePublish:
-      preparePublishButton(showsTitle: showsTitle)
-    case .copyRichText:
-      copyRichTextButton(showsTitle: showsTitle)
-    default:
-      EmptyView()
-    }
-  }
-
-  private func overflowMenu(reservedIDs: [MarkdownToolbarItemID]) -> some View {
+  private var writingToolsMenu: some View {
     Menu {
-      let reserved = Set(reservedIDs)
-      ForEach(enabledHeaderItemIDs.filter { !reserved.contains($0) }) { item in
-        headerItem(item, showsTitle: true)
-      }
+      findReplaceButton(showsTitle: true)
+      outlineButton(showsTitle: true)
+      imageInfoButton(showsTitle: true)
       Divider()
-      Button {
-        isCustomizationSheetPresented = true
-      } label: {
-        Label("自定义工具栏…", systemImage: "slider.horizontal.3")
-      }
+      aiActionsMenuButton(showsTitle: true)
+      inlineAICompletionButton(showsTitle: true)
+      Divider()
+      exportMenuButton(showsTitle: true)
+      shortcutHelpButton(showsTitle: true)
     } label: {
-      Image(systemName: "ellipsis.circle")
-        .accessibilityHidden(true)
+      Label("写作工具", systemImage: "wrench.and.screwdriver")
     }
     .menuIndicator(.hidden)
-    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: false))
-    .help("更多工具栏操作")
-    .accessibilityLabel("更多工具栏操作")
-    .accessibilityIdentifier("markdown-toolbar-overflow-menu")
+    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: true))
+    .help("查找、大纲、AI、导出与快捷键")
+    .accessibilityLabel("写作工具")
+    .accessibilityIdentifier("markdown-writing-tools-menu")
+  }
+
+  @ViewBuilder
+  private func imageInfoButton(showsTitle: Bool) -> some View {
+    if let onShowImageInfo = actions.onShowImageInfo {
+      Button(action: onShowImageInfo) {
+        editorActionLabel("图片信息", systemName: "photo", showsTitle: showsTitle)
+      }
+      .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
+      .help("图片信息")
+      .accessibilityLabel("图片信息")
+      .accessibilityIdentifier("markdown-image-info-action")
+    }
   }
 
   private func findReplaceButton(showsTitle: Bool) -> some View {
@@ -394,31 +229,20 @@ struct MacMarkdownEditorToolbar: View {
     Menu {
       aiActions
     } label: {
-      editorActionLabel("AI 常用操作", systemName: "sparkles", showsTitle: showsTitle)
+      editorActionLabel("AI 操作", systemName: "sparkles", showsTitle: showsTitle)
     }
     .menuIndicator(.hidden)
-    .help("AI 常用操作")
-    .accessibilityLabel("AI 常用操作")
+    .help("AI 操作")
+    .accessibilityLabel("AI 操作")
     .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
-    .popover(isPresented: $isPublishAssetPickerPresented) {
-      MacMarkdownPublishAssetPickerPopover(
-        selectedAssets: $selectedPublishAssets,
-        isGenerationEnabled: actions.articleAIActionAvailability(.draftPublishAssetPack).isEnabled,
-        onGenerate: {
-          actions.onPerformConvergedArticleAIAction(
-            .publishAssetPack(AIPublishingAssetPackConfiguration(assets: selectedPublishAssets))
-          )
-          isPublishAssetPickerPresented = false
-        }
-      )
-    }
+
   }
 
   private func inlineAICompletionButton(showsTitle: Bool) -> some View {
     Button {
       actions.onRequestInlineAICompletion()
     } label: {
-      editorActionLabel("AI 续写", systemName: "wand.and.stars", showsTitle: showsTitle)
+      editorActionLabel("续写", systemName: "sparkles", showsTitle: showsTitle)
     }
     .buttonStyle(
       MarkdownEditorToolbarButtonStyle(
@@ -428,129 +252,9 @@ struct MacMarkdownEditorToolbar: View {
     )
     .foregroundStyle(Color.secondary)
     .help(String(localized: "请求 AI 续写（Option + 反斜杠）"))
-    .accessibilityLabel(String(localized: "AI 续写"))
+    .accessibilityLabel(String(localized: "AI 操作：续写"))
     .accessibilityValue(String(localized: "按需触发"))
     .accessibilityIdentifier("markdown-inline-ai-completion")
-  }
-
-  private func aiChatButton(showsTitle: Bool) -> some View {
-    Button {
-      actions.onOpenAIContextInspector()
-    } label: {
-      if isSelectionAIActionRunning {
-        if showsTitle {
-          Label("AI 对话", systemImage: "hourglass")
-        } else {
-          Image(systemName: "hourglass")
-            .accessibilityHidden(true)
-        }
-      } else {
-        editorActionLabel("AI 对话", systemName: Self.aiChatSystemImage, showsTitle: showsTitle)
-      }
-    }
-    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
-    .foregroundStyle(workbenchAccentColor)
-    .disabled(!canOpenAIChat)
-    .help(
-      aiChatUnavailableReason
-        ?? String(localized: "在右侧继续当前文章的 AI 对话")
-    )
-    .accessibilityLabel(String(localized: "AI 对话"))
-    .accessibilityValue(
-      isSelectionAIActionRunning ? String(localized: "AI 正在生成回复") : ""
-    )
-    .accessibilityIdentifier("markdown-ai-assistant-entry")
-  }
-
-  private func localSitePreviewButton(showsTitle: Bool) -> some View {
-    MacMarkdownExternalBrowserPreviewControl(
-      store: store,
-      draftID: draftID,
-      showsTitle: showsTitle,
-      coordinator: externalBrowserPreviewCoordinator
-    )
-  }
-
-  @ViewBuilder
-  private func preparePublishButton(showsTitle: Bool) -> some View {
-    Button {
-      actions.onPreparePublish()
-    } label: {
-      editorActionLabel("准备发布", systemName: "paperplane", showsTitle: showsTitle)
-    }
-    .workbenchProminentActionStyle()
-    .help(String(localized: "检查当前文章并打开发布准备"))
-    .accessibilityLabel("准备发布")
-    .accessibilityIdentifier("markdown-prepare-publish")
-  }
-
-  private func copyRichTextButton(showsTitle: Bool) -> some View {
-    Button {
-      actions.onCopyForWeChatAndZhihu?()
-    } label: {
-      editorActionLabel("复制到公众号/知乎", systemName: "doc.on.doc.fill", showsTitle: showsTitle)
-    }
-    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
-    .help("将当前文章以精美内联样式复制为富文本（适配微信公众号、知乎后台）")
-    .accessibilityLabel("复制到公众号/知乎富文本")
-  }
-
-  private func writingToolDensityControl(showsTitle: Bool) -> some View {
-    Menu {
-      Picker("写作工具密度", selection: writingToolDensitySelection) {
-        ForEach(MarkdownWritingToolDensity.allCases) { density in
-          Text(density.title).tag(density.rawValue)
-        }
-      }
-    } label: {
-      editorActionLabel(
-        "写作工具密度",
-        systemName: "slider.horizontal.3",
-        showsTitle: showsTitle
-      )
-    }
-    .menuStyle(.borderlessButton)
-    .menuIndicator(.hidden)
-    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
-    .help(String(localized: "切换基础写作或专业 Markdown 工具密度"))
-    .accessibilityLabel("写作工具密度")
-    .accessibilityValue(writingToolDensity.title)
-    .accessibilityIdentifier("markdown-writing-tool-density")
-  }
-
-  private func contextPanelMenu(showsTitle: Bool) -> some View {
-    Menu {
-      contextPanelActions
-    } label: {
-      editorActionLabel("上下文面板", systemName: "sidebar.right", showsTitle: showsTitle)
-    }
-    .menuIndicator(.hidden)
-    .help(String(localized: "在选区工具、AI 审阅、图片信息和文章大纲之间切换"))
-    .accessibilityLabel("写作上下文面板")
-    .accessibilityValue(availableWritingContextPanels.map(\.title).joined(separator: "、"))
-    .accessibilityIdentifier("markdown-writing-context-panel-menu")
-  }
-
-  private var writingToolDensitySelection: Binding<String> {
-    Binding(
-      get: { writingToolDensity.rawValue },
-      set: { rawValue in
-        guard let density = MarkdownWritingToolDensity(rawValue: rawValue) else { return }
-        actions.onSetWritingToolDensity(density)
-      }
-    )
-  }
-
-  @ViewBuilder
-  private var contextPanelActions: some View {
-    ForEach(MarkdownWritingContextPanel.allCases) { panel in
-      Button {
-        actions.onOpenWritingContextPanel(panel)
-      } label: {
-        Label(panel.title, systemImage: panel.systemImage)
-      }
-      .disabled(!availableWritingContextPanels.contains(panel))
-    }
   }
 
   @ViewBuilder
@@ -626,7 +330,7 @@ struct MacMarkdownEditorToolbar: View {
           } label: {
             Label(
               style.localizedDisplayName,
-              systemImage: style == .balanced ? "wand.and.stars" : "paragraphsign"
+              systemImage: "sparkles"
             )
           }
           .disabled(!isRewriteEnabled)
@@ -648,7 +352,7 @@ struct MacMarkdownEditorToolbar: View {
         }
       }
     } label: {
-      Label("改写", systemImage: "wand.and.stars")
+      Label("AI 操作", systemImage: "sparkles")
     }
     .help("对选中文本执行改写、润色、扩写、压缩或简化")
     .accessibilityIdentifier("ai-converged-rewrite-menu")
@@ -894,17 +598,24 @@ private struct MacMarkdownEditorTitleArea: View {
 
 /// Fixed width keeps persistence transitions inside this leaf and avoids
 /// repeatedly measuring the adaptive toolbar while the user is typing.
-private struct MacMarkdownEditorSaveStatusIcon: View {
+struct MacMarkdownEditorSaveStatusIcon: View {
   let store: WorkbenchStore
   let draftID: UUID
   let isCompact: Bool
+  let accessibilityIdentifier: String
   @StateObject private var saveStatus: WorkbenchMarkdownEditorSaveStatusFeatureFacade
   @State private var isDetailPresented = false
 
-  init(store: WorkbenchStore, draftID: UUID, isCompact: Bool) {
+  init(
+    store: WorkbenchStore,
+    draftID: UUID,
+    isCompact: Bool,
+    accessibilityIdentifier: String = "markdown-editor-save-status"
+  ) {
     self.store = store
     self.draftID = draftID
     self.isCompact = isCompact
+    self.accessibilityIdentifier = accessibilityIdentifier
     _saveStatus = StateObject(
       wrappedValue: WorkbenchMarkdownEditorSaveStatusFeatureFacade(store: store, draftID: draftID)
     )
@@ -941,7 +652,7 @@ private struct MacMarkdownEditorSaveStatusIcon: View {
     .help(saveStatus.lastSaveStatus)
     .accessibilityLabel("保存状态")
     .accessibilityValue(saveStatus.shortSaveStatus)
-    .accessibilityIdentifier("markdown-editor-save-status")
+    .accessibilityIdentifier(accessibilityIdentifier)
     .popover(isPresented: $isDetailPresented) {
       VStack(alignment: .leading, spacing: 10) {
         Label(saveStatus.shortSaveStatus, systemImage: statusImage)
