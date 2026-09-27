@@ -56,10 +56,12 @@ extension WorkbenchStore {
     retained.id = UUID()
     retained.assignToGeneralDraft(editingProfileID: review.profile.id)
     retained.title += CoreL10n.text("（冲突恢复副本）")
+    retained.translationLink = nil
     retained.softwareGuideID = nil
     retained.softwareGuideTemplateVersion = nil
     replacement.id = review.draft.id
     replacement.createdAt = review.draft.createdAt
+    replacement.translationLink = review.draft.translationLink
     guard let index = publishingStore.drafts.firstIndex(where: { $0.id == review.draft.id }) else {
       throw ProjectSaveRecoveryError.message(CoreL10n.text("草稿已不存在，请重新检查。"))
     }

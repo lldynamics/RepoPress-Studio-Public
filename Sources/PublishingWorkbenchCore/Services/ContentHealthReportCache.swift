@@ -127,6 +127,7 @@ struct ContentHealthReportCacheKey: Hashable, Sendable {
     presentation: ContentHealthDraftPresentation,
     hasDuplicateTitle: Bool,
     hasDuplicatePath: Bool,
+    translationFreshness: ArticleTranslationFreshness?,
     serviceNamespace: UUID
   ) -> ContentHealthReportCacheKey? {
     // An unreadable source file may become readable (or be atomically replaced)
@@ -158,6 +159,7 @@ struct ContentHealthReportCacheKey: Hashable, Sendable {
       presentation: ContentHealthPresentationFingerprintSnapshot(presentation: presentation),
       hasDuplicateTitle: hasDuplicateTitle,
       hasDuplicatePath: hasDuplicatePath,
+      translationFreshness: translationFreshness,
       futureDateWarningActive: draft.date > Date().addingTimeInterval(60),
       resourceMetadata: resourceMetadata
     )
@@ -193,6 +195,7 @@ private struct ContentHealthReportFingerprintSnapshot: Encodable {
   let presentation: ContentHealthPresentationFingerprintSnapshot
   let hasDuplicateTitle: Bool
   let hasDuplicatePath: Bool
+  let translationFreshness: ArticleTranslationFreshness?
   let futureDateWarningActive: Bool
   let resourceMetadata: [ContentHealthResourceMetadataSnapshot]
 }
@@ -259,6 +262,7 @@ private struct ContentHealthProfileFingerprintSnapshot: Encodable {
   let contentRoot: String
   let assetRoot: String
   let markdownPathPattern: String
+  let translationMarkdownPathPattern: String?
   let imagePathPattern: String
   let publicImagePathPattern: String
   let dateFormat: String
@@ -274,6 +278,7 @@ private struct ContentHealthProfileFingerprintSnapshot: Encodable {
     contentRoot = profile.contentRoot
     assetRoot = profile.assetRoot
     markdownPathPattern = profile.markdownPathPattern
+    translationMarkdownPathPattern = profile.translationMarkdownPathPattern
     imagePathPattern = profile.imagePathPattern
     publicImagePathPattern = profile.publicImagePathPattern
     dateFormat = profile.dateFormat

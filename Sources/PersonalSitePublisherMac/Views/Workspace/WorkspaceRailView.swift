@@ -2,6 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct WorkspaceTaskNavigation: View {
+  @WorkspaceModuleVisibilityStorage private var moduleVisibility
   @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let store: WorkbenchStore
   let selectedSection: WorkspaceSection
@@ -22,7 +23,7 @@ struct WorkspaceTaskNavigation: View {
 
   var body: some View {
     HStack(spacing: 4) {
-      ForEach(WorkspaceNavigationRouteDescriptor.primarySections) { section in
+      ForEach(moduleVisibility.primarySections) { section in
         sectionButton(section)
       }
     }

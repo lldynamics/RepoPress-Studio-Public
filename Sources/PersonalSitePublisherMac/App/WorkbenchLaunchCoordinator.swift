@@ -398,16 +398,19 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     return true
   }
 
-  func startBackgroundRefreshIfNeeded(for rssStore: RSSReaderStore) {
+  func startBackgroundRefreshIfNeeded(
+    for rssStore: RSSReaderStore,
+    defaults: UserDefaults = .standard
+  ) {
     guard !isSafeMode else {
       // Safe mode must not start background work, even when the persisted
       // preference is enabled. Explicit manual refresh remains available.
       rssStore.stopBackgroundRefresh()
       return
     }
-    let defaults = UserDefaults.standard
     rssStore.configureBackgroundRefresh(
-      enabled: RSSReaderUserPreferences.backgroundRefreshEnabled(defaults: defaults),
+      enabled: WorkspaceModuleVisibility.load(defaults: defaults).rssEnabled
+        && RSSReaderUserPreferences.backgroundRefreshEnabled(defaults: defaults),
       interval: RSSReaderUserPreferences.backgroundRefreshIntervalSeconds(
         RSSReaderUserPreferences.backgroundRefreshIntervalMinutes(defaults: defaults)
       )

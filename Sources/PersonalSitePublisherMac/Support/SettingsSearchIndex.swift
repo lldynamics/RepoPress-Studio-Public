@@ -190,6 +190,14 @@ enum SettingsSearchIndex {
       systemImage: "gearshape.arrow.triangle.2.circlepath"
     ),
     subsectionItem(
+      .appearanceModules,
+      id: "appearance.modules",
+      keywords: [
+        "功能模块", "模块", "隐藏", "关闭", "RSS", "资料库", "图片", "可选功能",
+        "workspace modules", "hide", "disable", "optional modules",
+      ]
+    ),
+    subsectionItem(
       .appearanceDefaults,
       id: "appearance.defaults",
       keywords: ["新文章", "默认值", "Front Matter", "全局预设"]

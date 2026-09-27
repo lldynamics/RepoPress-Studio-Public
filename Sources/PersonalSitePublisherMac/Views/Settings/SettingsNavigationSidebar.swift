@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsNavigationList: View {
+  @WorkspaceModuleVisibilityStorage private var moduleVisibility
   @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let searchText: String
   let searchItems: [SettingsSearchItem]
@@ -87,7 +88,7 @@ struct SettingsNavigationList: View {
   private var taskGroupSections: some View {
     ForEach(groups) { group in
       Section {
-        ForEach(group.tabs) { tab in
+        ForEach(group.tabs.filter(moduleVisibility.allowsSettingsTab)) { tab in
           pageRow(tab)
             .tag(SettingsRoute.tab(tab))
 

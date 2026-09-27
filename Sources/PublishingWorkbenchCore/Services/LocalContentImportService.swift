@@ -113,6 +113,7 @@ public struct LocalContentImportService: Sendable {
   private struct ArticleRepositoryPathPolicy: Sendable {
     let publicRoot: String
     let privateRoot: String
+    let translationRoot: String?
     let excludesGeneratorIndexPages: Bool
 
     init(profile: SiteProfile) {
@@ -128,6 +129,23 @@ public struct LocalContentImportService: Sendable {
       // article directory (`content/posts/{year}/…`). For a pattern without a
       // directory prefix, retain the configured content root as the boundary.
       publicRoot = prefixRoot.nilIfEmpty ?? configuredContentRoot
+      if let translationPattern = profile.translationMarkdownPathPattern?
+        .trimmedForPublishing.nilIfEmpty,
+        translationPattern.contains("{language}"),
+        !translationPattern.hasPrefix("/"),
+        !translationPattern.contains("\\"),
+        !translationPattern.contains("://"),
+        !translationPattern.split(separator: "/").contains("..")
+      {
+        let translationPrefix = String(translationPattern.prefix { $0 != "{" })
+        translationRoot =
+          translationPrefix
+          .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+          .normalizedRelativePath()
+          .nilIfEmpty ?? configuredContentRoot
+      } else {
+        translationRoot = nil
+      }
 
       if publicRoot.isEmpty || publicRoot == configuredContentRoot {
         privateRoot = SiteProfile.privateContentRoot
@@ -152,7 +170,7 @@ public struct LocalContentImportService: Sendable {
       // An empty public root already scans the repository. Adding `private`
       // again would parse those files twice for root-based generators.
       guard !publicRoot.isEmpty else { return [""] }
-      return Array(Set([publicRoot, privateRoot])).sorted()
+      return Array(Set([publicRoot, privateRoot] + [translationRoot].compactMap { $0 })).sorted()
     }
 
     func accepts(_ repositoryPath: String) -> Bool {
@@ -161,6 +179,7 @@ public struct LocalContentImportService: Sendable {
       guard ["md", "markdown", "mdx"].contains(pathExtension),
         isDescendant(normalizedPath, of: publicRoot)
           || isDescendant(normalizedPath, of: privateRoot)
+          || translationRoot.map({ isDescendant(normalizedPath, of: $0) }) == true
       else {
         return false
       }

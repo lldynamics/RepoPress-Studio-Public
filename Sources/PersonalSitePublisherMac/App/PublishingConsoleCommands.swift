@@ -4,6 +4,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct PublishingConsoleCommands: Commands {
+  @WorkspaceModuleVisibilityStorage private var moduleVisibility
   let store: WorkbenchStore
   @ObservedObject private var presentation: WorkbenchCommandPresentationFeatureFacade
   @FocusedObject private var commandRouter: WorkspaceSceneCommandRouter?
@@ -157,7 +158,11 @@ struct PublishingConsoleCommands: Commands {
       .disabled(workspaceCommandPaletteAction == nil)
 
       Menu(String(localized: "切换工作区")) {
-        ForEach(WorkspaceNavigationPresentation.commandMenuItems) { item in
+        ForEach(
+          WorkspaceNavigationPresentation.commandMenuItems.filter {
+            moduleVisibility.allows($0.section)
+          }
+        ) { item in
           Button(workspaceNavigationLocalizedKey(item.displayNameLocalizationKey)) {
             store.selectSection(item.section)
           }
@@ -268,7 +273,7 @@ struct PublishingConsoleCommands: Commands {
   }
 
   private var knowledgeLibraryCommands: KnowledgeLibraryCommandActions? {
-    commandRouter?.knowledgeLibraryCommandActions
+    moduleVisibility.libraryEnabled ? commandRouter?.knowledgeLibraryCommandActions : nil
   }
 
   private var workspaceFocusModeCommandAction: WorkspaceFocusModeCommandAction? {
@@ -288,7 +293,7 @@ struct PublishingConsoleCommands: Commands {
   }
 
   private var rssReaderCommands: RSSReaderCommandActions? {
-    commandRouter?.rssReaderCommandActions
+    moduleVisibility.rssEnabled ? commandRouter?.rssReaderCommandActions : nil
   }
 
   private func presentSettings(destination: SettingsDestination?) {

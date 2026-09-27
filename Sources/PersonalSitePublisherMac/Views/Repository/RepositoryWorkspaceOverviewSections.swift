@@ -113,15 +113,17 @@ extension RepositoryWorkspaceView {
         .buttonStyle(.bordered)
         .accessibilityIdentifier("repository-action-data-management")
 
-        Button {
-          store.selectSection(.images)
-        } label: {
-          Label("图片资源", systemImage: "photo.on.rectangle")
-            .frame(maxWidth: .infinity, alignment: .leading)
+        if moduleVisibility.imagesEnabled {
+          Button {
+            store.selectSection(.images)
+          } label: {
+            Label("图片资源", systemImage: "photo.on.rectangle")
+              .frame(maxWidth: .infinity, alignment: .leading)
+          }
+          .buttonStyle(.bordered)
+          .help("管理站点图片、问题引用与批量优化")
+          .accessibilityIdentifier("repository-action-open-images")
         }
-        .buttonStyle(.bordered)
-        .help("管理站点图片、问题引用与批量优化")
-        .accessibilityIdentifier("repository-action-open-images")
 
       }
       .controlSize(.regular)

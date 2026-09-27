@@ -24,10 +24,10 @@ final class SEOAuditServiceTests: XCTestCase {
       summary: summary,
       coverAttachmentID: attachmentID,
       bodyMarkdown: """
-      # macOS RepoPress实践
+        # macOS 发布控制台概览
 
-      This article is long enough to exercise the local SEO audit path.
-      """,
+        This article is long enough to exercise the local SEO audit path.
+        """,
       attachments: [attachment]
     )
 
@@ -89,5 +89,56 @@ final class SEOAuditServiceTests: XCTestCase {
     XCTAssertFalse(report.findings.contains { $0.title == "缺少预览图" })
     XCTAssertTrue(report.findings.contains { $0.title == "私密文章不输出预览图" && $0.severity == .info })
     XCTAssertFalse(report.frontMatterPreview.contains("private-cover.jpg"))
+  }
+
+  func testDuplicateNormalizedH1AndTitleProducesWarningWhenEnabled() {
+    let profile = SiteProfile.defaultProfile
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "  RepoPress\u{00A0}发布指南  ",
+      slug: "repopress-guide",
+      tags: ["发布"],
+      summary: "这是一段足够长的摘要，用于验证正文标题重复提示不会影响其他 SEO 审计字段。",
+      bodyMarkdown: "# repopress 发布指南\n\n正文内容。"
+    )
+
+    let report = SEOAuditService().report(draft: draft, profile: profile)
+
+    XCTAssertTrue(
+      report.findings.contains {
+        $0.title == "正文 H1 与标题重复" && $0.severity == .warning
+      })
+  }
+
+  func testDuplicateH1AndTitleDoesNotProduceWarningWhenDisabled() {
+    var profile = SiteProfile.defaultProfile
+    profile.resolvedWarnsWhenBodyH1DuplicatesTitle = false
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "RepoPress 发布指南",
+      slug: "repopress-guide",
+      tags: ["发布"],
+      summary: "这是一段足够长的摘要，用于验证关闭正文标题重复提示后报告会立即更新。",
+      bodyMarkdown: "# RepoPress 发布指南\n\n正文内容。"
+    )
+
+    let report = SEOAuditService().report(draft: draft, profile: profile)
+
+    XCTAssertFalse(report.findings.contains { $0.title == "正文 H1 与标题重复" })
+    XCTAssertTrue(report.findings.contains { $0.title == "正文 H1 已设置" && $0.severity == .info })
+  }
+
+  func testLegacyProfileWithoutH1DuplicateWarningPreferenceDefaultsToEnabled() throws {
+    let encoded = try JSONEncoder.workbench.encode(SiteProfile(name: "旧站点"))
+    var object = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+    )
+    object.removeValue(forKey: "warnsWhenBodyH1DuplicatesTitle")
+
+    let legacyData = try JSONSerialization.data(withJSONObject: object)
+    let decoded = try JSONDecoder.workbench.decode(SiteProfile.self, from: legacyData)
+
+    XCTAssertNil(decoded.warnsWhenBodyH1DuplicatesTitle)
+    XCTAssertTrue(decoded.resolvedWarnsWhenBodyH1DuplicatesTitle)
   }
 }

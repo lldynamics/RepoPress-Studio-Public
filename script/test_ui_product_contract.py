@@ -104,8 +104,12 @@ class UIProductContractTests(unittest.TestCase):
         self.assertIn("public enum WorkspaceSection", core_models)
         self.assertIn("WorkspaceVisibilityPolicy.commandMenuPrimarySections", descriptor)
         self.assertIn("static let primarySections", descriptor)
-        self.assertIn("WorkspaceNavigationRouteDescriptor.primarySections", full_rail)
-        self.assertIn("WorkspaceNavigationRouteDescriptor.primarySections", compact_rail)
+        visibility = (
+            ROOT / "Sources/PersonalSitePublisherMac/Support/WorkspaceModuleVisibility.swift"
+        ).read_text()
+        self.assertIn("WorkspaceNavigationRouteDescriptor.primarySections.filter(allows)", visibility)
+        self.assertIn("ForEach(moduleVisibility.primarySections)", full_rail)
+        self.assertIn("ForEach(moduleVisibility.primarySections)", compact_rail)
         self.assertIn("Button {", compact_rail)
         self.assertIn(
             '.accessibilityIdentifier("workspace-compact-rail-\\(section.rawValue)")',

@@ -27,6 +27,9 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
   public var contentRoot: String
   public var assetRoot: String
   public var markdownPathPattern: String
+  /// Optional path template for linked translations. Hugo and Zola use a
+  /// same-directory language suffix when this is absent.
+  public var translationMarkdownPathPattern: String?
   public var imagePathPattern: String
   public var publicImagePathPattern: String
   public var dateFormat: String
@@ -41,6 +44,10 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
   /// snapshots backward compatible; `nil` preserves the historical enabled
   /// behavior.
   public var automaticallyImportsNewRepositoryArticles: Bool?
+  /// Whether the SEO audit should warn when a Markdown H1 repeats the Front
+  /// Matter title. Optional storage keeps older snapshots backward compatible;
+  /// `nil` preserves the default enabled behavior.
+  public var warnsWhenBodyH1DuplicatesTitle: Bool?
   /// Optional for snapshots created before external Markdown source mapping.
   public var externalDraftFolder: ExternalDraftFolderMapping?
   /// The reusable AI connection selected by this site. The legacy config is
@@ -74,6 +81,7 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     contentRoot: String = "content",
     assetRoot: String = "static",
     markdownPathPattern: String = "content/posts/{year}/{slug}.md",
+    translationMarkdownPathPattern: String? = nil,
     imagePathPattern: String = "static/images/{year}/{filename}",
     publicImagePathPattern: String = "/images/{year}/{filename}",
     dateFormat: String = "yyyy-MM-dd",
@@ -84,6 +92,7 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     includeCoverInFrontMatter: Bool = true,
     slugValidationRule: SiteSlugValidationRule = .lowercaseKebab,
     automaticallyImportsNewRepositoryArticles: Bool? = true,
+    warnsWhenBodyH1DuplicatesTitle: Bool? = true,
     externalDraftFolder: ExternalDraftFolderMapping? = nil,
     aiConnectionProfileID: UUID? = nil,
     aiProviderConfig: AIProviderConfig = AIProviderConfig(
@@ -115,6 +124,7 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     self.contentRoot = contentRoot
     self.assetRoot = assetRoot
     self.markdownPathPattern = markdownPathPattern
+    self.translationMarkdownPathPattern = translationMarkdownPathPattern
     self.imagePathPattern = imagePathPattern
     self.publicImagePathPattern = publicImagePathPattern
     self.dateFormat = dateFormat
@@ -125,6 +135,7 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     self.includeCoverInFrontMatter = includeCoverInFrontMatter
     self.slugValidationRule = slugValidationRule
     self.automaticallyImportsNewRepositoryArticles = automaticallyImportsNewRepositoryArticles
+    self.warnsWhenBodyH1DuplicatesTitle = warnsWhenBodyH1DuplicatesTitle
     self.externalDraftFolder = externalDraftFolder
     self.aiConnectionProfileID = aiConnectionProfileID
     self.aiProviderConfig = aiProviderConfig
@@ -141,6 +152,11 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
   public var resolvedAutomaticallyImportsNewRepositoryArticles: Bool {
     get { automaticallyImportsNewRepositoryArticles ?? true }
     set { automaticallyImportsNewRepositoryArticles = newValue }
+  }
+
+  public var resolvedWarnsWhenBodyH1DuplicatesTitle: Bool {
+    get { warnsWhenBodyH1DuplicatesTitle ?? true }
+    set { warnsWhenBodyH1DuplicatesTitle = newValue }
   }
 
   public var resolvedAIWritingStyle: AIWritingStyleConfig {
@@ -393,8 +409,46 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
   }
 
   public func markdownPath(for draft: ArticleDraft) -> String {
-    let publicPath = renderPath(pattern: markdownPathPattern, draft: draft, filename: nil)
+    let publicPath: String
+    if let link = draft.translationLink, link.translatedDraftID == draft.id,
+      let rawSourcePath = link.sourceMarkdownPath,
+      Self.isSafeTranslationSourcePath(rawSourcePath),
+      let sourcePath = rawSourcePath.normalizedRelativePath().nilIfEmpty
+    {
+      if let pattern = translationMarkdownPathPattern?.trimmedForPublishing.nilIfEmpty {
+        publicPath = renderPath(
+          pattern: pattern,
+          draft: draft,
+          filename: nil,
+          languageCode: link.targetLanguageCode,
+          sourceSlug: Self.markdownStem(for: sourcePath)
+        )
+      } else if siteKind == .hugo || siteKind == .zola {
+        publicPath = Self.languageSuffixPath(
+          sourcePath,
+          languageCode: link.targetLanguageCode
+        )
+      } else {
+        publicPath = renderPath(pattern: markdownPathPattern, draft: draft, filename: nil)
+      }
+    } else if siteKind == .hugo || siteKind == .zola,
+      let repositoryPath = draft.repositoryPath?.normalizedRelativePath().nilIfEmpty,
+      Self.languageSuffixCode(for: repositoryPath) != nil
+    {
+      // Imported native locale files have no app-level source UUID yet, but
+      // must round-trip to the same path instead of being rewritten as a base article.
+      publicPath = repositoryPath
+    } else if let repositoryPath = draft.repositoryPath?.normalizedRelativePath().nilIfEmpty,
+      languageCode(matchingTranslationPathTemplate: repositoryPath) != nil
+    {
+      publicPath = repositoryPath
+    } else {
+      publicPath = renderPath(pattern: markdownPathPattern, draft: draft, filename: nil)
+    }
     guard draft.isPrivate else {
+      return publicPath
+    }
+    if isPrivateContentPath(publicPath) {
       return publicPath
     }
 
@@ -412,6 +466,21 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     }
     return Self.privateContentRoot + "/"
       + String(publicPath.dropFirst(normalizedContentRoot.count + 1))
+  }
+
+  public func translationLanguageCode(for draft: ArticleDraft) -> String? {
+    if let link = draft.translationLink, link.translatedDraftID == draft.id {
+      return link.targetLanguageCode
+    }
+    guard let repositoryPath = draft.repositoryPath?.normalizedRelativePath().nilIfEmpty else {
+      return nil
+    }
+    if siteKind == .hugo || siteKind == .zola,
+      let language = Self.languageSuffixCode(for: repositoryPath)
+    {
+      return language
+    }
+    return languageCode(matchingTranslationPathTemplate: repositoryPath)
   }
 
   public func isPrivateContentPath(_ repositoryPath: String) -> Bool {
@@ -458,7 +527,104 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     return components.joined(separator: "/")
   }
 
-  private func renderPath(pattern: String, draft: ArticleDraft?, filename: String?) -> String {
+  private static func markdownStem(for path: String) -> String {
+    let filename = (path as NSString).lastPathComponent
+    let stem = (filename as NSString).deletingPathExtension
+    let components = stem.split(separator: ".")
+    guard components.count > 1,
+      let last = components.last,
+      isLanguageCode(String(last))
+    else { return stem }
+    return components.dropLast().joined(separator: ".")
+  }
+
+  private static func isLanguageCode(_ code: String) -> Bool {
+    code.range(
+      of: #"\A[a-z]{2,3}(?:-[a-z0-9]{2,8})*\z"#,
+      options: .regularExpression
+    ) != nil
+  }
+
+  private static func isSafeTranslationSourcePath(_ path: String) -> Bool {
+    let extensionName = (path as NSString).pathExtension.lowercased()
+    return !path.isEmpty
+      && !path.hasPrefix("/")
+      && !path.contains("\\")
+      && !path.contains("://")
+      && !path.split(separator: "/").contains("..")
+      && ["md", "markdown", "mdx"].contains(extensionName)
+  }
+
+  private static func languageSuffixCode(for path: String) -> String? {
+    let filename = (path as NSString).lastPathComponent
+    let extensionName = (filename as NSString).pathExtension.lowercased()
+    guard ["md", "markdown"].contains(extensionName) else { return nil }
+    let stem = (filename as NSString).deletingPathExtension
+    let components = stem.split(separator: ".")
+    guard components.count > 1, let language = components.last,
+      isLanguageCode(String(language))
+    else { return nil }
+    return String(language)
+  }
+
+  private func languageCode(matchingTranslationPathTemplate path: String) -> String? {
+    guard let pattern = translationMarkdownPathPattern?.trimmedForPublishing.nilIfEmpty,
+      pattern.contains("{language}"),
+      let tokens = try? NSRegularExpression(pattern: #"\{([A-Za-z]+)\}"#)
+    else { return nil }
+    let normalizedPattern = pattern.normalizedRelativePath()
+    let source = normalizedPattern as NSString
+    let matches = tokens.matches(
+      in: normalizedPattern,
+      range: NSRange(location: 0, length: source.length)
+    )
+    var expression = "\\A"
+    var cursor = 0
+    for match in matches {
+      let preceding = source.substring(
+        with: NSRange(location: cursor, length: match.range.location - cursor)
+      )
+      expression += NSRegularExpression.escapedPattern(for: preceding)
+      let token = source.substring(with: match.range(at: 1))
+      switch token {
+      case "language": expression += #"([a-z]{2,3}(?:-[a-z0-9]{2,8})*)"#
+      case "year": expression += #"[0-9]{4}"#
+      case "month", "day": expression += #"[0-9]{2}"#
+      case "slug", "titleSlug", "sourceSlug", "filename": expression += #"[^/]+"#
+      default: return nil
+      }
+      cursor = match.range.location + match.range.length
+    }
+    let trailingLiteral = source.substring(from: cursor)
+    expression += NSRegularExpression.escapedPattern(for: trailingLiteral) + "\\z"
+    guard let matcher = try? NSRegularExpression(pattern: expression),
+      let match = matcher.firstMatch(
+        in: path,
+        range: NSRange(location: 0, length: (path as NSString).length)
+      ),
+      match.range(at: 1).location != NSNotFound
+    else { return nil }
+    return (path as NSString).substring(with: match.range(at: 1))
+  }
+
+  private static func languageSuffixPath(_ sourcePath: String, languageCode: String) -> String {
+    guard isLanguageCode(languageCode) else { return sourcePath }
+    let path = sourcePath as NSString
+    let directory = path.deletingLastPathComponent
+    let extensionName = path.pathExtension
+    let stem = markdownStem(for: sourcePath)
+    let filename = "\(stem).\(languageCode).\(extensionName)"
+    return (directory == "." ? filename : directory + "/" + filename)
+      .normalizedRelativePath()
+  }
+
+  private func renderPath(
+    pattern: String,
+    draft: ArticleDraft?,
+    filename: String?,
+    languageCode: String? = nil,
+    sourceSlug: String? = nil
+  ) -> String {
     let date = draft?.date ?? Date()
     let calendar = Calendar(identifier: .gregorian)
     let year = String(calendar.component(.year, from: date))
@@ -474,6 +640,8 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
       .replacingOccurrences(of: "{day}", with: day)
       .replacingOccurrences(of: "{slug}", with: slug)
       .replacingOccurrences(of: "{titleSlug}", with: titleSlug)
+      .replacingOccurrences(of: "{language}", with: languageCode ?? "")
+      .replacingOccurrences(of: "{sourceSlug}", with: sourceSlug ?? slug)
       .replacingOccurrences(of: "{filename}", with: filename ?? "")
       .normalizedRelativePath()
   }

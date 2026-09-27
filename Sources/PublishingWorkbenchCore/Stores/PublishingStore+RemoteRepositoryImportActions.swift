@@ -326,6 +326,7 @@ extension PublishingStore {
 
       remoteDraft.id = existing.id
       remoteDraft.createdAt = existing.createdAt
+      remoteDraft.translationLink = existing.translationLink
       recordAutomaticVersionIfNeeded(for: existing)
       // Remote imports replace front matter and body together. Advance the
       // list/editor metadata clocks rather than only the content timestamp.

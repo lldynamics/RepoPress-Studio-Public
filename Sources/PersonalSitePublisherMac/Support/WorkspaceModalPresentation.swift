@@ -2,6 +2,7 @@ import Foundation
 
 enum WorkspaceModalPresentation: String, CaseIterable, Identifiable {
   case publishDrawer
+  case singleArticlePublishConfirmation
   case localSitePreview
   case firstRunSetup
   case commandPalette

@@ -1,4 +1,5 @@
 import Foundation
+import PublishingMarkdownCore
 
 struct PreflightDuplicateIndex: Sendable {
   private let indexedDraftIDs: Set<UUID>
@@ -29,7 +30,12 @@ struct PreflightDuplicateIndex: Sendable {
         groupEnd = titledDrafts.index(after: groupEnd)
       }
       if titledDrafts.distance(from: groupStart, to: groupEnd) > 1 {
-        duplicateTitleIDs.formUnion(titledDrafts[groupStart..<groupEnd].map(\.id))
+        let byLanguage = Dictionary(grouping: titledDrafts[groupStart..<groupEnd]) {
+          profile.translationLanguageCode(for: $0) ?? ""
+        }
+        for sameLanguage in byLanguage.values where sameLanguage.count > 1 {
+          duplicateTitleIDs.formUnion(sameLanguage.map(\.id))
+        }
       }
       groupStart = groupEnd
     }
@@ -156,6 +162,32 @@ public struct PreflightCheckService: Sendable {
       ))
     }
 
+    if draft.translationLink != nil {
+      let source = allDrafts.first(where: { $0.id == draft.translationLink?.sourceDraftID })
+      switch draft.translationFreshness(source: source, profile: profile) {
+      case .stale:
+        issues.append(
+          .init(
+            severity: .warning,
+            title: CoreL10n.text("译文已过期"),
+            message: CoreL10n.text("原稿内容或路径已变化，请核对译文后再发布。"),
+            field: "body"
+          ))
+      case .sourceMissing:
+        issues.append(
+          .init(
+            severity: .warning,
+            title: CoreL10n.text("译文原稿缺失"),
+            message: CoreL10n.text("找不到关联原稿，请核对这篇译文的来源。"),
+            field: "body"
+          ))
+      case .current, .none:
+        break
+      }
+    }
+
+    issues.append(contentsOf: shortcodeIssues(body: draft.bodyMarkdown, profile: profile))
+
     issues.append(contentsOf: publicRiskScanner.scan(draft: draft))
 
     let markdownPath = profile.markdownPath(for: draft)
@@ -175,6 +207,27 @@ public struct PreflightCheckService: Sendable {
         field: "markdownPathPattern"
       )
     )
+    if draft.translationLink != nil,
+      let translationPattern = profile.translationMarkdownPathPattern?.trimmedForPublishing
+        .nilIfEmpty
+    {
+      issues.append(
+        contentsOf: patternIssues(
+          label: CoreL10n.text("译文路径规则"),
+          pattern: translationPattern,
+          field: "translationMarkdownPathPattern"
+        )
+      )
+      if !translationPattern.contains("{language}") {
+        issues.append(
+          .init(
+            severity: .error,
+            title: CoreL10n.text("译文路径缺少语言变量"),
+            message: CoreL10n.text("译文路径模板需要包含 {language}，以避免不同语言覆盖同一文件。"),
+            field: "translationMarkdownPathPattern"
+          ))
+      }
+    }
     issues.append(contentsOf: rootPathIssues(
       label: CoreL10n.text("内容目录"),
       path: profile.contentRoot,
@@ -186,9 +239,14 @@ public struct PreflightCheckService: Sendable {
       field: "assetRoot"
     ))
 
-    let hasDuplicateTitle = duplicateIndex?.hasDuplicateTitle(for: draft.id) ?? allDrafts.contains {
-      $0.id != draft.id && !$0.title.isEmpty && $0.title.caseInsensitiveCompare(draft.title) == .orderedSame
-    }
+    let hasDuplicateTitle =
+      duplicateIndex?.hasDuplicateTitle(for: draft.id)
+      ?? allDrafts.contains {
+        $0.id != draft.id && !$0.title.isEmpty
+          && $0.title.caseInsensitiveCompare(draft.title) == .orderedSame
+          && profile.translationLanguageCode(for: $0)
+            == profile.translationLanguageCode(for: draft)
+      }
     if hasDuplicateTitle {
       issues.append(.init(
         severity: .error,
@@ -327,6 +385,70 @@ public struct PreflightCheckService: Sendable {
       return $0.severity.sortRank < $1.severity.sortRank
     }
   }
+
+  private func shortcodeIssues(body: String, profile: SiteProfile) -> [PreflightIssue] {
+    guard profile.siteKind == .hugo || profile.siteKind == .zola else { return [] }
+    let detected = MarkdownSSGComponentLibraryService.detectedReferences(in: body)
+    guard !detected.isEmpty else { return [] }
+    let catalog = ThemeShortcodeCatalogService().catalog(profile: profile)
+    let references = detected.filter { reference in
+      guard !reference.isClosing else { return false }
+      switch profile.siteKind {
+      case .hugo:
+        return reference.engineSyntax == .hugoAngle
+          || reference.engineSyntax == .hugoPercent
+          || reference.engineSyntax == .zolaInlineComponent
+      case .zola:
+        return catalog.usesLegacyZolaShortcodes
+          ? reference.engineSyntax == .zolaLegacy || reference.engineSyntax == .zolaComponent
+          : reference.engineSyntax == .zolaInlineComponent
+      default: return false
+      }
+    }
+    guard !references.isEmpty else { return [] }
+
+    let known = Set(catalog.definitions.map { $0.name.lowercased() })
+      .union(profile.siteKind == .hugo ? Self.hugoEmbeddedShortcodes : [])
+    let unknown = Dictionary(
+      grouping: references.filter {
+        !known.contains($0.name.lowercased())
+          && !(profile.siteKind == .zola && $0.engineSyntax == .zolaLegacy
+            && Self.zolaTeraFunctions.contains($0.name.lowercased()))
+      },
+      by: { $0.name.lowercased() }
+    )
+    guard !unknown.isEmpty else { return [] }
+
+    let catalogIncomplete = catalog.diagnostics.contains {
+      $0.code != .unsupportedSiteKind
+    }
+    return unknown.keys.sorted().compactMap { name in
+      guard let occurrences = unknown[name], let first = occurrences.first else { return nil }
+      let lines = occurrences.map(\.lineNumber).sorted().map(String.init).joined(separator: "、")
+      return PreflightIssue(
+        severity: catalogIncomplete ? .warning : .error,
+        title: catalogIncomplete ? CoreL10n.text("短代码目录无法核实") : CoreL10n.text("未知短代码"),
+        message: catalogIncomplete
+          ? CoreL10n.format("第 %@ 行的 %@ 尚无法与主题目录核对，请检查仓库或主题配置。", lines, first.name)
+          : CoreL10n.format("第 %@ 行使用了主题中不存在的短代码 %@。", lines, first.name),
+        field: PreflightIssueField.body.rawValue,
+        relatedValue: first.name
+      )
+    }
+  }
+
+  private static let hugoEmbeddedShortcodes: Set<String> = [
+    "details", "figure", "highlight", "instagram", "param", "qr",
+    "ref", "relref", "vimeo", "x", "youtube",
+  ]
+
+  // Zola 0.23+ parses content as Tera. A function call resembles the old
+  // `{{ shortcode(...) }}` form, so documented built-ins are not shortcode errors.
+  private static let zolaTeraFunctions: Set<String> = [
+    "get_env", "get_hash", "get_image_metadata", "get_page", "get_section",
+    "get_taxonomy", "get_taxonomy_term", "get_taxonomy_url", "get_url", "load_data",
+    "range", "resize_image", "text_direction", "throw", "trans",
+  ]
 
   private func repositoryPathIssues(
     label: String,

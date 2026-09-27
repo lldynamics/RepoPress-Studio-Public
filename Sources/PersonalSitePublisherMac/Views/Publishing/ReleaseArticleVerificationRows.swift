@@ -11,9 +11,23 @@ struct ReleaseArticleVerificationRows: View {
     VStack(alignment: .leading, spacing: 12) {
       ForEach(record.articleVerificationTargets) { target in
         let result = snapshot?.articleResults?.first(where: { $0.target == target })
+        let articleURL =
+          ([target.publicURLText].compactMap { $0 }
+          + (result?.signals.compactMap(\.urlText) ?? []))
+          .compactMap(URL.init(string:))
+          .first { ["http", "https"].contains($0.scheme?.lowercased() ?? "") && $0.host != nil }
         VStack(alignment: .leading, spacing: 5) {
           Label(target.draftTitle, systemImage: (result?.level ?? .unknown).systemImage)
             .font(.callout.weight(.medium))
+          if snapshot?.verifiesArticle(target, in: record) == true, let articleURL {
+            HStack(spacing: 8) {
+              Label("已上线", systemImage: "checkmark.seal.fill")
+                .foregroundStyle(WorkbenchTheme.success)
+              Button("打开文章") { ExternalURLOpener.open(articleURL) }
+                .buttonStyle(.link)
+                .accessibilityIdentifier("publish-article-live-link")
+            }
+          }
           Text(target.publicURLText ?? target.publicPath ?? target.markdownPath)
             .font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
           if target.publicPath == nil {
@@ -36,19 +50,17 @@ struct ReleaseArticleVerificationRows: View {
                 || !store.canCheckDeploymentStatus(for: record)
             )
             .help(store.deploymentStatusReadiness(for: record).nextStep)
-            if let text = result?.signals.first(where: { $0.urlText != nil })?.urlText
-              ?? target.publicURLText,
-              let url = URL(string: text),
-              ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil
-            {
-              Button("打开文章页面") { ExternalURLOpener.open(url) }.buttonStyle(.link)
+            if let articleURL, snapshot?.verifiesArticle(target, in: record) != true {
+              Button("打开文章页面") { ExternalURLOpener.open(articleURL) }.buttonStyle(.link)
             }
           }
           if let result {
-            Text(result.verifiesSourceVersion
-              ? String(localized: "正文版本已确认")
-              : String(localized: "正文版本尚未确认"))
-              .font(.caption).foregroundStyle(.secondary)
+            Text(
+              result.verifiesSourceVersion
+                ? String(localized: "正文版本已确认")
+                : String(localized: "正文版本尚未确认")
+            )
+            .font(.caption).foregroundStyle(.secondary)
             DisclosureGroup("检查详情") {
               ForEach(result.signals) { signal in
                 VStack(alignment: .leading, spacing: 3) {

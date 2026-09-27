@@ -28,6 +28,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
 
   case appearanceBehavior
   case appearanceTheme
+  case appearanceModules
 
   case editorPreview
   case editorTypography
@@ -61,7 +62,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
       return .siteAI
     case .dataDrafts, .dataStorage, .dataBackup, .dataMigration:
       return .dataManagement
-    case .appearanceBehavior, .appearanceTheme:
+    case .appearanceBehavior, .appearanceTheme, .appearanceModules:
       return .appearance
     case .editorPreview, .editorTypography, .editorAssistance, .editorAutomation,
       .appearanceDefaults:
@@ -93,6 +94,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
     case .dataMigration: return String(localized: "迁移与导入")
     case .appearanceBehavior: return String(localized: "应用行为")
     case .appearanceTheme: return String(localized: "外观")
+    case .appearanceModules: return String(localized: "功能模块")
     case .appearanceDefaults: return String(localized: "新建内容默认值")
     case .editorPreview: return String(localized: "效果预览")
     case .editorTypography: return String(localized: "字体与布局")
@@ -128,6 +130,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
     case .dataMigration: return String(localized: "导入、导出和工作区迁移")
     case .appearanceBehavior: return String(localized: "启动、检查与扫描行为")
     case .appearanceTheme: return String(localized: "主题、强调色与界面密度")
+    case .appearanceModules: return String(localized: "选择工作区中显示的可选功能")
     case .appearanceDefaults: return String(localized: "所有站点共用的新文章预设")
     case .editorPreview: return String(localized: "即时查看排版与阅读效果")
     case .editorTypography: return String(localized: "字号、行距与正文宽度")
@@ -163,6 +166,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
     case .dataMigration: return "square.and.arrow.down.on.square"
     case .appearanceBehavior: return "switch.2"
     case .appearanceTheme: return "paintpalette"
+    case .appearanceModules: return "square.grid.2x2"
     case .appearanceDefaults: return "doc.badge.plus"
     case .editorPreview: return "eye"
     case .editorTypography: return "text.alignleft"
@@ -230,6 +234,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
     case "data.migration": return .dataMigration
     case "appearance.launch": return .appearanceBehavior
     case "appearance.theme": return .appearanceTheme
+    case "appearance.modules": return .appearanceModules
     case "appearance.defaults": return .appearanceDefaults
     case "editor.preview": return .editorPreview
     case "editor.typography": return .editorTypography

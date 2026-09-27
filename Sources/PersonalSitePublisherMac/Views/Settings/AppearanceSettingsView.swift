@@ -11,6 +11,8 @@ struct AppearanceSettingsView: View {
   private var interfaceDensityRawValue = WorkbenchInterfaceDensity.comfortable.rawValue
   @AppStorage("menuBarQuickCaptureVisibleV1")
   private var isMenuBarQuickCaptureVisible = true
+  @WorkspaceModuleVisibilityStorage
+  private var moduleVisibility
 
   private var selectedPalette: WorkbenchAccentPalette {
     WorkbenchAccentPalette.resolved(rawValue: accentPaletteRawValue)
@@ -37,6 +39,7 @@ struct AppearanceSettingsView: View {
         Text("外观")
           .settingsSubsectionAnchor(.appearanceTheme)
       }
+      WorkspaceModuleSettingsSection(visibility: $moduleVisibility)
     }
     .formStyle(.grouped)
     .padding(WorkbenchSpacing.content)

@@ -503,7 +503,8 @@ struct RSSMaintenanceSettingsView: View {
   private func synchronizeBackgroundRefresh() {
     normalizeBackgroundRefreshInterval()
     store.configureBackgroundRefresh(
-      enabled: allowsBackgroundRefresh && backgroundRefreshEnabled,
+      enabled: allowsBackgroundRefresh && backgroundRefreshEnabled
+        && WorkspaceModuleVisibility.load(defaults: .standard).rssEnabled,
       interval: RSSReaderUserPreferences.backgroundRefreshIntervalSeconds(
         backgroundRefreshIntervalMinutes
       )

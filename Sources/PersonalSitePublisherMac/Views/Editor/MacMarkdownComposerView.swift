@@ -622,6 +622,7 @@ struct MacMarkdownComposerView: View {
       .sheet(isPresented: $presentationState.isSnippetLibraryPresented) {
         MarkdownSnippetLibraryPanel(
           draft: previewDraft,
+          siteProfile: editorState.profile(for: previewDraft),
           siteName: editorState.profile(for: previewDraft).name,
           storedCustomSnippets: store.customMarkdownSnippets,
           onInsert: insertSnippet,
@@ -932,7 +933,6 @@ struct MacMarkdownComposerView: View {
           occurrences: markdownSSGComponentOccurrences,
           onSelect: focusSSGComponentOccurrence
         )
-        .frame(height: 118)
       }
 
       Divider()

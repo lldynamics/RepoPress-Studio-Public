@@ -7281,22 +7281,6 @@
         }
       }
     },
-    "SSG 组件缩略预览，共 %lld 个": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "SSG Component Thumbnail Preview, %lld Total"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "SSG 组件缩略预览，共 %lld 个"
-          }
-        }
-      }
-    },
     "Slug": {
       "localizations": {
         "en": {
@@ -17025,6 +17009,22 @@
         }
       }
     },
+    "与原稿一致": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Up to date with source"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "与原稿一致"
+          }
+        }
+      }
+    },
     "与当前本地草稿相同，将自动跳过。": {
       "localizations": {
         "en": {
@@ -23553,6 +23553,22 @@
         }
       }
     },
+    "关联译文": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Linked translation"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关联译文"
+          }
+        }
+      }
+    },
     "关闭": {
       "localizations": {
         "en": {
@@ -23709,6 +23725,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "关闭后会停止自动刷新计时器和失败订阅重试计时器；手动刷新仍可使用。"
+          }
+        }
+      }
+    },
+    "关闭后隐藏入口和相关命令；已有数据保留，可随时重新开启。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turning a module off hides its entry points and related commands. Existing data is kept, and you can turn it back on at any time."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭后隐藏入口和相关命令；已有数据保留，可随时重新开启。"
           }
         }
       }
@@ -25469,22 +25501,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "切换个人网站"
-          }
-        }
-      }
-    },
-    "切换写作 / 资料库 / RSS / 站点 / 检查 / 图片": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Switch Writing / Library / RSS / Site / Checks / Images"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "切换写作 / 资料库 / RSS / 站点 / 检查 / 图片"
           }
         }
       }
@@ -27297,6 +27313,22 @@
         }
       }
     },
+    "功能模块": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feature Modules"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "功能模块"
+          }
+        }
+      }
+    },
     "加入收藏": {
       "localizations": {
         "en": {
@@ -28077,6 +28109,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "原稿将改为归属目标站点，并重置发布状态与仓库关联。"
+          }
+        }
+      }
+    },
+    "原稿已变化，译文待核对": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source changed; review translation"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原稿已变化，译文待核对"
+          }
+        }
+      }
+    },
+    "原稿文件名": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "source filename"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原稿文件名"
           }
         }
       }
@@ -31037,6 +31101,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "可用候选:"
+          }
+        }
+      }
+    },
+    "可用短代码与组件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Available shortcodes and components"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可用短代码与组件"
           }
         }
       }
@@ -39565,6 +39645,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "就绪状态"
+          }
+        }
+      }
+    },
+    "展开后可定位源码": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expand to jump to source"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "展开后可定位源码"
           }
         }
       }
@@ -50545,6 +50641,22 @@
         }
       }
     },
+    "打开文章": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open article"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开文章"
+          }
+        }
+      }
+    },
     "打开文章%@": {
       "localizations": {
         "en": {
@@ -51821,6 +51933,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "批量选择 RSS 文章"
+          }
+        }
+      }
+    },
+    "找不到原稿": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source article not found"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "找不到原稿"
           }
         }
       }
@@ -53137,6 +53265,22 @@
         }
       }
     },
+    "提示正文 H1 与标题重复": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Warn when body H1 repeats title"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "提示正文 H1 与标题重复"
+          }
+        }
+      }
+    },
     "提醒": {
       "localizations": {
         "en": {
@@ -53377,6 +53521,22 @@
         }
       }
     },
+    "插入短代码或组件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Insert shortcode or component"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "插入短代码或组件"
+          }
+        }
+      }
+    },
     "插入视频": {
       "localizations": {
         "en": {
@@ -53565,6 +53725,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "搜索公开文章"
+          }
+        }
+      }
+    },
+    "搜索内容、AI 功能、工作区或命令…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search content, AI features, workspace, or commands…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索内容、AI 功能、工作区或命令…"
           }
         }
       }
@@ -53773,22 +53949,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "搜索文章、站点或路径"
-          }
-        }
-      }
-    },
-    "搜索文章、资料库、RSS、AI 功能、工作区或命令…": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Search articles, references, RSS, AI features, workspace, or commands…"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "搜索文章、资料库、RSS、AI 功能、工作区或命令…"
           }
         }
       }
@@ -54781,6 +54941,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "收起资料整理"
+          }
+        }
+      }
+    },
+    "收集资料与笔记；关闭后同时隐藏菜单栏速记。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collect references and notes. Turning this off also hides menu bar quick capture."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收集资料与笔记；关闭后同时隐藏菜单栏速记。"
           }
         }
       }
@@ -58157,6 +58333,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "无需 API Key"
+          }
+        }
+      }
+    },
+    "无需参数": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No parameters"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无需参数"
           }
         }
       }
@@ -64193,6 +64385,22 @@
         }
       }
     },
+    "查看原稿：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View source: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看原稿：%@"
+          }
+        }
+      }
+    },
     "查看发布历史": {
       "localizations": {
         "en": {
@@ -66705,6 +66913,22 @@
         }
       }
     },
+    "正在准备当前文章确认…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing the current article review…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在准备当前文章确认…"
+          }
+        }
+      }
+    },
     "正在准备当前文章预览…": {
       "localizations": {
         "en": {
@@ -67053,6 +67277,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在发布"
+          }
+        }
+      }
+    },
+    "正在发布当前文章…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publishing the current article…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在发布当前文章…"
           }
         }
       }
@@ -70145,6 +70385,22 @@
         }
       }
     },
+    "此站点启用时，正文 H1 与 Front Matter title 相同会显示一条非阻断建议。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When enabled for this site, show a non-blocking suggestion if the body H1 matches the Front Matter title."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此站点启用时，正文 H1 与 Front Matter title 相同会显示一条非阻断建议。"
+          }
+        }
+      }
+    },
     "此资料没有可重新读取的来源，但仍可恢复已有版本。": {
       "localizations": {
         "en": {
@@ -72897,22 +73153,6 @@
         }
       }
     },
-    "点击卡片定位源码": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Click a card to locate it in the source"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "点击卡片定位源码"
-          }
-        }
-      }
-    },
     "点击文章后，可使用上下箭头浏览，按 Return 打开文章": {
       "localizations": {
         "en": {
@@ -73165,6 +73405,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "状态与归属"
+          }
+        }
+      }
+    },
+    "状态未知": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Status unknown"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "状态未知"
           }
         }
       }
@@ -73569,6 +73825,22 @@
         }
       }
     },
+    "生成英文译文路径示例": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "English translation path example"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "生成英文译文路径示例"
+          }
+        }
+      }
+    },
     "生成迁移预览": {
       "localizations": {
         "en": {
@@ -73757,6 +74029,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "界面密度"
+          }
+        }
+      }
+    },
+    "留空时，Hugo 和 Zola 使用与原稿同目录的语言后缀文件；按语言分目录时填写包含 {language} 的模板，并在站点生成器中配置对应语言。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leave blank to use a language suffix beside the source file for Hugo and Zola. For language directories, use a template containing {language} and configure that language in the site generator."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "留空时，Hugo 和 Zola 使用与原稿同目录的语言后缀文件；按语言分目录时填写包含 {language} 的模板，并在站点生成器中配置对应语言。"
           }
         }
       }
@@ -74301,6 +74589,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "知识建议"
+          }
+        }
+      }
+    },
+    "短代码与组件折叠预览": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shortcode and component preview"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "短代码与组件折叠预览"
+          }
+        }
+      }
+    },
+    "短代码与组件折叠预览，共 %lld 个": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shortcode and component preview, %lld items"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "短代码与组件折叠预览，共 %lld 个"
           }
         }
       }
@@ -77457,6 +77777,22 @@
         }
       }
     },
+    "管理图片资源；文章中的插图和封面编辑仍可使用。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manage image resources. Article images and cover editing remain available."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "管理图片资源；文章中的插图和封面编辑仍可使用。"
+          }
+        }
+      }
+    },
     "管理应用内共享的 AI 连接，修改会影响所有引用此连接的站点。": {
       "localizations": {
         "en": {
@@ -78157,22 +78493,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "组件已更新，当前 AI 操作结束后会自动启用。"
-          }
-        }
-      }
-    },
-    "组件缩略预览": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Component Thumbnail Preview"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "组件缩略预览"
           }
         }
       }
@@ -81217,6 +81537,22 @@
         }
       }
     },
+    "订阅和阅读 RSS；关闭后暂停定期刷新。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subscribe to and read RSS feeds. Turning this off pauses periodic refresh."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "订阅和阅读 RSS；关闭后暂停定期刷新。"
+          }
+        }
+      }
+    },
     "订阅地址包含 URL 用户名或密码，请先修改地址。": {
       "localizations": {
         "en": {
@@ -81869,6 +82205,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "诊断当前配置仓库的连接并重新验证写入能力"
+          }
+        }
+      }
+    },
+    "译文语言": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "translation language"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "译文语言"
+          }
+        }
+      }
+    },
+    "译文路径模板": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translation path template"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "译文路径模板"
+          }
+        }
+      }
+    },
+    "译文路径模板（可选）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translation path template (optional)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "译文路径模板（可选）"
           }
         }
       }
@@ -88413,6 +88797,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "选择导出来源"
+          }
+        }
+      }
+    },
+    "选择工作区中显示的可选功能": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose optional features shown in the workspace"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择工作区中显示的可选功能"
           }
         }
       }

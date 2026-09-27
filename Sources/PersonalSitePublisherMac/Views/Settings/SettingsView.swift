@@ -3,6 +3,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct SettingsView: View {
+  @WorkspaceModuleVisibilityStorage private var moduleVisibility
   @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let store: WorkbenchStore
   @ObservedObject private var settingsState: WorkbenchSettingsFeatureFacade
@@ -77,6 +78,15 @@ struct SettingsView: View {
     .onChange(of: navigationSession.selectedRoute) { _, route in
       lastViewedSettingsTabID = route.tab.id
     }
+    .onChange(of: moduleVisibility, initial: true) { _, visibility in
+      let route = visibility.resolvedSettingsRoute(navigationSession.selectedRoute)
+      if route != navigationSession.selectedRoute {
+        apply(navigationSession.selectSidebarRoute(route))
+      }
+      if let rssStore {
+        launchCoordinator.startBackgroundRefreshIfNeeded(for: rssStore)
+      }
+    }
     .onChange(of: autoRunPreflight) { _, newValue in
       store.setAutomaticallyRefreshPreflightOnEdit(newValue)
     }
@@ -147,6 +157,7 @@ struct SettingsView: View {
 
   private var matchingSearchItems: [SettingsSearchItem] {
     SettingsSearchIndex.search(query: searchSession.query)
+      .filter { moduleVisibility.allowsSettingsTab($0.tab) }
   }
 
   private var shouldShowSaveStatusBar: Bool {
@@ -414,15 +425,17 @@ struct SettingsView: View {
     Binding(
       get: { navigationSession.selectedRoute },
       set: { route in
-        apply(navigationSession.selectSidebarRoute(route))
+        apply(navigationSession.selectSidebarRoute(moduleVisibility.resolvedSettingsRoute(route)))
       }
     )
   }
 
   private static func initialSettingsRoute() -> SettingsRoute {
-    SettingsRoute.restored(
-      lastViewedID: UserDefaults.standard.string(
-        forKey: SettingsNavigation.lastViewedTabStorageKey
+    WorkspaceModuleVisibility.load(defaults: .standard).resolvedSettingsRoute(
+      SettingsRoute.restored(
+        lastViewedID: UserDefaults.standard.string(
+          forKey: SettingsNavigation.lastViewedTabStorageKey
+        )
       )
     )
   }
@@ -513,6 +526,10 @@ struct SettingsView: View {
     healthDestination: SettingsConfigurationHealthDestination?,
     targetRoute: SettingsRoute? = nil
   ) {
+    guard moduleVisibility.allowsSettingsTab(destination.tab) else {
+      apply(navigationSession.selectSidebarRoute(.subsection(.appearanceModules)))
+      return
+    }
     apply(
       navigationSession.selectDestination(
         destination,

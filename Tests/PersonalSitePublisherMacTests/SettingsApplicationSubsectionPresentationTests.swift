@@ -10,7 +10,7 @@ final class SettingsApplicationSubsectionPresentationTests: XCTestCase {
     )
     XCTAssertEqual(
       SettingsSubsection.sections(for: .appearance),
-      [.appearanceBehavior, .appearanceTheme]
+      [.appearanceBehavior, .appearanceTheme, .appearanceModules]
     )
     XCTAssertEqual(
       SettingsSubsection.sections(for: .editor),

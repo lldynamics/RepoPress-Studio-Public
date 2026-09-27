@@ -25,6 +25,7 @@ struct WorkspacePublishDrawerOverlay: View {
   let store: WorkbenchStore
   @Binding var isPresented: Bool
   let initialScope: PublishScope
+  var initialCompletedReleaseRecordID: UUID? = nil
   let onNavigateIssue: (UUID, PublishReadinessTarget, PublishScope) -> Void
 
   var body: some View {
@@ -39,6 +40,7 @@ struct WorkspacePublishDrawerOverlay: View {
           store: store,
           isPresented: $isPresented,
           initialScope: initialScope,
+          initialCompletedReleaseRecordID: initialCompletedReleaseRecordID,
           onNavigateIssue: onNavigateIssue
         )
         .frame(width: WorkspacePublishDrawerLayoutPolicy.width(for: geometry.size.width))

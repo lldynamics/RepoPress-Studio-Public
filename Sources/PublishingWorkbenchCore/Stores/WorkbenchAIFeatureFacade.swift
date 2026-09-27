@@ -1253,7 +1253,8 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     do {
       let translated = try AITranslationDraftPlanningService.materialize(
         plan,
-        currentSource: source
+        currentSource: source,
+        profile: store.profile(for: source)
       )
       store.updateDraft(translated)
       store.selectDraft(translated.id)

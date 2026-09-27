@@ -193,6 +193,27 @@ struct WorkspaceTaskMetadataSection: View {
               systemImage: remoteSyncState.systemImage
             )
 
+            if let link = draft.translationLink {
+              let source = store.drafts.first(where: { $0.id == link.sourceDraftID })
+              let sourceProfile = source.map { store.profile(for: $0) }
+              let freshness = draft.translationFreshness(source: source, profile: sourceProfile)
+              InspectorStatRow(
+                title: String(localized: "关联译文"),
+                value: "\(link.targetLanguageCode) · \(translationStatusText(freshness))",
+                systemImage: freshness == .current
+                  ? "globe" : "exclamationmark.arrow.triangle.2.circlepath"
+              )
+              if let source {
+                Button {
+                  store.selectDraft(source.id)
+                } label: {
+                  Label("查看原稿：\(source.title)", systemImage: "arrow.up.left")
+                }
+                .buttonStyle(.link)
+                .accessibilityIdentifier("metadata-open-translation-source")
+              }
+            }
+
             Text(draft.repositoryPath?.normalizedRelativePath() ?? "计划路径：\(state.markdownPath)")
               .font(.caption.monospaced())
               .foregroundStyle(.secondary)
@@ -231,6 +252,15 @@ struct WorkspaceTaskMetadataSection: View {
     }
     .onDisappear {
       cancelSummaryGeneration()
+    }
+  }
+
+  private func translationStatusText(_ freshness: ArticleTranslationFreshness?) -> String {
+    switch freshness {
+    case .current: return String(localized: "与原稿一致")
+    case .stale: return String(localized: "原稿已变化，译文待核对")
+    case .sourceMissing: return String(localized: "找不到原稿")
+    case .none: return String(localized: "状态未知")
     }
   }
 
@@ -580,6 +610,14 @@ struct WorkspaceTaskSEOSection: View {
           title: "摘要", value: "\(report.summaryCharacterCount) 字", systemImage: "text.alignleft")
         InspectorStatRow(title: "H1", value: "\(report.h1Count)", systemImage: "number")
 
+        Toggle("提示正文 H1 与标题重复", isOn: h1DuplicateWarningBinding)
+          .toggleStyle(.checkbox)
+          .controlSize(.small)
+          .help("此站点启用时，正文 H1 与 Front Matter title 相同会显示一条非阻断建议。")
+          .accessibilityLabel("提示正文 H1 与标题重复")
+          .accessibilityValue(
+            h1DuplicateWarningBinding.wrappedValue ? "已开启" : "已关闭")
+
         HStack {
           Button {
             store.refreshSEOSocialPreview(for: draft)
@@ -725,6 +763,17 @@ struct WorkspaceTaskSEOSection: View {
       cachedSnapshotDate: cachedSnapshot?.generatedAt,
       maintenanceSnapshotDate: seoObservation.maintenanceSnapshotDate,
       actionMessage: seoObservation.actionMessage
+    )
+  }
+
+  private var h1DuplicateWarningBinding: Binding<Bool> {
+    Binding(
+      get: { store.profile(for: draft).resolvedWarnsWhenBodyH1DuplicatesTitle },
+      set: { isEnabled in
+        store.updateActiveProfile {
+          $0.resolvedWarnsWhenBodyH1DuplicatesTitle = isEnabled
+        }
+      }
     )
   }
 
@@ -1452,6 +1501,7 @@ struct WorkspaceTaskImageActions {
 }
 
 struct WorkspaceTaskImageSection: View {
+  @WorkspaceModuleVisibilityStorage private var moduleVisibility
   @Binding var draft: ArticleDraft
   let state: WorkspaceTaskImageState
   let actions: WorkspaceTaskImageActions
@@ -1505,13 +1555,15 @@ struct WorkspaceTaskImageSection: View {
         }
       }
 
-      InspectorSection("图片工作台") {
-        Button {
-          actions.openImageWorkbench()
-        } label: {
-          Label("打开图片工作台", systemImage: "photo.on.rectangle")
+      if moduleVisibility.imagesEnabled {
+        InspectorSection("图片工作台") {
+          Button {
+            actions.openImageWorkbench()
+          } label: {
+            Label("打开图片工作台", systemImage: "photo.on.rectangle")
+          }
+          .controlSize(.small)
         }
-        .controlSize(.small)
       }
 
       actionMessage(state.actionMessage)

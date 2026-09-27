@@ -248,6 +248,7 @@ final class LocalContentImportIndexStore: @unchecked Sendable {
       profile.dateFormat,
       profile.defaultAuthor,
       profile.markdownPathPattern,
+      profile.translationMarkdownPathPattern ?? "",
     ].joined(separator: "\u{1F}")
   }
 

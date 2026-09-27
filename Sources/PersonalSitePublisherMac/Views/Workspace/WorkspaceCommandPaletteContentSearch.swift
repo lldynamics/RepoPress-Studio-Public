@@ -51,6 +51,7 @@ final class WorkspaceCommandPaletteContentSearch: ObservableObject {
   func update(
     query: String,
     scope: WorkspaceUnifiedSearchScope,
+    moduleVisibility: WorkspaceModuleVisibility,
     knowledge: KnowledgeStore,
     rssStore: RSSReaderStore
   ) {
@@ -58,7 +59,9 @@ final class WorkspaceCommandPaletteContentSearch: ObservableObject {
     let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
     let requestID = UUID()
     activeRequestID = requestID
-    guard !normalizedQuery.isEmpty, scope.includesResources || scope.includesRSS else {
+    let shouldSearchKnowledge = scope.includesResources && moduleVisibility.libraryEnabled
+    let shouldSearchRSS = scope.includesRSS && moduleVisibility.rssEnabled
+    guard !normalizedQuery.isEmpty, shouldSearchKnowledge || shouldSearchRSS else {
       knowledgeResults = []
       rssResults = []
       state = .idle
@@ -77,11 +80,11 @@ final class WorkspaceCommandPaletteContentSearch: ObservableObject {
         try await Task.sleep(for: .milliseconds(180))
         try Task.checkCancellation()
         async let libraryResults: [KnowledgeSearchResult] =
-          scope.includesResources
+          shouldSearchKnowledge
           ? knowledgeSearch(knowledge, normalizedQuery, Self.resultLimit)
           : []
         async let archiveResults: [RSSWorkspacePaletteSearchResult] =
-          scope.includesRSS
+          shouldSearchRSS
           ? rssSearch(rssStore, normalizedQuery, Self.resultLimit)
           : []
         let results = try await (libraryResults, archiveResults)

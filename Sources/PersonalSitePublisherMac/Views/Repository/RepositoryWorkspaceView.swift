@@ -4,6 +4,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct RepositoryWorkspaceView: View {
+  @WorkspaceModuleVisibilityStorage var moduleVisibility
   @Environment(\.workbenchAccentColor) var workbenchAccentColor
   let store: WorkbenchStore
   @ObservedObject private var workspaceObservation: WorkbenchRepositoryWorkspaceObservationFacade

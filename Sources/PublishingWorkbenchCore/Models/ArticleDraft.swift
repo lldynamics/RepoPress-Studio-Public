@@ -72,6 +72,9 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   /// A linked Markdown file outside the site repository.
   public var externalDraftSource: ExternalDraftSource?
   public var reusedFromSourceSnapshot: GeneralDraftReuseSourceSnapshot?
+  /// Present only on a translated article. Optional for older snapshots and
+  /// independent of repository content fingerprints.
+  public var translationLink: AITranslationDraftLink?
   /// Stable identity for built-in software guides. This is intentionally
   /// independent from the editable title and slug so user content with the
   /// same slug is never mistaken for an installed guide.
@@ -114,6 +117,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     repositoryBinding: DraftRepositoryBinding? = nil,
     externalDraftSource: ExternalDraftSource? = nil,
     reusedFromSourceSnapshot: GeneralDraftReuseSourceSnapshot? = nil,
+    translationLink: AITranslationDraftLink? = nil,
     softwareGuideID: String? = nil,
     softwareGuideTemplateVersion: Int? = nil
   ) {
@@ -160,6 +164,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       )
     self.externalDraftSource = externalDraftSource
     self.reusedFromSourceSnapshot = reusedFromSourceSnapshot
+    self.translationLink = translationLink
     self.softwareGuideID = softwareGuideID
     self.softwareGuideTemplateVersion = softwareGuideTemplateVersion
   }
@@ -710,6 +715,28 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       return SHA256.hash(data: Data(fallback.utf8)).map { String(format: "%02x", $0) }.joined()
     }
     return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+  }
+
+  /// Recomputed from the live source so editing it marks a translation stale
+  /// without rewriting every translated article in the snapshot.
+  public func translationFreshness(
+    source: ArticleDraft?,
+    profile: SiteProfile? = nil
+  ) -> ArticleTranslationFreshness? {
+    guard let translationLink else { return nil }
+    guard let source, source.id == translationLink.sourceDraftID else {
+      return .sourceMissing
+    }
+    guard source.siteProfileID == siteProfileID else { return .stale }
+    guard source.repositoryContentFingerprint == translationLink.sourceContentFingerprint else {
+      return .stale
+    }
+    if let profile, let originalPath = translationLink.sourceMarkdownPath,
+      profile.markdownPath(for: source) != originalPath
+    {
+      return .stale
+    }
+    return .current
   }
 
   /// Advances only the general content timestamp. Prefer

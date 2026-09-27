@@ -94,6 +94,7 @@ struct SelectionEditPreviewPanel: View {
 }
 
 struct MarkdownShortcutHelpPanel: View {
+  @WorkspaceModuleVisibilityStorage private var moduleVisibility
   @Environment(\.dismiss) private var dismiss
   @State private var searchText = ""
 
@@ -101,8 +102,9 @@ struct MarkdownShortcutHelpPanel: View {
     var groups: [(String, [(String, String)])] = [
       (
         String(localized: "工作区与窗口"),
-        [
-          (String(localized: "切换写作 / 资料库 / RSS / 站点 / 检查 / 图片"), "⌘1–6"),
+        moduleVisibility.primarySections.map {
+          (WorkspaceNavigationRouteDescriptor.title(for: $0), $0.keyboardShortcutLabel)
+        } + [
           (String(localized: "命令面板与快速打开"), "⇧⌘K"),
           (String(localized: "任务中心"), "⌥⌘L"),
           (String(localized: "搜索文章"), "⌥⌘F"),

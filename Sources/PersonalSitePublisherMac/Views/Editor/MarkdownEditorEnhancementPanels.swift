@@ -219,6 +219,7 @@ private enum MarkdownSnippetLibraryFilter: String, CaseIterable, Identifiable {
 struct MarkdownSnippetLibraryPanel: View {
   @Environment(\.dismiss) private var dismiss
   let draft: ArticleDraft
+  let siteProfile: SiteProfile
   let siteName: String
   let storedCustomSnippets: [MarkdownSnippet]
   let onInsert: (MarkdownSnippet) -> Void
@@ -231,6 +232,7 @@ struct MarkdownSnippetLibraryPanel: View {
   @State private var snippetBeingEdited: MarkdownSnippet?
   @State private var snippetPendingDeletion: MarkdownSnippet?
   @State private var isCustomSnippetEditorPresented = false
+  @State private var themeShortcodes: [ThemeShortcodeDefinition] = []
   @FocusState private var isQueryFocused: Bool
 
   var body: some View {
@@ -239,6 +241,17 @@ struct MarkdownSnippetLibraryPanel: View {
         Label("SSG 组件、模板与正文片段", systemImage: "rectangle.3.group")
           .font(.headline)
         Spacer()
+        if !themeShortcodes.isEmpty {
+          Menu {
+            ForEach(themeShortcodes) { definition in
+              Button(definition.name) { insertThemeShortcode(definition) }
+                .help(shortcodeParameterHint(definition))
+            }
+          } label: {
+            Label("插入短代码或组件", systemImage: "curlybraces.square")
+          }
+          .accessibilityIdentifier("insert-theme-shortcode-menu")
+        }
         Button {
           snippetBeingEdited = nil
           isCustomSnippetEditorPresented = true
@@ -272,68 +285,103 @@ struct MarkdownSnippetLibraryPanel: View {
       .padding(12)
       Divider()
 
-      List(filteredSnippets) { snippet in
-        HStack(spacing: 12) {
-          if let previewKind = snippet.previewKind {
-            MarkdownSSGComponentThumbnail(
-              kind: previewKind,
-              title: snippet.title,
-              previewText: MarkdownSnippetLibraryService.expandedMarkdown(for: snippet, draft: draft)
-            )
-            .scaleEffect(0.74)
-            .frame(width: 126, height: 60)
-          } else {
-            Image(systemName: snippet.systemImage)
-              .font(.title3)
-              .frame(width: 28)
-              .foregroundStyle(WorkbenchTheme.primary)
+      List {
+        if selectedFilter == .all || selectedFilter == .components {
+          let visibleDefinitions = themeShortcodes.filter { definition in
+            (selectedKind == nil || selectedKind == .snippet)
+              && (query.trimmedForPublishing.isEmpty
+                || definition.name.localizedStandardContains(query)
+                || shortcodeParameterHint(definition).localizedStandardContains(query))
           }
-          VStack(alignment: .leading, spacing: 3) {
-            Text(snippet.title)
-              .font(.callout.weight(.medium))
-            Text(snippet.detail.isEmpty ? "站点自定义片段" : snippet.detail)
-              .font(.workbenchSupporting)
-              .foregroundStyle(.secondary)
-            if snippet.isSiteScoped {
-              Label(siteName, systemImage: "building.2")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-            Text(MarkdownSnippetLibraryService.expandedMarkdown(for: snippet, draft: draft))
-              .font(.caption.monospaced())
-              .foregroundStyle(.tertiary)
-              .lineLimit(2)
-            if let shortcut = snippet.shortcut {
-              Label("/\(shortcut)", systemImage: "keyboard")
-                .font(.caption)
-                .foregroundStyle(WorkbenchTheme.primary)
-            }
-          }
-          Spacer()
-          Button("插入") {
-            onInsert(snippet)
-            dismiss()
-          }
-          .workbenchProminentActionStyle()
-          if snippet.isSiteScoped {
-            Menu {
-              Button("编辑") {
-                snippetBeingEdited = snippet
-                isCustomSnippetEditorPresented = true
+          if !visibleDefinitions.isEmpty {
+            Section("可用短代码与组件") {
+              ForEach(visibleDefinitions) { definition in
+                HStack(spacing: 12) {
+                  Image(systemName: "curlybraces.square")
+                    .foregroundStyle(WorkbenchTheme.primary)
+                  VStack(alignment: .leading, spacing: 3) {
+                    Text(definition.name).font(.callout.weight(.medium))
+                    Text(shortcodeParameterHint(definition))
+                      .font(.caption)
+                      .foregroundStyle(.secondary)
+                    Text(definition.insertionTemplate)
+                      .font(.caption.monospaced())
+                      .foregroundStyle(.tertiary)
+                      .lineLimit(2)
+                  }
+                  Spacer()
+                  Button("插入") { insertThemeShortcode(definition) }
+                    .workbenchProminentActionStyle()
+                }
               }
-              Button("删除", role: .destructive) {
-                snippetPendingDeletion = snippet
-              }
-            } label: {
-              Image(systemName: "ellipsis.circle")
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .help("管理站点片段")
-            .accessibilityLabel("管理片段：\(snippet.title)")
           }
         }
-        .padding(.vertical, 5)
+        ForEach(filteredSnippets) { snippet in
+          HStack(spacing: 12) {
+            if let previewKind = snippet.previewKind {
+              MarkdownSSGComponentThumbnail(
+                kind: previewKind,
+                title: snippet.title,
+                previewText: MarkdownSnippetLibraryService.expandedMarkdown(
+                  for: snippet, draft: draft
+                )
+              )
+              .scaleEffect(0.74)
+              .frame(width: 126, height: 60)
+            } else {
+              Image(systemName: snippet.systemImage)
+                .font(.title3)
+                .frame(width: 28)
+                .foregroundStyle(WorkbenchTheme.primary)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+              Text(snippet.title)
+                .font(.callout.weight(.medium))
+              Text(snippet.detail.isEmpty ? "站点自定义片段" : snippet.detail)
+                .font(.workbenchSupporting)
+                .foregroundStyle(.secondary)
+              if snippet.isSiteScoped {
+                Label(siteName, systemImage: "building.2")
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+              }
+              Text(MarkdownSnippetLibraryService.expandedMarkdown(for: snippet, draft: draft))
+                .font(.caption.monospaced())
+                .foregroundStyle(.tertiary)
+                .lineLimit(2)
+              if let shortcut = snippet.shortcut {
+                Label("/\(shortcut)", systemImage: "keyboard")
+                  .font(.caption)
+                  .foregroundStyle(WorkbenchTheme.primary)
+              }
+            }
+            Spacer()
+            Button("插入") {
+              onInsert(snippet)
+              dismiss()
+            }
+            .workbenchProminentActionStyle()
+            if snippet.isSiteScoped {
+              Menu {
+                Button("编辑") {
+                  snippetBeingEdited = snippet
+                  isCustomSnippetEditorPresented = true
+                }
+                Button("删除", role: .destructive) {
+                  snippetPendingDeletion = snippet
+                }
+              } label: {
+                Image(systemName: "ellipsis.circle")
+              }
+              .menuStyle(.borderlessButton)
+              .fixedSize()
+              .help("管理站点片段")
+              .accessibilityLabel("管理片段：\(snippet.title)")
+            }
+          }
+          .padding(.vertical, 5)
+        }
       }
     }
     .frame(width: 680, height: 520)
@@ -364,6 +412,35 @@ struct MarkdownSnippetLibraryPanel: View {
       Text("删除后不会影响已经插入文章的内容。")
     }
     .accessibilityLabel("SSG 组件、文章模板与正文片段")
+    .task(id: siteProfile) {
+      let profile = siteProfile
+      let catalog = await Task.detached(priority: .utility) {
+        ThemeShortcodeCatalogService().catalog(profile: profile)
+      }.value
+      guard !Task.isCancelled else { return }
+      themeShortcodes = catalog.definitions
+    }
+  }
+
+  private func shortcodeParameterHint(_ definition: ThemeShortcodeDefinition) -> String {
+    let names = definition.parameters.map { parameter in
+      parameter.defaultValue.map { "\(parameter.name)=\($0)" } ?? parameter.name
+    }
+    return names.isEmpty ? String(localized: "无需参数") : names.joined(separator: " · ")
+  }
+
+  private func insertThemeShortcode(_ definition: ThemeShortcodeDefinition) {
+    let snippet = MarkdownSnippet(
+      id: "theme-shortcode-\(definition.name)",
+      title: definition.name,
+      detail: shortcodeParameterHint(definition),
+      systemImage: "curlybraces.square",
+      kind: .snippet,
+      markdown: definition.insertionTemplate,
+      previewKind: .custom
+    )
+    onInsert(snippet)
+    dismiss()
   }
 
   private var filteredSnippets: [MarkdownSnippet] {

@@ -106,6 +106,7 @@ final class SettingsSubsectionNavigationTests: XCTestCase {
       "data.migration": .dataMigration,
       "appearance.launch": .appearanceBehavior,
       "appearance.theme": .appearanceTheme,
+      "appearance.modules": .appearanceModules,
       "appearance.defaults": .appearanceDefaults,
       "editor.preview": .editorPreview,
       "editor.typography": .editorTypography,

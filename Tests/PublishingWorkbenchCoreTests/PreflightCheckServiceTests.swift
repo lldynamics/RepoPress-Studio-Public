@@ -1,9 +1,105 @@
+import Foundation
 import PublishingDomainContracts
 import XCTest
 
 @testable import PublishingWorkbenchCore
 
 final class PreflightCheckServiceTests: XCTestCase {
+  func testUnknownHugoShortcodeBlocksPublishingWhileThemeDefinitionPasses() throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("shortcode-preflight-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let shortcodes = root.appendingPathComponent("layouts/_shortcodes", isDirectory: true)
+    try FileManager.default.createDirectory(at: shortcodes, withIntermediateDirectories: true)
+    try "{{ .Get \"title\" }}".write(
+      to: shortcodes.appendingPathComponent("card.html"), atomically: true, encoding: .utf8
+    )
+    var profile = SiteProfile.defaultProfile
+    profile.siteKind = .hugo
+    profile.localRepositoryRootPath = root.path
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Shortcode article",
+      slug: "shortcode-article",
+      draft: false,
+      bodyMarkdown: "正文 {{< card title=\"Hello\" >}}。\n{{< absent >}}"
+    )
+
+    let issues = PreflightCheckService().run(
+      draft: draft, allDrafts: [draft], profile: profile,
+      includeRepositoryReadiness: false
+    )
+    let unknown = issues.filter { $0.title == "未知短代码" }
+    XCTAssertEqual(unknown.count, 1)
+    XCTAssertEqual(unknown.first?.relatedValue, "absent")
+    XCTAssertEqual(unknown.first?.severity, .error)
+  }
+
+  func testUnavailableCatalogWarnsWithoutClaimingShortcodeIsUnknown() {
+    var profile = SiteProfile.defaultProfile
+    profile.siteKind = .hugo
+    profile.localRepositoryRootPath = ""
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Shortcode article",
+      slug: "shortcode-article",
+      bodyMarkdown: "An article with {{< custom >}} and an unavailable local theme directory."
+    )
+    let issues = PreflightCheckService().run(
+      draft: draft, allDrafts: [draft], profile: profile,
+      includeRepositoryReadiness: false
+    )
+    XCTAssertTrue(issues.contains { $0.title == "短代码目录无法核实" && $0.severity == .warning })
+    XCTAssertFalse(issues.contains { $0.title == "未知短代码" })
+  }
+
+  func testZolaTeraFunctionIsNotReportedAsUnknownLegacyShortcode() throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("zola-shortcode-preflight-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try "".write(to: root.appendingPathComponent("zola.toml"), atomically: true, encoding: .utf8)
+    var profile = SiteProfile.defaultProfile
+    profile.siteKind = .zola
+    profile.localRepositoryRootPath = root.path
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Zola components",
+      slug: "zola-components",
+      bodyMarkdown: "{{ get_url(path=\"@/post.md\") }} and {{<missing/>}} in this Zola page."
+    )
+
+    let issues = PreflightCheckService().run(
+      draft: draft, allDrafts: [draft], profile: profile,
+      includeRepositoryReadiness: false
+    )
+    let unknown = issues.filter { $0.title == "未知短代码" }
+    XCTAssertEqual(unknown.map(\.relatedValue), ["missing"])
+  }
+
+  func testZolaLegacyConfigChecksUnknownLegacyShortcode() throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("zola-legacy-preflight-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try "".write(to: root.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8)
+    var profile = SiteProfile.defaultProfile
+    profile.siteKind = .zola
+    profile.localRepositoryRootPath = root.path
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Legacy shortcode article",
+      slug: "legacy-shortcode",
+      bodyMarkdown: "{{ get_url(path=\"@/post.md\") }} and {{ missing() }}"
+    )
+
+    let issues = PreflightCheckService().run(
+      draft: draft, allDrafts: [draft], profile: profile,
+      includeRepositoryReadiness: false
+    )
+    XCTAssertEqual(issues.filter { $0.title == "未知短代码" }.map(\.relatedValue), ["missing"])
+  }
+
   func testReportsMissingRequiredMetadata() {
     let profile = SiteProfile.defaultProfile
     let draft = ArticleDraft(
@@ -379,5 +475,208 @@ final class PreflightCheckServiceTests: XCTestCase {
     issues.map {
       "\($0.severity.rawValue)|\($0.title)|\($0.message)|\($0.field ?? "")"
     }
+  }
+}
+
+final class ThemeShortcodeCatalogServiceTests: XCTestCase {
+  private let service = ThemeShortcodeCatalogService()
+
+  func testHugoRootOverrideWinsOverSelectedThemeAndProvidesParameterHints() throws {
+    let fixture = try makeFixture(siteKind: .hugo)
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    try write("theme = \"paper\"\n", at: fixture.root.appendingPathComponent("hugo.toml"))
+    try write(
+      "{{ .Get \"title\" }} {{ .Params.class }} {{ .Inner }}",
+      at: fixture.root.appendingPathComponent("themes/paper/layouts/_shortcodes/callout.html")
+    )
+    try write(
+      "{{ .Get \"tone\" }}",
+      at: fixture.root.appendingPathComponent("layouts/_shortcodes/callout.html")
+    )
+    try write(
+      "{{ .Get \"src\" }}",
+      at: fixture.root.appendingPathComponent("layouts/_shortcodes/media/audio.en.rss.xml")
+    )
+
+    let catalog = service.catalog(profile: fixture.profile)
+
+    XCTAssertEqual(catalog.selectedThemeName, "paper")
+    XCTAssertEqual(catalog.definitions.map(\.name), ["callout", "media/audio"])
+    let callout = try XCTUnwrap(catalog.definitions.first { $0.name == "callout" })
+    XCTAssertEqual(callout.parameters.map(\.name), ["tone"])
+    XCTAssertEqual(callout.source, .repositoryOverride)
+    XCTAssertEqual(callout.repositoryPath, "layouts/_shortcodes/callout.html")
+    XCTAssertEqual(callout.insertionTemplate, "{{< callout tone=\"value\" >}}")
+    XCTAssertEqual(
+      catalog.definitions.first { $0.name == "media/audio" }?.repositoryPath,
+      "layouts/_shortcodes/media/audio.en.rss.xml"
+    )
+  }
+
+  func testHugoReadsOnlyTheConfiguredTheme() throws {
+    let fixture = try makeFixture(siteKind: .hugo)
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    try write("theme: paper\n", at: fixture.root.appendingPathComponent("hugo.yaml"))
+    try write(
+      "{{ .Get \"title\" }} {{ index .Params \"accent\" }}",
+      at: fixture.root.appendingPathComponent("themes/paper/layouts/_shortcodes/note.html")
+    )
+    try write(
+      "{{ .Get \"ignored\" }}",
+      at: fixture.root.appendingPathComponent("themes/other/layouts/_shortcodes/ignored.html")
+    )
+
+    let catalog = service.catalog(profile: fixture.profile)
+
+    XCTAssertEqual(catalog.selectedThemeName, "paper")
+    XCTAssertEqual(catalog.definitions.map(\.name), ["note"])
+    XCTAssertEqual(catalog.definitions[0].parameters.map(\.name), ["accent", "title"])
+    XCTAssertEqual(catalog.definitions[0].source, .configuredTheme(name: "paper"))
+    XCTAssertEqual(
+      catalog.definitions[0].insertionTemplate, "{{< note accent=\"value\" title=\"value\" >}}")
+  }
+
+  func testHugoLocalizedOutputVariantUsesBaseShortcodeName() throws {
+    let fixture = try makeFixture(siteKind: .hugo)
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    try write(
+      "{{ .Get \"title\" }}",
+      at: fixture.root.appendingPathComponent("layouts/_shortcodes/media/card.en.rss.xml")
+    )
+
+    let catalog = service.catalog(profile: fixture.profile)
+    XCTAssertEqual(catalog.definitions.map(\.name), ["media/card"])
+    XCTAssertEqual(catalog.definitions[0].insertionTemplate, "{{< media/card title=\"value\" >}}")
+  }
+
+  func testZolaDiscoversLegacyShortcodeWithLegacyConfig() throws {
+    let fixture = try makeFixture(siteKind: .zola)
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    try write("theme = \"paper\"\n", at: fixture.root.appendingPathComponent("config.toml"))
+    try write(
+      "<aside>{{ title }}</aside>",
+      at: fixture.root.appendingPathComponent("templates/shortcodes/notice.html")
+    )
+    try write(
+      "{% component ui.button(label: string, variant = \"primary\") %}<button>{{ label }}</button>{% endcomponent %}",
+      at: fixture.root.appendingPathComponent("themes/paper/templates/base.html")
+    )
+
+    let catalog = service.catalog(profile: fixture.profile)
+
+    XCTAssertEqual(catalog.selectedThemeName, "paper")
+    XCTAssertTrue(catalog.usesLegacyZolaShortcodes)
+    XCTAssertEqual(catalog.definitions.map(\.name), ["notice"])
+    let notice = try XCTUnwrap(catalog.definitions.first { $0.name == "notice" })
+    XCTAssertEqual(notice.insertionTemplate, "{{ notice(title=\"value\") }}")
+  }
+
+  func testZolaCurrentConfigDiscoversComponentsWithoutLegacyShortcodes() throws {
+    let fixture = try makeFixture(siteKind: .zola)
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    try write("theme = \"paper\"\n", at: fixture.root.appendingPathComponent("zola.toml"))
+    try write(
+      "<aside>{{ title }}</aside>",
+      at: fixture.root.appendingPathComponent("templates/shortcodes/notice.html")
+    )
+    try write(
+      "{% component ui.button(label: string, variant = \"primary\") %}<button>{{ label }}</button>{% endcomponent %}",
+      at: fixture.root.appendingPathComponent("themes/paper/templates/base.html")
+    )
+
+    let catalog = service.catalog(profile: fixture.profile)
+
+    XCTAssertFalse(catalog.usesLegacyZolaShortcodes)
+    XCTAssertEqual(catalog.definitions.map(\.name), ["ui.button"])
+    let button = try XCTUnwrap(catalog.definitions.first { $0.name == "ui.button" })
+    XCTAssertEqual(
+      button.parameters,
+      [
+        ThemeShortcodeParameter(name: "label"),
+        ThemeShortcodeParameter(name: "variant", defaultValue: "\"primary\""),
+      ])
+    XCTAssertEqual(button.source, .teraComponent)
+    XCTAssertEqual(
+      button.insertionTemplate, "{{<ui.button label=\"value\" variant=\"primary\" />}}")
+  }
+
+  func testZolaRootComponentOverridesThemeAndUsesBlockSyntaxForBody() throws {
+    let fixture = try makeFixture(siteKind: .zola)
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    try write("theme = \"paper\"\n", at: fixture.root.appendingPathComponent("zola.toml"))
+    try write(
+      "{% component ui.button(label: string) %}{{ label }}{% endcomponent %}",
+      at: fixture.root.appendingPathComponent("themes/paper/templates/base.html")
+    )
+    try write(
+      "{% component ui.button(title: string) %}{{ title }}{% endcomponent %}\n{% component ui.forms.widget(title: string) %}<section>{{ body }}</section>{% endcomponent %}",
+      at: fixture.root.appendingPathComponent("templates/page.html")
+    )
+
+    let catalog = service.catalog(profile: fixture.profile)
+
+    let button = try XCTUnwrap(catalog.definitions.first { $0.name == "ui.button" })
+    XCTAssertEqual(button.parameters, [ThemeShortcodeParameter(name: "title")])
+    XCTAssertEqual(button.repositoryPath, "templates/page.html")
+    let widget = try XCTUnwrap(catalog.definitions.first { $0.name == "ui.forms.widget" })
+    XCTAssertTrue(widget.supportsInnerContent)
+    XCTAssertEqual(
+      widget.insertionTemplate,
+      "{% <ui.forms.widget title=\"value\"> %}\n\n{% </ui.forms.widget> %}"
+    )
+  }
+
+  func testRejectsSymbolicLinkShortcodeDirectory() throws {
+    let fixture = try makeFixture(siteKind: .zola)
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    let outside = try temporaryDirectory(named: "shortcode-outside")
+    defer { try? FileManager.default.removeItem(at: outside) }
+    try write("{{ secret }}", at: outside.appendingPathComponent("secret.html"))
+    let link = fixture.root.appendingPathComponent("templates/shortcodes")
+    try FileManager.default.createDirectory(
+      at: link.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside)
+
+    let catalog = service.catalog(profile: fixture.profile)
+
+    XCTAssertTrue(catalog.definitions.isEmpty)
+    XCTAssertTrue(catalog.diagnostics.contains { $0.code == .unsafePath })
+  }
+
+  func testReportsMissingConfiguredThemeAndUnavailableRepository() throws {
+    let fixture = try makeFixture(siteKind: .hugo)
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    try write("theme = \"missing\"\n", at: fixture.root.appendingPathComponent("hugo.toml"))
+
+    let missingTheme = service.catalog(profile: fixture.profile)
+    XCTAssertTrue(missingTheme.diagnostics.contains { $0.code == .selectedThemeUnavailable })
+
+    let unavailable = service.catalog(
+      profile: SiteProfile(
+        name: "Unavailable", siteKind: .zola,
+        localRepositoryRootPath: "/tmp/no-such-theme-catalog-\(UUID().uuidString)")
+    )
+    XCTAssertTrue(unavailable.diagnostics.contains { $0.code == .repositoryUnavailable })
+  }
+
+  private func makeFixture(siteKind: SiteKind) throws -> (root: URL, profile: SiteProfile) {
+    let root = try temporaryDirectory(named: "theme-shortcodes")
+    return (
+      root,
+      SiteProfile(name: "Theme fixture", siteKind: siteKind, localRepositoryRootPath: root.path)
+    )
+  }
+
+  private func temporaryDirectory(named name: String) throws -> URL {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("\(name)-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    return url
+  }
+
+  private func write(_ contents: String, at url: URL) throws {
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try contents.write(to: url, atomically: true, encoding: .utf8)
   }
 }

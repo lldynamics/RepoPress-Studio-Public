@@ -335,6 +335,28 @@ final class WorkspaceQuickSearchPresentationTests: XCTestCase {
     )
   }
 
+  func testUnifiedSearchAvailabilityRemovesDisabledModuleScopesAndResults() {
+    let visibility = WorkspaceModuleVisibility(
+      rssEnabled: false, libraryEnabled: false, imagesEnabled: false)
+    let sections = WorkspaceUnifiedSearchPresentation.matchingSections(
+      [.writing, .library, .rss, .images], query: "", scope: .all,
+      moduleVisibility: visibility
+    )
+
+    XCTAssertEqual(
+      WorkspaceUnifiedSearchScope.availableScopes(for: visibility),
+      [.all, .articles, .settings, .commands]
+    )
+    XCTAssertEqual(WorkspaceUnifiedSearchScope.rss.normalized(for: visibility), .all)
+    XCTAssertEqual(WorkspaceUnifiedSearchScope.resources.normalized(for: visibility), .all)
+    XCTAssertEqual(sections, [.writing])
+    let settings = WorkspaceUnifiedSearchPresentation.matchingSettings(
+      query: "RSS", moduleVisibility: visibility
+    )
+    XCTAssertTrue(settings.contains(where: { $0.id == "appearance.modules" }))
+    XCTAssertFalse(settings.contains(where: { $0.tab == .rss }))
+  }
+
   private static func fixItem(
     id: String,
     draftID: UUID,

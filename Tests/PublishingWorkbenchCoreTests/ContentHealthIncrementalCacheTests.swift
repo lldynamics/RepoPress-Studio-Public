@@ -5,6 +5,53 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class ContentHealthIncrementalCacheTests: XCTestCase {
+  func testSourceChangeInvalidatesLinkedTranslationSummary() throws {
+    let profile = SiteProfile.defaultProfile
+    let source = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "原稿",
+      slug: "source",
+      bodyMarkdown: String(repeating: "原稿正文。", count: 20)
+    )
+    let translation = try AITranslationDraftPlanningService.plan(
+      source: source,
+      profile: profile,
+      targetLanguageCode: "en",
+      translatedTitle: "Source",
+      translatedSummary: "",
+      translatedBodyMarkdown: String(repeating: "Translated body. ", count: 12)
+    ).translatedDraft
+    let service = ContentHealthReportService(cache: ContentHealthReportCache())
+
+    let initial = service.report(
+      drafts: [source, translation],
+      profile: profile,
+      sitePreflightIssues: [],
+      presentations: [:]
+    )
+    XCTAssertFalse(
+      initial.draftSummaries.first(where: { $0.draftID == translation.id })?.issues.contains {
+        $0.title == "译文已过期"
+      } ?? false
+    )
+    XCTAssertEqual(service.cacheStatistics.missCount, 2)
+
+    var changedSource = source
+    changedSource.bodyMarkdown += "原稿新增一段。"
+    let changed = service.report(
+      drafts: [changedSource, translation],
+      profile: profile,
+      sitePreflightIssues: [],
+      presentations: [:]
+    )
+    XCTAssertTrue(
+      changed.draftSummaries.first(where: { $0.draftID == translation.id })?.issues.contains {
+        $0.title == "译文已过期"
+      } ?? false
+    )
+    XCTAssertEqual(service.cacheStatistics.missCount, 4)
+  }
+
   func testUnchangedDraftsHitAndOnlyChangedDraftMisses() {
     let profile = SiteProfile.defaultProfile
     let firstDraft = ArticleDraft(

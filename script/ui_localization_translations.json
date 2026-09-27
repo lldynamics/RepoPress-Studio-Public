@@ -891,10 +891,6 @@
     "en": "SSG Components, Templates, and Content Snippets",
     "zh-Hans": "SSG 组件、模板与正文片段"
   },
-  "SSG 组件缩略预览，共 %lld 个": {
-    "en": "SSG Component Thumbnail Preview, %lld Total",
-    "zh-Hans": "SSG 组件缩略预览，共 %lld 个"
-  },
   "Slug": "Slug",
   "Slug 变更处理": "Slug Change Resolution",
   "Slug 规则": "Slug Rules",
@@ -2991,6 +2987,7 @@
   "不阻止发布，可在高优先级问题清空后处理。": "These do not block publishing and can wait until higher-priority issues are cleared.",
   "不限日期": "Any Date",
   "不需要先理解仓库结构；选择后只会看到这条路径需要的下一步。": "You do not need to understand the repository structure first. After choosing, you will see only the next step for this path.",
+  "与原稿一致": "Up to date with source",
   "与当前本地草稿相同，将自动跳过。": "This matches the current local draft and will be skipped.",
   "专业严谨": "Professional and rigorous",
   "专业动作": "Advanced Actions",
@@ -3635,6 +3632,7 @@
     "en": "Link Translation Draft",
     "zh-Hans": "关联翻译草稿"
   },
+  "关联译文": "Linked translation",
   "关闭": "Close",
   "关闭 AI 助手": "Close AI Assistant",
   "关闭 AI 快捷切换": {
@@ -3648,6 +3646,7 @@
   "关闭后仍会保存阅读进度，但读到正文末尾不会改变已读状态。": "When off, reading progress is still saved, but reaching the end of the article does not change its read status.",
   "关闭后仍可在打开诊断或大纲时手动分析。": "When off, you can still analyze manually by opening diagnostics or the outline.",
   "关闭后会停止自动刷新计时器和失败订阅重试计时器；手动刷新仍可使用。": "When off, the automatic refresh and failed-feed retry timers stop; manual refresh remains available.",
+  "关闭后隐藏入口和相关命令；已有数据保留，可随时重新开启。": "Turning a module off hides its entry points and related commands. Existing data is kept, and you can turn it back on at any time.",
   "关闭后，本次尚未保存的笔记更改将丢失。": {
     "en": "Unsaved note changes will be lost when you close this editor.",
     "zh-Hans": "关闭后，本次尚未保存的笔记更改将丢失。"
@@ -3808,7 +3807,6 @@
     "zh-Hans": "切换"
   },
   "切换个人网站": "Switch Personal Site",
-  "切换写作 / 资料库 / RSS / 站点 / 检查 / 图片": "Switch Writing / Library / RSS / Site / Checks / Images",
   "切换到 %@": "Switch to %@",
   "切换到文章详情栏": "Switch to Article Inspector",
   "切换工作台深浅外观模式，选择江南春或系统强调色板。": "Switch between light and dark modes, or choose Jiangnan Spring or system accent palette.",
@@ -3996,6 +3994,7 @@
   "前往同步工作区": "Open Sync Workspace",
   "前往图片详情栏": "Go to Image Inspector",
   "前往站点页选择本地文件夹，再导入已有文章": "Open the site workspace to choose a local folder, then import existing articles",
+  "功能模块": "Feature Modules",
   "加入收藏": {
     "en": "Add to favorites",
     "zh-Hans": "加入收藏"
@@ -4086,6 +4085,8 @@
   "原目标：%@": "Previous target: %@",
   "原稿保持不变，在目标站点创建一份可独立编辑的新草稿。": "The original remains unchanged, and a separately editable draft is created for the target site.",
   "原稿将改为归属目标站点，并重置发布状态与仓库关联。": "The original draft will be assigned to the target site, with publishing status and repository links reset.",
+  "原稿已变化，译文待核对": "Source changed; review translation",
+  "原稿文件名": "source filename",
   "原笔记已在其他设备更新。副本暂未保存，请重试；关闭窗口会丢失当前输入。": "The original note changed on another device. Your copy is not saved yet. Retry before closing or your current input will be lost.",
   "原笔记已在其他设备更新；你的输入已保存为本机冲突副本。可以继续编辑副本，或关闭窗口。": "The original note changed on another device. Your input is saved as a local conflict copy. You can keep editing the copy or close this window.",
   "原笔记已更新；你的输入尚未写入副本。请重试保存副本后再关闭。": "The original note changed. Your draft is not saved as a copy yet. Retry saving a copy before closing.",
@@ -4380,6 +4381,7 @@
   "可用": "Available",
   "可用 AI 修复": "AI Fix Available",
   "可用候选:": "Available candidates:",
+  "可用短代码与组件": "Available shortcodes and components",
   "可由 AI 协助补全摘要、标签与 Front Matter，结果仍需逐项预览。": "AI can help complete summaries, tags, and Front Matter; review every result before applying it.",
   "可瘦身": {
     "en": "Compressible",
@@ -5302,6 +5304,7 @@
     "en": "Readiness Status",
     "zh-Hans": "就绪状态"
   },
+  "展开后可定位源码": "Expand to jump to source",
   "展开后可查看完整来源、设置和快捷提示。": "Expand to view all sources, settings, and quick prompts.",
   "展开子章节": "Expand Subsections",
   "展开工具失败摘要": "Expand failed tool summary",
@@ -6365,6 +6368,7 @@
     "zh-Hans": "打开截断文章时自动提取全文"
   },
   "打开数据管理": "Open Data Management",
+  "打开文章": "Open article",
   "打开文章%@": "Open Article %@",
   "打开文章处理引用": {
     "en": "Open article to handle references",
@@ -6505,6 +6509,7 @@
     "zh-Hans": "批量设置资料权限"
   },
   "批量转为通用草稿": "Convert Multiple to General Drafts",
+  "找不到原稿": "Source article not found",
   "找不到当前文章，摘要未应用。": "The current article could not be found, so the summary was not applied.",
   "找不到这篇文章的本地正文。": "The local body for this article could not be found.",
   "找不到这篇文章的本机正文。": "The body for this article could not be found on this Mac.",
@@ -6628,6 +6633,7 @@
   "提取结果未通过正文质量校验。": "The extracted content did not pass the article quality check.",
   "提炼结果预览": "Extracted Style Preview",
   "提示": "Message",
+  "提示正文 H1 与标题重复": "Warn when body H1 repeats title",
   "提醒": {
     "en": "Notices",
     "zh-Hans": "提醒"
@@ -6665,6 +6671,7 @@
     "en": "Insert a body snippet or article template",
     "zh-Hans": "插入正文片段或文章模板"
   },
+  "插入短代码或组件": "Insert shortcode or component",
   "插入视频": "Insert Video",
   "插入链接": "Insert Link",
   "插图": "Insert Image",
@@ -6682,6 +6689,7 @@
   "搜索与选择已拉取模型 (%lld)": "Search and Select Fetched Models (%lld)",
   "搜索仓库图片": "Search Repository Images",
   "搜索公开文章": "Search Public Articles",
+  "搜索内容、AI 功能、工作区或命令…": "Search content, AI features, workspace, or commands…",
   "搜索分支...": "Search branches...",
   "搜索动作、提示或工作流": "Search actions, prompts, or workflows",
   "搜索可维护文章标题": "Search maintainable article titles",
@@ -6707,11 +6715,6 @@
   "搜索文件路径": "Search file paths",
   "搜索文章": "Search articles",
   "搜索文章、站点或路径": "Search articles, sites, or paths",
-  "搜索文章、资料库、RSS、AI 功能、工作区或命令…": {
-    "en": "Search articles, references, RSS, AI features, workspace, or commands…",
-    "ja": "記事、資料、RSS、AI 機能、ワークスペース、またはコマンドを検索…",
-    "zh-Hans": "搜索文章、资料库、RSS、AI 功能、工作区或命令…"
-  },
   "搜索文章标题": "Search article titles",
   "搜索本地分支": "Search Local Branches",
   "搜索标题、Slug、标签或摘要": "Search Titles, Slugs, Tags, or Summaries",
@@ -6788,6 +6791,7 @@
   "收起检查结果和文件差异": "Collapse Checks and File Differences",
   "收起相关内容": "Show Fewer Related Items",
   "收起资料整理": "Collapse Library Organization",
+  "收集资料与笔记；关闭后同时隐藏菜单栏速记。": "Collect references and notes. Turning this off also hides menu bar quick capture.",
   "改为跟随连接": "Inherit Connection Setting",
   "改写选中文本": "Rewrite Selection",
   "改用设备码登录": "Use Device Code Instead",
@@ -7072,6 +7076,7 @@
   "无衬线": "Sans Serif",
   "无进行中或失败任务": "No Running or Failed Tasks",
   "无需 API Key": "No API Key Required",
+  "无需参数": "No parameters",
   "日志行号超出当前文件，已定位到最后一行。": "The logged line is beyond the current file. Showing the last line.",
   "日期": "Date",
   "日期格式": "Date Format",
@@ -7627,6 +7632,7 @@
   "查看其余 %lld 项": "View Remaining %lld Items",
   "查看冲突": "Review conflicts",
   "查看冲突文章：《%@》": "View Conflicting Article: <%@>",
+  "查看原稿：%@": "View source: %@",
   "查看发布历史": "View Publishing History",
   "查看发布检查": {
     "en": "View Publishing Check",
@@ -7859,6 +7865,7 @@
   "正在准备导出…": "Preparing export…",
   "正在准备工作台…": "Preparing the workspace…",
   "正在准备并提炼公开范例…": "Preparing and refining public examples…",
+  "正在准备当前文章确认…": "Preparing the current article review…",
   "正在准备当前文章预览…": "Preparing the current article preview…",
   "正在准备推荐的数据文件夹…": "Preparing the recommended data folder…",
   "正在准备文章列表": "Preparing Article List",
@@ -7883,6 +7890,7 @@
   "正在加载": "Loading",
   "正在加载账户可用模型…": "Loading models available to the account…",
   "正在发布": "Publishing",
+  "正在发布当前文章…": "Publishing the current article…",
   "正在发布文章": "Publishing Articles",
   "正在发现 RSS / Atom 订阅…": "Discovering RSS / Atom subscriptions…",
   "正在变基同步": "Rebase Sync in Progress",
@@ -8159,6 +8167,7 @@
   "此文章尚未验证，请检查全部文章。": "This article has not been verified. Check all articles.",
   "此服务已获授权，但远程 AI 总闸已关闭；重新开启后会恢复。": "This service is authorized, but the remote AI master switch is off. It will resume when re-enabled.",
   "此目的地曾获授权，但远程 AI 总闸已关闭；当前不会发送内容。": "This destination was authorized, but the remote AI master switch is off. No content will be sent now.",
+  "此站点启用时，正文 H1 与 Front Matter title 相同会显示一条非阻断建议。": "When enabled for this site, show a non-blocking suggestion if the body H1 matches the Front Matter title.",
   "此资料没有可重新读取的来源，但仍可恢复已有版本。": {
     "en": "This resource has no source to reload, but an existing version can still be restored.",
     "zh-Hans": "此资料没有可重新读取的来源，但仍可恢复已有版本。"
@@ -8428,10 +8437,6 @@
   "点击切换为单行横向微滚动模式": "Click to switch to single-line horizontal micro-scrolling",
   "点击切换为长行自动换行模式": "Click to switch to long-line wrapping",
   "点击切换对话历史（当前草稿共 %lld 条对话）": "Click to switch conversation history (%lld conversations in the current draft)",
-  "点击卡片定位源码": {
-    "en": "Click a card to locate it in the source",
-    "zh-Hans": "点击卡片定位源码"
-  },
   "点击文章后，可使用上下箭头浏览，按 Return 打开文章": "After clicking an article, use the arrow keys to browse and press Return to open it",
   "点击来源文章处理引用，本次下线操作会取消。": {
     "en": "Open a source article to edit its links. This cancels the current unpublish action.",
@@ -8465,6 +8470,7 @@
   "版本差异": "Version Differences",
   "状态": "Status",
   "状态与归属": "Status and Ownership",
+  "状态未知": "Status unknown",
   "状态端点 URL": "Status Endpoint URL",
   "状态端点使用部署访问令牌": "Use Deployment Access Token for Status Endpoint",
   "状态：%@": "Status: %@",
@@ -8496,6 +8502,7 @@
   "生成所选资产": "Generate Selected Assets",
   "生成时原值": "Value at generation time",
   "生成精简后的 SVG 副本，保留 SVG 格式。": "Generate optimized SVG copies while keeping the SVG format.",
+  "生成英文译文路径示例": "English translation path example",
   "生成迁移预览": "Generate Migration Preview",
   "生成适合社交分享的封面副本": "Create a cover copy sized for social sharing",
   "生成预览": "Generate Preview",
@@ -8517,6 +8524,7 @@
     "en": "Interface Density",
     "zh-Hans": "界面密度"
   },
+  "留空时，Hugo 和 Zola 使用与原稿同目录的语言后缀文件；按语言分目录时填写包含 {language} 的模板，并在站点生成器中配置对应语言。": "Leave blank to use a language suffix beside the source file for Hugo and Zola. For language directories, use a template containing {language} and configure that language in the site generator.",
   "疑似参数：%@。": "Suspected parameters: %@.",
   "登录后同意内容发送": "Allow content sharing after signing in",
   "登录已取消。": "Sign-in cancelled.",
@@ -8567,6 +8575,8 @@
     "en": "Knowledge",
     "zh-Hans": "知识建议"
   },
+  "短代码与组件折叠预览": "Shortcode and component preview",
+  "短代码与组件折叠预览，共 %lld 个": "Shortcode and component preview, %lld items",
   "石墨灰": {
     "en": "Graphite",
     "zh-Hans": "石墨灰"
@@ -8836,6 +8846,7 @@
   "管理 GitHub / GitLab 访问令牌、检查写入权限与在线连通性。": "Manage GitHub / GitLab access tokens, check write permissions, and verify connectivity.",
   "管理 RSS 正文离线保存、OPML、内网访问和历史文章清理。": "Manage offline RSS article storage, OPML, local-network access, and historical article cleanup.",
   "管理仓库、图片资源和发布记录；最终写入与发布统一在发布流程中确认。": "Manage the repository, image resources, and release history. Final file writes and publishing are confirmed in the unified publish flow.",
+  "管理图片资源；文章中的插图和封面编辑仍可使用。": "Manage image resources. Article images and cover editing remain available.",
   "管理应用内共享的 AI 连接，修改会影响所有引用此连接的站点。": "Manage shared AI connections in the app. Changes affect every site that uses them.",
   "管理归属": "Manage Assignment",
   "管理文章图片与压缩设置": "Manage article images and compression settings",
@@ -8901,10 +8912,6 @@
   },
   "组件已准备完成，正在检查登录和模型…": "The component is ready; checking sign-in and models…",
   "组件已更新，当前 AI 操作结束后会自动启用。": "The component was updated and will be enabled automatically after the current AI operation finishes.",
-  "组件缩略预览": {
-    "en": "Component Thumbnail Preview",
-    "zh-Hans": "组件缩略预览"
-  },
   "组件路径": "Component Path",
   "组合智能集合规则": "Combined Smart Collection Rules",
   "绑定你的博客仓库": "Connect Your Blog Repository",
@@ -9196,6 +9203,7 @@
   "订阅刷新失败": "Subscription Refresh Failed",
   "订阅刷新失败。": "Subscription refresh failed.",
   "订阅刷新选项": "Subscription refresh options",
+  "订阅和阅读 RSS；关闭后暂停定期刷新。": "Subscribe to and read RSS feeds. Turning this off pauses periodic refresh.",
   "订阅地址包含 URL 用户名或密码，请先修改地址。": "A subscription address contains a URL username or password. Edit the address first.",
   "订阅数量": "Subscriptions",
   "订阅有效，目前没有文章": "The Feed Is Valid but Has No Articles Yet",
@@ -9252,6 +9260,9 @@
   "诊断完成，没有发现问题。": "Diagnostics complete. No issues found.",
   "诊断完成：%@ 个错误，%@ 个警告，%@ 个提示。": "Diagnostics complete: %@ errors, %@ warnings, and %@ notices.",
   "诊断当前配置仓库的连接并重新验证写入能力": "Diagnose the configured repository connection and reverify write capability",
+  "译文语言": "translation language",
+  "译文路径模板": "Translation path template",
+  "译文路径模板（可选）": "Translation path template (optional)",
   "询问当前文章…": "Ask About the Current Article…",
   "该 RSS / Atom 已成功读取，只是尚未发布条目。": "This RSS / Atom feed was read successfully, but it has not published any items yet.",
   "该发布记录属于另一个站点；当前未自动替换为其它记录。": "This release record belongs to another site; it was not replaced with another record.",
@@ -9894,6 +9905,7 @@
     "zh-Hans": "选择导出文件的保存位置。"
   },
   "选择导出来源": "Choose Export Source",
+  "选择工作区中显示的可选功能": "Choose optional features shown in the workspace",
   "选择工作台恢复文件": "Choose a Workbench Recovery File",
   "选择已导入文章中的断链来预览替换。其他文件可定位后编辑。": "Select a broken link in an imported article to preview its replacement. Open other files to edit them.",
   "选择并重试": "Choose and Retry",

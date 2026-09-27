@@ -277,6 +277,7 @@ extension WorkbenchStore {
     cancelExternalDraftWrite(for: draftID)
     var localCopy = resolvedCurrent
     localCopy.id = UUID()
+    localCopy.translationLink = nil
     localCopy.title += CoreL10n.text("（本地冲突副本）")
     localCopy.externalDraftSource = nil
     publishingStore.drafts.insert(localCopy, at: 0)

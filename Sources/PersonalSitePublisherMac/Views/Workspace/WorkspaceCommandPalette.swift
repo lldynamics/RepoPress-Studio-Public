@@ -8,6 +8,7 @@ struct WorkspaceCommandPalette: View {
   @Environment(\.dismiss) private var dismiss
   @Environment(\.openSettings) private var openSettings
   @Environment(\.settingsWorkspaceCommandAction) private var settingsWorkspaceCommandAction
+  @WorkspaceModuleVisibilityStorage private var moduleVisibility
   @ObservedObject private var commandPresentation: WorkbenchCommandPresentationFeatureFacade
   @ObservedObject private var draftListState: DraftListStore
   @ObservedObject private var publishing: WorkbenchPublishingFeatureFacade
@@ -80,14 +81,14 @@ struct WorkspaceCommandPalette: View {
         Image(systemName: "command")
           .foregroundStyle(.secondary)
         TextField(
-          String(localized: "搜索文章、资料库、RSS、AI 功能、工作区或命令…"),
+          String(localized: "搜索内容、AI 功能、工作区或命令…"),
           text: $query
         )
         .textFieldStyle(.plain)
         .font(.title3)
         .focused($isSearchFocused)
         .accessibilityLabel(
-          String(localized: "搜索文章、资料库、RSS、AI 功能、工作区或命令…")
+          String(localized: "搜索内容、AI 功能、工作区或命令…")
         )
         .accessibilityIdentifier("workspace-command-palette-query")
         .onSubmit(performSelectedResult)
@@ -110,7 +111,7 @@ struct WorkspaceCommandPalette: View {
       .padding(16)
 
       Picker("搜索范围", selection: $scope) {
-        ForEach(WorkspaceUnifiedSearchScope.allCases) { scope in
+        ForEach(WorkspaceUnifiedSearchScope.availableScopes(for: moduleVisibility)) { scope in
           Text(scope.title).tag(scope)
         }
       }
@@ -121,7 +122,7 @@ struct WorkspaceCommandPalette: View {
       .accessibilityLabel("搜索范围")
       .accessibilityIdentifier("workspace-command-palette-scope")
 
-      if scope == .articles {
+      if effectiveScope == .articles {
         WorkspaceCommandPaletteArticleControls(
           query: $query,
           scope: $articleScope,
@@ -166,7 +167,7 @@ struct WorkspaceCommandPalette: View {
               }
             }
 
-            if scope.includesArticles {
+            if effectiveScope.includesArticles {
               paletteSection(articleSectionTitle(snapshot.articleMatchCount)) {
                 ForEach(snapshot.drafts) { draft in
                   let display = store.privateContentDisplay(for: draft)
@@ -253,7 +254,9 @@ struct WorkspaceCommandPalette: View {
               }
             }
 
-            if snapshot.results.isEmpty && (!scope.includesArticles || normalizedQuery.isEmpty) {
+            if snapshot.results.isEmpty
+              && (!effectiveScope.includesArticles || normalizedQuery.isEmpty)
+            {
               ContentUnavailableView.search(text: query)
                 .frame(maxWidth: .infinity, minHeight: 220)
             }
@@ -281,6 +284,17 @@ struct WorkspaceCommandPalette: View {
       showsAllArticleResults = false
       updateContentSearch()
       synchronizeSelection()
+    }
+    .onChange(of: moduleVisibility) { _, _ in
+      contentSearch.cancel()
+      let normalizedScope = scope.normalized(for: moduleVisibility)
+      if scope != normalizedScope {
+        scope = normalizedScope
+        synchronizeSelection()
+      } else {
+        updateContentSearch()
+        synchronizeSelection()
+      }
     }
     .onChange(of: articleScope) { _, _ in
       showsAllArticleResults = false
@@ -333,20 +347,25 @@ struct WorkspaceCommandPalette: View {
     query.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
+  private var effectiveScope: WorkspaceUnifiedSearchScope {
+    scope.normalized(for: moduleVisibility)
+  }
+
   private func makeSnapshot() -> PaletteSnapshot {
     let normalized = normalizedQuery
     let commandItems =
-      scope.includesCommands
+      effectiveScope.includesCommands
       ? commands.filter {
         normalized.isEmpty
           || $0.title.localizedStandardContains(normalized)
           || $0.detail.localizedStandardContains(normalized)
       } : []
-    let promptItems = scope.includesCommands ? matchingAIPrompts(for: normalized) : []
+    let promptItems = effectiveScope.includesCommands ? matchingAIPrompts(for: normalized) : []
     let matchingSections = WorkspaceUnifiedSearchPresentation.matchingSections(
       WorkspaceNavigationPresentation.commandPaletteSections,
       query: normalized,
-      scope: scope
+      scope: effectiveScope,
+      moduleVisibility: moduleVisibility
     )
     let resourceSections = matchingSections.filter {
       $0 == .library || $0 == .images
@@ -356,7 +375,7 @@ struct WorkspaceCommandPalette: View {
       !resourceSections.contains($0) && !rssSections.contains($0)
     }
     let matchingDrafts =
-      scope.includesArticles && normalized.isEmpty
+      effectiveScope.includesArticles && normalized.isEmpty
       ? Array(
         draftListState.searchIndex(for: .allDrafts)
           .matching(query: "")
@@ -373,18 +392,21 @@ struct WorkspaceCommandPalette: View {
       showsAll: showsAllArticleResults
     )
     let settings =
-      scope.includesSettings
+      effectiveScope.includesSettings
       ? WorkspaceUnifiedSearchPresentation.matchingSettings(
         query: normalized,
-        recentItemIDs: recentSettingsItemIDList
+        recentItemIDs: recentSettingsItemIDList,
+        moduleVisibility: moduleVisibility
       )
       : []
+    let knowledgeResults = moduleVisibility.libraryEnabled ? contentSearch.knowledgeResults : []
+    let rssResults = moduleVisibility.rssEnabled ? contentSearch.rssResults : []
     var results: [PaletteResult] = []
     results.reserveCapacity(
       commandItems.count + promptItems.count + drafts.count + articleHits.count
         + resourceSections.count
         + rssSections.count + workspaceSections.count + settings.count
-        + contentSearch.knowledgeResults.count + contentSearch.rssResults.count
+        + knowledgeResults.count + rssResults.count
     )
     for command in commandItems {
       results.append(PaletteResult(id: commandResultID(command), action: command.action))
@@ -398,7 +420,7 @@ struct WorkspaceCommandPalette: View {
     for hit in articleHits {
       results.append(PaletteResult(id: articleHitResultID(hit), action: { openArticleHit(hit) }))
     }
-    for result in contentSearch.knowledgeResults {
+    for result in knowledgeResults {
       results.append(
         PaletteResult(
           id: knowledgeResultID(result),
@@ -406,7 +428,7 @@ struct WorkspaceCommandPalette: View {
         )
       )
     }
-    for result in contentSearch.rssResults {
+    for result in rssResults {
       results.append(
         PaletteResult(
           id: rssResultID(result),
@@ -427,8 +449,8 @@ struct WorkspaceCommandPalette: View {
       articleHits: articleHits,
       articleMatchCount: normalized.isEmpty
         ? matchingDrafts.count : articleSearch.snapshot.groups.count,
-      knowledgeResults: contentSearch.knowledgeResults,
-      rssResults: contentSearch.rssResults,
+      knowledgeResults: knowledgeResults,
+      rssResults: rssResults,
       resourceSections: resourceSections,
       rssSections: rssSections,
       workspaceSections: workspaceSections,
@@ -502,24 +524,6 @@ struct WorkspaceCommandPalette: View {
         dismiss()
       },
       PaletteCommand(
-        id: "workspace:library",
-        title: String(localized: "打开资料库"),
-        detail: String(localized: "查找并管理写作资料"),
-        systemImage: "books.vertical"
-      ) {
-        onSelectSection(.library)
-        dismiss()
-      },
-      PaletteCommand(
-        id: "workspace:images",
-        title: String(localized: "打开图片工作台"),
-        detail: String(localized: "管理文章图片与压缩设置"),
-        systemImage: "photo.on.rectangle"
-      ) {
-        onSelectSection(.images)
-        dismiss()
-      },
-      PaletteCommand(
         id: "workspace:focus-mode",
         title: String(localized: "专注模式"),
         detail: "⇧⌘F",
@@ -531,6 +535,34 @@ struct WorkspaceCommandPalette: View {
         dismiss()
       },
     ]
+
+    if moduleVisibility.libraryEnabled {
+      items.append(
+        PaletteCommand(
+          id: "workspace:library",
+          title: String(localized: "打开资料库"),
+          detail: String(localized: "查找并管理写作资料"),
+          systemImage: "books.vertical"
+        ) {
+          onSelectSection(.library)
+          dismiss()
+        }
+      )
+    }
+
+    if moduleVisibility.imagesEnabled {
+      items.append(
+        PaletteCommand(
+          id: "workspace:images",
+          title: String(localized: "打开图片工作台"),
+          detail: String(localized: "管理文章图片与压缩设置"),
+          systemImage: "photo.on.rectangle"
+        ) {
+          onSelectSection(.images)
+          dismiss()
+        }
+      )
+    }
 
     if let editorCommands {
       items.append(contentsOf: [
@@ -683,7 +715,7 @@ struct WorkspaceCommandPalette: View {
   @ViewBuilder
   private func contentSearchSections(snapshot: PaletteSnapshot) -> some View {
     if !normalizedQuery.isEmpty {
-      if scope.includesResources {
+      if effectiveScope.includesResources && moduleVisibility.libraryEnabled {
         paletteSection(String(localized: "资料库")) {
           contentSearchStateRow(
             hasResults: !snapshot.knowledgeResults.isEmpty,
@@ -713,7 +745,7 @@ struct WorkspaceCommandPalette: View {
         }
       }
 
-      if scope.includesRSS {
+      if effectiveScope.includesRSS && moduleVisibility.rssEnabled {
         paletteSection(String(localized: "RSS 已保存文章")) {
           contentSearchStateRow(
             hasResults: !snapshot.rssResults.isEmpty,
@@ -981,21 +1013,22 @@ struct WorkspaceCommandPalette: View {
     updateArticleSearch()
     contentSearch.update(
       query: normalizedQuery,
-      scope: scope,
+      scope: effectiveScope,
+      moduleVisibility: moduleVisibility,
       knowledge: store.knowledge,
       rssStore: rssStore
     )
   }
 
   private var effectiveArticleScope: DraftFullTextSearchScope {
-    scope == .all ? .allDrafts : articleScope
+    effectiveScope == .all ? .allDrafts : articleScope
   }
 
   private func updateArticleSearch() {
     // Empty queries use the lightweight recent-article index. Capture live
     // editor buffers only when a full-text query can actually run.
     let inputs =
-      scope.includesArticles && !normalizedQuery.isEmpty
+      effectiveScope.includesArticles && !normalizedQuery.isEmpty
       ? publishing.drafts.map { draft in
         DraftFullTextSearchInput(
           draft: draft,
@@ -1004,7 +1037,7 @@ struct WorkspaceCommandPalette: View {
       } : []
     articleSearch.update(
       query: normalizedQuery,
-      scope: scope,
+      scope: effectiveScope,
       articleScope: effectiveArticleScope,
       activeProfileID: publishing.activeProfileID,
       inputs: inputs,

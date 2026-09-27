@@ -83,6 +83,7 @@ public enum AIPublishingChatTranslationDraftService {
       let response = try parse(message.content)
       let plan = try AITranslationDraftPlanningService.plan(
         source: request.draft,
+        profile: request.profile,
         targetLanguageCode: target.languageCode,
         translatedTitle: response.title,
         translatedSummary: response.summary,

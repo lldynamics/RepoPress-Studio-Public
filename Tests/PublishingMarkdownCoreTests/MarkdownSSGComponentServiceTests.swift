@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import PublishingMarkdownCore
 
 final class MarkdownSSGComponentServiceTests: XCTestCase {
@@ -20,18 +21,18 @@ final class MarkdownSSGComponentServiceTests: XCTestCase {
 
   func testOccurrencesParseDirectiveHugoLeadAndInlineEmbeds() {
     let markdown = """
-    ::: tip 注意
-    先确认站点已经启用提示框。
-    :::
+      ::: tip 注意
+      先确认站点已经启用提示框。
+      :::
 
-    {{< lead >}}
-    这是一段文章导语。
-    {{< /lead >}}
+      {{< lead >}}
+      这是一段文章导语。
+      {{< /lead >}}
 
-    {{< youtube dQw4w9WgXcQ >}}
-    {{< bilibili BV1xx411c7mD >}}
-    {{< github-card openai/codex >}}
-    """
+      {{< youtube dQw4w9WgXcQ >}}
+      {{< bilibili BV1xx411c7mD >}}
+      {{< github-card openai/codex >}}
+      """
 
     let occurrences = MarkdownSSGComponentLibraryService.occurrences(in: markdown)
 
@@ -46,6 +47,100 @@ final class MarkdownSSGComponentServiceTests: XCTestCase {
     XCTAssertEqual(occurrences[4].previewText, "openai/codex")
     XCTAssertEqual(occurrences[0].lineNumber, 1)
     XCTAssertEqual(occurrences[1].lineNumber, 5)
+  }
+
+  func testDetectedReferencesCoverHugoAndZolaSyntaxesButSkipTemplateNoise() {
+    let markdown = """
+      正文 {{< product-card owner/repo >}} 和 {% component gallery("图集") %}。
+      {{% notice %}}内容{{% /notice %}}
+      {{ legacy("😀") }} {% image(src="x") %}
+      {{ ordinary_variable }} {% if user %}ignored{% endif %}
+      `{{< inline-code >}}`
+      ```md
+      {{< fenced >}}
+      ```
+      <!-- {{< comment >}} -->
+      """
+
+    let references = MarkdownSSGComponentLibraryService.detectedReferences(in: markdown)
+    XCTAssertEqual(
+      references.map(\.name), ["product-card", "gallery", "notice", "notice", "legacy", "image"])
+    XCTAssertEqual(
+      references.map(\.engineSyntax),
+      [.hugoAngle, .zolaComponent, .hugoPercent, .hugoPercent, .zolaLegacy, .zolaComponent])
+    XCTAssertEqual(references.first?.lineNumber, 1)
+    XCTAssertEqual(references[4].lineNumber, 3)
+    XCTAssertEqual(
+      (markdown as NSString).substring(with: references[4].sourceRange), "{{ legacy(\"😀\") }}")
+  }
+
+  func testZolaInlineComponentIsRecognizedWithoutMatchingOrdinaryVariable() {
+    let markdown = "{{<badge label=\"New\" />}} and {{ page.title }}"
+    let references = MarkdownSSGComponentLibraryService.detectedReferences(in: markdown)
+    XCTAssertEqual(references.map(\.name), ["badge"])
+    XCTAssertEqual(references.first?.engineSyntax, .zolaInlineComponent)
+    XCTAssertEqual(MarkdownSSGComponentLibraryService.occurrences(in: markdown).count, 1)
+  }
+
+  func testOccurrencesHandleCustomPairedShortcodesAndDoNotCaptureUnmatchedToEOF() {
+    let markdown = """
+      {{< panel >}}
+      中文内容
+      {{< /panel >}}
+      {{< broken >}}
+      后面的普通文字
+      """
+
+    let occurrences = MarkdownSSGComponentLibraryService.occurrences(in: markdown)
+    XCTAssertEqual(occurrences.count, 2)
+    XCTAssertEqual(occurrences[0].kind, .custom)
+    XCTAssertTrue(occurrences[0].previewText.contains("中文内容"))
+    XCTAssertEqual(occurrences[1].source, "{{< broken >}}")
+    XCTAssertFalse(occurrences[1].source.contains("后面的普通文字"))
+  }
+
+  func testReferencesDistinguishClosingTagsAndSkipZolaRawBlocks() {
+    let markdown = "😀 {% raw %} {% component hidden(1) %} {% endraw %}\n{{< open %}}"
+    let references = MarkdownSSGComponentLibraryService.detectedReferences(in: markdown)
+
+    XCTAssertTrue(references.isEmpty, "Mismatched Hugo delimiters and raw contents are ignored")
+    XCTAssertTrue(MarkdownSSGComponentLibraryService.occurrences(in: markdown).isEmpty)
+    let closing = MarkdownSSGComponentLibraryService.detectedReferences(in: "{{< /panel >}}")
+    XCTAssertEqual(closing.first?.name, "panel")
+    XCTAssertTrue(closing.first?.isClosing == true)
+  }
+
+  func testHugoSubdirectoryShortcodeAndSelfClosingTag() {
+    let markdown = "{{< media/audio path=\"song.mp3\" >}}\n{{< media/image / >}}"
+    let references = MarkdownSSGComponentLibraryService.detectedReferences(in: markdown)
+    XCTAssertEqual(references.map(\.name), ["media/audio", "media/image"])
+    XCTAssertFalse(references.contains(where: \.isClosing))
+
+    let occurrences = MarkdownSSGComponentLibraryService.occurrences(in: markdown)
+    XCTAssertEqual(occurrences.count, 2)
+    XCTAssertEqual(occurrences[1].kind, .custom)
+    XCTAssertEqual(occurrences[1].source, "{{< media/image / >}}")
+  }
+
+  func testZolaNamespacedInlineAndBlockComponents() {
+    let markdown = """
+      {{<ui.button label="x" />}}
+      {% <ui.forms.widget title="Form"> %}
+      内容
+      {% </ui.forms.widget> %}
+      """
+
+    let references = MarkdownSSGComponentLibraryService.detectedReferences(in: markdown)
+    XCTAssertEqual(references.map(\.name), ["ui.button", "ui.forms.widget", "ui.forms.widget"])
+    XCTAssertEqual(references.map(\.isClosing), [false, false, true])
+    XCTAssertEqual(
+      references.map(\.engineSyntax),
+      [.zolaInlineComponent, .zolaInlineComponent, .zolaInlineComponent])
+
+    let occurrences = MarkdownSSGComponentLibraryService.occurrences(in: markdown)
+    XCTAssertEqual(occurrences.count, 2)
+    XCTAssertEqual(occurrences[0].source, "{{<ui.button label=\"x\" />}}")
+    XCTAssertTrue(occurrences[1].previewText.contains("内容"))
   }
 
   func testCustomShortcodesInferGenericVisualPreviewKinds() {

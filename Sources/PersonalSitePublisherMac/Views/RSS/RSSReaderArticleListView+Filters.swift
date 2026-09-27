@@ -278,12 +278,14 @@ extension RSSArticleList {
       .buttonStyle(.borderless)
       .disabled(selectedBatchArticleIDs.isEmpty)
 
-      Button("保存所选文章", systemImage: "tray.and.arrow.down") {
-        onBatchSaveToKnowledge(Array(selectedBatchArticleIDs))
+      if moduleVisibility.libraryEnabled {
+        Button("保存所选文章", systemImage: "tray.and.arrow.down") {
+          onBatchSaveToKnowledge(Array(selectedBatchArticleIDs))
+        }
+        .workbenchProminentActionStyle()
+        .disabled(selectedBatchArticleIDs.isEmpty || workflowIsBusy)
+        .accessibilityLabel("将已选择的 \(selectedBatchArticleIDs.count) 篇文章保存到资料库")
       }
-      .workbenchProminentActionStyle()
-      .disabled(selectedBatchArticleIDs.isEmpty || workflowIsBusy)
-      .accessibilityLabel("将已选择的 \(selectedBatchArticleIDs.count) 篇文章保存到资料库")
 
       Button("退出批量选择（Esc）", systemImage: "escape") {
         endBatchSelection()

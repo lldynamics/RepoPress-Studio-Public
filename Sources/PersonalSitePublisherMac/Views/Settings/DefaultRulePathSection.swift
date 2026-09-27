@@ -27,6 +27,20 @@ struct DefaultRulePathSection: View {
       icon: "doc.text"
     )
 
+    TextField("译文路径模板（可选）", text: translationPathPatternBinding)
+      .accessibilityLabel("译文路径模板")
+      .accessibilityValue(activeProfile.translationMarkdownPathPattern ?? "")
+
+    pathPreviewRow(
+      label: String(localized: "生成英文译文路径示例"),
+      path: renderedTranslationSample,
+      icon: "character.book.closed"
+    )
+
+    Text("留空时，Hugo 和 Zola 使用与原稿同目录的语言后缀文件；按语言分目录时填写包含 {language} 的模板，并在站点生成器中配置对应语言。")
+      .font(.caption)
+      .foregroundStyle(.secondary)
+
     TextField("图片路径模板", text: activeProfileBinding.imagePathPattern)
       .accessibilityLabel("图片路径模板")
       .accessibilityValue(activeProfile.imagePathPattern)
@@ -58,6 +72,17 @@ struct DefaultRulePathSection: View {
     activeProfileBinding.wrappedValue
   }
 
+  private var translationPathPatternBinding: Binding<String> {
+    Binding(
+      get: { activeProfile.translationMarkdownPathPattern ?? "" },
+      set: { value in
+        var profile = activeProfileBinding.wrappedValue
+        profile.translationMarkdownPathPattern = value.trimmedForPublishing.nilIfEmpty
+        activeProfileBinding.wrappedValue = profile
+      }
+    )
+  }
+
   private var renderedMarkdownSample: String {
     let sampleDraft = ArticleDraft(
       siteProfileID: activeProfile.id,
@@ -66,6 +91,32 @@ struct DefaultRulePathSection: View {
       slug: "hello-world"
     )
     return activeProfile.markdownPath(for: sampleDraft)
+  }
+
+  private var renderedTranslationSample: String {
+    let source = ArticleDraft(
+      siteProfileID: activeProfile.id,
+      title: "示例文章",
+      date: Date(),
+      slug: "hello-world"
+    )
+    let translatedID = UUID()
+    let translated = ArticleDraft(
+      id: translatedID,
+      siteProfileID: activeProfile.id,
+      title: "Example article",
+      date: source.date,
+      slug: "example-article",
+      translationLink: AITranslationDraftLink(
+        sourceDraftID: source.id,
+        translatedDraftID: translatedID,
+        targetLanguageCode: "en",
+        sourceContentFingerprint: source.repositoryContentFingerprint,
+        createdAt: Date(),
+        sourceMarkdownPath: activeProfile.markdownPath(for: source)
+      )
+    )
+    return activeProfile.markdownPath(for: translated)
   }
 
   private var renderedImageSample: String {
@@ -142,6 +193,10 @@ struct DefaultRulePathSection: View {
             placeholderBadge("{filename}", desc: "文件名")
           }
         }
+      }
+      HStack(spacing: 6) {
+        placeholderBadge("{language}", desc: String(localized: "译文语言"))
+        placeholderBadge("{sourceSlug}", desc: String(localized: "原稿文件名"))
       }
     }
     .padding(.vertical, 4)

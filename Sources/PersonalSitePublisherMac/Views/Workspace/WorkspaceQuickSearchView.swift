@@ -37,6 +37,29 @@ enum WorkspaceUnifiedSearchScope: String, CaseIterable, Identifiable, Sendable {
   var includesResources: Bool { self == .all || self == .resources }
   var includesRSS: Bool { self == .all || self == .rss }
   var includesSettings: Bool { self == .all || self == .settings }
+
+  static func availableScopes(for moduleVisibility: WorkspaceModuleVisibility) -> [Self] {
+    var scopes: [Self] = [.all, .articles]
+    if moduleVisibility.libraryEnabled || moduleVisibility.imagesEnabled {
+      scopes.append(.resources)
+    }
+    if moduleVisibility.rssEnabled {
+      scopes.append(.rss)
+    }
+    scopes.append(contentsOf: [.settings, .commands])
+    return scopes
+  }
+
+  func normalized(for moduleVisibility: WorkspaceModuleVisibility) -> Self {
+    switch self {
+    case .resources where !moduleVisibility.libraryEnabled && !moduleVisibility.imagesEnabled:
+      return .all
+    case .rss where !moduleVisibility.rssEnabled:
+      return .all
+    default:
+      return self
+    }
+  }
 }
 
 enum WorkspaceUnifiedSearchPresentation {
@@ -44,7 +67,8 @@ enum WorkspaceUnifiedSearchPresentation {
 
   static func matchingSettings(
     query: String,
-    recentItemIDs: [String] = []
+    recentItemIDs: [String] = [],
+    moduleVisibility: WorkspaceModuleVisibility = .init()
   ) -> [SettingsSearchItem] {
     let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !normalized.isEmpty else {
@@ -53,26 +77,35 @@ enum WorkspaceUnifiedSearchPresentation {
       let fallback = SettingsSearchIndex.allItems.filter { item in
         !recentItemIDs.contains(item.id)
       }
-      return Array((recent + fallback).prefix(recentItemLimit))
+      return Array(
+        (recent + fallback)
+          .filter { item in moduleVisibility.rssEnabled || item.tab != .rss }
+          .prefix(recentItemLimit)
+      )
     }
-    return SettingsSearchIndex.search(query: normalized)
+    return SettingsSearchIndex.search(query: normalized).filter { item in
+      moduleVisibility.rssEnabled || item.tab != .rss
+    }
   }
 
   static func matchingSections(
     _ sections: [WorkspaceSection],
     query: String,
-    scope: WorkspaceUnifiedSearchScope
+    scope: WorkspaceUnifiedSearchScope,
+    moduleVisibility: WorkspaceModuleVisibility = .init()
   ) -> [WorkspaceSection] {
     let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    let normalizedScope = scope.normalized(for: moduleVisibility)
     return sections.filter { section in
+      guard moduleVisibility.allows(section) else { return false }
       let isInScope: Bool
       switch section {
       case .library, .images:
-        isInScope = scope.includesResources
+        isInScope = normalizedScope.includesResources
       case .rss:
-        isInScope = scope.includesRSS
+        isInScope = normalizedScope.includesRSS
       case .writing, .sync, .contentHealth:
-        isInScope = scope.includesCommands
+        isInScope = normalizedScope.includesCommands
       }
       guard isInScope else { return false }
       return normalized.isEmpty

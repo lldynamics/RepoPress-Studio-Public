@@ -85,6 +85,7 @@ extension PublishingStore {
           now: now
         )
         copied.id = UUID()
+        copied.translationLink = nil
         copied.createdAt = now
         copied.markMetadataUpdated(at: now)
         createdDrafts.append(copied)

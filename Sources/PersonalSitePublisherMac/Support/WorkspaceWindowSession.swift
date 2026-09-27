@@ -27,17 +27,20 @@ final class WorkspaceWindowSession: ObservableObject {
   let writingListState: WritingListWindowPresentationState
 
   private var didRestoreStorage = false
+  private var moduleVisibility: WorkspaceModuleVisibility
   private let editorFocusRequestDelivery: WorkspaceEditorFocusRequestDelivery
 
   init(
     windowID: UUID = UUID(),
     selectedSection: WorkspaceSection,
     selectedDraftID: UUID? = nil,
+    moduleVisibility: WorkspaceModuleVisibility = WorkspaceModuleVisibility(),
     writingListState: WritingListWindowPresentationState = WritingListWindowPresentationState(),
     editorFocusRequestDelivery: WorkspaceEditorFocusRequestDelivery = .shared
   ) {
     self.windowID = windowID
-    self.selectedSection = selectedSection
+    self.moduleVisibility = moduleVisibility
+    self.selectedSection = moduleVisibility.resolvedSection(selectedSection)
     self.selectedDraftID = selectedDraftID
     self.writingListState = writingListState
     self.editorFocusRequestDelivery = editorFocusRequestDelivery
@@ -67,9 +70,10 @@ final class WorkspaceWindowSession: ObservableObject {
     if let restoredWindowID = UUID(uuidString: windowIDRawValue) {
       windowID = restoredWindowID
     }
-    selectedSection =
+    selectedSection = moduleVisibility.resolvedSection(
       WorkspaceSection(rawValue: selectedSectionRawValue)
-      ?? fallbackSection
+        ?? fallbackSection
+    )
     selectedDraftID = UUID(uuidString: selectedDraftIDRawValue) ?? fallbackDraftID
     return storageValues
   }
@@ -91,6 +95,7 @@ final class WorkspaceWindowSession: ObservableObject {
     _ section: WorkspaceSection,
     activateSharedSection: (WorkspaceSection) -> Void
   ) {
+    let section = moduleVisibility.resolvedSection(section)
     if selectedSection != section {
       selectedSection = section
     }
@@ -122,6 +127,7 @@ final class WorkspaceWindowSession: ObservableObject {
     draftID: UUID?,
     activateSharedContext: (WorkspaceSection, UUID?) -> Void
   ) {
+    let section = moduleVisibility.resolvedSection(section)
     selectedSection = section
     selectedDraftID = draftID
     if isKeyWindow {
@@ -142,8 +148,21 @@ final class WorkspaceWindowSession: ObservableObject {
   /// Deep legacy navigation still writes the shared Store. Only the key
   /// window adopts that change; background windows retain their own section.
   func receiveSharedSection(_ section: WorkspaceSection) {
+    let section = moduleVisibility.resolvedSection(section)
     guard isKeyWindow, selectedSection != section else { return }
     selectedSection = section
+  }
+
+  /// Normalize every window, including inactive ones, without changing its draft.
+  /// Only the key window may update the shared command context.
+  func updateModuleVisibility(
+    _ visibility: WorkspaceModuleVisibility,
+    activateSharedSection: (WorkspaceSection) -> Void
+  ) {
+    moduleVisibility = visibility
+    let resolved = visibility.resolvedSection(selectedSection)
+    guard resolved != selectedSection else { return }
+    selectSection(resolved, activateSharedSection: activateSharedSection)
   }
 
   /// Deep legacy navigation still writes the shared Store. Only the key

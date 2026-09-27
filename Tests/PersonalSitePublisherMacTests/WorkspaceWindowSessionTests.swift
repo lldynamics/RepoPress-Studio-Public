@@ -460,3 +460,82 @@ final class WorkspaceWindowSessionTests: XCTestCase {
     )
   }
 }
+
+@MainActor
+final class WorkspaceModuleRoutingTests: XCTestCase {
+  private let disabled = WorkspaceModuleVisibility(
+    rssEnabled: false, libraryEnabled: false, imagesEnabled: false
+  )
+
+  func testRestorationNeverReopensDisabledModulesAndPreservesDraft() {
+    for section in [WorkspaceSection.rss, .library, .images] {
+      let draftID = UUID()
+      let session = WorkspaceWindowSession(
+        selectedSection: section, selectedDraftID: draftID, moduleVisibility: disabled
+      )
+      XCTAssertEqual(session.selectedSection, .writing)
+
+      let values = session.restoreStorageIfNeeded(
+        windowIDRawValue: "",
+        selectedSectionRawValue: section.rawValue,
+        fallbackSection: section,
+        selectedDraftIDRawValue: draftID.uuidString
+      )
+      XCTAssertEqual(values.selectedSectionRawValue, "writing")
+      XCTAssertEqual(session.selectedDraftID, draftID)
+    }
+  }
+
+  func testDisablingActiveModuleFallsBackWithoutChangingDraftOrStealingWindowFocus() {
+    let draftID = UUID()
+    let active = WorkspaceWindowSession(selectedSection: .rss, selectedDraftID: draftID)
+    let inactive = WorkspaceWindowSession(selectedSection: .library, selectedDraftID: draftID)
+    active.setKeyWindow(true) { _, _ in }
+    var sharedSelections: [WorkspaceSection] = []
+
+    active.updateModuleVisibility(disabled) { sharedSelections.append($0) }
+    inactive.updateModuleVisibility(disabled) { _ in
+      XCTFail("Inactive windows must not change the shared command context")
+    }
+
+    XCTAssertEqual(sharedSelections, [.writing])
+    XCTAssertEqual(active.selectedSection, .writing)
+    XCTAssertEqual(inactive.selectedSection, .writing)
+    XCTAssertEqual(active.selectedDraftID, draftID)
+    XCTAssertEqual(inactive.selectedDraftID, draftID)
+    XCTAssertTrue(active.isKeyWindow)
+    XCTAssertFalse(inactive.isKeyWindow)
+  }
+
+  func testLegacyCommandsAndDeferredNavigationCannotSelectDisabledModule() {
+    let session = WorkspaceWindowSession(selectedSection: .sync, moduleVisibility: disabled)
+    session.setKeyWindow(true) { _, _ in }
+    var routedSections: [WorkspaceSection] = []
+    session.selectSection(.rss) { routedSections.append($0) }
+    session.receiveSharedSection(.library)
+    let draftID = UUID()
+    session.selectContext(section: .images, draftID: draftID) { section, selectedDraftID in
+      routedSections.append(section)
+      XCTAssertEqual(selectedDraftID, draftID)
+    }
+    XCTAssertEqual(routedSections, [.writing, .writing])
+    XCTAssertEqual(session.selectedSection, .writing)
+    XCTAssertEqual(session.selectedDraftID, draftID)
+
+    session.updateModuleVisibility(.init()) { _ in
+      XCTFail("Re-enabling a module must not navigate away from the current page")
+    }
+    session.selectSection(.library) { routedSections.append($0) }
+    XCTAssertEqual(session.selectedSection, .library)
+    XCTAssertEqual(routedSections.last, .library)
+  }
+
+  func testHiddenRSSSettingsRouteToModuleSwitchesWhileBackupRemainsAvailable() {
+    XCTAssertEqual(disabled.resolvedSettingsRoute(.tab(.rss)), .subsection(.appearanceModules))
+    XCTAssertEqual(
+      disabled.resolvedSettingsRoute(.subsection(.rssRefresh)), .subsection(.appearanceModules)
+    )
+    XCTAssertEqual(disabled.resolvedSettingsRoute(.tab(.dataManagement)), .tab(.dataManagement))
+    XCTAssertTrue(disabled.allowsSettingsTab(.appearance))
+  }
+}

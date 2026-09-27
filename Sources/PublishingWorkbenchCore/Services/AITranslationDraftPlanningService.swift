@@ -1,27 +1,5 @@
 import Foundation
 
-public struct AITranslationDraftLink: Codable, Hashable, Sendable {
-  public let sourceDraftID: ArticleDraft.ID
-  public let translatedDraftID: ArticleDraft.ID
-  public let targetLanguageCode: String
-  public let sourceContentFingerprint: String
-  public let createdAt: Date
-
-  public init(
-    sourceDraftID: ArticleDraft.ID,
-    translatedDraftID: ArticleDraft.ID,
-    targetLanguageCode: String,
-    sourceContentFingerprint: String,
-    createdAt: Date
-  ) {
-    self.sourceDraftID = sourceDraftID
-    self.translatedDraftID = translatedDraftID
-    self.targetLanguageCode = targetLanguageCode
-    self.sourceContentFingerprint = sourceContentFingerprint
-    self.createdAt = createdAt
-  }
-}
-
 /// A pure plan for creating a linked translation as a new draft.
 ///
 /// The source draft is represented only by identity and fingerprint. Applying
@@ -55,13 +33,14 @@ public enum AITranslationDraftPlanningError: LocalizedError, Equatable, Sendable
   case translatedBodyIsEmpty
   case sourceDraftChanged
   case destinationReusesSourceIdentity
+  case invalidTranslationLink
 
   public var errorDescription: String? {
     switch self {
     case .sourceBodyIsEmpty:
       return "原文章正文为空，无法创建全文翻译草稿。"
     case .targetLanguageIsEmpty:
-      return "请选择目标语言。"
+      return "请选择有效的目标语言代码。"
     case .translatedTitleIsEmpty:
       return "翻译后的标题为空。"
     case .translatedBodyIsEmpty:
@@ -70,6 +49,8 @@ public enum AITranslationDraftPlanningError: LocalizedError, Equatable, Sendable
       return "原文章已变化，请重新生成翻译。"
     case .destinationReusesSourceIdentity:
       return "翻译草稿不能复用原文章标识。"
+    case .invalidTranslationLink:
+      return "翻译计划中的文章关联不一致，请重新生成翻译。"
     }
   }
 }
@@ -77,6 +58,7 @@ public enum AITranslationDraftPlanningError: LocalizedError, Equatable, Sendable
 public enum AITranslationDraftPlanningService {
   public static func plan(
     source: ArticleDraft,
+    profile: SiteProfile? = nil,
     targetLanguageCode: String,
     translatedTitle: String,
     translatedSummary: String,
@@ -90,7 +72,7 @@ public enum AITranslationDraftPlanningService {
       throw AITranslationDraftPlanningError.sourceBodyIsEmpty
     }
     let language = normalizedLanguageCode(targetLanguageCode)
-    guard !language.isEmpty else {
+    guard isValidLanguageCode(language) else {
       throw AITranslationDraftPlanningError.targetLanguageIsEmpty
     }
     let title = translatedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -109,9 +91,19 @@ public enum AITranslationDraftPlanningService {
       sourceSlug: source.slug,
       translatedTitle: title,
       requestedSlug: translatedSlug,
-      languageCode: language
+      languageCode: language,
+      usesNativeTranslationPath: profile?.siteKind == .hugo || profile?.siteKind == .zola
     )
     let fingerprint = source.repositoryContentFingerprint
+    let link = AITranslationDraftLink(
+      sourceDraftID: source.id,
+      translatedDraftID: destinationDraftID,
+      targetLanguageCode: language,
+      sourceContentFingerprint: fingerprint,
+      createdAt: plannedAt,
+      sourceMarkdownPath: profile?.markdownPath(for: source)
+        ?? source.repositoryPath?.normalizedRelativePath().nilIfEmpty
+    )
     let translatedDraft = ArticleDraft(
       id: destinationDraftID,
       siteProfileID: source.siteProfileID,
@@ -135,15 +127,9 @@ public enum AITranslationDraftPlanningService {
       repositorySHA: nil,
       repositoryImportFingerprint: nil,
       reusedFromSourceSnapshot: nil,
+      translationLink: link,
       softwareGuideID: nil,
       softwareGuideTemplateVersion: nil
-    )
-    let link = AITranslationDraftLink(
-      sourceDraftID: source.id,
-      translatedDraftID: translatedDraft.id,
-      targetLanguageCode: language,
-      sourceContentFingerprint: fingerprint,
-      createdAt: plannedAt
     )
     return AITranslationDraftPlan(
       sourceDraftID: source.id,
@@ -156,7 +142,8 @@ public enum AITranslationDraftPlanningService {
 
   public static func materialize(
     _ plan: AITranslationDraftPlan,
-    currentSource: ArticleDraft
+    currentSource: ArticleDraft,
+    profile: SiteProfile? = nil
   ) throws -> ArticleDraft {
     guard
       plan.sourceDraftID == currentSource.id,
@@ -167,34 +154,70 @@ public enum AITranslationDraftPlanningService {
     guard plan.translatedDraft.id != currentSource.id else {
       throw AITranslationDraftPlanningError.destinationReusesSourceIdentity
     }
-    return plan.translatedDraft
+    guard plan.link.sourceDraftID == currentSource.id,
+      plan.link.translatedDraftID == plan.translatedDraft.id,
+      plan.link.sourceContentFingerprint == plan.sourceContentFingerprint,
+      plan.link.targetLanguageCode == plan.targetLanguageCode,
+      isSafeSourceMarkdownPath(plan.link.sourceMarkdownPath)
+    else {
+      throw AITranslationDraftPlanningError.invalidTranslationLink
+    }
+    var translated = plan.translatedDraft
+    var link = plan.link
+    if link.sourceMarkdownPath == nil {
+      link.sourceMarkdownPath =
+        profile?.markdownPath(for: currentSource)
+        ?? currentSource.repositoryPath?.normalizedRelativePath().nilIfEmpty
+    }
+    guard isSafeSourceMarkdownPath(link.sourceMarkdownPath) else {
+      throw AITranslationDraftPlanningError.invalidTranslationLink
+    }
+    translated.translationLink = link
+    return translated
   }
 
   private static func normalizedLanguageCode(_ value: String) -> String {
-    String(
-      value
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-        .replacingOccurrences(of: "_", with: "-")
-        .lowercased()
-        .prefix(35)
-    )
+    value
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .replacingOccurrences(of: "_", with: "-")
+      .lowercased()
+  }
+
+  private static func isValidLanguageCode(_ code: String) -> Bool {
+    guard code.count <= 35 else { return false }
+    return code.range(
+      of: #"\A[a-z]{2,3}(?:-[a-z0-9]{2,8})*\z"#,
+      options: .regularExpression
+    ) != nil
+  }
+
+  private static func isSafeSourceMarkdownPath(_ path: String?) -> Bool {
+    guard let path else { return true }
+    let extensionName = (path as NSString).pathExtension.lowercased()
+    return !path.isEmpty
+      && !path.hasPrefix("/")
+      && !path.contains("\\")
+      && !path.contains("://")
+      && !path.split(separator: "/").contains("..")
+      && ["md", "markdown", "mdx"].contains(extensionName)
   }
 
   private static func destinationSlug(
     sourceSlug: String,
     translatedTitle: String,
     requestedSlug: String?,
-    languageCode: String
+    languageCode: String,
+    usesNativeTranslationPath: Bool
   ) -> String {
     if let requested = requestedSlug?.trimmingCharacters(in: .whitespacesAndNewlines),
       !requested.isEmpty
     {
       return SlugService.slug(from: requested)
     }
-    let base = sourceSlug.trimmingCharacters(in: .whitespacesAndNewlines)
-    if !base.isEmpty {
-      return SlugService.slug(from: "\(base)-\(languageCode)")
-    }
-    return SlugService.slug(from: "\(translatedTitle)-\(languageCode)")
+    let titleSlug = SlugService.slug(from: translatedTitle)
+    let source = SlugService.slug(from: sourceSlug)
+    if usesNativeTranslationPath { return titleSlug }
+    if titleSlug != source { return titleSlug }
+    return SlugService.slug(from: "\(source)-\(languageCode)")
   }
 }

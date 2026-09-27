@@ -24,9 +24,13 @@ final class WorkspaceCommandPaletteContentSearchTests: XCTestCase {
     let (knowledge, rssStore, rootURL) = try makeStores()
     defer { try? FileManager.default.removeItem(at: rootURL) }
 
-    controller.update(query: "旧", scope: .resources, knowledge: knowledge, rssStore: rssStore)
+    controller.update(
+      query: "旧", scope: .resources, moduleVisibility: .init(), knowledge: knowledge,
+      rssStore: rssStore)
     try await Task.sleep(for: .milliseconds(210))
-    controller.update(query: "新", scope: .resources, knowledge: knowledge, rssStore: rssStore)
+    controller.update(
+      query: "新", scope: .resources, moduleVisibility: .init(), knowledge: knowledge,
+      rssStore: rssStore)
     try await Task.sleep(for: .milliseconds(250))
 
     XCTAssertEqual(controller.knowledgeResults.map(\.document.title), ["新查询"])
@@ -48,16 +52,52 @@ final class WorkspaceCommandPaletteContentSearchTests: XCTestCase {
     let (knowledge, rssStore, rootURL) = try makeStores()
     defer { try? FileManager.default.removeItem(at: rootURL) }
 
-    controller.update(query: "   ", scope: .all, knowledge: knowledge, rssStore: rssStore)
+    controller.update(
+      query: "   ", scope: .all, moduleVisibility: .init(), knowledge: knowledge,
+      rssStore: rssStore)
     XCTAssertTrue(requestedSources.isEmpty)
 
-    controller.update(query: "资料", scope: .resources, knowledge: knowledge, rssStore: rssStore)
+    controller.update(
+      query: "资料", scope: .resources, moduleVisibility: .init(), knowledge: knowledge,
+      rssStore: rssStore)
     try await Task.sleep(for: .milliseconds(220))
     XCTAssertEqual(requestedSources, ["knowledge"])
 
-    controller.update(query: "RSS", scope: .rss, knowledge: knowledge, rssStore: rssStore)
+    controller.update(
+      query: "RSS", scope: .rss, moduleVisibility: .init(), knowledge: knowledge,
+      rssStore: rssStore)
     try await Task.sleep(for: .milliseconds(220))
     XCTAssertEqual(requestedSources, ["knowledge", "rss"])
+  }
+
+  func testDisabledModulesAreNeverQueriedOrAllowedToPublishStaleResults() async throws {
+    var requestedSources: [String] = []
+    let controller = WorkspaceCommandPaletteContentSearch(
+      knowledgeSearch: { _, _, _ in
+        requestedSources.append("knowledge")
+        return []
+      },
+      rssSearch: { _, _, _ in
+        requestedSources.append("rss")
+        try? await Task.sleep(for: .milliseconds(300))
+        return []
+      }
+    )
+    let (knowledge, rssStore, rootURL) = try makeStores()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    controller.update(
+      query: "RSS", scope: .rss, moduleVisibility: .init(), knowledge: knowledge,
+      rssStore: rssStore)
+    try await Task.sleep(for: .milliseconds(210))
+    controller.update(
+      query: "RSS", scope: .rss,
+      moduleVisibility: .init(rssEnabled: false), knowledge: knowledge, rssStore: rssStore)
+    try await Task.sleep(for: .milliseconds(350))
+
+    XCTAssertEqual(requestedSources, ["rss"])
+    XCTAssertTrue(controller.rssResults.isEmpty)
+    XCTAssertEqual(controller.state, .idle)
   }
 
   private func makeStores() throws -> (KnowledgeStore, RSSReaderStore, URL) {

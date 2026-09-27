@@ -88,7 +88,12 @@ public struct SEOAuditService: Sendable {
     var findings: [SEOAuditFinding] = []
     findings.append(contentsOf: titleFindings(title))
     findings.append(contentsOf: summaryFindings(summary))
-    findings.append(contentsOf: headingFindings(h1Headings, title: title))
+    findings.append(
+      contentsOf: headingFindings(
+        h1Headings,
+        title: title,
+        warnsWhenBodyH1DuplicatesTitle: profile.resolvedWarnsWhenBodyH1DuplicatesTitle
+      ))
     findings.append(contentsOf: coverFindings(hasCover: hasCover, draft: draft))
     findings.append(contentsOf: taxonomyFindings(draft: draft, profile: profile))
     findings.append(
@@ -200,7 +205,11 @@ public struct SEOAuditService: Sendable {
     ]
   }
 
-  private func headingFindings(_ h1Headings: [String], title: String) -> [SEOAuditFinding] {
+  private func headingFindings(
+    _ h1Headings: [String],
+    title: String,
+    warnsWhenBodyH1DuplicatesTitle: Bool
+  ) -> [SEOAuditFinding] {
     if h1Headings.isEmpty {
       return [
         .init(
@@ -212,19 +221,39 @@ public struct SEOAuditService: Sendable {
       ]
     }
 
+    var findings: [SEOAuditFinding] = []
     if h1Headings.count > 1 {
-      return [
+      findings.append(
         .init(
           severity: .warning,
           title: "正文有多个 H1",
           message: "当前 \(h1Headings.count) 个一级标题，建议保留一个主标题。",
           field: "body"
         )
-      ]
+      )
     }
 
+    let hasDuplicatedTitle =
+      !title.isEmpty
+      && h1Headings.contains {
+        normalizedHeadingTitle($0) == normalizedHeadingTitle(title)
+      }
+    if warnsWhenBodyH1DuplicatesTitle && hasDuplicatedTitle {
+      findings.append(
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("正文 H1 与标题重复"),
+          message: CoreL10n.text(
+            "当前主题可能会把 Front Matter title 渲染为 H1，页面上可能出现两个相同的主标题。可在此站点的 SEO 摘要中关闭这条提示。"),
+          field: "body"
+        )
+      )
+    }
+
+    if !findings.isEmpty { return findings }
+
     let heading = h1Headings[0]
-    if !title.isEmpty && heading.caseInsensitiveCompare(title) != .orderedSame {
+    if !title.isEmpty && normalizedHeadingTitle(heading) != normalizedHeadingTitle(title) {
       return [
         .init(
           severity: .info,
@@ -310,6 +339,17 @@ public struct SEOAuditService: Sendable {
         }
         return String(trimmed.dropFirst(2)).trimmedForPublishing.nilIfEmpty
       }
+  }
+
+  private func normalizedHeadingTitle(_ value: String) -> String {
+    value
+      .precomposedStringWithCanonicalMapping
+      .folding(
+        options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+        locale: Locale(identifier: "en_US_POSIX")
+      )
+      .split(whereSeparator: { $0.isWhitespace })
+      .joined(separator: " ")
   }
 
   private func hasPublishableCoverImage(draft: ArticleDraft) -> Bool {

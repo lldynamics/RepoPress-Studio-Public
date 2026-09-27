@@ -415,6 +415,40 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     XCTAssertNotNil(coordinator.dataRootMessage)
   }
 
+  func testModuleVisibilityPausesRSSAndRestoresTheExistingRefreshPreference() throws {
+    let harness = try makeHarness(rootURL: nil)
+    defer { harness.cleanup() }
+    let coordinator = WorkbenchLaunchCoordinator(
+      pathStore: harness.pathStore,
+      sessionRecovery: harness.sessionRecovery
+    )
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "module-refresh-\(UUID().uuidString)", isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let reader = RSSReaderStore(fileURL: directory.appendingPathComponent("reader.sqlite"))
+    defer { reader.stopBackgroundRefresh() }
+    harness.defaults.set(true, forKey: RSSReaderUserPreferences.backgroundRefreshEnabledKey)
+    harness.defaults.set(60, forKey: RSSReaderUserPreferences.backgroundRefreshIntervalMinutesKey)
+
+    coordinator.startBackgroundRefreshIfNeeded(for: reader, defaults: harness.defaults)
+    XCTAssertTrue(reader.isBackgroundRefreshRunning)
+    harness.defaults.set(false, forKey: WorkspaceModuleVisibility.rssEnabledKey)
+    coordinator.startBackgroundRefreshIfNeeded(for: reader, defaults: harness.defaults)
+    XCTAssertFalse(reader.isBackgroundRefreshRunning)
+    XCTAssertTrue(RSSReaderUserPreferences.backgroundRefreshEnabled(defaults: harness.defaults))
+
+    harness.defaults.set(true, forKey: WorkspaceModuleVisibility.rssEnabledKey)
+    coordinator.startBackgroundRefreshIfNeeded(for: reader, defaults: harness.defaults)
+    XCTAssertTrue(reader.isBackgroundRefreshRunning)
+    XCTAssertEqual(reader.configuredBackgroundRefreshInterval, 3600)
+
+    harness.defaults.set(false, forKey: RSSReaderUserPreferences.backgroundRefreshEnabledKey)
+    coordinator.startBackgroundRefreshIfNeeded(for: reader, defaults: harness.defaults)
+    XCTAssertFalse(reader.isBackgroundRefreshRunning)
+  }
+
   private func makeHarness(
     rootURL: URL?
   ) throws -> LaunchCoordinatorHarness {

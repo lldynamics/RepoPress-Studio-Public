@@ -67,8 +67,18 @@ require_regex() {
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
-  "ForEach(WorkspaceNavigationPresentation.commandMenuItems)" \
+  "WorkspaceNavigationPresentation.commandMenuItems.filter" \
   "workspace command menu must use the shared navigation presentation"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
+  'moduleVisibility.allows($0.section)' \
+  "workspace command menu must hide disabled optional modules"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Support/WorkspaceModuleVisibility.swift" \
+  "WorkspaceNavigationRouteDescriptor.primarySections.filter(allows)" \
+  "module visibility must filter the shared navigation descriptor"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
@@ -895,13 +905,13 @@ done
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceRailView.swift" \
-  "WorkspaceNavigationRouteDescriptor.primarySections" \
-  "full navigation must render the shared primary route order"
+  "moduleVisibility.primarySections" \
+  "full navigation must render visible modules in the shared primary route order"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCompactNavigationRail.swift" \
-  "WorkspaceNavigationRouteDescriptor.primarySections" \
-  "compact navigation must render the same primary routes as the full sidebar"
+  "moduleVisibility.primarySections" \
+  "compact navigation must render the same visible modules as the full sidebar"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCompactNavigationRail.swift" \

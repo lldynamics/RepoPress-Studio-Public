@@ -5,6 +5,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct RSSArticleReader: View {
+  @WorkspaceModuleVisibilityStorage private var moduleVisibility
   @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let articleHeader: RSSArticleHeader?
   let article: RSSArticle?
@@ -961,8 +962,10 @@ struct RSSArticleReader: View {
 
   private func workflowIntegrationMenu(for article: RSSArticle) -> some View {
     Menu {
-      Section("保存到资料库") {
-        workflowSaveActionItems(for: article)
+      if moduleVisibility.libraryEnabled {
+        Section("保存到资料库") {
+          workflowSaveActionItems(for: article)
+        }
       }
       Section("用于写作") {
         workflowWritingActionItems(for: article)
@@ -980,18 +983,20 @@ struct RSSArticleReader: View {
 
   @ViewBuilder
   private func workflowSaveActionItems(for article: RSSArticle) -> some View {
-    workflowActionButton(
-      "保存文章摘要",
-      systemImage: "doc.text",
-      article: article,
-      action: onSaveToKnowledge
-    )
-    workflowActionButton(
-      "摘录并添加笔记",
-      systemImage: "note.text.badge.plus",
-      article: article,
-      action: onAddExcerptNote
-    )
+    if moduleVisibility.libraryEnabled {
+      workflowActionButton(
+        "保存文章摘要",
+        systemImage: "doc.text",
+        article: article,
+        action: onSaveToKnowledge
+      )
+      workflowActionButton(
+        "摘录并添加笔记",
+        systemImage: "note.text.badge.plus",
+        article: article,
+        action: onAddExcerptNote
+      )
+    }
   }
 
   @ViewBuilder
@@ -1012,8 +1017,10 @@ struct RSSArticleReader: View {
 
   @ViewBuilder
   private func workflowActionItems(for article: RSSArticle) -> some View {
-    workflowSaveActionItems(for: article)
-    Divider()
+    if moduleVisibility.libraryEnabled {
+      workflowSaveActionItems(for: article)
+      Divider()
+    }
     workflowWritingActionItems(for: article)
   }
 

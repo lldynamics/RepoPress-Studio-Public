@@ -6,6 +6,7 @@ import SwiftUI
 
 @main
 struct PersonalSitePublisherMacApp: App {
+  @WorkspaceModuleVisibilityStorage private var moduleVisibility
   @NSApplicationDelegateAdaptor(PersonalSitePublisherMacAppDelegate.self) private var appDelegate
   @StateObject private var launchCoordinator: WorkbenchLaunchCoordinator
   @StateObject private var appUpdateController = AppUpdateController()
@@ -140,7 +141,15 @@ struct PersonalSitePublisherMacApp: App {
 
     MenuBarExtra(
       "RepoPress Studio", systemImage: "square.and.pencil",
-      isInserted: $isMenuBarQuickCaptureVisible
+      isInserted: Binding(
+        get: { isMenuBarQuickCaptureVisible && moduleVisibility.libraryEnabled },
+        set: { newValue in
+          guard moduleVisibility.libraryEnabled,
+            isMenuBarQuickCaptureVisible != newValue
+          else { return }
+          isMenuBarQuickCaptureVisible = newValue
+        }
+      )
     ) {
       MenuBarQuickCaptureView(
         coordinator: launchCoordinator,

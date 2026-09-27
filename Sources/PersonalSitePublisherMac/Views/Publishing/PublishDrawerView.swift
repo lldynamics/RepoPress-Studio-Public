@@ -37,6 +37,35 @@ final class PublishDrawerOperationController: ObservableObject {
   }
 }
 
+struct PublishDrawerDirectArticleResult {
+  let recordID: UUID?
+}
+
+@MainActor
+enum PublishDrawerDirectArticlePublisher {
+  static func publish(
+    store: WorkbenchStore, review: SinglePublishReviewSnapshot
+  ) async -> PublishDrawerDirectArticleResult? {
+    let previousIDs = Set(store.releaseRecords.map { $0.id })
+    let profileID = review.expectation.target.profileID
+    guard store.publishing.focusDraft(review.draft.id) else { return nil }
+    let result = await store.publishSelectedDraftOnlineUsingPreferredStrategy(
+      expectedReview: review.expectation
+    )
+    let recordID = PublishResultRecordSelection.recordID(
+      result: result,
+      records: store.releaseRecords,
+      previousRecordIDs: previousIDs,
+      profileID: profileID,
+      draftIDs: [review.draft.id]
+    )
+    _ = await store.refreshRepositoryStateForPublishing()
+    store.publishing.refreshPublishPreviewInBackground(for: review.draft)
+    store.refreshBatchPublishPlanInBackground()
+    return PublishDrawerDirectArticleResult(recordID: recordID)
+  }
+}
+
 struct PublishDrawerView: View {
   @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @Environment(\.openSettings) private var openSettings
@@ -64,6 +93,7 @@ struct PublishDrawerView: View {
     store: WorkbenchStore,
     isPresented: Binding<Bool>,
     initialScope: PublishScope = .repository,
+    initialCompletedReleaseRecordID: UUID? = nil,
     onNavigateIssue: ((UUID, PublishReadinessTarget, PublishScope) -> Void)? = nil
   ) {
     self.publishingFacade = publishingFacade
@@ -72,6 +102,7 @@ struct PublishDrawerView: View {
     self.onNavigateIssue = onNavigateIssue
     _isPresented = isPresented
     _scope = State(initialValue: initialScope)
+    _completedReleaseRecordID = State(initialValue: initialCompletedReleaseRecordID)
   }
 
   var body: some View {

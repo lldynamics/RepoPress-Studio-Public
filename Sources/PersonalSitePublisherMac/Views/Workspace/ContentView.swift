@@ -21,6 +21,7 @@ import SwiftUI
 #endif
 
 struct ContentView: View {
+  @WorkspaceModuleVisibilityStorage private var moduleVisibility
   let store: WorkbenchStore
   let rssStore: RSSReaderStore
   @ObservedObject private var rootPresentation: WorkbenchRootPresentationFeatureFacade
@@ -57,6 +58,10 @@ struct ContentView: View {
   @State private var commandPaletteArticleRequest: DraftFullTextSearchRequest?
   @State private var deferredFullTextSearchRequest: DraftFullTextSearchRequest?
   @State private var publishDrawerInitialScope: PublishScope = .repository
+  @State private var directPublishCompletedRecordID: UUID?
+  @State private var pendingDirectSingleReview: SinglePublishReviewSnapshot?
+  @State private var isPreparingCurrentArticlePublish = false
+  @State private var isPublishingCurrentArticle = false
   @State private var publishReadinessNavigationRequest: PublishReadinessNavigationRequest?
   @State private var readinessInspectorSheet: PublishReadinessNavigationRequest?
   @State private var articlePublishRepairSession: ArticlePublishRepairSession?
@@ -136,7 +141,8 @@ struct ContentView: View {
     _windowSession = StateObject(
       wrappedValue: WorkspaceWindowSession(
         selectedSection: store.selectedSection,
-        selectedDraftID: store.selectedDraftID
+        selectedDraftID: store.selectedDraftID,
+        moduleVisibility: .load(defaults: .standard)
       )
     )
   }
@@ -174,12 +180,26 @@ struct ContentView: View {
             store: store,
             isPresented: modalIsPresentedBinding(.publishDrawer),
             initialScope: publishDrawerInitialScope,
+            initialCompletedReleaseRecordID: directPublishCompletedRecordID,
             onNavigateIssue: navigateToPublishIssue
           )
           .transition(
             WorkbenchMotion.drawerTransition(reduceMotion: accessibilityReduceMotion)
           )
           .zIndex(2)
+        }
+
+        if isPreparingCurrentArticlePublish || isPublishingCurrentArticle {
+          Label(
+            isPreparingCurrentArticlePublish ? "正在准备当前文章确认…" : "正在发布当前文章…",
+            systemImage: "paperplane"
+          )
+          .font(.callout.weight(.medium))
+          .padding(12)
+          .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+          .padding(.bottom, 20)
+          .zIndex(3)
+          .accessibilityIdentifier("current-article-publish-progress")
         }
 
         if let repairSession = articlePublishRepairSession {
@@ -309,6 +329,13 @@ struct ContentView: View {
       }
       .onChange(of: shellState.selectedSection) { _, section in
         windowSession.receiveSharedSection(section)
+        if windowSession.isKeyWindow, !moduleVisibility.allows(section) {
+          store.selectSection(moduleVisibility.resolvedSection(section))
+        }
+      }
+      .onChange(of: moduleVisibility) { _, visibility in
+        windowSession.updateModuleVisibility(visibility) { store.selectSection($0) }
+        launchCoordinator.startBackgroundRefreshIfNeeded(for: rssStore)
       }
       .onChange(of: shellState.selectedDraftID) { _, draftID in
         windowSession.receiveSharedDraft(draftID)
@@ -632,7 +659,7 @@ struct ContentView: View {
       RSSReaderBackgroundRefreshPolicy.shouldRefreshStaleFeedsOnEntry(
         isSceneActive: scenePhase == .active,
         isSafeMode: store.isSafeMode,
-        isEnabled: isRSSBackgroundRefreshEnabled,
+        isEnabled: moduleVisibility.rssEnabled && isRSSBackgroundRefreshEnabled,
         isRSSSectionSelected: windowSession.selectedSection == .rss
       )
     else { return }
@@ -704,6 +731,29 @@ struct ContentView: View {
         onNavigateIssue: navigateToPublishIssue
       )
       .frame(minWidth: 680, idealWidth: 780, minHeight: 600, idealHeight: 720)
+    case .singleArticlePublishConfirmation:
+      if let review = pendingDirectSingleReview {
+        let presentation = PublishDrawerSingleArticleActionPresentation.make(
+          isWebsiteDraft: review.draft.draft
+        )
+        RemotePublishConfirmationView(
+          targetLabel: review.draft.draft ? String(localized: "网站草稿") : String(localized: "文章"),
+          targetTitle: review.draft.title,
+          purpose: presentation.confirmationPurpose,
+          preview: review.preview,
+          reviewDraft: review.reviewDraft,
+          isPublishing: isPublishingCurrentArticle || store.isRemoteRepositoryPublishing,
+          cancelAction: {
+            pendingDirectSingleReview = nil
+            modalPresentation.dismiss(.singleArticlePublishConfirmation)
+          },
+          confirmAction: {
+            pendingDirectSingleReview = nil
+            modalPresentation.dismiss(.singleArticlePublishConfirmation)
+            Task { @MainActor in await publishDirectCurrentArticle(review) }
+          }
+        )
+      }
     case .localSitePreview:
       LocalSitePreviewPanelView(store: store, state: localSitePreviewState)
     case .firstRunSetup:
@@ -971,7 +1021,7 @@ struct ContentView: View {
           selectedDraftID: windowSession.selectedDraftID,
           selectedSection: windowSession.selectedSection,
           isCompact: isCompactLayout,
-          openPublishFlow: { openPublishDrawer(message: nil) },
+          openPublishFlow: prepareCurrentArticlePublishOrOpenDrawer,
           openRepositoryOverview: {
             repositoryContextStage = .overview
             selectWorkspaceSection(.sync)
@@ -1186,9 +1236,11 @@ struct ContentView: View {
     else { return }
     switch destination {
     case .knowledge(let result, let query):
+      guard moduleVisibility.libraryEnabled else { return }
       selectWorkspaceSection(.library)
       _ = store.knowledge.revealSearchResult(result, query: query)
     case .rss(let articleID, _):
+      guard moduleVisibility.rssEnabled else { return }
       selectWorkspaceSection(.rss)
       _ = rssPresentation.openContentSearchResult(articleID, in: rssStore)
     }
@@ -1379,18 +1431,87 @@ struct ContentView: View {
     if isPublishDrawerPresented {
       dismissPublishDrawerIfNeeded()
     } else {
-      openPublishDrawer(message: nil)
+      prepareCurrentArticlePublishOrOpenDrawer()
     }
+  }
+
+  private func prepareCurrentArticlePublishOrOpenDrawer() {
+    guard windowSession.selectedSection == .writing,
+      let draftID = windowSession.selectedDraftID,
+      store.draft(for: draftID) != nil
+    else {
+      openPublishDrawer(message: nil)
+      return
+    }
+    guard !isPreparingCurrentArticlePublish, !isPublishingCurrentArticle else { return }
+    guard activateCurrentWindowSharedContext() else { return }
+    let profileID = store.activeProfileID
+    isPreparingCurrentArticlePublish = true
+    Task { @MainActor in
+      defer { isPreparingCurrentArticlePublish = false }
+      let prepared = await store.prepareSelectedDraftOnlinePublish(draftID: draftID)
+      guard !Task.isCancelled,
+        windowSession.selectedDraftID == draftID,
+        store.activeProfileID == profileID
+      else { return }
+      guard prepared,
+        store.publishDrawerFeedback?.status != .warning,
+        store.publishDrawerFeedback?.status != .failure,
+        let snapshot = store.cachedDraftPublishPreviewSnapshot(for: draftID),
+        let draft = store.draft(for: draftID),
+        SingleArticlePublishFastPathPolicy.qualifies(
+          snapshot, draftID: draftID, profileID: profileID
+        )
+      else {
+        openPublishDrawer(
+          message: nil, preferredScope: .currentArticle, preservingPublishFeedback: true
+        )
+        return
+      }
+      do {
+        let review = try SinglePublishReviewSnapshot(
+          draft: draft, profile: store.activeProfile, snapshot: snapshot
+        )
+        pendingDirectSingleReview = review
+        modalPresentation.present(.singleArticlePublishConfirmation)
+      } catch {
+        openPublishDrawer(
+          message: nil, preferredScope: .currentArticle, preservingPublishFeedback: true
+        )
+      }
+    }
+  }
+
+  private func publishDirectCurrentArticle(_ review: SinglePublishReviewSnapshot) async {
+    guard !isPublishingCurrentArticle else { return }
+    isPublishingCurrentArticle = true
+    defer { isPublishingCurrentArticle = false }
+    let published = await PublishDrawerDirectArticlePublisher.publish(
+      store: store, review: review
+    )
+    guard let published else {
+      openPublishDrawer(
+        message: nil, preferredScope: .currentArticle, preservingPublishFeedback: true
+      )
+      return
+    }
+    openPublishDrawer(
+      message: nil, preferredScope: .currentArticle,
+      completedRecordID: published.recordID, preservingPublishFeedback: true
+    )
   }
 
   private func openPublishDrawer(
     message: String?,
-    preferredScope: PublishScope? = nil
+    preferredScope: PublishScope? = nil,
+    completedRecordID: UUID? = nil,
+    preservingPublishFeedback: Bool = false
   ) {
     guard activateCurrentWindowSharedContext() else { return }
     clearArticlePublishRepair()
     windowSession.receiveSharedDraft(store.selectedDraftID)
     publishDrawerInitialScope = preferredScope ?? PublishScope.defaultScope
+    directPublishCompletedRecordID = completedRecordID
     hideInspectorIfNeeded()
     withAnimation(
       WorkbenchMotion.animation(
@@ -1400,10 +1521,12 @@ struct ContentView: View {
     ) {
       modalPresentation.present(.publishDrawer)
     }
-    store.setPublishActionMessage(
-      message ?? String(localized: "发布流程已打开，请选择保存到本地或发布上线。"),
-      status: .information
-    )
+    if !preservingPublishFeedback {
+      store.setPublishActionMessage(
+        message ?? String(localized: "发布流程已打开，请选择保存到本地或发布上线。"),
+        status: .information
+      )
+    }
   }
 
   private func navigateToPublishIssue(

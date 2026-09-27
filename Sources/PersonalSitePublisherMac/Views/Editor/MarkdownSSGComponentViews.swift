@@ -179,21 +179,10 @@ struct MarkdownSSGComponentThumbnail: View {
 struct MarkdownSSGComponentPreviewStrip: View {
   let occurrences: [MarkdownSSGComponentOccurrence]
   let onSelect: (MarkdownSSGComponentOccurrence) -> Void
+  @State private var isExpanded = false
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 7) {
-      HStack(spacing: 8) {
-        Label("组件缩略预览", systemImage: "rectangle.3.group")
-          .font(.caption.weight(.semibold))
-        Text("点击卡片定位源码")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-        Spacer()
-        Text("\(occurrences.count) 个")
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.tertiary)
-      }
-
+    DisclosureGroup(isExpanded: $isExpanded) {
       ScrollView(.horizontal, showsIndicators: true) {
         HStack(alignment: .top, spacing: 9) {
           ForEach(occurrences.prefix(12)) { occurrence in
@@ -220,11 +209,24 @@ struct MarkdownSSGComponentPreviewStrip: View {
         }
         .padding(.vertical, 2)
       }
+      .padding(.top, 7)
+    } label: {
+      HStack(spacing: 8) {
+        Label("短代码与组件折叠预览", systemImage: "rectangle.3.group")
+          .font(.caption.weight(.semibold))
+        Text("\(occurrences.count) 个")
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(.secondary)
+        Spacer()
+        Text("展开后可定位源码")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
     }
     .padding(.horizontal, 11)
     .padding(.vertical, 9)
     .background(.bar)
     .accessibilityElement(children: .contain)
-    .accessibilityLabel("SSG 组件缩略预览，共 \(occurrences.count) 个")
+    .accessibilityLabel("短代码与组件折叠预览，共 \(occurrences.count) 个")
   }
 }

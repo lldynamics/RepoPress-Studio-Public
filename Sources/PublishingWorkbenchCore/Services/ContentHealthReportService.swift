@@ -72,6 +72,8 @@ public struct ContentHealthReportService: Sendable {
   ) rethrows -> ContentHealthReport {
     try cancellationCheck()
     let duplicateIndex = PreflightDuplicateIndex(drafts: drafts, profile: profile)
+    let draftsByID = Dictionary(
+      drafts.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
     let linkIssuesByDraftID = linkPreflightIssues(
       report: linkAuditReport,
       drafts: drafts
@@ -91,6 +93,10 @@ public struct ContentHealthReportService: Sendable {
         presentation: presentation,
         hasDuplicateTitle: duplicateIndex.hasDuplicateTitle(for: draft.id) ?? false,
         hasDuplicatePath: duplicateIndex.hasDuplicatePath(for: draft.id) ?? false,
+        translationFreshness: draft.translationFreshness(
+          source: draft.translationLink.flatMap { draftsByID[$0.sourceDraftID] },
+          profile: profile
+        ),
         serviceNamespace: cacheNamespace
       )
       if let cachedSummary = cache.lookup(cacheKey) {

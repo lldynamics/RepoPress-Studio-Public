@@ -57,6 +57,9 @@ public struct LocalContentImportMergeService: Sendable {
         var updated = imported
         updated.id = existing.id
         updated.createdAt = existing.createdAt
+        // Repository Markdown cannot encode the app's source UUID and source
+        // fingerprint. Keep the existing article relationship on refresh.
+        updated.translationLink = existing.translationLink
         guard existing != updated else { continue }
 
         replacedDrafts.append(existing)

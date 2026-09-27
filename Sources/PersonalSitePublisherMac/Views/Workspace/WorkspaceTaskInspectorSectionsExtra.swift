@@ -92,6 +92,7 @@ extension PreflightIssue {
 }
 
 struct ArticleInspectorTabs: View {
+  @WorkspaceModuleVisibilityStorage private var moduleVisibility
   @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @Environment(\.publishReadinessNavigationRequest) private var publishNavigationRequest
 
@@ -101,7 +102,13 @@ struct ArticleInspectorTabs: View {
   @ObservedObject var rssStore: RSSReaderStore
   @ObservedObject private var imageWorkbench: WorkbenchImageWorkbenchFeatureFacade
   let section: WorkspaceSection
-  let availableTabs: [ArticleInspectorTab]
+  private let configuredTabs: [ArticleInspectorTab]
+
+  private var availableTabs: [ArticleInspectorTab] {
+    configuredTabs.filter {
+      $0 != .knowledge || moduleVisibility.libraryEnabled || moduleVisibility.rssEnabled
+    }
+  }
 
   init(
     selectedTab: Binding<ArticleInspectorTab>,
@@ -117,7 +124,7 @@ struct ArticleInspectorTabs: View {
     _rssStore = ObservedObject(wrappedValue: rssStore)
     _imageWorkbench = ObservedObject(wrappedValue: store.imageWorkbench)
     self.section = section
-    self.availableTabs = availableTabs
+    self.configuredTabs = availableTabs
   }
 
   var body: some View {
@@ -168,6 +175,10 @@ struct ArticleInspectorTabs: View {
       prepareSelectedTab()
     }
     .onChange(of: selectedTab) { _, _ in
+      prepareSelectedTab()
+    }
+    .onChange(of: moduleVisibility) { _, _ in
+      normalizeSelectedTab()
       prepareSelectedTab()
     }
     .task(id: imageRefreshID) {
@@ -279,30 +290,34 @@ struct ArticleInspectorTabs: View {
 
   private var knowledgeContent: some View {
     VStack(alignment: .leading, spacing: 14) {
-      RSSLibraryInspectorPanel(
-        rssStore: rssStore,
-        workbenchStore: store
-      )
-      KnowledgeContextRecommendationCard(
-        draft: draft,
-        store: store,
-        onOpenSource: { result in
-          store.knowledge.selectSearchResult(result)
-          store.selectSection(.library)
-        },
-        onSearch: { query in
-          store.knowledge.updateSearchText(query)
-          store.selectSection(.library)
-        }
-      )
-      KnowledgeArticleBacklinksSection(
-        draft: draft,
-        knowledge: store.knowledge,
-        onOpenDocument: { documentID in
-          store.knowledge.selectDocument(documentID)
-          store.selectSection(.library)
-        }
-      )
+      if moduleVisibility.rssEnabled {
+        RSSLibraryInspectorPanel(
+          rssStore: rssStore,
+          workbenchStore: store
+        )
+      }
+      if moduleVisibility.libraryEnabled {
+        KnowledgeContextRecommendationCard(
+          draft: draft,
+          store: store,
+          onOpenSource: { result in
+            store.knowledge.selectSearchResult(result)
+            store.selectSection(.library)
+          },
+          onSearch: { query in
+            store.knowledge.updateSearchText(query)
+            store.selectSection(.library)
+          }
+        )
+        KnowledgeArticleBacklinksSection(
+          draft: draft,
+          knowledge: store.knowledge,
+          onOpenDocument: { documentID in
+            store.knowledge.selectDocument(documentID)
+            store.selectSection(.library)
+          }
+        )
+      }
     }
     .accessibilityIdentifier("article-inspector-knowledge-page")
   }
@@ -433,7 +448,7 @@ struct ArticleInspectorTabs: View {
   }
 
   private var knowledgeRefreshID: UUID? {
-    selectedTab == .knowledge ? draft.id : nil
+    selectedTab == .knowledge && moduleVisibility.libraryEnabled ? draft.id : nil
   }
 }
 

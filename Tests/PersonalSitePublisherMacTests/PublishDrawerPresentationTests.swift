@@ -1,3 +1,4 @@
+import PublishingGitCore
 import XCTest
 
 @testable import PersonalSitePublisherMac
@@ -423,5 +424,119 @@ final class PublishDrawerPresentationTests: XCTestCase {
     )
 
     XCTAssertTrue(PublishDrawerBatchActionPresentation.isEnabled(state))
+  }
+}
+
+final class SingleArticlePublishFastPathPolicyTests: XCTestCase {
+  func testCleanArticleOnlyChangeCanOpenConfirmationDirectly() {
+    let snapshot = makeSnapshot()
+    XCTAssertTrue(
+      SingleArticlePublishFastPathPolicy.qualifies(
+        snapshot, draftID: snapshot.publishPackage.draftID, profileID: snapshot.context.profileID
+      ))
+  }
+
+  func testWarningsAndForeignFilesKeepTheDrawer() {
+    var warning = makeSnapshot().remotePublishPreview
+    warning.warningIssues = [.init(severity: .warning, title: "需要确认", message: "检查正文")]
+    let warned = makeSnapshot(remotePreview: warning)
+    XCTAssertFalse(
+      SingleArticlePublishFastPathPolicy.qualifies(
+        warned, draftID: warned.context.draftID, profileID: warned.context.profileID
+      ))
+
+    var foreign = makeSnapshot().remotePublishPreview
+    foreign.changedPaths.append("config.toml")
+    let broadened = makeSnapshot(remotePreview: foreign)
+    XCTAssertFalse(
+      SingleArticlePublishFastPathPolicy.qualifies(
+        broadened, draftID: broadened.context.draftID, profileID: broadened.context.profileID
+      ))
+  }
+
+  func testChangedDraftOrProfileCannotUsePreviousReview() {
+    let snapshot = makeSnapshot()
+    XCTAssertFalse(
+      SingleArticlePublishFastPathPolicy.qualifies(
+        snapshot, draftID: UUID(), profileID: snapshot.context.profileID
+      ))
+    XCTAssertFalse(
+      SingleArticlePublishFastPathPolicy.qualifies(
+        snapshot, draftID: snapshot.context.draftID, profileID: UUID()
+      ))
+  }
+
+  func testLocalReadinessNeedsReviewKeepsTheDrawer() {
+    let snapshot = makeSnapshot(localWriteReadiness: .needsReview)
+    XCTAssertFalse(
+      SingleArticlePublishFastPathPolicy.qualifies(
+        snapshot, draftID: snapshot.context.draftID, profileID: snapshot.context.profileID
+      ))
+  }
+
+  private func makeSnapshot(
+    remotePreview: RemoteRepositoryPublishPreview? = nil,
+    localWriteReadiness: LocalPublishActionReadiness = .ready
+  ) -> DraftPublishPreviewSnapshot {
+    let draftID = UUID()
+    let profileID = UUID()
+    let package = PublishPackage(
+      draftID: draftID,
+      title: "Article",
+      markdownPath: "content/article.md",
+      files: [
+        PublishPackageFile(kind: .markdown, repositoryPath: "content/article.md", content: "Body"),
+        PublishPackageFile(kind: .image, repositoryPath: "static/article.png"),
+      ],
+      commitMessage: "Publish article",
+      reviewBranchName: "article-review",
+      reviewTitle: "Article review",
+      reviewChecklist: []
+    )
+    let preview =
+      remotePreview
+      ?? RemoteRepositoryPublishPreview(
+        provider: .github,
+        repositoryName: "owner/site",
+        mode: .directCommit,
+        branchName: "main",
+        targetBranch: "main",
+        changedPaths: ["content/article.md"],
+        remoteRiskState: .clean,
+        hasToken: true,
+        accessCheck: RemoteRepositoryAccessCheck(
+          provider: .github,
+          repositoryName: "owner/site",
+          defaultBranch: "main",
+          canRead: true,
+          canWrite: true,
+          message: "Ready"
+        ),
+        blockingIssues: [],
+        warningIssues: []
+      )
+    return DraftPublishPreviewSnapshot(
+      context: DraftExecutionContext(draftID: draftID, profileID: profileID, bodyRevision: 0),
+      publishPackage: package,
+      localPublishPreview: LocalPublishPreview(package: package, fileDiffs: [], issues: []),
+      localPublishReadiness: LocalPublishReadiness(
+        writeReadiness: localWriteReadiness,
+        commitReadiness: .ready,
+        changedFileCount: 1,
+        fileCount: 2,
+        writeBlockingIssues: [],
+        commitBlockingIssues: [],
+        warningIssues: []
+      ),
+      remotePublishPreview: preview,
+      remoteReviewDraft: RemoteReviewDraft(
+        provider: .github,
+        branchName: "article-review",
+        targetBranch: "main",
+        title: "Article review",
+        body: "Ready",
+        webURL: nil
+      )
+    )
   }
 }
