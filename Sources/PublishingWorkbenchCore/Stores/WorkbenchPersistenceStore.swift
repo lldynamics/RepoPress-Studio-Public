@@ -1,28 +1,24 @@
 import Combine
 import Foundation
+import os
 
-private final class WorkbenchPersistenceRevisionState: @unchecked Sendable {
-  private let lock = NSLock()
-  private var revision: UInt64 = 0
+private final class WorkbenchPersistenceRevisionState: Sendable {
+  private let state = OSAllocatedUnfairLock(initialState: UInt64.zero)
 
   @discardableResult
   func advance() -> UInt64 {
-    lock.lock()
-    defer { lock.unlock() }
-    revision &+= 1
-    return revision
+    state.withLock {
+      $0 &+= 1
+      return $0
+    }
   }
 
   func current() -> UInt64 {
-    lock.lock()
-    defer { lock.unlock() }
-    return revision
+    state.withLock { $0 }
   }
 
   func isCurrent(_ expectedRevision: UInt64) -> Bool {
-    lock.lock()
-    defer { lock.unlock() }
-    return revision == expectedRevision
+    state.withLock { $0 == expectedRevision }
   }
 }
 

@@ -327,7 +327,7 @@ extension PublishingStore {
     if profile.purpose.requiresRepositoryReadiness {
       if let repositoryReport = store.repositoryReport(for: profile) {
         if let missingGitIssue = repositoryReport.preflightIssues.first(where: {
-          $0.title == CoreL10n.text("未发现 .git")
+          $0.code == .missingGitDirectory
         }) {
           repositoryBlockingIssues.append(missingGitIssue)
         }

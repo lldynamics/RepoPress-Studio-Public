@@ -1,7 +1,5 @@
-import CryptoKit
 import PublishingBackupCore
 import Foundation
-import PublishingDomainContracts
 import PublishingKnowledgeCore
 
 extension WorkspaceBackupService {
@@ -31,6 +29,11 @@ extension WorkspaceBackupService {
     let includesWorkbench = selectedCategories.contains(.workbench)
     let includesKnowledge = selectedCategories.contains(.knowledgeLibrary)
     let includesOperationHistory = selectedCategories.contains(.operationHistory)
+    let retiredFeatureArchiveRecords = validated.manifest.files.filter {
+      $0.component == .workbenchState
+        && $0.relativePath.hasPrefix(Self.retiredFeatureArchivesRelativePrefix + "/")
+    }
+    let includesRetiredFeatureArchives = !retiredFeatureArchiveRecords.isEmpty
     try Task.checkCancellation()
     let parentURL = persistenceFileURL.deletingLastPathComponent()
     let transactionID = UUID()
@@ -202,9 +205,24 @@ extension WorkspaceBackupService {
       }
     }
 
+    let persistence = WorkbenchPersistence(fileURL: persistenceFileURL)
+    let stagedRetiredFeatureArchivesURL = stagingURL.appendingPathComponent(
+      "RetiredFeatureArchives",
+      isDirectory: true
+    )
+    if includesRetiredFeatureArchives {
+      try prepareMergedRetiredFeatureArchives(
+        records: retiredFeatureArchiveRecords,
+        backupURL: pendingURL,
+        existingDirectoryURL: persistence.retiredFeatureArchiveDirectoryURL,
+        stagingDirectoryURL: stagedRetiredFeatureArchivesURL
+      )
+    }
+
     let transaction = makeRestoreTransaction(
       transactionID: transactionID,
       selectedCategories: selectedCategories,
+      includesRetiredFeatureArchives: includesRetiredFeatureArchives,
       paths: runtimePaths
     )
     let recoveryRoot = restoreRecoveryRootURL(
@@ -276,6 +294,12 @@ extension WorkspaceBackupService {
         )
       }
       if includesWorkbench { try installDirectory(stagedAttachmentsURL, at: attachmentRootURL) }
+      if includesRetiredFeatureArchives {
+        try installDirectory(
+          stagedRetiredFeatureArchivesURL,
+          at: persistence.retiredFeatureArchiveDirectoryURL
+        )
+      }
       try restoreMutationHook(.newDataInstalled)
 
       try fileManager.removeItem(at: recoveryRoot.appendingPathComponent("restored-manifest.json"))
@@ -318,6 +342,7 @@ extension WorkspaceBackupService {
     case rssReader
     case managedAttachments
     case pendingKnowledgeRestore
+    case retiredFeatureArchives
   }
 
   struct RestoreTransactionItem: Codable, Hashable, Sendable {
@@ -326,13 +351,14 @@ extension WorkspaceBackupService {
   }
 
   struct RestoreTransaction: Codable, Hashable, Sendable {
-    static let currentFormatVersion = 4
+    static let currentFormatVersion = 5
 
     var formatVersion: Int
     var transactionID: UUID
     var includesRSS: Bool
     var items: [RestoreTransactionItem]
     var selectedCategories: Set<WorkspaceBackupCategory>?
+    var includesRetiredFeatureArchives: Bool?
   }
 
   struct RestoreItemPaths {
@@ -343,12 +369,16 @@ extension WorkspaceBackupService {
   func makeRestoreTransaction(
     transactionID: UUID,
     selectedCategories: Set<WorkspaceBackupCategory>,
+    includesRetiredFeatureArchives: Bool,
     paths: RestoreRuntimePaths
   ) -> RestoreTransaction {
     var kinds = [RestoreItemKind]()
     if selectedCategories.contains(.workbench) {
-      kinds.append(contentsOf: [.workbench, .documentRecords, .lastKnownGood,
-        .draftRecoveryJournal, .managedAttachments])
+      kinds.append(contentsOf: [
+        .workbench, .documentRecords, .lastKnownGood,
+        .draftRecoveryJournal, .managedAttachments,
+      ])
+      if includesRetiredFeatureArchives { kinds.append(.retiredFeatureArchives) }
     }
     if selectedCategories.contains(.operationHistory) {
       kinds.append(contentsOf: [.operationLedger, .operationLedgerLastKnownGood])
@@ -372,12 +402,17 @@ extension WorkspaceBackupService {
         existedBefore: fileManager.fileExists(atPath: itemPaths.currentURL.path)
       )
     }
+    let transactionFormatVersion =
+      includesRetiredFeatureArchives
+      ? RestoreTransaction.currentFormatVersion
+      : WorkspaceBackupManifest.categorySelectionFormatVersion
     return RestoreTransaction(
-      formatVersion: RestoreTransaction.currentFormatVersion,
+      formatVersion: transactionFormatVersion,
       transactionID: transactionID,
       includesRSS: selectedCategories.contains(.rssReader),
       items: items,
-      selectedCategories: selectedCategories
+      selectedCategories: selectedCategories,
+      includesRetiredFeatureArchives: includesRetiredFeatureArchives ? true : nil
     )
   }
 
@@ -501,8 +536,17 @@ extension WorkspaceBackupService {
         throw CocoaError(.fileReadCorruptFile)
       }
       if categories.contains(.workbench) {
-        expectedKinds.formUnion([.workbench, .documentRecords, .lastKnownGood,
-          .draftRecoveryJournal, .managedAttachments])
+        expectedKinds.formUnion([
+          .workbench, .documentRecords, .lastKnownGood,
+          .draftRecoveryJournal, .managedAttachments,
+        ])
+        if transaction.formatVersion >= 5 {
+          guard let includesRetiredFeatureArchives = transaction.includesRetiredFeatureArchives
+          else {
+            throw CocoaError(.fileReadCorruptFile)
+          }
+          if includesRetiredFeatureArchives { expectedKinds.insert(.retiredFeatureArchives) }
+        }
       }
       if categories.contains(.operationHistory) {
         expectedKinds.formUnion([.operationLedger, .operationLedgerLastKnownGood])
@@ -516,6 +560,7 @@ extension WorkspaceBackupService {
       }
     } else {
       expectedKinds = Set(RestoreItemKind.allCases)
+      expectedKinds.remove(.retiredFeatureArchives)
       if transaction.formatVersion < 3 { expectedKinds.remove(.documentRecords) }
       if transaction.formatVersion == 1 {
         expectedKinds.remove(.operationLedger)
@@ -595,37 +640,13 @@ extension WorkspaceBackupService {
           "superseded-knowledge-pending.pslibrarybackup"
         )
       )
-    }
-  }
-
-  func restoreTransactionURL(for persistenceFileURL: URL) -> URL {
-    persistenceFileURL.deletingLastPathComponent().appendingPathComponent(
-      Self.restoreTransactionFileName,
-      isDirectory: false
-    )
-  }
-
-  func restoreStagingURL(transactionID: UUID, parentURL: URL) -> URL {
-    parentURL.appendingPathComponent(
-      ".WorkspaceBackupApplying-\(transactionID.uuidString.lowercased())",
-      isDirectory: true
-    )
-  }
-
-  func restoreRecoveryRootURL(transactionID: UUID, parentURL: URL) -> URL {
-    parentURL
-      .appendingPathComponent("WorkspaceBackupRecovery", isDirectory: true)
-      .appendingPathComponent(
-        "BeforeRestore-\(transactionID.uuidString.lowercased())",
-        isDirectory: true
+    case .retiredFeatureArchives:
+      return RestoreItemPaths(
+        currentURL: persistence.retiredFeatureArchiveDirectoryURL,
+        recoveryURL: recoveryRoot.appendingPathComponent(
+          "RetiredFeatureArchives", isDirectory: true)
       )
-  }
-
-  func restorePendingRecoveryURL(recoveryRoot: URL) -> URL {
-    recoveryRoot.appendingPathComponent(
-      "source.psworkspacebackup",
-      isDirectory: true
-    )
+    }
   }
 
   func moveRequiredItem(from currentURL: URL, to recoveryURL: URL) throws {
@@ -640,163 +661,4 @@ extension WorkspaceBackupService {
     try fileManager.moveItem(at: currentURL, to: recoveryURL)
   }
 
-  struct PreparedAttachmentReference {
-    var reference: WorkspaceBackupAttachmentReference
-    var sourceURL: URL
-  }
-
-  struct PreparedAttachmentSnapshot {
-    var snapshot: WorkbenchSnapshot
-    var references: [PreparedAttachmentReference]
-    var unresolvedAttachmentCount: Int
-  }
-
-  struct ValidatedBackup {
-    var manifest: WorkspaceBackupManifest
-    var snapshot: WorkbenchSnapshot?
-    var preview: WorkspaceBackupPreview
-  }
-
-  func prepareAttachmentSnapshot(
-    _ originalSnapshot: WorkbenchSnapshot
-  ) throws -> PreparedAttachmentSnapshot {
-    var sourceURLsByPath: [String: URL] = [:]
-    var unresolvedAttachmentCount = 0
-    for attachment in allAttachments(in: originalSnapshot) {
-      guard let sourcePath = attachment.sourceFilePath?.trimmingCharacters(in: .whitespacesAndNewlines),
-            !sourcePath.isEmpty else {
-        unresolvedAttachmentCount += 1
-        continue
-      }
-      guard !sourcePath.hasPrefix(Self.attachmentMarkerPrefix) else {
-        throw WorkspaceBackupError.invalidAttachmentReference(sourcePath)
-      }
-      let sourceURL = URL(fileURLWithPath: sourcePath).standardizedFileURL
-      let values = try sourceURL.resourceValues(
-        forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
-      )
-      guard values.isRegularFile == true, values.isSymbolicLink != true else {
-        throw WorkspaceBackupError.attachmentSourceUnavailable(sourcePath)
-      }
-      sourceURLsByPath[sourceURL.path] = sourceURL
-    }
-
-    var references: [PreparedAttachmentReference] = []
-    var referenceByPath: [String: WorkspaceBackupAttachmentReference] = [:]
-    for sourceURL in sourceURLsByPath.values.sorted(by: { $0.path < $1.path }) {
-      let digest = SHA256.hash(data: Data(sourceURL.path.utf8))
-        .map { String(format: "%02x", $0) }
-        .joined()
-      let identifier = String(digest.prefix(32))
-      let filename = safeFilename(sourceURL.lastPathComponent, fallback: "attachment")
-      let reference = WorkspaceBackupAttachmentReference(
-        marker: Self.attachmentMarkerPrefix + identifier,
-        archiveRelativePath: "\(Self.attachmentsDirectoryName)/\(identifier)-\(filename)",
-        restoredRelativePath: "WorkspaceBackup/\(identifier)-\(filename)"
-      )
-      references.append(
-        PreparedAttachmentReference(reference: reference, sourceURL: sourceURL)
-      )
-      referenceByPath[sourceURL.path] = reference
-    }
-
-    var sanitizedSnapshot = originalSnapshot
-    sanitizedSnapshot.drafts = try sanitizedSnapshot.drafts.map {
-      try sanitizedDraft($0, referenceByPath: referenceByPath)
-    }
-    sanitizedSnapshot.recycledDrafts = try sanitizedSnapshot.recycledDrafts.map { recycled in
-      var copy = recycled
-      copy.draft = try sanitizedDraft(copy.draft, referenceByPath: referenceByPath)
-      return copy
-    }
-    sanitizedSnapshot.draftVersions = try sanitizedSnapshot.draftVersions.map { version in
-      var copy = version
-      copy.draft = try sanitizedDraft(copy.draft, referenceByPath: referenceByPath)
-      return copy
-    }
-    return PreparedAttachmentSnapshot(
-      snapshot: sanitizedSnapshot,
-      references: references,
-      unresolvedAttachmentCount: unresolvedAttachmentCount
-    )
-  }
-
-  func sanitizedDraft(
-    _ draft: ArticleDraft,
-    referenceByPath: [String: WorkspaceBackupAttachmentReference]
-  ) throws -> ArticleDraft {
-    var copy = draft
-    for index in copy.attachments.indices {
-      guard let sourcePath = copy.attachments[index].sourceFilePath?
-        .trimmingCharacters(in: .whitespacesAndNewlines),
-        !sourcePath.isEmpty else {
-        continue
-      }
-      let key = URL(fileURLWithPath: sourcePath).standardizedFileURL.path
-      guard let reference = referenceByPath[key] else {
-        throw WorkspaceBackupError.invalidAttachmentReference(sourcePath)
-      }
-      copy.attachments[index].sourceFilePath = reference.marker
-    }
-    return copy
-  }
-
-  func restoredSnapshot(
-    _ originalSnapshot: WorkbenchSnapshot,
-    references: [WorkspaceBackupAttachmentReference],
-    attachmentRootURL: URL
-  ) throws -> WorkbenchSnapshot {
-    let referencesByMarker = Dictionary(uniqueKeysWithValues: references.map { ($0.marker, $0) })
-    var snapshot = originalSnapshot
-    snapshot.drafts = try snapshot.drafts.map {
-      try restoredDraft($0, referencesByMarker: referencesByMarker, attachmentRootURL: attachmentRootURL)
-    }
-    snapshot.recycledDrafts = try snapshot.recycledDrafts.map { recycled in
-      var copy = recycled
-      copy.draft = try restoredDraft(
-        copy.draft,
-        referencesByMarker: referencesByMarker,
-        attachmentRootURL: attachmentRootURL
-      )
-      return copy
-    }
-    snapshot.draftVersions = try snapshot.draftVersions.map { version in
-      var copy = version
-      copy.draft = try restoredDraft(
-        copy.draft,
-        referencesByMarker: referencesByMarker,
-        attachmentRootURL: attachmentRootURL
-      )
-      return copy
-    }
-    return snapshot
-  }
-
-  func restoredDraft(
-    _ draft: ArticleDraft,
-    referencesByMarker: [String: WorkspaceBackupAttachmentReference],
-    attachmentRootURL: URL
-  ) throws -> ArticleDraft {
-    var copy = draft
-    for index in copy.attachments.indices {
-      guard let sourcePath = copy.attachments[index].sourceFilePath,
-            !sourcePath.isEmpty else {
-        continue
-      }
-      guard let reference = referencesByMarker[sourcePath] else {
-        throw WorkspaceBackupError.invalidAttachmentReference(sourcePath)
-      }
-      copy.attachments[index].sourceFilePath = attachmentRootURL
-        .appendingPathComponent(reference.restoredRelativePath)
-        .standardizedFileURL
-        .path
-    }
-    return copy
-  }
-
-  func allAttachments(in snapshot: WorkbenchSnapshot) -> [DraftAttachment] {
-    snapshot.drafts.flatMap(\.attachments)
-      + snapshot.recycledDrafts.flatMap { $0.draft.attachments }
-      + snapshot.draftVersions.flatMap { $0.draft.attachments }
-  }
 }

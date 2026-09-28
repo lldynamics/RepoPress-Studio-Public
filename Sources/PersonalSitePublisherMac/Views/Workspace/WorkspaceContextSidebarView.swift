@@ -59,8 +59,9 @@ struct WorkspacePrimarySidebar: View {
   let writingListState: WritingListWindowPresentationState
   @Binding var contentHealthFilter: ContentHealthContextFilter
   @Binding var imageWorkbenchContextStage: ImageWorkbenchContextStage
+  let imageBrowserSession: RepositoryImageBrowserSession
   @Binding var repositoryContextStage: RepositoryContextStage
-  let contentHealthSidebarProjection: ContentHealthSidebarProjection
+  @ObservedObject var contentHealthSidebarProjection: ContentHealthSidebarProjection
   let rssStore: RSSReaderStore
   let rssPresentation: RSSReaderPresentationState
   let onSelectSection: (WorkspaceSection) -> Void
@@ -74,6 +75,7 @@ struct WorkspacePrimarySidebar: View {
     writingListState: WritingListWindowPresentationState,
     contentHealthFilter: Binding<ContentHealthContextFilter>,
     imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>,
+    imageBrowserSession: RepositoryImageBrowserSession,
     repositoryContextStage: Binding<RepositoryContextStage>,
     contentHealthSidebarProjection: ContentHealthSidebarProjection,
     rssStore: RSSReaderStore,
@@ -88,6 +90,7 @@ struct WorkspacePrimarySidebar: View {
     self.writingListState = writingListState
     _contentHealthFilter = contentHealthFilter
     _imageWorkbenchContextStage = imageWorkbenchContextStage
+    self.imageBrowserSession = imageBrowserSession
     _repositoryContextStage = repositoryContextStage
     self.contentHealthSidebarProjection = contentHealthSidebarProjection
     self.rssStore = rssStore
@@ -116,6 +119,11 @@ struct WorkspacePrimarySidebar: View {
         WorkspaceQuickSearchView(
           store: store,
           scope: quickSearchScope,
+          selectedSection: selectedSection,
+          onSelectSection: { section in
+            if section == .contentHealth { contentHealthFilter = .overview }
+            onSelectSection(section)
+          },
           contentHealthSidebarProjection: contentHealthSidebarProjection,
           contentHealthFilter: selectedSection == .contentHealth
             ? $contentHealthFilter
@@ -123,11 +131,13 @@ struct WorkspacePrimarySidebar: View {
           imageWorkbenchContextStage: selectedSection == .images
             ? $imageWorkbenchContextStage
             : nil,
-          repositoryContextStage: selectedSection == .sync
+          imageBrowserSession: imageBrowserSession,
+          repositoryContextStage: WorkspaceNavigationRouteDescriptor.primarySection(
+            for: selectedSection) == .sync
             ? $repositoryContextStage
             : nil
         )
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -156,9 +166,8 @@ struct WorkspacePrimarySidebar: View {
 
   private var taskNavigation: some View {
     WorkspaceTaskNavigation(
-      store: store,
       selectedSection: selectedSection,
-      contentHealthFilter: $contentHealthFilter,
+      siteIssueCount: contentHealthSidebarProjection.knownIssueCount(for: store.activeProfile.id),
       onSelectSection: onSelectSection
     )
   }

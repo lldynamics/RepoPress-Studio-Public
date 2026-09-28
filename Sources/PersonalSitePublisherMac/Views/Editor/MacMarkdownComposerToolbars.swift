@@ -130,8 +130,7 @@ struct MacMarkdownEditorToolbar: View {
         aiActionsMenuButton(showsTitle: false)
         inlineAICompletionButton(showsTitle: false)
         Divider().frame(height: 18)
-        exportMenuButton(showsTitle: false)
-        shortcutHelpButton(showsTitle: false)
+        moreActionsMenuButton(showsTitle: false)
       }
     }
     .fixedSize(horizontal: true, vertical: false)
@@ -149,8 +148,7 @@ struct MacMarkdownEditorToolbar: View {
       aiActionsMenuButton(showsTitle: true)
       inlineAICompletionButton(showsTitle: true)
       Divider()
-      exportMenuButton(showsTitle: true)
-      shortcutHelpButton(showsTitle: true)
+      moreActionsMenuButton(showsTitle: true)
     } label: {
       Label("写作工具", systemImage: "wrench.and.screwdriver")
     }
@@ -242,7 +240,7 @@ struct MacMarkdownEditorToolbar: View {
     Button {
       actions.onRequestInlineAICompletion()
     } label: {
-      editorActionLabel("续写", systemName: "sparkles", showsTitle: showsTitle)
+      editorActionLabel("续写", systemName: "text.append", showsTitle: showsTitle)
     }
     .buttonStyle(
       MarkdownEditorToolbarButtonStyle(
@@ -255,6 +253,19 @@ struct MacMarkdownEditorToolbar: View {
     .accessibilityLabel(String(localized: "AI 操作：续写"))
     .accessibilityValue(String(localized: "按需触发"))
     .accessibilityIdentifier("markdown-inline-ai-completion")
+  }
+
+  private func moreActionsMenuButton(showsTitle: Bool) -> some View {
+    Menu {
+      exportMenuButton(showsTitle: true)
+      shortcutHelpButton(showsTitle: true)
+    } label: {
+      editorActionLabel("更多…", systemName: "ellipsis.circle", showsTitle: showsTitle)
+    }
+    .menuIndicator(.hidden)
+    .help(String(localized: "更多操作：导出、打印、分享与快捷键说明"))
+    .accessibilityLabel(String(localized: "更多操作"))
+    .accessibilityIdentifier("markdown-editor-more-actions-menu")
   }
 
   @ViewBuilder
@@ -693,38 +704,5 @@ struct MacMarkdownEditorSaveStatusIcon: View {
       isDetailPresented = false
       saveStatus.trackDraft(updatedDraftID)
     }
-  }
-}
-
-struct MarkdownEditorToolbarButtonStyle: ButtonStyle {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
-  let showsTitle: Bool
-  var isSelected = false
-
-  @Environment(\.isFocused) private var isFocused
-
-  func makeBody(configuration: Configuration) -> some View {
-    configuration.label
-      .font(.workbenchButtonLabel)
-      .padding(.horizontal, showsTitle ? 8 : 6)
-      .frame(minWidth: showsTitle ? nil : 30, minHeight: 30)
-      .fixedSize(horizontal: showsTitle, vertical: false)
-      .background(
-        isSelected
-          ? workbenchAccentColor.opacity(configuration.isPressed ? 0.18 : 0.10)
-          : Color.primary.opacity(configuration.isPressed ? 0.10 : 0.04),
-        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-      )
-      .overlay {
-        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-          .stroke(
-            isFocused
-              ? workbenchAccentColor
-              : (isSelected
-                ? workbenchAccentColor.opacity(0.70)
-                : Color.clear),
-            lineWidth: isFocused ? 2 : (isSelected ? 1 : 0)
-          )
-      }
   }
 }

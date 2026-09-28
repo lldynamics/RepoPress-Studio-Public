@@ -152,6 +152,16 @@ extension MacMarkdownComposerView {
   }
 
   func performMarkdownDocumentExport(_ format: MarkdownDocumentExportFormat) {
+    guard editorSessionState.commandTarget.flushPendingWrites(for: draft.id) else {
+      selectionActionMessage = String(localized: "请先完成当前输入，再导出文章。")
+      EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
+      return
+    }
+    guard frontMatterIssue == nil else {
+      selectionActionMessage = String(localized: "文章信息格式有误，请修正后再导出。原文仍保留在编辑器中。")
+      EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
+      return
+    }
     let title = draft.title
     let markdown = editorBody
     Task { @MainActor in

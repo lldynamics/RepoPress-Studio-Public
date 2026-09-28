@@ -21,17 +21,12 @@ struct PersonalSitePublisherMacApp: App {
   private var isMenuBarQuickCaptureVisible = true
 
   init() {
-    // Git can close stdin before a background writer finishes. EPIPE must be
-    // reported as a write error instead of terminating the entire app.
+    // A background Git writer must report EPIPE rather than terminate the app.
     _ = Darwin.signal(SIGPIPE, SIG_IGN)
     LegacyAppLanguageCleanup.prepareForLaunch()
-    // Earlier builds disabled AppKit restoration globally. Remove those sticky
-    // overrides now that the main workspace is owned by a native SwiftUI scene.
+    // Remove sticky restoration overrides left by older AppKit builds.
     #if DEBUG || SCREENSHOT_CAPTURE_BUILD
-      // Deterministic screenshot and XCUI launches pass temporary restoration
-      // overrides on the command line. Keep those volatile values for the
-      // automated run so AppKit cannot reopen a stale workspace window while the
-      // requested demo surface is being installed.
+      // Preserve screenshot/XCUI overrides so AppKit cannot restore stale windows.
       if ProcessInfo.processInfo.environment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO"] != "1" {
         UserDefaults.standard.removeObject(forKey: "ApplePersistenceIgnoreState")
         UserDefaults.standard.removeObject(forKey: "NSQuitAlwaysKeepsWindows")
@@ -101,7 +96,9 @@ struct PersonalSitePublisherMacApp: App {
       coordinator: launchCoordinator,
       onReady: { store in
         appDelegate.workbenchStore = store
-        ExternalKnowledgeImportCoordinator.shared.install(store: store)
+        if SharedInboxAccessPolicy.isEnabled {
+          ExternalKnowledgeImportCoordinator.shared.install(store: store)
+        }
       }
     )
     .environmentObject(launchCoordinator)
@@ -131,7 +128,7 @@ struct PersonalSitePublisherMacApp: App {
       width: WorkbenchLayoutMode.defaultWindowWidth,
       height: WorkbenchLayoutMode.defaultWindowHeight
     )
-    .windowToolbarStyle(.unifiedCompact(showsTitle: true))
+    .windowToolbarStyle(.unifiedCompact(showsTitle: false))
     .commands {
       AppUpdateCommands(controller: appUpdateController)
       if let store = launchCoordinator.store {
@@ -196,7 +193,9 @@ struct PersonalSitePublisherMacApp: App {
           let rssStore = launchCoordinator.rssStore
         else { return }
         appDelegate.workbenchStore = store
-        ExternalKnowledgeImportCoordinator.shared.install(store: store)
+        if SharedInboxAccessPolicy.isEnabled {
+          ExternalKnowledgeImportCoordinator.shared.install(store: store)
+        }
         guard launchCoordinator.beginReadyServicesIfNeeded() else { return }
         if !launchCoordinator.isSafeMode {
           store.workspaceBackupScheduler.start()
@@ -311,13 +310,14 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
   func applicationDidBecomeActive(_ notification: Notification) {
     requestPersistentWindowCommandReconciliation()
     scheduleMainWindowRecoveryIfNeeded()
-    ExternalKnowledgeImportCoordinator.shared.scheduleInboxDrain()
+    if SharedInboxAccessPolicy.isEnabled {
+      ExternalKnowledgeImportCoordinator.shared.scheduleInboxDrain()
+    }
   }
 
   func applicationDidUpdate(_ notification: Notification) {
-    // SwiftUI may replace scene-owned menu trees while opening or closing a
-    // WindowGroup. Reconcile only through the coalesced default-mode scheduler
-    // so updates never mutate AppKit menus during an active tracking session.
+    // Reconcile SwiftUI's replaced menu trees through the coalesced default-mode
+    // scheduler, so AppKit menus are never mutated during active menu tracking.
     requestPersistentWindowCommandReconciliation()
   }
 

@@ -1,17 +1,24 @@
-import Combine
 import Foundation
+import Observation
 
 /// One retained queue per site, with one network request in flight per workspace.
 @MainActor
-public final class AIBatchMaintenanceStore: ObservableObject {
-  @Published public private(set) var queues: [UUID: AIBatchMaintenanceQueue] = [:]
-  @Published public private(set) var message: String?
-  @Published public private(set) var runningSiteID: UUID?
+@Observable
+public final class AIBatchMaintenanceStore {
+  public private(set) var queues: [UUID: AIBatchMaintenanceQueue] = [:]
+  public private(set) var message: String?
+  public private(set) var runningSiteID: UUID?
+  @ObservationIgnored
   private weak var store: WorkbenchStore?
+  @ObservationIgnored
   private let fileURL: URL
+  @ObservationIgnored
   private let service = AIBatchMaintenanceService()
+  @ObservationIgnored
   private var task: Task<Void, Never>?
+  @ObservationIgnored
   private var loadFailed = false
+  @ObservationIgnored
   private let generate:
     (@MainActor (AIBatchMaintenanceOperation, ArticleDraft, SiteProfile) async throws -> String)?
 

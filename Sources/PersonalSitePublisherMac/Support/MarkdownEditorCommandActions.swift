@@ -20,6 +20,8 @@ struct MarkdownEditorCommandActions {
   var copyAIPrompt: () -> Void
   var openExternalBrowserPreview: () -> Void = {}
   var printDocument: () -> Void = {}
+  var saveDocument: (() -> Void)? = nil
+  var exportDocument: ((MarkdownDocumentExportFormat) -> Void)? = nil
 }
 
 private struct MarkdownEditorCommandActionsKey: FocusedValueKey {

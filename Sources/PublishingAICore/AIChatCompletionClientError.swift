@@ -13,6 +13,7 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
   case preparedRequestConfigurationMismatch
   case preparedRequestCapabilityExpired
   case preparedRequestAuthorizationExpired
+  case requestAuthorizationChanged
   case httpStatus(Int, String, retryAfterSeconds: TimeInterval?)
   case firstByteTimedOut(TimeInterval)
   case resourceTimedOut(TimeInterval)
@@ -50,6 +51,8 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
       return CoreL10n.text("AI 能力探测证据已过期，需要重新探测；本次未发送。")
     case .preparedRequestAuthorizationExpired:
       return CoreL10n.text("AI 请求授权已过期，请重试；本次未发送。")
+    case .requestAuthorizationChanged:
+      return CoreL10n.text("AI 请求授权状态已变化，本次未发送。")
     case .httpStatus(let status, let body, let retryAfterSeconds):
       let retryHint =
         retryAfterSeconds.map {
@@ -140,7 +143,7 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
       .partialTextRecoveryContextTooLarge,
       .streamingUnsupported, .preparedRequestModeMismatch, .preparedRequestAlreadyConsumed,
       .preparedRequestConfigurationMismatch, .preparedRequestCapabilityExpired,
-      .preparedRequestAuthorizationExpired,
+      .preparedRequestAuthorizationExpired, .requestAuthorizationChanged,
       .streamInterruptedAfterPartialContent,
       .unsupportedToolHistory, .imageContentRequiresVisionCapability,
       .unsupportedAnthropicStructuredOutput, .emptyContent:

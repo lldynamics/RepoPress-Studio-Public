@@ -354,4 +354,37 @@ final class AIChatInspectorHeaderPresentationTests: XCTestCase {
       ).isReady
     )
   }
+
+  func testConnectionBlockerSuppressesAgentNoiseUntilConnectionIsReady() {
+    XCTAssertFalse(
+      AIChatConnectionBlockerPresentation.shouldShowAgentToolBanner(
+        readiness: .missingAPIKey
+      )
+    )
+    XCTAssertFalse(
+      AIChatConnectionBlockerPresentation.shouldShowAgentToolBanner(
+        readiness: .missingEndpoint
+      )
+    )
+    XCTAssertTrue(
+      AIChatConnectionBlockerPresentation.shouldShowAgentToolBanner(
+        readiness: .ready
+      )
+    )
+  }
+
+  func testConnectionBlockerDoesNotRepeatIdenticalTitleAndDetail() {
+    XCTAssertFalse(
+      AIChatConnectionBlockerPresentation.shouldShowDetail(
+        title: "未配置 API Key",
+        detail: "未配置 API Key"
+      )
+    )
+    XCTAssertTrue(
+      AIChatConnectionBlockerPresentation.shouldShowDetail(
+        title: "未配置 Endpoint",
+        detail: "未配置 Endpoint / Base URL"
+      )
+    )
+  }
 }

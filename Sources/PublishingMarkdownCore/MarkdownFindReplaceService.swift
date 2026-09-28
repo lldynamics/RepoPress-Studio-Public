@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 public struct MarkdownFindOptions: Equatable, Sendable {
   public var caseSensitive: Bool
@@ -27,7 +28,7 @@ public enum MarkdownFindReplaceError: LocalizedError, Equatable, Sendable {
   public var errorDescription: String? {
     switch self {
     case .invalidRegularExpression:
-      return "正则表达式无效。"
+      return CoreL10n.text("正则表达式无效。")
     }
   }
 }

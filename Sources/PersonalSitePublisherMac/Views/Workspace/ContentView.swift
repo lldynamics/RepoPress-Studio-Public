@@ -80,7 +80,8 @@ struct ContentView: View {
   @State private var aiChatInspectorOperationSession = AIChatSurfaceOperationSession()
   @State private var rssPresentation = RSSReaderPresentationState()
   @State private var contentHealthFilter: ContentHealthContextFilter = .overview
-  @State private var imageWorkbenchContextStage: ImageWorkbenchContextStage = .overview
+  @State private var imageWorkbenchContextStage: ImageWorkbenchContextStage = .resources
+  @State private var imageBrowserSession = RepositoryImageBrowserSession()
   @State private var repositoryContextStage: RepositoryContextStage = .overview
   @State private var repositoryChangedFileSelection: RepositoryChangedFileSelection?
   @State private var knowledgeInspectorPresentation = KnowledgeLibraryInspectorPresentationState()
@@ -249,9 +250,7 @@ struct ContentView: View {
       }
       .environment(
         \.publishDrawerCommandAction,
-        PublishDrawerCommandAction { message in
-          openPublishDrawer(message: message)
-        }
+        publishDrawerCommandAction
       )
       .environment(
         \.localSitePreviewCommandAction,
@@ -474,6 +473,7 @@ struct ContentView: View {
       isInspectorPresented: isInspectorVisible,
       contentHealthFilter: $contentHealthFilter,
       imageWorkbenchContextStage: $imageWorkbenchContextStage,
+      imageBrowserSession: imageBrowserSession,
       repositoryContextStage: $repositoryContextStage,
       repositoryChangedFileSelection: $repositoryChangedFileSelection,
       knowledgeInspectorPresentation: $knowledgeInspectorPresentation,
@@ -492,6 +492,8 @@ struct ContentView: View {
         store: store,
         selectedSection: windowSession.selectedSection,
         selectedDraftID: windowSession.selectedDraftID,
+        imageBrowserSession: imageBrowserSession,
+        onOpenImageDraft: { focusWindowDraft($0, section: .writing) },
         rssStore: rssStore,
         repositoryChangedFileSelection: $repositoryChangedFileSelection,
         aiChatSurfaceState: $aiChatInspectorSurfaceState,
@@ -586,16 +588,15 @@ struct ContentView: View {
       canToggleFocusMode: windowSession.selectedSection == .writing,
       isSidebarPresented: isWorkspaceSidebarVisible,
       isInspectorPresented: inspectorPresentation.wrappedValue,
-      canToggleInspector: supportsInspector && canRequestInspectorInCurrentLayout
+      canToggleInspector: supportsInspector && canRequestInspectorInCurrentLayout,
+      publishableArticleID: publishableArticleID
     )
   }
 
   private func updateSceneCommandRouterRootActions() {
     let commandRouter = sceneCommandRouter
     sceneCommandRouter.updateRoot(
-      publishDrawerCommandAction: PublishDrawerCommandAction { message in
-        openPublishDrawer(message: message)
-      },
+      publishDrawerCommandAction: publishDrawerCommandAction,
       localSitePreviewCommandAction: LocalSitePreviewCommandAction {
         openLocalSitePreview()
       },
@@ -1433,6 +1434,29 @@ struct ContentView: View {
     } else {
       prepareCurrentArticlePublishOrOpenDrawer()
     }
+  }
+
+  private var publishableArticleID: UUID? {
+    guard windowSession.selectedSection == .writing,
+      !isPreparingCurrentArticlePublish, !isPublishingCurrentArticle,
+      let draftID = windowSession.selectedDraftID,
+      store.draft(for: draftID) != nil
+    else { return nil }
+    return draftID
+  }
+
+  private var publishDrawerCommandAction: PublishDrawerCommandAction {
+    let draftID = publishableArticleID
+    return PublishDrawerCommandAction(
+      currentArticleID: draftID,
+      prepareCurrentArticle: {
+        guard let draftID, publishableArticleID == draftID else { return }
+        prepareCurrentArticlePublishOrOpenDrawer()
+      },
+      open: { message in
+        openPublishDrawer(message: message, preferredScope: .repository)
+      }
+    )
   }
 
   private func prepareCurrentArticlePublishOrOpenDrawer() {

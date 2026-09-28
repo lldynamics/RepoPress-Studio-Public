@@ -33,6 +33,7 @@ public enum RepositoryImageInventoryError: LocalizedError, Equatable {
 
 public struct RepositoryImageInventoryService: Sendable {
   public static let maximumAssetCount = 5_000
+  public static let maximumDirectoryCount = 5_000
 
   public init() {}
 
@@ -56,9 +57,11 @@ public struct RepositoryImageInventoryService: Sendable {
     drafts: [ArticleDraft],
     profile: SiteProfile
   ) throws -> RepositoryImageInventory {
-    guard let inventory = try profile.withLocalRepositoryRootAccess({ rootURL in
-      try inventory(drafts: drafts, profile: profile, rootURL: rootURL)
-    }) else {
+    guard
+      let inventory = try profile.withLocalRepositoryRootAccess({ rootURL in
+        try inventory(drafts: drafts, profile: profile, rootURL: rootURL)
+      })
+    else {
       throw RepositoryImageInventoryError.repositoryUnavailable
     }
     return inventory
@@ -68,13 +71,15 @@ public struct RepositoryImageInventoryService: Sendable {
     profile: SiteProfile,
     repositoryPath: String
   ) throws -> RepositoryImageAssetLocation {
-    guard let location = try profile.withLocalRepositoryRootAccess({ rootURL in
-      try validatedAssetLocation(
-        rootURL: rootURL,
-        assetRoot: profile.assetRoot,
-        repositoryPath: repositoryPath
-      )
-    }) else {
+    guard
+      let location = try profile.withLocalRepositoryRootAccess({ rootURL in
+        try validatedAssetLocation(
+          rootURL: rootURL,
+          assetRoot: profile.assetRoot,
+          repositoryPath: repositoryPath
+        )
+      })
+    else {
       throw RepositoryImageInventoryError.repositoryUnavailable
     }
     return location
@@ -88,18 +93,21 @@ public struct RepositoryImageInventoryService: Sendable {
     try Task.checkCancellation()
     let canonicalRoot = rootURL.standardizedFileURL.resolvingSymlinksInPath()
     let normalizedAssetRoot = try normalizedAssetRoot(profile.assetRoot)
-    let requestedAssetURL = canonicalRoot
+    let requestedAssetURL =
+      canonicalRoot
       .appendingPathComponent(normalizedAssetRoot, isDirectory: true)
       .standardizedFileURL
     let canonicalAssetURL = requestedAssetURL.standardizedFileURL.resolvingSymlinksInPath()
     guard canonicalAssetURL.path == requestedAssetURL.path,
-          isDescendantOrSame(canonicalAssetURL, root: canonicalRoot) else {
+      isDescendantOrSame(canonicalAssetURL, root: canonicalRoot)
+    else {
       throw RepositoryImageInventoryError.unsafeAssetRoot
     }
 
     var isDirectory: ObjCBool = false
     guard FileManager.default.fileExists(atPath: canonicalAssetURL.path, isDirectory: &isDirectory),
-          isDirectory.boolValue else {
+      isDirectory.boolValue
+    else {
       throw RepositoryImageInventoryError.assetDirectoryUnavailable(normalizedAssetRoot)
     }
 
@@ -111,15 +119,18 @@ public struct RepositoryImageInventoryService: Sendable {
       .fileSizeKey,
       .contentModificationDateKey,
     ]
-    guard let enumerator = FileManager.default.enumerator(
-      at: canonicalAssetURL,
-      includingPropertiesForKeys: Array(keys),
-      options: [.skipsHiddenFiles, .skipsPackageDescendants]
-    ) else {
+    guard
+      let enumerator = FileManager.default.enumerator(
+        at: canonicalAssetURL,
+        includingPropertiesForKeys: Array(keys),
+        options: [.skipsHiddenFiles, .skipsPackageDescendants]
+      )
+    else {
       throw RepositoryImageInventoryError.assetDirectoryUnavailable(normalizedAssetRoot)
     }
 
     var assets: [RepositoryImageAsset] = []
+    var directoryPaths = [normalizedAssetRoot]
     var wasTruncated = false
     for case let fileURL as URL in enumerator {
       try Task.checkCancellation()
@@ -130,15 +141,33 @@ public struct RepositoryImageInventoryService: Sendable {
         }
         continue
       }
+      if values?.isDirectory == true {
+        let canonicalDirectory = fileURL.standardizedFileURL.resolvingSymlinksInPath()
+        guard canonicalDirectory.path == fileURL.standardizedFileURL.path,
+          isDescendantOrSame(canonicalDirectory, root: canonicalAssetURL),
+          let path = relativePath(of: canonicalDirectory, root: canonicalRoot)
+        else {
+          enumerator.skipDescendants()
+          continue
+        }
+        guard directoryPaths.count < Self.maximumDirectoryCount else {
+          wasTruncated = true
+          break
+        }
+        directoryPaths.append(path.normalizedRelativePath())
+        continue
+      }
       guard values?.isRegularFile == true,
-            ImageFileSupport.isSupportedImageURL(fileURL) else {
+        ImageFileSupport.isSupportedImageURL(fileURL)
+      else {
         continue
       }
 
       let canonicalFileURL = fileURL.standardizedFileURL.resolvingSymlinksInPath()
       guard isDescendantOrSame(canonicalFileURL, root: canonicalAssetURL),
-            isDescendantOrSame(canonicalFileURL, root: canonicalRoot),
-            let repositoryPath = relativePath(of: canonicalFileURL, root: canonicalRoot) else {
+        isDescendantOrSame(canonicalFileURL, root: canonicalRoot),
+        let repositoryPath = relativePath(of: canonicalFileURL, root: canonicalRoot)
+      else {
         continue
       }
 
@@ -168,6 +197,9 @@ public struct RepositoryImageInventoryService: Sendable {
       repositoryRootPath: canonicalRoot.path,
       assetRootPath: normalizedAssetRoot,
       assets: assets,
+      directoryPaths: directoryPaths.sorted {
+        $0.localizedStandardCompare($1) == .orderedAscending
+      },
       wasTruncated: wasTruncated
     )
   }
@@ -180,29 +212,35 @@ public struct RepositoryImageInventoryService: Sendable {
     let canonicalRoot = rootURL.standardizedFileURL.resolvingSymlinksInPath()
     let normalizedAssetRoot = try normalizedAssetRoot(assetRoot)
     let normalizedPath = try normalizedRepositoryPath(repositoryPath)
-    guard normalizedPath == normalizedAssetRoot
-      || normalizedPath.hasPrefix(normalizedAssetRoot + "/") else {
+    guard
+      normalizedPath == normalizedAssetRoot
+        || normalizedPath.hasPrefix(normalizedAssetRoot + "/")
+    else {
       throw RepositoryImageInventoryError.pathOutsideAssetRoot
     }
     guard ImageFileSupport.isSupportedImagePath(normalizedPath) else {
       throw RepositoryImageInventoryError.unsupportedImageFormat
     }
 
-    let canonicalAssetURL = canonicalRoot
+    let canonicalAssetURL =
+      canonicalRoot
       .appendingPathComponent(normalizedAssetRoot, isDirectory: true)
       .standardizedFileURL
       .resolvingSymlinksInPath()
-    let requestedAssetURL = canonicalRoot
+    let requestedAssetURL =
+      canonicalRoot
       .appendingPathComponent(normalizedAssetRoot, isDirectory: true)
       .standardizedFileURL
-    let candidateURL = canonicalRoot
+    let candidateURL =
+      canonicalRoot
       .appendingPathComponent(normalizedPath)
       .standardizedFileURL
       .resolvingSymlinksInPath()
     guard canonicalAssetURL.path == requestedAssetURL.path,
-          isDescendantOrSame(canonicalAssetURL, root: canonicalRoot),
-          isDescendantOrSame(candidateURL, root: canonicalAssetURL),
-          isDescendantOrSame(candidateURL, root: canonicalRoot) else {
+      isDescendantOrSame(canonicalAssetURL, root: canonicalRoot),
+      isDescendantOrSame(candidateURL, root: canonicalAssetURL),
+      isDescendantOrSame(candidateURL, root: canonicalRoot)
+    else {
       throw RepositoryImageInventoryError.pathOutsideAssetRoot
     }
 
@@ -264,8 +302,9 @@ public struct RepositoryImageInventoryService: Sendable {
     let trimmed = path.trimmedForPublishing.replacingOccurrences(of: "\\", with: "/")
     let components = trimmed.split(separator: "/", omittingEmptySubsequences: false)
     guard !trimmed.isEmpty,
-          !trimmed.hasPrefix("/"),
-          !components.contains(where: { $0 == ".." }) else {
+      !trimmed.hasPrefix("/"),
+      !components.contains(where: { $0 == ".." })
+    else {
       throw RepositoryImageInventoryError.invalidRepositoryPath
     }
     let normalized = trimmed.normalizedRelativePath()

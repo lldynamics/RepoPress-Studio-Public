@@ -93,38 +93,6 @@ extension AIChatCompletionClient {
     )
   }
 
-  private func codexAppServerStream(
-    prepared: AIPreparedAIChatCompletionRequest,
-    config: AIProviderConfig
-  ) -> AsyncThrowingStream<AIChatStreamUpdate, Error> {
-    AsyncThrowingStream { continuation in
-      let task = Task(priority: .userInitiated) {
-        do {
-          let result = try await completeWithCodexAppServer(
-            prepared: prepared,
-            config: config
-          )
-          try Task.checkCancellation()
-          continuation.yield(
-            AIChatStreamUpdate(
-              contentDelta: result.content,
-              tokenUsage: result.tokenUsage,
-              isFinished: true
-            )
-          )
-          continuation.finish()
-        } catch is CancellationError {
-          continuation.finish(throwing: CodexAppServerError.cancelled)
-        } catch {
-          continuation.finish(throwing: error)
-        }
-      }
-      continuation.onTermination = { @Sendable _ in
-        task.cancel()
-      }
-    }
-  }
-
   private func recoveredStreamUpdates(
     prepared: AIPreparedAIChatCompletionRequest,
     nonStreamingFallbackPrepared: AIPreparedAIChatCompletionRequest,
@@ -135,6 +103,7 @@ extension AIChatCompletionClient {
   ) -> AsyncThrowingStream<AIChatStreamUpdate, Error> {
     return AsyncThrowingStream { continuation in
       let task = Task(priority: .userInitiated) {
+        defer { streamingRequestCancellation?.finish() }
         var completedRetryCount = 0
         var compatibilityFallbackCount = 0
         var partialRecoveryCount = 0
@@ -245,6 +214,19 @@ extension AIChatCompletionClient {
           } catch is CancellationError {
             continuation.finish(throwing: CancellationError())
             return
+          } catch let error as AIChatCompletionClientError
+            where error == .requestAuthorizationChanged
+          {
+            if responseStarted || !generatedContent.isEmpty {
+              continuation.finish(
+                throwing: AIChatCompletionClientError.streamInterruptedAfterPartialContent(
+                  error.localizedDescription
+                )
+              )
+            } else {
+              continuation.finish(throwing: error)
+            }
+            return
           } catch {
             if Task.isCancelled {
               continuation.finish(throwing: CancellationError())
@@ -315,6 +297,8 @@ extension AIChatCompletionClient {
                 continuation.finish(throwing: normalizedError)
               } else if case .preparedRequestAuthorizationExpired = normalizedError {
                 continuation.finish(throwing: normalizedError)
+              } else if case .requestAuthorizationChanged = normalizedError {
+                continuation.finish(throwing: normalizedError)
               } else {
                 continuation.finish(throwing: originalPartialError)
               }
@@ -372,7 +356,10 @@ extension AIChatCompletionClient {
                   apiKey: apiKey
                 )
                 try nonStreamingFallbackPrepared.consume()
-                let fallbackResult = try await sendCompletePrepared(
+                let fallbackClient = authorizingNonStreamingRequests {
+                  try await self.authorizeStreamingTransmission()
+                }
+                let fallbackResult = try await fallbackClient.sendCompletePrepared(
                   prepared: nonStreamingFallbackPrepared,
                   config: config,
                   apiKey: apiKey,
@@ -426,6 +413,7 @@ extension AIChatCompletionClient {
         continuation.finish(throwing: CancellationError())
       }
 
+      streamingRequestCancellation?.register(task)
       continuation.onTermination = { _ in
         task.cancel()
       }
@@ -533,6 +521,8 @@ extension AIChatCompletionClient {
   ) async throws -> (AsyncThrowingStream<String, Error>, URLResponse) {
     // Keep authorization expiry fail-closed at the actual network boundary, not
     // only at the beginning of this retry loop.
+    try validatePrepared(prepared, against: config, apiKey: apiKey)
+    try await authorizeStreamingTransmission()
     try validatePrepared(prepared, against: config, apiKey: apiKey)
     return try await transport.lines(for: request)
   }

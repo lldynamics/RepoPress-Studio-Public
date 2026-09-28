@@ -64,7 +64,25 @@ struct AIChatConversationInspectorSection: View {
         }
 
         ForEach(context.messages) { message in
-          AIChatMessageSurface(role: message.role, timestamp: message.createdAt) {
+          AIChatMessageSurface(
+            role: message.role,
+            timestamp: message.createdAt,
+            headerAccessory: message.role == .assistant
+              ? {
+                AnyView(
+                  Button {
+                    actions.copyReply(message)
+                  } label: {
+                    Image(systemName: "doc.on.doc")
+                  }
+                  .buttonStyle(.plain)
+                  .foregroundStyle(.secondary)
+                  .help(String(localized: "复制"))
+                  .accessibilityLabel(String(localized: "复制"))
+                )
+              }
+              : nil
+          ) {
             if message.role == .assistant {
               let presentation = AIChatAssistantMessagePresentationPolicy.mode(
                 role: message.role,
@@ -161,34 +179,28 @@ struct AIChatConversationInspectorSection: View {
               }
             }
 
-            if message.id == latestAssistantMessageID,
-              message.automationPlan == nil,
-              message.allowsDraftAppend,
-              let draft = context.draft
-            {
-              Button {
-                actions.appendReply(message, draft)
-              } label: {
-                Label(
-                  message.knowledgeCitations.isEmpty
-                    ? String(localized: "预览并追加")
-                    : String(localized: "预览并附引用"),
-                  systemImage: "rectangle.split.2x1"
-                )
-              }
-              .controlSize(.small)
-            }
-
             if message.role == .assistant {
-              Button {
-                actions.copyReply(message)
-              } label: {
-                Image(systemName: "doc.on.doc")
+              HStack(spacing: 8) {
+                if message.id == latestAssistantMessageID,
+                  message.automationPlan == nil,
+                  message.allowsDraftAppend,
+                  let draft = context.draft
+                {
+                  Button {
+                    actions.appendReply(message, draft)
+                  } label: {
+                    Label(
+                      message.knowledgeCitations.isEmpty
+                        ? String(localized: "预览并追加")
+                        : String(localized: "预览并附引用"),
+                      systemImage: "rectangle.split.2x1"
+                    )
+                  }
+                  .controlSize(.small)
+                }
+
               }
-              .buttonStyle(.plain)
-              .foregroundStyle(.secondary)
-              .help(String(localized: "复制"))
-              .accessibilityLabel(String(localized: "复制"))
+              .frame(maxWidth: .infinity, alignment: .leading)
             }
           }
           .id(message.id)

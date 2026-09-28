@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import PublishingCoreSupport
 import PublishingWorkbenchCore
 
 @MainActor
@@ -21,16 +22,18 @@ final class WorkspaceCommandPaletteArticleSearch: ObservableObject {
 
   init(
     search: @escaping Search = WorkspaceCommandPaletteArticleSearch.defaultSearch,
-    debounce: @escaping Debounce = WorkspaceCommandPaletteArticleSearch.defaultDebounce
+    clock: any Clock<Duration> = ContinuousClock(),
+    debounce: Debounce? = nil
   ) {
     self.search = search
-    self.debounce = debounce
+    self.debounce = debounce ?? { duration in try await clock.sleep(for: duration) }
   }
 
   deinit {
     task?.cancel()
   }
 
+  @discardableResult
   func update(
     query: String,
     scope: WorkspaceUnifiedSearchScope,
@@ -38,14 +41,14 @@ final class WorkspaceCommandPaletteArticleSearch: ObservableObject {
     activeProfileID: UUID,
     inputs: [DraftFullTextSearchInput],
     masksPrivateContent: Bool
-  ) {
+  ) -> Task<Void, Never>? {
     task?.cancel()
     let requestID = UUID()
     activeRequestID = requestID
     let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard scope.includesArticles, !normalizedQuery.isEmpty else {
       clearResults()
-      return
+      return nil
     }
 
     let scopedInputs = inputs.filter { input in
@@ -66,7 +69,7 @@ final class WorkspaceCommandPaletteArticleSearch: ObservableObject {
     let resultLimit = Self.resultLimit
     task = Task { [weak self] in
       do {
-        try await debounce(.milliseconds(140))
+        try await debounce(DebounceIntervals.commandPaletteArticles)
         try Task.checkCancellation()
 
         let worker = Task.detached(priority: .userInitiated) {
@@ -92,6 +95,7 @@ final class WorkspaceCommandPaletteArticleSearch: ObservableObject {
         self?.clearResults()
       }
     }
+    return task
   }
 
   func cancel() {
@@ -99,6 +103,10 @@ final class WorkspaceCommandPaletteArticleSearch: ObservableObject {
     task = nil
     activeRequestID = UUID()
     isSearching = false
+  }
+
+  func waitUntilIdle() async {
+    await task?.value
   }
 
   private func clearResults() {
@@ -117,7 +125,4 @@ final class WorkspaceCommandPaletteArticleSearch: ObservableObject {
     DraftFullTextSearchService().search(query: query, drafts: drafts, limit: limit)
   }
 
-  nonisolated private static func defaultDebounce(_ duration: Duration) async throws {
-    try await Task.sleep(for: duration)
-  }
 }

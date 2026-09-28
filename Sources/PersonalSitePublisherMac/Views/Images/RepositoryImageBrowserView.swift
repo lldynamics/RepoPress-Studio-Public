@@ -1,658 +1,345 @@
 import AppKit
 import PublishingDomainContracts
-import PublishingWorkbenchCore
+import QuickLook
 import SwiftUI
 
-enum RepositoryImageSortOrder: String, CaseIterable, Identifiable, Sendable {
-  case nameAsc
-  case nameDesc
-  case dateNewest
-  case dateOldest
-  case sizeLargest
-  case sizeSmallest
-  case unregisteredFirst
-  case registeredFirst
-
-  var id: String { rawValue }
-
-  var title: String {
-    switch self {
-    case .nameAsc: String(localized: "名称 (A → Z)")
-    case .nameDesc: String(localized: "名称 (Z → A)")
-    case .dateNewest: String(localized: "修改日期 (最新优先)")
-    case .dateOldest: String(localized: "修改日期 (最早优先)")
-    case .sizeLargest: String(localized: "文件大小 (从大到小)")
-    case .sizeSmallest: String(localized: "文件大小 (从小到大)")
-    case .unregisteredFirst: String(localized: "引用状态 (未登记优先)")
-    case .registeredFirst: String(localized: "引用状态 (已登记优先)")
-    }
-  }
-
-  var shortTitle: String {
-    switch self {
-    case .nameAsc, .nameDesc: String(localized: "按名称")
-    case .dateNewest, .dateOldest: String(localized: "按修改时间")
-    case .sizeLargest, .sizeSmallest: String(localized: "按文件大小")
-    case .unregisteredFirst, .registeredFirst: String(localized: "按引用状态")
-    }
-  }
-}
-
-enum RepositoryImageFilter: String, CaseIterable, Identifiable, Sendable {
-  case all
-  case registered
-  case unregistered
-
-  var id: String { rawValue }
-
-  var title: String {
-    switch self {
-    case .all: String(localized: "全部")
-    case .registered: String(localized: "已登记")
-    case .unregistered: String(localized: "未登记")
-    }
-  }
-
-  func includes(_ asset: RepositoryImageAsset) -> Bool {
-    switch self {
-    case .all: true
-    case .registered: asset.isRegisteredToArticle
-    case .unregistered: !asset.isRegisteredToArticle
-    }
-  }
-}
-
-enum RepositoryImageBrowserPresentationState: Equatable {
-  case preparing
-  case inventoryEmpty
-  case filteredEmpty
-  case results
-
-  static func resolve(
-    isLoading: Bool,
-    inventoryCount: Int,
-    projectedCount: Int
-  ) -> Self {
-    if isLoading { return .preparing }
-    if projectedCount > 0 { return .results }
-    return inventoryCount == 0 ? .inventoryEmpty : .filteredEmpty
-  }
-}
-
 struct RepositoryImageBrowserView: View {
-  let inventory: RepositoryImageInventory?
-  let isLoading: Bool
-  let errorMessage: String?
-  let targetDrafts: [ArticleDraft]
-  @Binding var targetDraftID: UUID?
-  @Binding var selectedRepositoryPath: String?
-  let onAttachToSelectedDraft: (RepositoryImageAsset) -> Void
-  let onOpenReferencedDraft: (UUID) -> Void
+  @ObservedObject var session: RepositoryImageBrowserSession
+  let isWorking: Bool
+  let onRefresh: () -> Void
+  let onProcess: (ImageWorkbenchBatchAction) -> Void
   let onOpenRepositorySettings: () -> Void
-
-  @State private var query = ""
-  @State private var filter: RepositoryImageFilter = .all
-  @State private var sortOrder: RepositoryImageSortOrder = .nameAsc
-  @State private var projectedAssets: [RepositoryImageAsset] = []
-  @State private var isProjecting = false
-  @State private var projectionGeneration = 0
+  @FocusState private var galleryFocused: Bool
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      header
-
-      if isLoading, inventory == nil {
-        loadingState
-      } else if let inventory {
-        inventoryContent(inventory)
-      } else if let errorMessage {
-        failureState(errorMessage)
+    VStack(alignment: .leading, spacing: 0) {
+      header.padding(20)
+      if session.isLoading && session.inventory == nil {
+        ProgressView("正在读取仓库图片…")
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+      } else if let error = session.errorMessage, session.inventory == nil {
+        EmptyStateView(
+          title: "暂时无法读取仓库图片", message: LocalizedStringKey(error),
+          systemImage: "folder.badge.questionmark", density: .compactPane,
+          actionTitle: "打开仓库与发布", action: onOpenRepositorySettings
+        )
+      } else if session.visibleAssets.isEmpty {
+        emptyState
       } else {
-        loadingState
+        images
       }
+      Divider()
+      statusBar
     }
-    .padding(WorkbenchSpacing.card)
-    .background(
-      WorkbenchBackgroundStyle.card,
-      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-    )
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("仓库图片")
     .accessibilityIdentifier("repository-image-browser")
+    .task(id: projectionInput) { await session.rebuildProjection() }
+    .quickLookPreview($session.previewURL)
+  }
+
+  private var projectionInput: String {
+    [
+      session.inventory?.revisionID.uuidString ?? "", String(describing: session.scope),
+      session.query, session.filter.rawValue, session.sortOrder.rawValue,
+      String(session.includesSubfolders),
+    ].joined(separator: "\u{0}")
   }
 
   private var header: some View {
-    HStack(alignment: .top, spacing: 12) {
-      VStack(alignment: .leading, spacing: 3) {
-        Label("仓库图片", systemImage: "externaldrive")
-          .font(.headline)
-        Text("浏览图片目录中的实际文件，查看引用文章，或把现有图片加入目标文章。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-      Spacer()
-      if isLoading {
-        ProgressView()
-          .controlSize(.small)
-          .accessibilityLabel("正在刷新仓库图片")
-      }
-    }
-  }
-
-  private func inventoryContent(_ inventory: RepositoryImageInventory) -> some View {
-    let filteredAssets = projectedAssets
-    return VStack(alignment: .leading, spacing: 12) {
-      LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
-        MetricTile(title: "仓库图片", value: "\(inventory.assets.count)", systemImage: "photo.stack")
-        MetricTile(title: "已登记", value: "\(inventory.registeredCount)", systemImage: "link")
-        MetricTile(title: "未登记", value: "\(inventory.unregisteredCount)", systemImage: "questionmark.folder")
-        MetricTile(
-          title: "总体积",
-          value: ByteCountFormatter.string(fromByteCount: inventory.totalByteSize, countStyle: .file),
-          systemImage: "internaldrive"
-        )
-      }
-
-      if inventory.wasTruncated {
-        Label("图片过多，当前只显示前 5,000 张。可以通过 Finder 继续管理。", systemImage: "exclamationmark.triangle")
-          .font(.workbenchSupporting)
-          .foregroundStyle(WorkbenchTheme.warning)
-      }
-
-      targetArticleControls
-
+    VStack(alignment: .leading, spacing: 12) {
+      breadcrumb
       ViewThatFits(in: .horizontal) {
-        HStack(spacing: 8) {
-          searchField
-          filterPicker
-          sortMenu
+        HStack(alignment: .center, spacing: 16) {
+          introduction
+          Spacer(minLength: 4)
+          searchField.frame(minWidth: 160, maxWidth: 360)
+          refreshButton
+          displayPicker
         }
         VStack(alignment: .leading, spacing: 8) {
-          searchField
-          HStack(spacing: 8) {
-            filterPicker
-            sortMenu
+          introduction
+          HStack {
+            searchField
+            refreshButton
+            displayPicker
           }
         }
       }
-
-      switch RepositoryImageBrowserPresentationState.resolve(
-        isLoading: isProjecting,
-        inventoryCount: inventory.assets.count,
-        projectedCount: filteredAssets.count
-      ) {
-      case .preparing:
-        loadingState
-      case .inventoryEmpty, .filteredEmpty:
-        let hasInventory = !inventory.assets.isEmpty
-        let hasQueryOrFilter = !query.trimmedForPublishing.isEmpty || filter != .all
-        EmptyStateView(
-          title: !hasInventory
-            ? LocalizedStringKey("图片目录中还没有图片")
-            : LocalizedStringKey("没有匹配的仓库图片"),
-          message: !hasInventory
-            ? LocalizedStringKey("在写作页插入图片，或把图片文件放入当前站点的图片目录。")
-            : LocalizedStringKey("当前库存有图片，但没有符合搜索或筛选条件的结果。"),
-          systemImage: "photo.on.rectangle.angled",
-          density: .compactPane,
-          actionTitle: hasQueryOrFilter ? LocalizedStringKey("清除搜索和筛选") : nil,
-          action: hasQueryOrFilter ? {
-            query = ""
-            filter = .all
-          } : nil
-        )
-      case .results:
-        browserLayout(inventory, assets: filteredAssets)
-      }
-
-      Text("“未登记”只表示已载入文章的附件列表中没有该图片；主题、CSS 或其他文件仍可能引用它。")
-        .font(.workbenchSupporting)
-        .foregroundStyle(.tertiary)
-    }
-    .task(id: projectionGeneration) {
-      await rebuildProjection(for: inventory)
-    }
-    .onAppear { projectionGeneration &+= 1 }
-    .onChange(of: query) { _, _ in projectionGeneration &+= 1 }
-    .onChange(of: filter) { _, _ in projectionGeneration &+= 1 }
-    .onChange(of: sortOrder) { _, _ in projectionGeneration &+= 1 }
-    .onChange(of: inventory.revisionID) { _, _ in projectionGeneration &+= 1 }
-  }
-
-  private var targetArticleControls: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      HStack(spacing: 7) {
-        Image(systemName: "doc.badge.plus")
-          .foregroundStyle(.secondary)
-          .accessibilityHidden(true)
-        Text("加入文章")
-          .font(.callout.weight(.semibold))
-      }
-      Text("先选择当前站点的目标文章，再把仓库现有图片加入它的图片列表。")
-        .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
-
       ViewThatFits(in: .horizontal) {
-        HStack(spacing: 8) {
-          targetArticlePicker
-          openTargetArticleButton
+        HStack(spacing: 10) {
+          scopeToggle
+          Spacer(minLength: 2)
+          filters
+          processMenu
         }
         VStack(alignment: .leading, spacing: 8) {
-          targetArticlePicker
-          openTargetArticleButton
-        }
-      }
-    }
-    .padding(10)
-    .background(
-      WorkbenchBackgroundStyle.control,
-      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-    )
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("仓库图片的目标文章")
-  }
-
-  private var targetArticlePicker: some View {
-    Picker("目标文章", selection: $targetDraftID) {
-      if targetDrafts.isEmpty {
-        Text("当前站点还没有文章")
-          .tag(nil as UUID?)
-      } else {
-        ForEach(targetDrafts) { draft in
-          Text(draft.title.trimmedForPublishing.nilIfEmpty ?? String(localized: "未命名文章"))
-            .tag(Optional(draft.id))
-        }
-      }
-    }
-    .frame(maxWidth: 420)
-    .accessibilityIdentifier("repository-image-target-picker")
-  }
-
-  private var openTargetArticleButton: some View {
-    Button {
-      if let targetDraftID {
-        onOpenReferencedDraft(targetDraftID)
-      }
-    } label: {
-      Label("打开目标文章", systemImage: "arrow.right.circle")
-    }
-    .buttonStyle(.bordered)
-    .disabled(targetDraft(in: targetDrafts) == nil)
-    .accessibilityIdentifier("repository-image-open-target-article")
-  }
-
-  private func browserLayout(
-    _ inventory: RepositoryImageInventory,
-    assets: [RepositoryImageAsset]
-  ) -> some View {
-    ViewThatFits(in: .horizontal) {
-      HStack(alignment: .top, spacing: 14) {
-        assetList(assets)
-          .frame(minWidth: 420, maxWidth: .infinity)
-        assetDetail(inventory, assets: assets)
-          .frame(width: 340)
-      }
-      VStack(alignment: .leading, spacing: 14) {
-        assetList(assets)
-        assetDetail(inventory, assets: assets)
-      }
-    }
-  }
-
-  private func assetList(_ assets: [RepositoryImageAsset]) -> some View {
-    List(selection: $selectedRepositoryPath) {
-      ForEach(assets) { asset in
-        RepositoryImageRow(asset: asset)
-          .tag(asset.repositoryPath)
-          .accessibilityIdentifier(
-            "repository-image-row-\(RepositoryAccessibilityIdentifier.token(for: asset.repositoryPath))"
-          )
-      }
-    }
-    .listStyle(.inset)
-    .frame(minHeight: 300, idealHeight: 380, maxHeight: 440)
-    .accessibilityLabel("仓库图片列表")
-    .accessibilityIdentifier("repository-image-list")
-  }
-
-  @ViewBuilder
-  private func assetDetail(
-    _ inventory: RepositoryImageInventory,
-    assets: [RepositoryImageAsset]
-  ) -> some View {
-    if let asset = selectedAsset(in: assets) {
-      VStack(alignment: .leading, spacing: 10) {
-        WorkbenchThumbnailView(fileURL: asset.fileURL, maxPixelSize: 512, cornerRadius: 10)
-          .frame(maxWidth: .infinity, minHeight: 140, maxHeight: 180)
-          .background(
-            WorkbenchBackgroundStyle.control,
-            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-          )
-          .accessibilityHidden(true)
-
-        Text(asset.filename)
-          .font(.callout.weight(.semibold))
-          .workbenchTruncatedIdentity(asset.filename, lineLimit: 2)
-        Text(asset.repositoryPath)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
-          .textSelection(.enabled)
-          .workbenchTruncatedIdentity(asset.repositoryPath, lineLimit: 3)
-
-        LabeledContent("格式", value: asset.fileExtension)
-        LabeledContent("文件大小", value: ByteCountFormatter.string(fromByteCount: asset.byteSize, countStyle: .file))
-        LabeledContent("引用文章", value: "\(asset.references.count)")
-        if let modifiedAt = asset.modifiedAt {
-          LabeledContent(
-            "修改时间",
-            value: modifiedAt.formatted(date: .abbreviated, time: .shortened)
-          )
-        }
-
-        LazyVGrid(
-          columns: [GridItem(.adaptive(minimum: 88), spacing: 8)],
-          alignment: .leading,
-          spacing: 8
-        ) {
-          Button {
-            NSWorkspace.shared.open(asset.fileURL)
-          } label: {
-            Label("预览", systemImage: "eye")
+          scopeToggle
+          HStack {
+            filters
+            Spacer(minLength: 2)
+            processMenu
           }
-          .accessibilityIdentifier("repository-image-preview")
-          Button {
-            NSWorkspace.shared.activateFileViewerSelecting([asset.fileURL])
-          } label: {
-            Label("Finder", systemImage: "folder")
-          }
-          .accessibilityIdentifier("repository-image-reveal")
-          Button {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(asset.repositoryPath, forType: .string)
-          } label: {
-            Label("复制路径", systemImage: "doc.on.doc")
-          }
-          .accessibilityIdentifier("repository-image-copy-path")
         }
-        .controlSize(.small)
+      }
+      if let error = session.errorMessage, session.inventory != nil {
+        Label(error, systemImage: "exclamationmark.triangle")
+          .font(.workbenchSupporting).foregroundStyle(WorkbenchTheme.warning)
+      }
+      if session.inventory?.wasTruncated == true {
+        Label("图片或目录过多，当前显示部分扫描结果。", systemImage: "exclamationmark.triangle")
+          .font(.workbenchSupporting).foregroundStyle(WorkbenchTheme.warning)
+      }
+    }
+  }
 
-        Button {
-          onAttachToSelectedDraft(asset)
-        } label: {
-          Label(attachButtonTitle(asset), systemImage: "plus.circle")
-            .lineLimit(2)
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, minHeight: 32)
-        }
-        .workbenchProminentActionStyle()
-        .disabled(!canAttach(asset))
-        .help(attachHelp(asset))
-        .accessibilityIdentifier("repository-image-attach")
+  private var introduction: some View {
+    VStack(alignment: .leading, spacing: 3) {
+      Text(session.title).font(.workbenchPageTitle).lineLimit(1)
+      Text("\(session.visibleAssets.count) 张图片")
+        .font(.workbenchSupporting).foregroundStyle(.secondary)
+    }
+  }
 
-        if !asset.references.isEmpty {
-          Divider()
-          Text("已登记到")
-            .font(.caption.weight(.semibold))
-          ForEach(asset.references, id: \.self) { reference in
-            Button {
-              onOpenReferencedDraft(reference.draftID)
-            } label: {
-              HStack(spacing: 7) {
-                Image(systemName: reference.isCover ? "star.fill" : "doc.text")
-                  .frame(width: 14)
-                Text(reference.draftTitle)
-                  .lineLimit(1)
-                Spacer()
-                Text("打开")
-                  .font(.caption)
-              }
+  private var breadcrumb: some View {
+    ScrollView(.horizontal, showsIndicators: false) {
+      HStack(spacing: 5) {
+        Button("全部图片") { session.scope = .all }
+          .buttonStyle(.borderless)
+        if case .folder(let path) = session.scope {
+          let components = path.split(separator: "/").map(String.init)
+          ForEach(Array(components.enumerated()), id: \.offset) { index, component in
+            Image(systemName: "chevron.right").accessibilityHidden(true)
+            Button(component) {
+              session.scope = .folder(components.prefix(index + 1).joined(separator: "/"))
             }
             .buttonStyle(.borderless)
-            .accessibilityIdentifier("repository-image-open-article-\(reference.draftID.uuidString)")
+            .disabled(
+              components.prefix(index + 1).joined(separator: "/").count
+                < (session.inventory?.assetRootPath.count ?? 0))
           }
         }
       }
-      .padding(12)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(
-        WorkbenchBackgroundStyle.control,
-        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-      )
-      .accessibilityElement(children: .contain)
-      .accessibilityLabel("选中的仓库图片")
-      .accessibilityIdentifier("repository-image-detail")
+      .font(.workbenchSupporting).foregroundStyle(.secondary)
     }
-  }
-
-  private var loadingState: some View {
-    HStack(spacing: 10) {
-      ProgressView()
-        .controlSize(.small)
-      Text("正在读取仓库图片…")
-        .foregroundStyle(.secondary)
-    }
-    .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
-  }
-
-  private func failureState(_ message: String) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Label("暂时无法读取仓库图片", systemImage: "folder.badge.questionmark")
-        .font(.callout.weight(.semibold))
-      Text(message)
-        .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
-        .textSelection(.enabled)
-      Button {
-        onOpenRepositorySettings()
-      } label: {
-        Label("打开仓库与发布", systemImage: "arrow.triangle.2.circlepath")
-      }
-    }
-    .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
-  }
-
-  @MainActor
-  private func rebuildProjection(for inventory: RepositoryImageInventory) async {
-    isProjecting = true
-    // A short debounce keeps rapid typing off the synchronous view update
-    // path.  The task is cancelled automatically when any input changes.
-    try? await Task.sleep(for: .milliseconds(150))
-    guard !Task.isCancelled else { return }
-    let snapshot = inventory.assets
-    let requestedQuery = query.trimmedForPublishing
-    let requestedFilter = filter
-    let requestedSort = sortOrder
-    let result = await Task.detached(priority: .userInitiated) {
-      Self.project(
-        snapshot, query: requestedQuery, filter: requestedFilter, sortOrder: requestedSort)
-    }.value
-    guard !Task.isCancelled else { return }
-    projectedAssets = result
-    isProjecting = false
-    normalizeSelection(in: result)
-  }
-
-  nonisolated static func project(
-    _ assets: [RepositoryImageAsset],
-    query: String,
-    filter: RepositoryImageFilter,
-    sortOrder: RepositoryImageSortOrder
-  ) -> [RepositoryImageAsset] {
-    let base = assets.filter { asset in
-      filter.includes(asset)
-        && (query.isEmpty || asset.filename.localizedStandardContains(query)
-          || asset.repositoryPath.localizedStandardContains(query))
-    }
-    return base.sorted { lhs, rhs in
-      switch sortOrder {
-      case .nameAsc: return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
-      case .nameDesc:
-        return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedDescending
-      case .dateNewest:
-        let l = lhs.modifiedAt ?? .distantPast
-        let r = rhs.modifiedAt ?? .distantPast
-        return l == r
-          ? lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending : l > r
-      case .dateOldest:
-        let l = lhs.modifiedAt ?? .distantPast
-        let r = rhs.modifiedAt ?? .distantPast
-        return l == r
-          ? lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending : l < r
-      case .sizeLargest:
-        return lhs.byteSize == rhs.byteSize
-          ? lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
-          : lhs.byteSize > rhs.byteSize
-      case .sizeSmallest:
-        return lhs.byteSize == rhs.byteSize
-          ? lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
-          : lhs.byteSize < rhs.byteSize
-      case .unregisteredFirst:
-        return lhs.isRegisteredToArticle == rhs.isRegisteredToArticle
-          ? lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
-          : !lhs.isRegisteredToArticle
-      case .registeredFirst:
-        return lhs.isRegisteredToArticle == rhs.isRegisteredToArticle
-          ? lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
-          : lhs.isRegisteredToArticle
-      }
-    }
+    .accessibilityLabel("图片目录路径")
   }
 
   private var searchField: some View {
-    TextField("搜索文件名或仓库路径", text: $query)
+    TextField("搜索文件名或仓库路径", text: $session.query)
       .textFieldStyle(.roundedBorder)
-      .accessibilityLabel("搜索仓库图片")
+      .accessibilityLabel("搜索当前图片范围")
       .accessibilityIdentifier("repository-image-search")
   }
 
-  private var filterPicker: some View {
-    Picker("图片范围", selection: $filter) {
-      ForEach(RepositoryImageFilter.allCases) { option in
-        Text(option.title).tag(option)
-      }
-    }
-    .pickerStyle(.segmented)
-    .frame(maxWidth: 240)
-    .accessibilityIdentifier("repository-image-filter")
+  private var refreshButton: some View {
+    Button(action: onRefresh) { Label("重新扫描", systemImage: "arrow.clockwise") }
+      .labelStyle(.iconOnly).disabled(session.isLoading)
+      .help("重新扫描图片和目录")
+      .accessibilityIdentifier("image-workbench-refresh")
   }
 
-  private var sortMenu: some View {
+  private var displayPicker: some View {
+    Picker("图片显示方式", selection: $session.displayMode) {
+      Image(systemName: "square.grid.2x2").tag(RepositoryImageDisplayMode.grid)
+      Image(systemName: "list.bullet").tag(RepositoryImageDisplayMode.list)
+    }
+    .pickerStyle(.segmented).labelsHidden().frame(width: 72)
+    .accessibilityLabel("图片显示方式")
+    .accessibilityIdentifier("repository-image-display-mode")
+  }
+
+  private var scopeToggle: some View {
+    Toggle("包含子文件夹", isOn: $session.includesSubfolders)
+      .toggleStyle(.checkbox)
+      .disabled(!isFolderScope)
+      .help(isFolderScope ? "显示此目录及子目录中的图片" : "选择文件夹后可切换子目录范围")
+  }
+
+  private var isFolderScope: Bool {
+    if case .folder = session.scope { return true }
+    return false
+  }
+
+  private var filters: some View {
+    HStack(spacing: 8) {
+      Picker("图片范围", selection: $session.filter) {
+        ForEach(RepositoryImageFilter.allCases) { Text($0.title).tag($0) }
+      }
+      .labelsHidden().frame(maxWidth: 120)
+      .accessibilityIdentifier("repository-image-filter")
+      Menu {
+        Picker("排序方式", selection: $session.sortOrder) {
+          ForEach(RepositoryImageSortOrder.allCases) { Text($0.title).tag($0) }
+        }
+      } label: {
+        Text(session.sortOrder.shortTitle)
+      }
+      .fixedSize().disabled(session.scope == .recent)
+      .accessibilityLabel("图片排序")
+      .accessibilityIdentifier("repository-image-sort-menu")
+    }
+  }
+
+  private var processMenu: some View {
     Menu {
-      Picker("排序方式", selection: $sortOrder) {
-        ForEach(RepositoryImageSortOrder.allCases) { option in
-          Text(option.title).tag(option)
+      Text("仅处理所选图片对应的文章附件")
+      ForEach(ImageWorkbenchBatchAction.allActions) { action in
+        Button {
+          onProcess(action)
+        } label: {
+          Label(action.title, systemImage: action.systemImage)
         }
       }
+      Divider()
+      Button("在 Finder 中显示") {
+        NSWorkspace.shared.activateFileViewerSelecting(session.selectedAssets.map(\.fileURL))
+      }
     } label: {
-      Label(sortOrder.shortTitle, systemImage: "arrow.up.arrow.down")
+      Label("处理所选…", systemImage: "ellipsis")
     }
-    .menuStyle(.borderedButton)
-    .fixedSize()
-    .accessibilityLabel("图片排序")
-    .accessibilityIdentifier("repository-image-sort-menu")
-  }
-
-  private func selectedAsset(in assets: [RepositoryImageAsset]) -> RepositoryImageAsset? {
-    if let selectedRepositoryPath,
-       let selected = assets.first(where: { $0.repositoryPath == selectedRepositoryPath }) {
-      return selected
-    }
-    return assets.first
-  }
-
-  private func normalizeSelection(in assets: [RepositoryImageAsset]) {
-    if let selectedRepositoryPath,
-       assets.contains(where: { $0.repositoryPath == selectedRepositoryPath }) {
-      return
-    }
-    selectedRepositoryPath = assets.first?.repositoryPath
-  }
-
-  private func canAttach(_ asset: RepositoryImageAsset) -> Bool {
-    guard let targetDraftID,
-          targetDrafts.contains(where: { $0.id == targetDraftID }) else { return false }
-    return !asset.references.contains(where: { $0.draftID == targetDraftID })
-  }
-
-  private func attachButtonTitle(_ asset: RepositoryImageAsset) -> String {
-    guard let targetDraftID,
-          targetDrafts.contains(where: { $0.id == targetDraftID }) else {
-      return String(localized: "请先选择文章")
-    }
-    if asset.references.contains(where: { $0.draftID == targetDraftID }) {
-      return String(localized: "已在目标文章中")
-    }
-    return String(localized: "加入目标文章")
-  }
-
-  private func attachHelp(_ asset: RepositoryImageAsset) -> String {
-    guard let targetDraftID,
-          let targetDraft = targetDrafts.first(where: { $0.id == targetDraftID }) else {
-      return String(localized: "请先选择当前站点的目标文章。")
-    }
-    if asset.references.contains(where: { $0.draftID == targetDraftID }) {
-      return String(localized: "该图片已在目标文章的图片列表中。")
-    }
-    let title = targetDraft.title.trimmedForPublishing.nilIfEmpty ?? String(localized: "当前文章")
-    return String(format: String(localized: "把这张图片加入“%@”的图片列表。"), title)
-  }
-
-  private func targetDraft(in drafts: [ArticleDraft]) -> ArticleDraft? {
-    guard let targetDraftID else { return nil }
-    return drafts.first(where: { $0.id == targetDraftID })
-  }
-}
-
-private struct RepositoryImageRow: View {
-  let asset: RepositoryImageAsset
-
-  var body: some View {
-    HStack(spacing: 10) {
-      WorkbenchThumbnailView(
-        fileURL: asset.fileURL,
-        maxPixelSize: WorkbenchThumbnailSizing.listMaxPixelSize,
-        cornerRadius: 6
-      )
-        .frame(width: 36, height: 36)
-
-      VStack(alignment: .leading, spacing: 2) {
-        Text(asset.filename)
-          .font(.body.weight(.medium))
-          .lineLimit(1)
-        Text(asset.repositoryPath)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-      }
-      Spacer(minLength: 8)
-      VStack(alignment: .trailing, spacing: 2) {
-        Text(ByteCountFormatter.string(fromByteCount: asset.byteSize, countStyle: .file))
-          .font(.caption.monospacedDigit())
-        Text(
-          asset.isRegisteredToArticle
-            ? String(format: String(localized: "已登记 %d"), asset.references.count)
-            : String(localized: "未登记")
-        )
-        .font(.caption.weight(.medium))
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(
-          asset.isRegisteredToArticle
-            ? Color.primary.opacity(0.06)
-            : WorkbenchTheme.warning.opacity(0.14),
-          in: Capsule()
-        )
-        .foregroundStyle(asset.isRegisteredToArticle ? Color.secondary : WorkbenchTheme.warning)
-      }
-    }
-    .padding(.vertical, 3)
-    .accessibilityElement(children: .combine)
-    .accessibilityLabel(asset.filename)
-    .accessibilityValue(
-      asset.isRegisteredToArticle
-        ? String(format: String(localized: "已登记到 %d 篇文章"), asset.references.count)
-        : String(localized: "未登记到已载入文章")
+    .fixedSize().disabled(
+      session.selectedPaths.isEmpty || isWorking || session.isLoading || session.isProjecting
     )
+    .accessibilityIdentifier("repository-image-process-selection")
+  }
+
+  @ViewBuilder
+  private var images: some View {
+    if session.displayMode == .list {
+      List(selection: $session.selectedPaths) {
+        ForEach(session.visibleAssets) { asset in
+          RepositoryImageGalleryRow(asset: asset).tag(asset.repositoryPath)
+            .contextMenu { fileActions(asset) }
+            .onTapGesture(count: 2) { session.previewURL = asset.fileURL }
+        }
+      }
+      .listStyle(.inset).accessibilityLabel("仓库图片列表")
+      .accessibilityIdentifier("repository-image-list")
+      .onKeyPress(.space) {
+        session.previewSelection()
+        return .handled
+      }
+    } else {
+      GeometryReader { geometry in
+        let columns = max(1, Int((geometry.size.width - 40) / (session.thumbnailSize + 16)))
+        ScrollView {
+          LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: session.thumbnailSize), spacing: 16)],
+            alignment: .leading, spacing: 18
+          ) {
+            ForEach(session.visibleAssets) { asset in
+              Button {
+                galleryFocused = true
+                session.select(
+                  asset.repositoryPath,
+                  extending: NSEvent.modifierFlags.contains(.shift),
+                  toggling: NSEvent.modifierFlags.contains(.command)
+                )
+              } label: {
+                RepositoryImageGalleryTile(
+                  asset: asset, isSelected: session.selectedPaths.contains(asset.repositoryPath),
+                  thumbnailSize: session.thumbnailSize
+                )
+              }
+              .buttonStyle(.plain)
+              .id(asset.repositoryPath)
+              .contextMenu { fileActions(asset) }
+              .simultaneousGesture(
+                TapGesture(count: 2).onEnded { session.previewURL = asset.fileURL }
+              )
+              .accessibilityLabel(asset.filename)
+              .accessibilityAddTraits(
+                session.selectedPaths.contains(asset.repositoryPath) ? .isSelected : []
+              )
+              .accessibilityIdentifier(
+                "repository-image-tile-\(RepositoryAccessibilityIdentifier.token(for: asset.repositoryPath))"
+              )
+            }
+          }
+          .scrollTargetLayout()
+          .padding(.horizontal, 20).padding(.bottom, 20)
+        }
+        .scrollPosition(id: $session.scrollAnchor)
+        .focusable().focused($galleryFocused)
+        .focusEffectDisabled()
+        .onMoveCommand { direction in
+          let offset: Int
+          switch direction {
+          case .left: offset = -1
+          case .right: offset = 1
+          case .up: offset = -columns
+          case .down: offset = columns
+          @unknown default: return
+          }
+          session.moveSelection(by: offset, extending: NSEvent.modifierFlags.contains(.shift))
+        }
+        .onKeyPress(.space) {
+          session.previewSelection()
+          return .handled
+        }
+        .onKeyPress("a", phases: .down) { press in
+          guard press.modifiers.contains(.command) else { return .ignored }
+          session.selectedPaths = Set(session.visibleAssets.map(\.repositoryPath))
+          return .handled
+        }
+      }
+      .accessibilityLabel("仓库图片网格")
+      .accessibilityIdentifier("repository-image-grid")
+    }
+  }
+
+  private func fileActions(_ asset: RepositoryImageAsset) -> some View {
+    Group {
+      Button("预览") { session.previewURL = asset.fileURL }
+      Button("在 Finder 中显示") { NSWorkspace.shared.activateFileViewerSelecting([asset.fileURL]) }
+      Button("复制路径") {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(asset.repositoryPath, forType: .string)
+      }
+    }
+  }
+
+  private var emptyState: some View {
+    let hasFilters = !session.query.isEmpty || session.filter != .all
+    return EmptyStateView(
+      title: session.inventory?.assets.isEmpty == true
+        ? "图片目录中还没有图片" : (hasFilters ? "没有匹配的仓库图片" : "当前范围中暂无图片"),
+      message: hasFilters
+        ? "选择其他文件夹，或清除搜索和筛选后重试。" : "可选择其他文件夹，或重新扫描以查看新加入的图片。",
+      systemImage: "photo.on.rectangle", density: .compactPane,
+      actionTitle: hasFilters ? "清除搜索和筛选" : nil,
+      action: {
+        session.query = ""
+        session.filter = .all
+      }
+    )
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  private var statusBar: some View {
+    HStack(spacing: 10) {
+      if session.isLoading || session.isProjecting { ProgressView().controlSize(.small) }
+      Text("\(session.visibleAssets.count) 张图片 · 已选择 \(session.selectedPaths.count) 张")
+        .font(.workbenchSupporting).foregroundStyle(.secondary)
+      Spacer(minLength: 8)
+      if session.displayMode == .grid {
+        Image(systemName: "square.grid.3x3").foregroundStyle(.secondary)
+        Slider(value: $session.thumbnailSize, in: 140...300)
+          .frame(width: 100).accessibilityLabel("缩略图大小")
+        Image(systemName: "square.grid.2x2").foregroundStyle(.secondary)
+      }
+    }
+    .padding(.horizontal, 20).padding(.vertical, 10)
+    .background(.bar)
+  }
+
+  nonisolated static func project(
+    _ assets: [RepositoryImageAsset], query: String, filter: RepositoryImageFilter,
+    sortOrder: RepositoryImageSortOrder
+  ) -> [RepositoryImageAsset] {
+    RepositoryImageBrowserProjection.project(
+      assets, query: query, filter: filter, sortOrder: sortOrder)
   }
 }

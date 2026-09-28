@@ -8,6 +8,7 @@ struct EditorCenterColumn: View {
   let selectedDraftID: UUID?
   @Binding var contentHealthFilter: ContentHealthContextFilter
   @Binding var imageWorkbenchContextStage: ImageWorkbenchContextStage
+  let imageBrowserSession: RepositoryImageBrowserSession
   @Binding var repositoryContextStage: RepositoryContextStage
   @Binding var repositoryChangedFileSelection: RepositoryChangedFileSelection?
   let contentHealthSidebarProjection: ContentHealthSidebarProjection
@@ -23,6 +24,7 @@ struct EditorCenterColumn: View {
     selectedDraftID: UUID?,
     contentHealthFilter: Binding<ContentHealthContextFilter>,
     imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>,
+    imageBrowserSession: RepositoryImageBrowserSession,
     repositoryContextStage: Binding<RepositoryContextStage>,
     repositoryChangedFileSelection: Binding<RepositoryChangedFileSelection?>,
     contentHealthSidebarProjection: ContentHealthSidebarProjection,
@@ -36,6 +38,7 @@ struct EditorCenterColumn: View {
     self.selectedDraftID = selectedDraftID
     _contentHealthFilter = contentHealthFilter
     _imageWorkbenchContextStage = imageWorkbenchContextStage
+    self.imageBrowserSession = imageBrowserSession
     _repositoryContextStage = repositoryContextStage
     _repositoryChangedFileSelection = repositoryChangedFileSelection
     self.contentHealthSidebarProjection = contentHealthSidebarProjection
@@ -82,7 +85,10 @@ struct EditorCenterColumn: View {
         sourceSession: repositorySourceSession
       )
     case .images:
-      ImageWorkbenchView(store: store, stage: $imageWorkbenchContextStage)
+      ImageWorkbenchView(
+        store: store, stage: $imageWorkbenchContextStage, session: imageBrowserSession,
+        preferredDraftID: selectedDraftID
+      )
     case .contentHealth:
       ContentHealthDetailView(
         store: store,

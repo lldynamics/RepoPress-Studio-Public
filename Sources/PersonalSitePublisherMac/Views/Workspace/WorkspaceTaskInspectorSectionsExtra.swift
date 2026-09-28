@@ -1,4 +1,5 @@
 import AppKit
+import PublishingCoreSupport
 import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
@@ -98,11 +99,14 @@ struct ArticleInspectorTabs: View {
 
   @Binding var selectedTab: ArticleInspectorTab
   @Binding var draft: ArticleDraft
-  let store: WorkbenchStore
+  @ObservedObject var store: WorkbenchStore
   @ObservedObject var rssStore: RSSReaderStore
   @ObservedObject private var imageWorkbench: WorkbenchImageWorkbenchFeatureFacade
   let section: WorkspaceSection
   private let configuredTabs: [ArticleInspectorTab]
+  @StateObject private var preflightModel = ArticleInspectorPreflightModel()
+  @State private var manualRefreshGeneration = 0
+  @State private var isManualPreflightRefresh = false
 
   private var availableTabs: [ArticleInspectorTab] {
     configuredTabs.filter {
@@ -125,6 +129,15 @@ struct ArticleInspectorTabs: View {
     _imageWorkbench = ObservedObject(wrappedValue: store.imageWorkbench)
     self.section = section
     self.configuredTabs = availableTabs
+  }
+
+  private var preflightRequestKey: DraftScopedPreflightRequestKey? {
+    store.draftScopedPreflightRequestKey(for: draft.id)
+  }
+
+  private var preflightTaskID: ArticleInspectorPreflightTaskID? {
+    guard selectedTab == .checks, let key = preflightRequestKey else { return nil }
+    return ArticleInspectorPreflightTaskID(key: key, generation: manualRefreshGeneration)
   }
 
   var body: some View {
@@ -185,6 +198,29 @@ struct ArticleInspectorTabs: View {
       guard selectedTab == .images || selectedTab == .checks else { return }
       await store.refreshImageWorkbenchCachesInBackground(for: draft)
     }
+    .task(id: preflightTaskID) {
+      guard selectedTab == .checks,
+        let key = preflightRequestKey
+      else { return }
+      let draftID = draft.id
+      let debounceDuration =
+        isManualPreflightRefresh ? nil : DebounceIntervals.preflightRefresh
+      isManualPreflightRefresh = false
+      await preflightModel.refresh(
+        requestKey: key,
+        draftID: draftID,
+        debounceDuration: debounceDuration
+      ) {
+        let result = await store.runPreflight(for: draftID)
+        guard !Task.isCancelled,
+          draft.id == draftID,
+          store.draftScopedPreflightRequestKey(for: draftID) == key
+        else {
+          return nil
+        }
+        return result
+      }
+    }
     .task(id: knowledgeRefreshID) {
       guard let draftID = knowledgeRefreshID else { return }
       store.knowledge.loadArticleBacklinks(for: draftID)
@@ -241,7 +277,8 @@ struct ArticleInspectorTabs: View {
       if availableTabs.contains(.checks) {
         Button {
           selectedTab = .checks
-          store.runPreflight()
+          requestManualPreflightRefresh()
+          store.scheduleImageWorkbenchCachesRefresh(for: draft, force: true)
         } label: {
           Label("重新检查", systemImage: "checklist")
         }
@@ -336,8 +373,13 @@ struct ArticleInspectorTabs: View {
   }
 
   private func taxonomySuggestions(_ keyPath: KeyPath<ArticleDraft, [String]>) -> [String] {
-    Array(Set(store.drafts.flatMap { $0[keyPath: keyPath] }))
-      .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    TaxonomySuggestionRanking.suggestions(
+      selectedValues: draft[keyPath: keyPath],
+      draftValues: store.drafts.map {
+        (siteProfileID: $0.scope.siteProfileID, values: $0[keyPath: keyPath])
+      },
+      siteProfileID: store.profile(for: draft).id
+    )
   }
 
   private var seoContent: some View {
@@ -372,10 +414,30 @@ struct ArticleInspectorTabs: View {
   }
 
   private var checkContent: some View {
-    let preflightIssues = draft.id == store.selectedDraftID
-      ? store.preflightIssues
-      : store.preflightIssues(for: draft)
-    let imageIssues = store.cachedImageWorkbenchReport(for: draft)?.issues
+    Group {
+      if let result = preflightModel.result,
+        result.context.draftID == draft.id,
+        result.context.profileID == store.profile(for: draft).id
+      {
+        VStack(alignment: .leading, spacing: 10) {
+          if preflightModel.state == .loading {
+            preflightLoadingIndicator
+          } else if preflightModel.state == .unavailable {
+            preflightUnavailableIndicator
+          }
+          checkContent(result: result)
+        }
+      } else {
+        preflightUnavailableContent
+      }
+    }
+  }
+
+  @ViewBuilder
+  private func checkContent(result: DraftPreflightResult) -> some View {
+    let preflightIssues = result.issues
+    let imageIssues =
+      store.cachedImageWorkbenchReport(for: draft)?.issues
       .filter { !$0.isCovered(by: preflightIssues) }
       .compactMap(\.preflightIssue) ?? []
     let issues = (preflightIssues + imageIssues).sorted {
@@ -390,7 +452,7 @@ struct ArticleInspectorTabs: View {
     let sourceProfile = deploymentRecord.flatMap {
       DeploymentSourceContext.profile(for: $0, in: store.profiles)
     }
-    return WorkspaceTaskChecksSection(
+    WorkspaceTaskChecksSection(
       state: WorkspaceTaskChecksState(
         issues: issues,
         publicRisk: PublicRiskSummary(issues: issues),
@@ -401,12 +463,24 @@ struct ArticleInspectorTabs: View {
       ),
       actions: WorkspaceTaskChecksActions(
         rerunPreflight: {
-          store.runPreflight()
+          requestManualPreflightRefresh()
           store.scheduleImageWorkbenchCachesRefresh(for: draft, force: true)
         },
         focusIssue: focus
       )
     )
+  }
+
+  private var preflightUnavailableContent: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      if preflightModel.state != .unavailable || preflightModel.requestKey != preflightRequestKey {
+        preflightLoadingIndicator
+      } else {
+        preflightFailureIndicator
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .accessibilityIdentifier("article-inspector-checks-unavailable")
   }
 
   private func focus(_ issue: PreflightIssue) {
@@ -422,6 +496,50 @@ struct ArticleInspectorTabs: View {
     }
   }
 
+  private var preflightLoadingIndicator: some View {
+    HStack(spacing: 6) {
+      ProgressView()
+        .controlSize(.small)
+      Text("正在检查…")
+    }
+    .font(.caption)
+    .foregroundStyle(.secondary)
+    .accessibilityIdentifier("article-inspector-checks-loading")
+  }
+
+  private var preflightUnavailableIndicator: some View {
+    HStack(spacing: 8) {
+      Label("检查尚未完成，显示上一次结果。", systemImage: "exclamationmark.circle")
+      preflightRetryButton
+    }
+    .font(.caption)
+    .foregroundStyle(.secondary)
+    .accessibilityIdentifier("article-inspector-checks-stale")
+  }
+
+  private var preflightFailureIndicator: some View {
+    HStack(spacing: 8) {
+      Label("检查尚未完成，请重试。", systemImage: "exclamationmark.circle")
+      preflightRetryButton
+    }
+    .font(.caption)
+    .foregroundStyle(.secondary)
+  }
+
+  private var preflightRetryButton: some View {
+    Button {
+      requestManualPreflightRefresh()
+    } label: {
+      Label("重新检查", systemImage: "arrow.clockwise")
+    }
+    .controlSize(.small)
+  }
+
+  private func requestManualPreflightRefresh() {
+    isManualPreflightRefresh = true
+    manualRefreshGeneration += 1
+  }
+
   private func prepareSelectedTab() {
     switch selectedTab {
     case .knowledge:
@@ -431,7 +549,7 @@ struct ArticleInspectorTabs: View {
     case .images:
       break
     case .checks:
-      store.runPreflight()
+      break
     case .metadata:
       break
     }
@@ -450,6 +568,11 @@ struct ArticleInspectorTabs: View {
   private var knowledgeRefreshID: UUID? {
     selectedTab == .knowledge && moduleVisibility.libraryEnabled ? draft.id : nil
   }
+}
+
+private struct ArticleInspectorPreflightTaskID: Equatable {
+  let key: DraftScopedPreflightRequestKey
+  let generation: Int
 }
 
 private struct WorkspaceTaskImageRefreshID: Hashable {

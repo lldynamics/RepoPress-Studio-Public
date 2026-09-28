@@ -48,7 +48,7 @@ public enum PastedImageFileStoreError: LocalizedError, Equatable, Sendable {
   public var errorDescription: String? {
     switch self {
     case .emptyImageData:
-      return "剪贴板图片数据为空。"
+      return CoreL10n.text("剪贴板图片数据为空。")
     }
   }
 }

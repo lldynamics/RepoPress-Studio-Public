@@ -10,7 +10,7 @@ struct WorkspaceCompactNavigationRail: View {
   static let primarySections = WorkspaceNavigationRouteDescriptor.primarySections
 
   let selectedSection: WorkspaceSection
-  @Binding var contentHealthFilter: ContentHealthContextFilter
+  let siteIssueCount: Int?
   let onSelectSection: (WorkspaceSection) -> Void
 
   var body: some View {
@@ -35,9 +35,6 @@ struct WorkspaceCompactNavigationRail: View {
       WorkspaceNavigationRouteDescriptor.primarySection(for: selectedSection) == section
 
     return Button {
-      if section == .contentHealth, !isSelected {
-        contentHealthFilter = .overview
-      }
       onSelectSection(section)
     } label: {
       Image(systemName: section.systemImage)
@@ -55,12 +52,28 @@ struct WorkspaceCompactNavigationRail: View {
             )
         }
         .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay(alignment: .topTrailing) {
+          if section == .sync, (siteIssueCount ?? 0) > 0 {
+            Circle()
+              .fill(WorkbenchTheme.warning)
+              .frame(width: 6, height: 6)
+          }
+        }
         .accessibilityHidden(true)
     }
     .buttonStyle(WorkbenchFocusRingButtonStyle(cornerRadius: 7))
-    .help("\(title)（\(section.keyboardShortcutLabel)）")
+    .help(
+      [
+        "\(title)（\(section.keyboardShortcutLabel)）",
+        WorkspaceNavigationRouteDescriptor.checksHint(for: section, issueCount: siteIssueCount),
+      ]
+      .filter { !$0.isEmpty }.joined(separator: "\n")
+    )
     .accessibilityLabel(WorkspaceNavigationRouteDescriptor.accessibilityLabel(for: section))
     .accessibilityValue(isSelected ? "已选中" : "未选中")
+    .accessibilityHint(
+      WorkspaceNavigationRouteDescriptor.checksHint(for: section, issueCount: siteIssueCount)
+    )
     .accessibilityAddTraits(isSelected ? .isSelected : [])
     .accessibilityIdentifier("workspace-compact-rail-\(section.rawValue)")
   }

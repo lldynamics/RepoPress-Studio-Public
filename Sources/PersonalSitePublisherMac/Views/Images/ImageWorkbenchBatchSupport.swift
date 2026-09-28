@@ -170,6 +170,8 @@ struct ImageBatchOperationPreview: Identifiable {
   let id = UUID()
   let action: ImageWorkbenchBatchAction
   let affectedItems: [ImageBatchAffectedItem]
+  var context: ImageBatchPreviewContext? = nil
+  var excludedFileCount: Int = 0
 }
 
 struct ImageBatchOperationPreviewView: View {
@@ -196,15 +198,20 @@ struct ImageBatchOperationPreviewView: View {
           String(format: String(localized: "确认%@"), preview.action.title),
           systemImage: preview.action.systemImage
         )
-          .font(.title3.weight(.semibold))
+        .font(.title3.weight(.semibold))
         Text("逐项核对影响文章和图片；取消勾选即可排除单张图片。")
           .font(.callout)
           .foregroundStyle(.secondary)
+        if preview.excludedFileCount > 0 {
+          Text("另有 \(preview.excludedFileCount) 个所选文件未登记或不符合此操作，已排除。")
+            .font(.callout).foregroundStyle(.secondary)
+        }
       }
 
       LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 10)], spacing: 10) {
         MetricTile(title: "影响文章", value: "\(selectedDraftCount)", systemImage: "doc.text")
-        MetricTile(title: "影响图片", value: "\(selectedItems.count)", systemImage: "photo.on.rectangle")
+        MetricTile(
+          title: "影响图片", value: "\(selectedItems.count)", systemImage: "photo.on.rectangle")
         MetricTile(
           title: preview.action.isMetadataFill
             ? "待补字段"

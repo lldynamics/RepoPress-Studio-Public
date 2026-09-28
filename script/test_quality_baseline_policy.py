@@ -45,6 +45,10 @@ def v2() -> dict[str, object]:
                 "Tests": 3,
             }
         },
+        "sourceFileLineMaximums": {
+            "defaultMaximum": 600,
+            "existingFileMaximums": {},
+        },
         "releasePerformance": {
             "schemaVersion": 1,
             "configuration": "release",
@@ -90,10 +94,14 @@ def write_package(repo: Path, *, source_present: bool, test_present: bool) -> No
     (repo / "Package.swift").write_text("\n".join(names) + "\n", encoding="utf-8")
 
 
-def invoke(repo: Path, base: str | None = None) -> subprocess.CompletedProcess[str]:
+def invoke(
+    repo: Path, base: str | None = None, *, tighten_source_lines: bool = False
+) -> subprocess.CompletedProcess[str]:
     command = ["python3", str(GATE), "--root", str(repo)]
     if base is not None:
         command.extend(["--diff-base", base])
+    if tighten_source_lines:
+        command.append("--tighten-source-lines")
     return subprocess.run(command, cwd=repo, capture_output=True, text=True, check=False)
 
 
@@ -102,6 +110,139 @@ def expect_failure(repo: Path, payload: dict[str, object], needle: str) -> None:
     result = invoke(repo)
     assert result.returncode != 0, result.stdout
     assert needle in result.stderr, result.stderr
+
+
+def write_swift_lines(repo: Path, relative: str, line_count: int) -> None:
+    path = repo / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(f"// fixture {index}\n" for index in range(line_count)), encoding="utf-8")
+
+
+def source_file_line_limit_fixtures() -> None:
+    """Exercise actual Sources line limits and their monotonic baseline policy."""
+    with tempfile.TemporaryDirectory(prefix="quality-baseline-policy-source-bootstrap.") as temporary:
+        repo = Path(temporary)
+        run("git", "init", "-q", cwd=repo)
+        old_baseline = v2()
+        old_baseline.pop("sourceFileLineMaximums")
+        write(repo, old_baseline)
+        write_swift_lines(repo, "Sources/TargetA/Legacy.swift", 620)
+        write_package(repo, source_present=True, test_present=False)
+        run("git", "add", ".", cwd=repo)
+        run("git", "-c", "user.name=gate", "-c", "user.email=gate@example.invalid", "commit", "-qm", "old", cwd=repo)
+
+        bootstrapped = v2()
+        bootstrapped["sourceFileLineMaximums"]["existingFileMaximums"] = {
+            "Sources/TargetA/Legacy.swift": 620,
+        }
+        write(repo, bootstrapped)
+        bootstrap = invoke(repo)
+        assert bootstrap.returncode == 0, bootstrap.stderr
+
+        write_swift_lines(repo, "Sources/TargetA/New.swift", 601)
+        bootstrapped["sourceFileLineMaximums"]["existingFileMaximums"]["Sources/TargetA/New.swift"] = 601
+        expect_failure(
+            repo,
+            bootstrapped,
+            "initial existing-file maximum requires a source file present at the comparison base",
+        )
+
+    with tempfile.TemporaryDirectory(prefix="quality-baseline-policy-source-lines.") as temporary:
+        repo = Path(temporary)
+        run("git", "init", "-q", cwd=repo)
+        baseline = v2()
+        baseline["sourceFileLineMaximums"]["existingFileMaximums"] = {
+            "Sources/TargetA/Legacy.swift": 620,
+        }
+        write(repo, baseline)
+        write_swift_lines(repo, "Sources/TargetA/Legacy.swift", 620)
+        write_swift_lines(repo, "Sources/TargetA/Regular.swift", 600)
+        write_package(repo, source_present=True, test_present=False)
+        run("git", "add", ".", cwd=repo)
+        run("git", "-c", "user.name=gate", "-c", "user.email=gate@example.invalid", "commit", "-qm", "base", cwd=repo)
+
+        write_swift_lines(repo, "Sources/TargetA/Legacy.swift", 621)
+        grown = invoke(repo)
+        assert grown.returncode != 0 and "Legacy.swift has 621 lines" in grown.stderr, grown.stderr
+        cannot_auto_widen = invoke(repo, tighten_source_lines=True)
+        assert cannot_auto_widen.returncode != 0 and "Legacy.swift has 621 lines" in cannot_auto_widen.stderr, cannot_auto_widen.stderr
+        assert json.loads((repo / "script/quality_baselines.json").read_text())[
+            "sourceFileLineMaximums"
+        ]["existingFileMaximums"]["Sources/TargetA/Legacy.swift"] == 620
+
+        write_swift_lines(repo, "Sources/TargetA/Legacy.swift", 619)
+        shrunk = invoke(repo)
+        assert shrunk.returncode != 0 and "is stale" in shrunk.stderr, shrunk.stderr
+        tightened = invoke(repo, tighten_source_lines=True)
+        assert tightened.returncode == 0, tightened.stderr
+        assert "source-file ceilings tightened: 1" in tightened.stdout, tightened.stdout
+        assert json.loads((repo / "script/quality_baselines.json").read_text())[
+            "sourceFileLineMaximums"
+        ]["existingFileMaximums"]["Sources/TargetA/Legacy.swift"] == 619
+        write_swift_lines(repo, "Sources/TargetA/Legacy.swift", 620)
+        regrown = invoke(repo)
+        assert regrown.returncode != 0 and "Legacy.swift has 620 lines" in regrown.stderr, regrown.stderr
+        write_swift_lines(repo, "Sources/TargetA/Legacy.swift", 619)
+
+        write_swift_lines(repo, "Sources/TargetA/Regular.swift", 601)
+        ordinary_crossing = invoke(repo)
+        assert ordinary_crossing.returncode != 0 and "Regular.swift has 601 lines" in ordinary_crossing.stderr, ordinary_crossing.stderr
+        write_swift_lines(repo, "Sources/TargetA/Regular.swift", 600)
+
+        write_swift_lines(repo, "Sources/TargetA/New.swift", 601)
+        new_large_file = invoke(repo)
+        assert new_large_file.returncode != 0 and "New.swift has 601 lines" in new_large_file.stderr, new_large_file.stderr
+        (repo / "Sources/TargetA/New.swift").unlink()
+
+        raised = v2()
+        raised["sourceFileLineMaximums"]["existingFileMaximums"] = {
+            "Sources/TargetA/Legacy.swift": 621,
+        }
+        write_swift_lines(repo, "Sources/TargetA/Legacy.swift", 621)
+        expect_failure(repo, raised, "Swift source file maximum Sources/TargetA/Legacy.swift increased")
+        write(repo, baseline)
+        write_swift_lines(repo, "Sources/TargetA/Legacy.swift", 619)
+
+        write_swift_lines(repo, "Sources/TargetA/Legacy.swift", 600)
+        tightened_to_default = invoke(repo, tighten_source_lines=True)
+        assert tightened_to_default.returncode == 0, tightened_to_default.stderr
+        assert "Sources/TargetA/Legacy.swift" not in json.loads(
+            (repo / "script/quality_baselines.json").read_text()
+        )["sourceFileLineMaximums"]["existingFileMaximums"]
+        write_swift_lines(repo, "Sources/TargetA/Legacy.swift", 601)
+        regrown_past_default = invoke(repo)
+        assert regrown_past_default.returncode != 0 and "without a reviewed" in regrown_past_default.stderr, regrown_past_default.stderr
+        write_swift_lines(repo, "Sources/TargetA/Legacy.swift", 600)
+
+        (repo / "Sources/TargetA/Legacy.swift").unlink()
+        deleted = v2()
+        write(repo, deleted)
+        deletion = invoke(repo)
+        assert deletion.returncode == 0, deletion.stderr
+
+    with tempfile.TemporaryDirectory(prefix="quality-baseline-policy-source-rename.") as temporary:
+        repo = Path(temporary)
+        run("git", "init", "-q", cwd=repo)
+        baseline = v2()
+        baseline["sourceFileLineMaximums"]["existingFileMaximums"] = {
+            "Sources/TargetA/Legacy.swift": 620,
+        }
+        write(repo, baseline)
+        write_swift_lines(repo, "Sources/TargetA/Legacy.swift", 620)
+        write_package(repo, source_present=True, test_present=False)
+        run("git", "add", ".", cwd=repo)
+        run("git", "-c", "user.name=gate", "-c", "user.email=gate@example.invalid", "commit", "-qm", "base", cwd=repo)
+
+        old_path = repo / "Sources/TargetA/Legacy.swift"
+        renamed_path = repo / "Sources/TargetA/Renamed.swift"
+        old_path.replace(renamed_path)
+        renamed = v2()
+        renamed["sourceFileLineMaximums"]["existingFileMaximums"] = {
+            "Sources/TargetA/Renamed.swift": 620,
+        }
+        write(repo, renamed)
+        rename = invoke(repo)
+        assert rename.returncode == 0, rename.stderr
 
 
 def main() -> int:
@@ -248,9 +389,11 @@ def main() -> int:
             run("git", "add", "README", cwd=empty_base_repo)
             run("git", "-c", "user.name=gate", "-c", "user.email=gate@example.invalid", "commit", "-qm", "empty", cwd=empty_base_repo)
             write(empty_base_repo, v2())
+            write_target(empty_base_repo, "Sources", "TargetA", present=True)
             missing = invoke(empty_base_repo)
             assert missing.returncode != 0 and "base-baseline-missing" in missing.stderr, missing.stderr
 
+    source_file_line_limit_fixtures()
     print("quality baseline policy test: passed")
     return 0
 

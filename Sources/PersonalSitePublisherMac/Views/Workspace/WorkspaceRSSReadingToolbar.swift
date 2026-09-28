@@ -1,5 +1,4 @@
 import PublishingKnowledgeCore
-import PublishingWorkbenchCore
 import SwiftUI
 
 /// RSS has its own reading-oriented native toolbar items. Each button stays a

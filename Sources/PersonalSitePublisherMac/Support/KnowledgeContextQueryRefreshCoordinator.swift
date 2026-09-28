@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import PublishingCoreSupport
 import PublishingWorkbenchCore
 
 struct KnowledgeContextQueryMetadata: Equatable, Sendable {
@@ -25,6 +26,7 @@ final class KnowledgeContextQueryRefreshCoordinator: ObservableObject {
 
   private let editorState: WorkbenchMarkdownEditorLiveContextFeatureFacade
   private let debounceDuration: Duration
+  private let clock: any Clock<Duration>
   private var metadata: KnowledgeContextQueryMetadata
   private var editorStateCancellable: AnyCancellable?
   private var refreshTask: Task<Void, Never>?
@@ -33,10 +35,12 @@ final class KnowledgeContextQueryRefreshCoordinator: ObservableObject {
   init(
     draft: ArticleDraft,
     store: WorkbenchStore,
-    debounceDuration: Duration = .milliseconds(420)
+    debounceDuration: Duration = DebounceIntervals.knowledgeContextQuery,
+    clock: any Clock<Duration> = ContinuousClock()
   ) {
     metadata = KnowledgeContextQueryMetadata(draft: draft)
     self.debounceDuration = debounceDuration
+    self.clock = clock
     editorState = WorkbenchMarkdownEditorLiveContextFeatureFacade(
       store: store,
       draftID: draft.id
@@ -62,14 +66,19 @@ final class KnowledgeContextQueryRefreshCoordinator: ObservableObject {
     scheduleRefresh()
   }
 
+  func waitUntilIdle() async {
+    await refreshTask?.value
+  }
+
   private func scheduleRefresh() {
     refreshTask?.cancel()
     refreshGeneration &+= 1
     let generation = refreshGeneration
     let delay = debounceDuration
+    let clock = self.clock
     refreshTask = Task { @MainActor [weak self] in
       do {
-        try await Task.sleep(for: delay)
+        try await clock.sleep(for: delay)
       } catch {
         return
       }

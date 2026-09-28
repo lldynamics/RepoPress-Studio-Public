@@ -14,7 +14,8 @@ final class RepositoryImageInventoryServiceTests: XCTestCase {
     try Data([7]).write(to: imageDirectory.appendingPathComponent(".hidden.png"))
     try Data([8]).write(to: rootURL.appendingPathComponent("outside.png"))
 
-    let escapedTarget = rootURL.deletingLastPathComponent().appendingPathComponent("escaped-\(UUID().uuidString).png")
+    let escapedTarget = rootURL.deletingLastPathComponent().appendingPathComponent(
+      "escaped-\(UUID().uuidString).png")
     try Data([9]).write(to: escapedTarget)
     defer { try? FileManager.default.removeItem(at: escapedTarget) }
     try FileManager.default.createSymbolicLink(
@@ -84,7 +85,8 @@ final class RepositoryImageInventoryServiceTests: XCTestCase {
     try Data([5]).write(to: rootURL.appendingPathComponent("outside.png"))
     try Data([6]).write(to: imageDirectory.appendingPathComponent("invalid.txt"))
 
-    let externalURL = rootURL.deletingLastPathComponent().appendingPathComponent("external-\(UUID().uuidString).jpg")
+    let externalURL = rootURL.deletingLastPathComponent().appendingPathComponent(
+      "external-\(UUID().uuidString).jpg")
     try Data([7]).write(to: externalURL)
     defer { try? FileManager.default.removeItem(at: externalURL) }
     try FileManager.default.createSymbolicLink(
@@ -114,13 +116,16 @@ final class RepositoryImageInventoryServiceTests: XCTestCase {
       try service.validatedAssetLocation(profile: profile, repositoryPath: "outside.png")
     }
     assertInventoryError(.unsupportedImageFormat) {
-      try service.validatedAssetLocation(profile: profile, repositoryPath: "static/images/invalid.txt")
+      try service.validatedAssetLocation(
+        profile: profile, repositoryPath: "static/images/invalid.txt")
     }
     assertInventoryError(.imageFileUnavailable("static/images/missing.png")) {
-      try service.validatedAssetLocation(profile: profile, repositoryPath: "static/images/missing.png")
+      try service.validatedAssetLocation(
+        profile: profile, repositoryPath: "static/images/missing.png")
     }
     assertInventoryError(.pathOutsideAssetRoot) {
-      try service.validatedAssetLocation(profile: profile, repositoryPath: "static/images/external.jpg")
+      try service.validatedAssetLocation(
+        profile: profile, repositoryPath: "static/images/external.jpg")
     }
   }
 
@@ -140,7 +145,8 @@ final class RepositoryImageInventoryServiceTests: XCTestCase {
     }
 
     let actualAssetDirectory = rootURL.appendingPathComponent("actual-static", isDirectory: true)
-    try FileManager.default.createDirectory(at: actualAssetDirectory, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: actualAssetDirectory, withIntermediateDirectories: true)
     try FileManager.default.createSymbolicLink(
       at: rootURL.appendingPathComponent("linked-static"),
       withDestinationURL: actualAssetDirectory
@@ -149,6 +155,32 @@ final class RepositoryImageInventoryServiceTests: XCTestCase {
     assertInventoryError(.unsafeAssetRoot) {
       try service.inventory(drafts: [], profile: profile)
     }
+  }
+
+  func testInventoryRetainsEmptyDirectoriesAndSkipsEscapingSymlinkDirectories() throws {
+    let rootURL = try temporaryDirectory()
+    let assetDirectory = rootURL.appendingPathComponent("static/images", isDirectory: true)
+    let emptyDirectory = assetDirectory.appendingPathComponent("empty", isDirectory: true)
+    try FileManager.default.createDirectory(at: emptyDirectory, withIntermediateDirectories: true)
+
+    let outsideDirectory = rootURL.deletingLastPathComponent()
+      .appendingPathComponent("image-inventory-outside-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: outsideDirectory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: outsideDirectory) }
+    try Data([1]).write(to: outsideDirectory.appendingPathComponent("escaped.png"))
+    try FileManager.default.createSymbolicLink(
+      at: assetDirectory.appendingPathComponent("linked", isDirectory: true),
+      withDestinationURL: outsideDirectory
+    )
+
+    var profile = SiteProfile.defaultProfile
+    profile.localRepositoryRootPath = rootURL.path
+    profile.assetRoot = "static"
+    let result = try RepositoryImageInventoryService().inventory(drafts: [], profile: profile)
+
+    XCTAssertTrue(result.assets.isEmpty)
+    XCTAssertTrue(result.directoryPaths.contains("static/images/empty"))
+    XCTAssertFalse(result.directoryPaths.contains("static/images/linked"))
   }
 
   func testInventoryAsyncHonorsCancellationBeforeReturningAResult() async throws {
@@ -190,7 +222,8 @@ final class RepositoryImageInventoryServiceTests: XCTestCase {
 
   private func temporaryDirectory() throws -> URL {
     let url = FileManager.default.temporaryDirectory
-      .appendingPathComponent("RepositoryImageInventoryServiceTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "RepositoryImageInventoryServiceTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     addTeardownBlock { try? FileManager.default.removeItem(at: url) }
     return url

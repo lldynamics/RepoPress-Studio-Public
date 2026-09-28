@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import PublishingCoreSupport
 import PublishingKnowledgeCore
 
 @MainActor
@@ -31,6 +32,8 @@ final class WorkspaceCommandPaletteContentSearch: ObservableObject {
   private var activeRequestID = UUID()
   private let knowledgeSearch: KnowledgeSearch
   private let rssSearch: RSSSearch
+  private let clock: any Clock<Duration>
+  private let debounceDuration: Duration
 
   init(
     knowledgeSearch: @escaping KnowledgeSearch = { store, query, limit in
@@ -38,23 +41,28 @@ final class WorkspaceCommandPaletteContentSearch: ObservableObject {
     },
     rssSearch: @escaping RSSSearch = { store, query, limit in
       try await store.workspacePaletteSearch(query: query, limit: limit)
-    }
+    },
+    clock: any Clock<Duration> = ContinuousClock(),
+    debounceDuration: Duration = DebounceIntervals.commandPaletteContent
   ) {
     self.knowledgeSearch = knowledgeSearch
     self.rssSearch = rssSearch
+    self.clock = clock
+    self.debounceDuration = debounceDuration
   }
 
   deinit {
     task?.cancel()
   }
 
+  @discardableResult
   func update(
     query: String,
     scope: WorkspaceUnifiedSearchScope,
     moduleVisibility: WorkspaceModuleVisibility,
     knowledge: KnowledgeStore,
     rssStore: RSSReaderStore
-  ) {
+  ) -> Task<Void, Never>? {
     task?.cancel()
     let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
     let requestID = UUID()
@@ -66,7 +74,7 @@ final class WorkspaceCommandPaletteContentSearch: ObservableObject {
       rssResults = []
       state = .idle
       resultsRevision = UUID()
-      return
+      return nil
     }
 
     knowledgeResults = []
@@ -75,9 +83,11 @@ final class WorkspaceCommandPaletteContentSearch: ObservableObject {
     resultsRevision = UUID()
     let knowledgeSearch = self.knowledgeSearch
     let rssSearch = self.rssSearch
+    let clock = self.clock
+    let debounceDuration = self.debounceDuration
     task = Task { [weak self] in
       do {
-        try await Task.sleep(for: .milliseconds(180))
+        try await clock.sleep(for: debounceDuration)
         try Task.checkCancellation()
         async let libraryResults: [KnowledgeSearchResult] =
           shouldSearchKnowledge
@@ -103,10 +113,15 @@ final class WorkspaceCommandPaletteContentSearch: ObservableObject {
         self?.resultsRevision = UUID()
       }
     }
+    return task
   }
 
   func cancel() {
     task?.cancel()
     task = nil
+  }
+
+  func waitUntilIdle() async {
+    await task?.value
   }
 }

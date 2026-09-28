@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 public enum AIOutboundPayloadContextCategory: String, Codable, CaseIterable, Hashable, Sendable {
   case conversationHistory
@@ -158,17 +159,17 @@ public enum AIOutboundPayloadConfirmationError: LocalizedError, Equatable, Senda
   public var errorDescription: String? {
     switch self {
     case .confirmationRequired:
-      return "AI 发送授权不可用，本次未发送，请重试。"
+      return CoreL10n.text("AI 发送授权不可用，本次未发送，请重试。")
     case .cancelled:
-      return "已取消本次 AI 载荷发送。"
+      return CoreL10n.text("已取消本次 AI 载荷发送。")
     case .expired:
-      return "AI 发送授权已过期，本次未发送，请重试。"
+      return CoreL10n.text("AI 发送授权已过期，本次未发送，请重试。")
     case .drifted:
-      return "发送前 AI 载荷发生变化，本次未发送，请重试。"
+      return CoreL10n.text("发送前 AI 载荷发生变化，本次未发送，请重试。")
     case .knowledgeAuthorizationChanged:
-      return "资料权限或版本已变化，本次未发送，请重新生成。"
+      return CoreL10n.text("资料权限或版本已变化，本次未发送，请重新生成。")
     case .alreadyConsumed:
-      return "本次 AI 发送授权已使用，请重试。"
+      return CoreL10n.text("本次 AI 发送授权已使用，请重试。")
     }
   }
 }

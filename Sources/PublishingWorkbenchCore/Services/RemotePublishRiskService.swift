@@ -88,8 +88,10 @@ public struct RemotePublishRiskService: Sendable {
         PreflightIssue(
           severity: .warning,
           title: CoreL10n.text("远端状态待确认"),
-          message: CoreL10n.text("当前没有可用的最新 upstream 扫描结果。直接提交会在写入前通过远端 API 核对每个文件版本；PR/MR 可继续进入审阅流程。"),
-          field: "repository"
+          message: CoreL10n.text(
+            "当前没有可用的最新 upstream 扫描结果。直接提交会在写入前通过远端 API 核对每个文件版本；PR/MR 可继续进入审阅流程。"),
+          field: "repository",
+          code: .remoteStatusUnconfirmed
         )
       ]
     case .clean:
@@ -103,7 +105,8 @@ public struct RemotePublishRiskService: Sendable {
             "上游也修改了 %@。写入或提交前建议先查看远端 diff、导入远端草稿或同步仓库。",
             Self.pathSummary(assessment.conflictPaths)
           ),
-          field: "repository"
+          field: "repository",
+          code: .remoteSamePathChanges
         )
       ]
     }

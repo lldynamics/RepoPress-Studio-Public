@@ -325,15 +325,15 @@ public enum LocalSitePreviewError: LocalizedError, Sendable {
   public var errorDescription: String? {
     switch self {
     case .invalidRoot(let rootPath):
-      return "本地预览仓库目录不可用：\(rootPath)"
+      return CoreL10n.format("本地预览仓库目录不可用：%@", rootPath)
     case .dependencyDiagnostics(let diagnostics):
       let messages = diagnostics.blockingMessages
       if messages.isEmpty {
-        return "本地预览依赖检查未通过。"
+        return CoreL10n.text("本地预览依赖检查未通过。")
       }
-      return "本地预览依赖检查未通过：\(messages.joined(separator: "；"))"
+      return CoreL10n.format("本地预览依赖检查未通过：%@", messages.joined(separator: "；"))
     case .portUnavailable(let port):
-      return "本地预览端口 \(port) 已被占用，请重新分配端口后再试。"
+      return CoreL10n.format("本地预览端口 %d 已被占用，请重新分配端口后再试。", port)
     case .authorizationRequired:
       return CoreL10n.text("本地预览需要先确认当前仓库和启动命令。")
     case .executionPlanChanged:
@@ -341,7 +341,7 @@ public enum LocalSitePreviewError: LocalizedError, Sendable {
     case .authorizationStoreUnavailable(let message):
       return CoreL10n.format("无法保存本地预览授权：%@", message)
     case .launchFailed(let message):
-      return "本地预览启动失败：\(message)"
+      return CoreL10n.format("本地预览启动失败：%@", message)
     }
   }
 }

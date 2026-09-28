@@ -58,16 +58,6 @@
     },
     {
       "file": "Sources/PublishingGitCore/GitCommandRunner.swift",
-      "declaration": "BoundedOutputCollector",
-      "rationale": "Collected output is protected by an internal lock."
-    },
-    {
-      "file": "Sources/PublishingGitCore/GitCommandRunner.swift",
-      "declaration": "GitInputWriteOutcome",
-      "rationale": "The background stdin writer and waiting caller exchange only an error description protected by one NSLock; the data and file handle are not stored here."
-    },
-    {
-      "file": "Sources/PublishingGitCore/GitCommandRunner.swift",
       "declaration": "GitStandardInputWriter",
       "rationale": "Each command transfers one immutable Data value and one pipe write handle to a single background queue; that queue alone writes and closes the handle before reporting completion."
     },
@@ -80,16 +70,6 @@
       "file": "Sources/PublishingGitCore/GitCommandRunner.swift",
       "declaration": "GitPipeDrainCoordinator",
       "rationale": "File-handle callback admission and the active drain count are protected by one NSCondition before the coordinator crosses callback queues."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Services/ImageBatchProcessingActor.swift",
-      "declaration": "ImageProcessingCancellationToken",
-      "rationale": "Cancellation state is synchronized by the token lock."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Services/KeychainTokenStore.swift",
-      "declaration": "InMemoryTokenBackend",
-      "rationale": "Testable in-memory credential storage is protected by the coordinator lock."
     },
     {
       "file": "Sources/PublishingWorkbenchCore/Services/KeychainTokenStore.swift",
@@ -122,11 +102,6 @@
       "rationale": "NWConnection operation state is confined to its serial queue and single completion path."
     },
     {
-      "file": "Sources/PersonalSitePublisherMac/Views/RSS/RSSArticleHTMLRenderer.swift",
-      "declaration": "RSSArticleRenderCache",
-      "rationale": "The synchronous HTML LRU is shared by WebView renders; its cache and recency mutations are protected by one NSLock."
-    },
-    {
       "file": "Sources/PublishingKnowledgeCore/Stores/RSSReaderDatabase.swift",
       "declaration": "RSSReaderDatabase",
       "rationale": "SQLite connection state remains synchronous for the reader store; every handle and statement operation is serialized by the database lock."
@@ -140,11 +115,6 @@
       "file": "Sources/PublishingWorkbenchCore/Services/LocalRepositoryService.swift",
       "declaration": "LocalRepositoryService",
       "rationale": "Value service stores immutable sendable command dependencies; filesystem objects remain operation-local."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Services/LocalSitePreviewService.swift",
-      "declaration": "LocalSitePreviewLogCollector",
-      "rationale": "Preview output buffers are protected by the collector lock."
     },
     {
       "file": "Sources/PublishingWorkbenchCore/Services/LocalSitePreviewService.swift",
@@ -190,11 +160,6 @@
       "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchPersistenceStore.swift",
       "declaration": "WorkbenchPersistenceCommitCoordinator",
       "rationale": "Commit sequencing state is protected by the coordinator lock."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchPersistenceStore.swift",
-      "declaration": "WorkbenchPersistenceRevisionState",
-      "rationale": "Revision counters are protected by the state lock."
     },
     {
       "file": "Tests/PublishingWorkbenchCoreTests/CodexAppServerTransportConcurrencyTests.swift",
@@ -262,11 +227,6 @@
       "rationale": "Off-main path-probe observations are protected by one NSLock while the injected callback crosses task boundaries."
     },
     {
-      "file": "Sources/PublishingAICore/AIChatCompletionPreparedRequest.swift",
-      "declaration": "AIPreparedRequestConsumption",
-      "rationale": "The one-shot consumption flag is protected by its NSLock, so prepared-request use remains atomic when the Sendable value crosses task boundaries."
-    },
-    {
       "file": "Sources/PublishingWorkbenchCore/Services/AICredentialStore.swift",
       "declaration": "AICredentialStore",
       "rationale": "The recursive lock serializes storage-mode, session, generation, Keychain, and local-file mutations before the class crosses Sendable task boundaries."
@@ -282,24 +242,9 @@
       "rationale": "The probe's invocation and main-thread flags are protected by one NSLock while background-save callbacks report to the test assertions."
     },
     {
-      "file": "Sources/PublishingAICore/Services/AIChatCompletionClient.swift",
-      "declaration": "AIChatTransportCache",
-      "rationale": "All cache entries, recency counters, and eviction decisions are serialized by the cache NSLock."
-    },
-    {
       "file": "Sources/PublishingAICore/Services/AIDataSharingConsentStore.swift",
       "declaration": "AIDataSharingConsentStore",
       "rationale": "The store has immutable configuration and delegates synchronized preference access to thread-safe UserDefaults without retaining mutable grant state."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore+AgentContinuation.swift",
-      "declaration": "AgentContinuationKnowledgeAuthorizationState",
-      "rationale": "The continuation authorization flag is read and written only through helpers protected by one NSLock."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore+AgentLoop.swift",
-      "declaration": "AgentKnowledgeAuthorizationState",
-      "rationale": "The agent authorization flag is read and written only through helpers protected by one NSLock."
     },
     {
       "file": "Tests/PublishingWorkbenchCoreTests/AIModelDiscoveryServiceTests.swift",
@@ -330,11 +275,6 @@
       "file": "Sources/PersonalSitePublisherMac/Views/Editor/MarkdownInlineAttachmentOverlayView.swift",
       "declaration": "Payload",
       "rationale": "Payload contains only an immutable CGImage value and an Int64; it carries no cache, actor, or mutable reference state when returned across the cache actor boundary."
-    },
-    {
-      "file": "Sources/PublishingMarkdownCore/MarkdownCursorContextService.swift",
-      "declaration": "MarkdownCursorDocumentIndexCache",
-      "rationale": "All revision, source, selection, index, and diagnostic-counter state is read or mutated under the same NSLock; build and incremental callbacks run within that lock and receive value snapshots."
     },
     {
       "file": "Tests/PersonalSitePublisherMacTests/MarkdownFindMatchRefreshCoordinatorTests.swift",
@@ -370,11 +310,6 @@
       "file": "Sources/PublishingCoreSupport/LocalBPETokenizer.swift",
       "declaration": "VocabularyCache",
       "rationale": "The shared cache dictionary is accessed only while holding its NSLock; cached Vocabulary instances are immutable after parsing and resource loads publish through the same lock."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Services/ContentHealthReportCache.swift",
-      "declaration": "ContentHealthReportCache",
-      "rationale": "All entries, counters, access clocks, and eviction mutations are protected by one NSLock; cache keys and summaries are Sendable value snapshots returned without mutable references."
     },
     {
       "file": "Sources/PublishingWorkbenchCore/Services/RepositoryContentChangeMonitor.swift",
@@ -425,11 +360,6 @@
       "file": "Tests/PublishingWorkbenchCoreTests/RepositoryRebaseSyncServiceTests.swift",
       "declaration": "RecoveryPhaseRecorder",
       "rationale": "The test recorder's phase array is appended and read only while holding one NSLock as recovery callbacks may cross concurrency boundaries."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchPersistenceBaseline.swift",
-      "declaration": "WorkbenchPersistenceBaseline",
-      "rationale": "The sole mutable revision dictionary is private and every read/write is enclosed by the same NSLock; copies of the persistence value intentionally share this synchronized baseline."
     },
     {
       "file": "Sources/PublishingKnowledgeCore/Services/KnowledgeNoteSnapshotBackupService.swift",
@@ -935,6 +865,24 @@
       "category": "parsing",
       "contains": "try? decoder.decode(KnowledgeLibraryBackupManifest.self, from: data)",
       "rationale": "The knowledge manifest is only normalized for backup deduplication; if it cannot be decoded the fingerprint falls back to the recorded raw size and hash, which at worst keeps an extra backup."
+    },
+    {
+      "file": "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownTextViewSyntaxCoordinator.swift",
+      "category": "cancellation",
+      "contains": "try? await clock.sleep(for: .seconds(delay))",
+      "rationale": "Both editor statistics debounce sleeps are intentionally cancellable; each following cancellation guard prevents stale work or delivery after a newer edit supersedes the task."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/ThemeTitleH1Detector.swift",
+      "category": "probeFallback",
+      "contains": "try? FileHandle(forReadingFrom: current)",
+      "rationale": "A theme template that cannot be opened is unavailable to the non-mutating H1 probe, so detection safely returns unavailable."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/ThemeTitleH1Detector.swift",
+      "category": "probeFallback",
+      "contains": "try? handle.read(upToCount: ThemeShortcodeCatalogService.maximumFileBytes + 1)",
+      "rationale": "A template read failure or invalid UTF-8 makes the non-mutating H1 probe unavailable; the bounded detector returns unavailable instead of guessing a title layout."
     }
   ],
   "optionalOperationRules": [

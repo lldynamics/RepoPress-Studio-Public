@@ -33,11 +33,13 @@ public struct RepositoryScanState: Codable, Hashable, Sendable {
   public static func finished(report: RepositoryScanReport, finishedAt: Date = Date()) -> RepositoryScanState {
     RepositoryScanState(
       isScanning: false,
-      message: CoreL10n.format(
-        "扫描完成：%@ 个本地变更，%@ 个远端变更。",
-        String(report.changedFiles.count),
-        String(report.remoteChangedFiles.count)
-      ),
+      message: report.hasGitDirectory
+        ? CoreL10n.format(
+          "扫描完成：%@ 个本地变更，%@ 个远端变更。",
+          String(report.changedFiles.count),
+          String(report.remoteChangedFiles.count)
+        )
+        : CoreL10n.text("未发现 .git"),
       startedAt: nil,
       finishedAt: finishedAt
     )

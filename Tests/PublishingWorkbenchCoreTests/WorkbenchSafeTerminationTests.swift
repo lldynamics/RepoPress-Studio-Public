@@ -282,6 +282,12 @@ final class WorkbenchSafeTerminationTests: XCTestCase {
   func testRecoveryExportPreservesCurrentBodyWhenPrimarySnapshotCannotBeWritten() async throws {
     let fixture = try await makeFixture(prefix: "safe-termination-export")
     defer { try? FileManager.default.removeItem(at: fixture.baseURL) }
+    let retiredFeatureArchivesURL = fixture.persistence.retiredFeatureArchiveDirectoryURL
+    try FileManager.default.createDirectory(
+      at: retiredFeatureArchivesURL, withIntermediateDirectories: true)
+    try Data("retained recovery archive".utf8).write(
+      to: retiredFeatureArchivesURL.appendingPathComponent("retired.json")
+    )
     fixture.store.createDraft()
     let draft = try XCTUnwrap(fixture.store.selectedDraft)
     let buffer = fixture.store.draftBodyEditorBuffer(for: draft.id)
@@ -298,6 +304,11 @@ final class WorkbenchSafeTerminationTests: XCTestCase {
     XCTAssertTrue(fixture.store.validatePreparedSafeTermination())
     let preview = try WorkspaceBackupService().inspectBackup(at: exported)
     XCTAssertEqual(preview.unresolvedAttachmentCount, 0)
+    XCTAssertTrue(
+      FileManager.default.fileExists(
+        atPath: exported.appendingPathComponent(
+          WorkspaceBackupService.retiredFeatureArchivesRelativePrefix + "/retired.json"
+        ).path))
     let recovered = try JSONDecoder.workbench.decode(WorkbenchSnapshot.self, from:
       Data(contentsOf: exported.appendingPathComponent(WorkspaceBackupService.workbenchRelativePath)))
     XCTAssertEqual(recovered.drafts.first { $0.id == draft.id }?.bodyMarkdown, "Recovery package current body")

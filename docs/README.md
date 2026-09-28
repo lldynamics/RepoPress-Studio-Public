@@ -20,7 +20,7 @@
 | App 版本与构建号 | [BuildVersion.xcconfig](../Packaging/BuildVersion.xcconfig) | [版本规则](release-versioning.md)只解释递增和验证，不维护另一组当前版本 |
 | 门禁命令、输入、证据与 profile 归属 | [release_checks.json](../script/release_checks.json) | 用运行器 `--list` 查询，README 不复制完整检查清单 |
 | 参数选择、超时与结果格式 | [release_gate_runner.py](../script/release_gate_runner.py)、[结果 schema](../script/release_gate_result.schema.json) | [脚本目录](../script/README.md)说明职责和固定入口 |
-| 覆盖率、格式、测试数与性能质量基线 | [quality_baselines.json](../script/quality_baselines.json) | 解释指标含义，不在文档建立另一套阈值；未入此配置的 trace 阈值由分析器参数定义 |
+| 覆盖率、格式、测试数、性能与生产 Swift 单文件行数质量基线 | [quality_baselines.json](../script/quality_baselines.json) | 解释指标含义，不在文档建立另一套阈值；未入此配置的 trace 阈值由分析器参数定义 |
 | CI 触发条件、任务关系和环境 | [实际安装的工作流](../.github/workflows) | README 只链接来源；开发仓与公开快照的工作流不同，不互相推断运行状态 |
 | 构建与启动模式 | [build_and_run.sh](../script/build_and_run.sh) | 通过 `--help` 查询参数；README 保留最小构建/启动示例 |
 | Developer ID 发布行为与参数 | [package_direct_release.sh](../script/package_direct_release.sh)、[entitlements](../Packaging/DirectDistribution.entitlements) | [直发指南](direct-release.md)是唯一人工操作步骤；它不证明线上已发布 |

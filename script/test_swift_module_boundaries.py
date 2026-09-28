@@ -169,10 +169,15 @@ def valid_payload() -> dict[str, Any]:
                     product("Sparkle", "Sparkle"),
                 ],
             ),
+            target("PublishingTestSupport", "test", []),
             target(
                 "PublishingMarkdownCoreTests",
                 "test",
-                [dependency("PublishingCoreSupport"), dependency("PublishingMarkdownCore")],
+                [
+                    dependency("PublishingCoreSupport"),
+                    dependency("PublishingMarkdownCore"),
+                    dependency("PublishingTestSupport"),
+                ],
             ),
             target(
                 "PublishingGitCoreTests",
@@ -222,6 +227,7 @@ def valid_payload() -> dict[str, Any]:
                     dependency("PublishingPreviewCore"),
                     dependency("PublishingBackupCore"),
                     dependency("PublishingSyncCore"),
+                    dependency("PublishingTestSupport"),
                 ],
             ),
             target(
@@ -239,6 +245,7 @@ def valid_payload() -> dict[str, Any]:
                     dependency("PublishingPreviewCore"),
                     dependency("PublishingBackupCore"),
                     dependency("PublishingSyncCore"),
+                    dependency("PublishingTestSupport"),
                 ],
             ),
         ],
@@ -387,7 +394,7 @@ def main() -> int:
         assert decoded["schemaVersion"] == "2"
         assert decoded["policyVersion"] == "swift-module-boundaries-v4"
         assert decoded["tool"]["version"] == "4"
-        assert decoded["targetTypeCounts"] == {"executable": 1, "regular": 11, "test": 9}
+        assert decoded["targetTypeCounts"] == {"executable": 1, "regular": 11, "test": 10}
         assert [product["name"] for product in decoded["products"]] == [
             "PersonalSitePublisherMac",
             "PublishingAICore",

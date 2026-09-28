@@ -335,7 +335,7 @@ public final class WorkbenchMarkdownEditorSaveStatusFeatureFacade: ObservableObj
           canRetry: false
         )
       }
-      return store.lastSaveError?.nilIfEmpty.map {
+      return store.persistenceStore.lastSaveError?.nilIfEmpty.map {
         WorkbenchMarkdownEditorSaveFailurePresentation(
           scope: .application,
           message: $0,
@@ -357,7 +357,9 @@ public final class WorkbenchMarkdownEditorSaveStatusFeatureFacade: ObservableObj
         canRetry: true
       )
     }
-    if let error = store.lastSaveError?.nilIfEmpty {
+    // A different article's project write failure is not an application-save
+    // failure for this editor. Project errors above are already draft-scoped.
+    if let error = store.persistenceStore.lastSaveError?.nilIfEmpty {
       return WorkbenchMarkdownEditorSaveFailurePresentation(
         scope: .application,
         message: error,

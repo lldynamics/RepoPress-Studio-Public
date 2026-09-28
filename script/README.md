@@ -27,9 +27,9 @@ Quartz 4 静态预览的固定 Python 运行器保存在 `Sources/PublishingWork
 | `check_build_version.sh` | 校验 `BuildVersion.xcconfig`、Info.plist 与应用版本字段一致。 | 构建/发布门；`test_build_version_gate.sh`。 |
 | `check_ci_quality_workflow.sh` | 检查 GitHub Actions 质量、工具链和共享 Swift 工作流的固定 action。 | CI 配置维护；脚本断言。 |
 | `check_launch_performance.sh` | 通过标准构建入口执行启动基线检查。 | 发行性能流程；调用 `build_and_run.sh --launch-baseline`，失败返回非零。 |
-| `check_localization_gate.sh` | 检查 Swift 编译器导出的应用本地化键、补充提取键、Core 资源和目录完整性。 | quick/本地化维护；与 `sync_ui_localizations.py` 配合，脚本断言失败即阻断。 |
+| `check_localization_gate.sh` | 检查 Swift 编译器导出的应用本地化键、补充提取键、App 与 Core 中的 `CoreL10n` 资源引用和目录完整性。 | quick/本地化维护；与 `sync_ui_localizations.py` 配合，脚本断言失败即阻断。 |
 | `check_public_snapshot.sh` | 检查公开快照的源边界、敏感路径、共享 Swift 包子树和其来源摘要。 | 公开快照发布前；`test_public_snapshot_export.sh` 与脚本静态断言。 |
-| `check_quality_baseline_policy.py` | 拒绝质量基线被无声放宽，保证阈值单调或有明确迁移。 | release gate；`test_quality_baseline_policy.py`。 |
+| `check_quality_baseline_policy.py` | 拒绝质量基线被无声放宽，保证阈值单调或有明确迁移；新生产 Swift 文件不得超过 600 行，已登记的大文件缩短后须同步收紧上限。`--tighten-source-lines` 只下调过时上限并移除已降至 600 行以内的条目，常规检查只读。 | release gate；`test_quality_baseline_policy.py`。 |
 | `check_repository_source_boundary.sh` | 检查仓库源码边界、SwiftPM 构建锁、两个系统入口扩展、UI 测试输入、链接目录和发布模式下的来源完整性。普通模式只报告 checked paths 下没有未跟踪的构建/发布输入；`--release` 还要求当前 HEAD 对应的提交工作树完全干净。 | quick/发布；`test_repository_source_boundary.sh`。 |
 | `check_swift_accessibility_fields.py` | 查找 `TextField`/`TextEditor` 缺少直接 accessibility label 的 Swift 源码。 | `check_accessibility.sh`；`test_swift_accessibility_fields.py`。 |
 | `check_swift_coverage.py` | 运行 Swift 覆盖率并执行 Sources 行覆盖基线及变更行约束。 | 发行与深度覆盖率流程；`test_swift_coverage_gate.py`。 |
@@ -98,7 +98,7 @@ Quartz 4 静态预览的固定 Python 运行器保存在 `Sources/PublishingWork
 | `test_package_direct_release.sh` | 验证直接分发打包的隔离环境、签名调用和失败语义。 | `package_direct_release.sh`；Bash fixture。 |
 | `test_verify_cloud_signature.py` | 验证 iCloud profile 与签名证书、有效期和云权限不匹配时会阻断。 | `verify_cloud_signature.py`；离线 Python fixture。 |
 | `test_public_snapshot_export.sh` | 验证公开快照导出为空目录、敏感内容和 checker 的边界。 | `export_public_snapshot.sh`、`check_public_snapshot.sh`；Bash fixture。 |
-| `test_quality_baseline_policy.py` | 验证质量阈值不能静默放宽。 | `check_quality_baseline_policy.py`；Python fixture。 |
+| `test_quality_baseline_policy.py` | 验证质量阈值和生产 Swift 单文件行数上限不能静默放宽。 | `check_quality_baseline_policy.py`；Python fixture。 |
 | `test_release_artifact_manifest.py` | 验证 Release artifact manifest 的创建、哈希、缺失和漂移。 | `release_artifact_manifest.py`；Python fixture。 |
 | `test_release_gate_runner_contract.py` | 验证 gate runner 的超时、增量输出和 artifact 绑定。 | `release_gate_runner.py`；Python fixture。 |
 | `test_release_gate_selection.py` | 统一验证 quick/tooling 选择与 profile 归属，避免各检查重复定义调度规则。 | `check_release_gate.sh`、`release_gate_runner.py`；Python fixture。 |
@@ -124,5 +124,5 @@ Quartz 4 静态预览的固定 Python 运行器保存在 `Sources/PublishingWork
 - 公开快照、性能、本地化等专题保留现有按需入口；它们可以被编排入口组合，但每个单项检查只负责一个类别。`test_` 文件是自测实现，不另建并行工作流入口。
 - 公开快照会自动复制本 README 作为维护文档；`export_public_snapshot.sh` 与 `test_public_snapshot_export.sh` 是开发仓专用的导出/验证工具，按公开快照边界排除，不应被误报为公开快照运行时内容。
 - 新脚本必须先说明既有模块或参数为何无法容纳，并记录职责、输入、输出、失败语义、调用者、测试和退役条件；否则应扩展现有入口或 gate。临时工具只能放在被忽略的 `.build/tmp`，完成前删除；若工具已进入 Git 历史，保留历史，不把临时文件变成活动入口。
-- 翻译默认直接维护主表。临时协作片段必须在同一次变更中使用 `--merge-reviewed-translations` 合并并归档，不能另造长期并行主表。
+- 翻译默认直接维护主表。同步器会更新已存在但与主表不同的有效译文，检查模式也会拒绝这些偏差；保留 catalog 注释和复数结构，比较占位符时保留参数身份，无法匹配的复数模板明确失败。临时协作片段必须在同一次变更中使用 `--merge-reviewed-translations` 合并并归档，不能另造长期并行主表。
 - `check_swift6_migration.sh` 和 `test_swift6_migration_gate.sh` 已退役并不属于活动清单；迁移诊断退役的原因是 `Package.swift` 已全部 Swift 6。替代路径是 `--check swift-module-boundaries` 与 `--check swift-strict-build`。旧的 `swift6-migration` 缓存目录只由管理缓存工具处理历史产物，不能作为新的检查入口。

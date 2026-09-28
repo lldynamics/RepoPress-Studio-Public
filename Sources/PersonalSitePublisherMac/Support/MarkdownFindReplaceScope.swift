@@ -1,7 +1,7 @@
 import Foundation
 import PublishingMarkdownCore
 
-enum MarkdownFindScope: String, CaseIterable, Identifiable {
+enum MarkdownFindScope: String, CaseIterable, Identifiable, Sendable {
   case body
   case selection
 
@@ -19,7 +19,7 @@ enum MarkdownFindScope: String, CaseIterable, Identifiable {
 
 /// The selection present when Find opened. Routine UI validation uses its
 /// revision; explicit edit confirmation also checks the expected source text.
-struct MarkdownFindScopeSnapshot: Equatable {
+struct MarkdownFindScopeSnapshot: Equatable, Sendable {
   let draftID: UUID
   let bodyRevision: UInt64
   let range: NSRange
@@ -40,7 +40,7 @@ struct MarkdownFindScopeSnapshot: Equatable {
   }
 }
 
-struct MarkdownFindReplacePreview: Identifiable, Equatable {
+struct MarkdownFindReplacePreview: Identifiable, Equatable, Sendable {
   let id = UUID()
   let draftID: UUID
   let bodyRevision: UInt64
@@ -61,7 +61,7 @@ struct MarkdownFindReplacePreview: Identifiable, Equatable {
   }
 }
 
-struct MarkdownFindReplaceScopedEdit: Equatable {
+struct MarkdownFindReplaceScopedEdit: Equatable, Sendable {
   let edit: MarkdownSmartEdit
   let selectedRange: NSRange
   let replacementCount: Int

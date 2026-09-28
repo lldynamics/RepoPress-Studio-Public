@@ -7,6 +7,7 @@ final class ContentHealthSidebarProjection: ObservableObject {
   struct Snapshot: Equatable {
     let profileID: UUID
     let orderedAIFixDraftIDs: [UUID]
+    let issueCount: Int
 
     var aiFixDraftIDs: Set<UUID> {
       Set(orderedAIFixDraftIDs)
@@ -34,15 +35,17 @@ final class ContentHealthSidebarProjection: ObservableObject {
     state = .loading(profileID: profileID)
   }
 
-  func replace(profileID: UUID, aiFixQueueItems: [AIPublishingFixQueueItem]) {
+  func replace(profileID: UUID, aiFixQueueItems: [AIPublishingFixQueueItem], issueCount: Int = 0) {
     var seenDraftIDs: Set<UUID> = []
     let orderedDraftIDs = aiFixQueueItems.compactMap { item in
       seenDraftIDs.insert(item.draftID).inserted ? item.draftID : nil
     }
-    state = .ready(Snapshot(
-      profileID: profileID,
-      orderedAIFixDraftIDs: orderedDraftIDs
-    ))
+    state = .ready(
+      Snapshot(
+        profileID: profileID,
+        orderedAIFixDraftIDs: orderedDraftIDs,
+        issueCount: max(0, issueCount)
+      ))
   }
 
   func markFailed(profileID: UUID) {
@@ -69,7 +72,15 @@ final class ContentHealthSidebarProjection: ObservableObject {
 
   func aiFixDraftIDs(for profileID: UUID) -> Set<UUID>? {
     guard case .ready(let snapshot) = state,
-          snapshot.profileID == profileID else { return nil }
+      snapshot.profileID == profileID
+    else { return nil }
     return snapshot.aiFixDraftIDs
+  }
+
+  func knownIssueCount(for profileID: UUID) -> Int? {
+    guard case .ready(let snapshot) = state,
+      snapshot.profileID == profileID
+    else { return nil }
+    return snapshot.issueCount
   }
 }

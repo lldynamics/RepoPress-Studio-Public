@@ -12,13 +12,16 @@ public struct MarkdownSyntaxHighlightDebouncerMetrics: Equatable, Sendable {
 
 @MainActor
 public final class MarkdownSyntaxHighlightDebouncer {
+  private let clock: any Clock<Duration>
   private var task: Task<Void, Never>?
   private var generation: UInt64 = 0
   private var scheduledRequestCount = 0
   private var startedComputationCount = 0
   private var deliveredResultCount = 0
 
-  public init() {}
+  public init(clock: any Clock<Duration> = ContinuousClock()) {
+    self.clock = clock
+  }
 
   deinit {
     task?.cancel()
@@ -42,15 +45,18 @@ public final class MarkdownSyntaxHighlightDebouncer {
     scheduledRequestCount += 1
     let requestGeneration = generation
     let effectiveDelay = delay.isFinite ? max(0, delay) : 0
+    let clock = clock
 
     task = Task.detached(priority: .userInitiated) { [weak self] in
       do {
-        try await Task.sleep(for: .seconds(effectiveDelay))
+        try await clock.sleep(for: .seconds(effectiveDelay))
       } catch {
         return
       }
-      guard !Task.isCancelled,
-            await self?.beginComputation(for: requestGeneration) == true else {
+      guard
+        !Task.isCancelled,
+        await self?.beginComputation(for: requestGeneration) == true
+      else {
         return
       }
       guard let output = await operation() else {

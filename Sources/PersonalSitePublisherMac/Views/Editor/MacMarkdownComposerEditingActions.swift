@@ -241,78 +241,6 @@ extension MacMarkdownComposerView {
     }
   }
 
-  func replaceCurrentOrNext() {
-    isFindReplacePresented = true
-    guard !findQuery.isEmpty else {
-      findReplaceMessage = "输入查找内容。"
-      return
-    }
-
-    guard let scopeRange = currentFindScopeRange else {
-      findReplaceMessage = String(localized: "选区已变化，请重新打开查找。")
-      return
-    }
-
-    do {
-      guard let mutation = try MarkdownFindReplaceScopePlanner.replaceCurrentOrNext(
-        in: editorBody,
-        scopeRange: scopeRange,
-        query: findQuery,
-        replacement: replacementText,
-        selectedRange: selectedRange,
-        options: findOptions,
-        service: findReplaceService
-      ) else {
-        findReplaceMessage = "没有找到可替换内容。"
-        return
-      }
-
-      enqueueFindReplacement(edit: mutation.edit, count: 1, expectedBody: editorBody)
-    } catch {
-      findReplaceMessage = error.localizedDescription
-    }
-  }
-
-  func replaceAll() {
-    guard editorSessionState.liveBodyRevision == editorBodyRevision else {
-      findReplaceMessage = String(localized: "正文正在同步，请稍后重试。")
-      return
-    }
-    isFindReplacePresented = true
-    guard !findQuery.isEmpty else {
-      findReplaceMessage = "输入查找内容。"
-      return
-    }
-
-    guard let scopeRange = currentFindScopeRange else {
-      findReplaceMessage = String(localized: "选区已变化，请重新打开查找。")
-      return
-    }
-
-    do {
-      let preview = try MarkdownFindReplaceScopePlanner.previewReplaceAll(
-        in: editorBody,
-        draftID: draft.id,
-        bodyRevision: editorBodyRevision,
-        scope: findScope,
-        scopeRange: scopeRange,
-        query: findQuery,
-        replacement: replacementText,
-        options: findOptions,
-        service: findReplaceService
-      )
-
-      guard preview.replacementCount > 0 else {
-        findReplaceMessage = "没有找到可替换内容。"
-        return
-      }
-      pendingFindReplacePreview = preview
-      findReplaceMessage = String(format: String(localized: "请检查 %d 处变化后确认。"), preview.replacementCount)
-    } catch {
-      findReplaceMessage = error.localizedDescription
-    }
-  }
-
   func applyPendingFindReplacePreview() {
     guard let preview = pendingFindReplacePreview else { return }
     guard editorSessionState.liveBodyRevision == editorBodyRevision,
@@ -544,8 +472,15 @@ extension MacMarkdownComposerView {
   }
 
   func syncActiveEditorSelection() {
+    // The Store remains a compatibility bridge. A background composer may
+    // retain its local caret, but it must never replace the key window's
+    // selection or clear it while switching front-matter fields.
+    guard workspaceWindowIsKey, let windowID = workspaceWindowSession?.windowID else { return }
     guard !isFrontMatterSelection else {
-      store.clearActiveEditorSelection(for: draft.id)
+      store.clearActiveEditorSelection(
+        for: draft.id,
+        windowID: windowID
+      )
       return
     }
     let source = editorBody as NSString
@@ -553,6 +488,7 @@ extension MacMarkdownComposerView {
     let selectedText = range.length > 0 ? source.substring(with: range) : ""
     store.updateActiveEditorSelection(
       draftID: draft.id,
+      windowID: windowID,
       selectedRange: range,
       selectedText: selectedText,
       bodyUTF16Count: source.length

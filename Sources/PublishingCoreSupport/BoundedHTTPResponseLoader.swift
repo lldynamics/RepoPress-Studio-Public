@@ -7,9 +7,9 @@ package enum HTTPResponseLimitError: Error, Equatable, LocalizedError, Sendable 
   package var errorDescription: String? {
     switch self {
     case .invalidLimit:
-      return "网络响应上限必须大于 0。"
+      return CoreL10n.text("网络响应上限必须大于 0。")
     case let .responseTooLarge(maximumByteCount):
-      return "远端响应超过允许的 \(maximumByteCount) 字节，已停止读取。"
+      return CoreL10n.format("远端响应超过允许的 %@ 字节，已停止读取。", String(maximumByteCount))
     }
   }
 

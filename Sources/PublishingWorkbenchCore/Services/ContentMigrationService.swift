@@ -1,6 +1,6 @@
 import Foundation
+import PublishingCoreSupport
 import os
-
 private let logger = Logger(subsystem: "com.repopress", category: "ContentMigrationService")
 
 public enum ContentMigrationSourceKind: String, CaseIterable, Codable, Sendable {
@@ -153,21 +153,21 @@ public enum ContentMigrationError: LocalizedError {
   public var errorDescription: String? {
     switch self {
     case .unsupportedSource:
-      return "请选择 WordPress WXR、RSS/Atom、JSON 导出文件或 Markdown 文件夹。"
+      return CoreL10n.text("请选择 WordPress WXR、RSS/Atom、JSON 导出文件或 Markdown 文件夹。")
     case let .unreadableSource(path):
-      return "无法读取导入来源：\(path)"
+      return CoreL10n.format("无法读取导入来源：%@", path)
     case let .invalidExport(message):
-      return "无法识别导出内容：\(message)"
+      return CoreL10n.format("无法识别导出内容：%@", message)
     case .profileChanged:
-      return "迁移计划属于另一个站点配置，请重新生成预览后再导入。"
+      return CoreL10n.text("迁移计划属于另一个站点配置，请重新生成预览后再导入。")
     case let .sourceOutsideSelectedDirectory(path):
-      return "导入来源通过符号链接指向所选文件夹外部，已停止读取：\(path)"
+      return CoreL10n.format("导入来源通过符号链接指向所选文件夹外部，已停止读取：%@", path)
     case let .sourceLimitExceeded(message):
       return message
     case let .draftsChanged(paths):
       let visiblePaths = paths.prefix(3).joined(separator: "、")
       let suffix = paths.count > 3 ? "等 \(paths.count) 篇" : ""
-      return "生成预览后本地草稿已变化：\(visiblePaths)\(suffix)。请重新生成预览。"
+      return CoreL10n.format("生成预览后本地草稿已变化：%@%@。请重新生成预览。", visiblePaths, suffix)
     }
   }
 }

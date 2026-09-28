@@ -5,34 +5,49 @@ import SwiftUI
 
 struct ImageWorkbenchView: View {
   let store: WorkbenchStore
-  @Environment(\.workspaceWindowID) private var workspaceWindowID
-  @Binding private var stage: ImageWorkbenchContextStage
-  @ObservedObject private var imageWorkbench: WorkbenchImageWorkbenchFeatureFacade
+  @Environment(\.workspaceWindowID) var workspaceWindowID
+  @Binding var stage: ImageWorkbenchContextStage
+  @ObservedObject var imageWorkbench: WorkbenchImageWorkbenchFeatureFacade
 
-  @State private var pendingBatchPreview: ImageBatchOperationPreview?
-  @State private var repositoryInventory: RepositoryImageInventory?
-  @State private var repositoryInventoryErrorMessage: String?
-  @State private var isRepositoryInventoryLoading = false
-  @State private var selectedRepositoryPath: String?
-  @State private var repositoryTargetDraftID: UUID?
-  @State private var repositoryRefreshRequestID = UUID()
-  @State private var activeRepositoryInventoryTaskID: UUID?
-  @State private var resourceMode: ImageWorkbenchResourceMode = .repository
+  @State var pendingBatchPreview: ImageBatchOperationPreview?
+  @ObservedObject var session: RepositoryImageBrowserSession
+  let preferredDraftID: UUID?
+  @State var activeRepositoryInventoryTaskID: UUID?
+  @State var isPreparingSelection = false
 
-  init(store: WorkbenchStore, stage: Binding<ImageWorkbenchContextStage>) {
+  init(
+    store: WorkbenchStore, stage: Binding<ImageWorkbenchContextStage>,
+    session: RepositoryImageBrowserSession, preferredDraftID: UUID?
+  ) {
     self.store = store
     _stage = stage
     _imageWorkbench = ObservedObject(wrappedValue: store.imageWorkbench)
+    self.session = session
+    self.preferredDraftID = preferredDraftID
   }
 
   var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 16) {
-        header
-        batchStatus
-        stageContent
+    VStack(spacing: 0) {
+      if stage == .resources, session.resourceMode == .repository {
+        if imageWorkbench.actionMessage != nil || imageWorkbench.batchProgress != nil {
+          batchStatus.padding(12)
+        }
+        RepositoryImageBrowserView(
+          session: session, isWorking: imageWorkbench.isProcessingBatch || isPreparingSelection,
+          onRefresh: refreshAll, onProcess: presentSelectionPreview,
+          onOpenRepositorySettings: { store.selectSection(.sync) }
+        )
+        .accessibilityIdentifier("image-workbench-resources")
+      } else {
+        ScrollView {
+          VStack(alignment: .leading, spacing: 16) {
+            header
+            batchStatus
+            stageContent
+          }
+          .workbenchOperationalPageLayout()
+        }
       }
-      .workbenchOperationalPageLayout()
     }
     .accessibilityElement(children: .contain)
     .accessibilityLabel("图片工作台")
@@ -42,8 +57,6 @@ struct ImageWorkbenchView: View {
       applyAssetResourceManagerNavigationRequest()
     }
     .onChange(of: store.activeProfile.id) { _, _ in
-      repositoryInventory = nil
-      selectedRepositoryPath = nil
       normalizeRepositoryTargetDraft()
       applyAssetResourceManagerNavigationRequest()
     }
@@ -57,7 +70,6 @@ struct ImageWorkbenchView: View {
       await store.refreshImageWorkbenchSiteSummaryInBackground()
     }
     .task(id: repositoryInventoryRefreshInput) {
-      guard stage == .resources, resourceMode == .repository else { return }
       await refreshRepositoryInventory()
     }
     .sheet(item: $pendingBatchPreview) { preview in
@@ -66,14 +78,14 @@ struct ImageWorkbenchView: View {
         cancel: { pendingBatchPreview = nil },
         confirm: { selection in
           pendingBatchPreview = nil
-          runBatchOperation(preview.action, selection: selection)
+          confirmBatchOperation(preview, selection: selection)
         }
       )
     }
   }
 
   @ViewBuilder
-  private var stageContent: some View {
+  var stageContent: some View {
     switch stage {
     case .overview:
       VStack(alignment: .leading, spacing: 16) {
@@ -93,38 +105,8 @@ struct ImageWorkbenchView: View {
   }
 
   private var resourceWorkspace: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      Picker("图片资源功能", selection: $resourceMode) {
-        ForEach(ImageWorkbenchResourceMode.allCases) { mode in
-          Label(mode.title, systemImage: mode.systemImage)
-            .tag(mode)
-        }
-      }
-      .pickerStyle(.segmented)
-      .frame(maxWidth: 360)
-      .accessibilityLabel("图片资源功能")
-      .accessibilityValue(resourceMode.accessibilityTitle)
-      .accessibilityIdentifier("image-resource-mode-picker")
-
-      switch resourceMode {
-      case .repository:
-        RepositoryImageBrowserView(
-          inventory: repositoryInventory,
-          isLoading: isRepositoryInventoryLoading,
-          errorMessage: repositoryInventoryErrorMessage,
-          targetDrafts: store.visibleDrafts,
-          targetDraftID: $repositoryTargetDraftID,
-          selectedRepositoryPath: $selectedRepositoryPath,
-          onAttachToSelectedDraft: attachRepositoryImage,
-          onOpenReferencedDraft: openDraft,
-          onOpenRepositorySettings: { store.selectSection(.sync) }
-        )
-      case .manager:
-        AssetResourceManagerView(store: store)
-      }
-    }
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("image-workbench-resources")
+    AssetResourceManagerView(store: store)
+      .accessibilityIdentifier("image-workbench-resources")
   }
 
   @ViewBuilder
@@ -162,12 +144,12 @@ struct ImageWorkbenchView: View {
     }
   }
 
-  private var stageDescription: LocalizedStringKey {
+  var stageDescription: LocalizedStringKey {
     switch stage {
     case .overview:
       return "管理站点图片资源，并在预览影响范围后执行批量处理。"
     case .resources:
-      return resourceMode.description
+      return session.resourceMode.description
     }
   }
 
@@ -179,7 +161,7 @@ struct ImageWorkbenchView: View {
         Label("打开图片目录", systemImage: "folder")
       }
       .buttonStyle(.bordered)
-      .disabled(repositoryInventory == nil)
+      .disabled(session.inventory == nil)
       .accessibilityIdentifier("image-workbench-open-folder")
 
       Button {
@@ -197,7 +179,7 @@ struct ImageWorkbenchView: View {
 
       Button {
         stage = .resources
-        resourceMode = .manager
+        session.resourceMode = .manager
       } label: {
         Label("资源管理", systemImage: "archivebox")
       }
@@ -209,7 +191,7 @@ struct ImageWorkbenchView: View {
         Label("重新扫描", systemImage: "arrow.clockwise")
       }
       .workbenchProminentActionStyle()
-      .disabled(imageWorkbench.isSiteSummaryLoading || isRepositoryInventoryLoading)
+      .disabled(imageWorkbench.isSiteSummaryLoading || session.isLoading)
       .accessibilityLabel("重新扫描文章图片和仓库图片")
       .accessibilityIdentifier("image-workbench-refresh")
     }
@@ -391,29 +373,35 @@ struct ImageWorkbenchView: View {
     )
   }
 
-  private var refreshInput: UInt64 {
+}
+
+extension ImageWorkbenchView {
+  var refreshInput: UInt64 {
     store.imageWorkbenchInputRevision
   }
 
-  private var repositoryInventoryRefreshInput: RepositoryInventoryRefreshInput {
+  var repositoryInventoryRefreshInput: RepositoryInventoryRefreshInput {
     RepositoryInventoryRefreshInput(
-      requestID: repositoryRefreshRequestID,
+      requestID: session.refreshRequestID,
       imageRevision: store.imageWorkbenchInputRevision,
       profileID: store.activeProfile.id,
       repositoryRootPath: store.activeProfile.localRepositoryRootPath,
       assetRoot: store.activeProfile.assetRoot,
       stage: stage,
-      resourceMode: resourceMode
+      resourceMode: session.resourceMode
     )
   }
 
-  private func presentBatchPreview(
+  func presentBatchPreview(
     _ action: ImageWorkbenchBatchAction,
-    summary: ImageWorkbenchSiteSummary
+    summary: ImageWorkbenchSiteSummary,
+    selectedPaths: Set<String>? = nil
   ) {
     let affectedItems: [ImageBatchAffectedItem] = summary.draftSummaries.flatMap { draftSummary in
       draftSummary.items.compactMap { item -> ImageBatchAffectedItem? in
-        guard action.includes(item) else { return nil }
+        guard action.includes(item), selectedPaths?.contains(item.repositoryPath) != false else {
+          return nil
+        }
         return ImageBatchAffectedItem(
           draftID: draftSummary.draftID,
           draftTitle: draftSummary.draftTitle.nilIfEmpty ?? String(localized: "未命名文章"),
@@ -421,13 +409,51 @@ struct ImageWorkbenchView: View {
         )
       }
     }
+    guard !affectedItems.isEmpty else {
+      imageWorkbench.setActionMessage(String(localized: "所选图片没有符合此操作的文章附件。未登记图片可先加入文章。"))
+      return
+    }
     pendingBatchPreview = ImageBatchOperationPreview(
       action: action,
-      affectedItems: affectedItems
+      affectedItems: affectedItems,
+      context: ImageBatchPreviewContext(store: store),
+      excludedFileCount: selectedPaths.map {
+        $0.subtracting(Set(affectedItems.map(\.item.repositoryPath))).count
+      } ?? 0
     )
   }
 
-  private func runBatchOperation(
+  func presentSelectionPreview(_ action: ImageWorkbenchBatchAction) {
+    guard !isPreparingSelection, !imageWorkbench.isProcessingBatch,
+      session.matches(store.activeProfile)
+    else { return }
+    let paths = session.selectedPaths
+    let source = RepositoryImageInventorySource(store.activeProfile)
+    isPreparingSelection = true
+    Task { @MainActor in
+      defer { isPreparingSelection = false }
+      await store.refreshImageWorkbenchSiteSummaryInBackground(force: true)
+      guard source == RepositoryImageInventorySource(store.activeProfile),
+        let summary = store.cachedImageWorkbenchSiteSummary
+      else { return }
+      presentBatchPreview(action, summary: summary, selectedPaths: paths)
+    }
+  }
+
+  func confirmBatchOperation(_ preview: ImageBatchOperationPreview, selection: [UUID: Set<UUID>]) {
+    for draftID in selection.keys { store.flushDraftBodyEditorBuffer(for: draftID) }
+    guard preview.context?.matches(store) == true,
+      ImageBatchSelectionValidation.isValid(
+        selection, affectedItems: preview.affectedItems,
+        drafts: store.visibleDrafts)
+    else {
+      imageWorkbench.setActionMessage(String(localized: "图片或文章在预览后已变化，请重新预览处理范围。"))
+      return
+    }
+    runBatchOperation(preview.action, selection: selection)
+  }
+
+  func runBatchOperation(
     _ action: ImageWorkbenchBatchAction,
     selection: [UUID: Set<UUID>]
   ) {
@@ -464,73 +490,48 @@ struct ImageWorkbenchView: View {
     }
   }
 
-  private func refreshAll() {
-    repositoryInventory = nil
-    selectedRepositoryPath = nil
-    repositoryRefreshRequestID = UUID()
+  func refreshAll() {
+    session.refreshRequestID = UUID()
     Task { @MainActor in
       await store.refreshImageWorkbenchSiteSummaryInBackground(force: true)
     }
   }
 
-  private func refreshRepositoryInventory() async {
+  func refreshRepositoryInventory() async {
     let profile = store.activeProfile
+    session.prepare(for: profile, preferredDraftID: preferredDraftID)
+    normalizeRepositoryTargetDraft()
+    let source = RepositoryImageInventorySource(profile)
     let drafts = store.visibleDrafts
     let taskID = UUID()
     activeRepositoryInventoryTaskID = taskID
-    isRepositoryInventoryLoading = true
-    repositoryInventoryErrorMessage = nil
-    repositoryInventory = nil
-    selectedRepositoryPath = nil
+    session.isLoading = true
+    session.errorMessage = nil
     defer {
-      if activeRepositoryInventoryTaskID == taskID {
-        isRepositoryInventoryLoading = false
-      }
+      if activeRepositoryInventoryTaskID == taskID { session.isLoading = false }
     }
     do {
+      try await Task.sleep(for: .milliseconds(200))
       let inventory = try await RepositoryImageInventoryService().inventoryAsync(
-        drafts: drafts,
-        profile: profile
+        drafts: drafts, profile: profile
       )
       try Task.checkCancellation()
-      guard profile.id == store.activeProfile.id else { return }
-      repositoryInventory = inventory
-      repositoryInventoryErrorMessage = nil
-      if let selectedRepositoryPath,
-        !inventory.assets.contains(where: { $0.repositoryPath == selectedRepositoryPath })
-      {
-        self.selectedRepositoryPath = inventory.assets.first?.repositoryPath
-      } else if selectedRepositoryPath == nil {
-        selectedRepositoryPath = inventory.assets.first?.repositoryPath
-      }
+      guard source == RepositoryImageInventorySource(store.activeProfile),
+        activeRepositoryInventoryTaskID == taskID
+      else { return }
+      session.apply(inventory)
     } catch is CancellationError {
       return
     } catch {
-      guard profile.id == store.activeProfile.id else { return }
-      repositoryInventory = nil
-      repositoryInventoryErrorMessage = error.localizedDescription
+      guard source == RepositoryImageInventorySource(store.activeProfile),
+        activeRepositoryInventoryTaskID == taskID
+      else { return }
+      session.errorMessage = error.localizedDescription
     }
   }
 
-  private func attachRepositoryImage(_ asset: RepositoryImageAsset) {
-    guard let inventory = repositoryInventory,
-      inventory.profileID == store.activeProfile.id,
-      inventory.assets.contains(where: { $0.repositoryPath == asset.repositoryPath }),
-      let repositoryTargetDraftID,
-      store.visibleDrafts.contains(where: { $0.id == repositoryTargetDraftID })
-    else {
-      imageWorkbench.setActionMessage(String(localized: "请选择当前站点中的目标文章。"))
-      return
-    }
-    imageWorkbench.attachRepositoryImage(
-      repositoryPath: asset.repositoryPath,
-      toDraftID: repositoryTargetDraftID
-    )
-    repositoryRefreshRequestID = UUID()
-  }
-
-  private func openRepositoryImageDirectory() {
-    guard let inventory = repositoryInventory,
+  func openRepositoryImageDirectory() {
+    guard let inventory = session.inventory,
       inventory.profileID == store.activeProfile.id
     else { return }
     let directoryURL = URL(fileURLWithPath: inventory.repositoryRootPath, isDirectory: true)
@@ -538,36 +539,36 @@ struct ImageWorkbenchView: View {
     NSWorkspace.shared.open(directoryURL)
   }
 
-  private func openWritingForImageInsertion() {
+  func openWritingForImageInsertion() {
     if store.visibleDrafts.isEmpty {
       store.createDraft()
       return
     }
     store.setDraftListContentScope(.currentSite)
-    if let repositoryTargetDraftID {
-      _ = store.focusDraft(repositoryTargetDraftID, section: .writing)
+    if let targetDraftID = session.targetDraftID {
+      _ = store.focusDraft(targetDraftID, section: .writing)
     } else {
       store.selectSection(.writing)
     }
   }
 
-  private func normalizeRepositoryTargetDraft() {
+  func normalizeRepositoryTargetDraft() {
     let drafts = store.visibleDrafts
-    if let repositoryTargetDraftID,
-      drafts.contains(where: { $0.id == repositoryTargetDraftID })
+    if let targetDraftID = session.targetDraftID,
+      drafts.contains(where: { $0.id == targetDraftID })
     {
       return
     }
-    if let selectedDraftID = store.selectedDraftID,
+    if let selectedDraftID = preferredDraftID,
       drafts.contains(where: { $0.id == selectedDraftID })
     {
-      repositoryTargetDraftID = selectedDraftID
+      session.targetDraftID = selectedDraftID
     } else {
-      repositoryTargetDraftID = drafts.first?.id
+      session.targetDraftID = drafts.first?.id
     }
   }
 
-  private func applyAssetResourceManagerNavigationRequest() {
+  func applyAssetResourceManagerNavigationRequest() {
     guard let workspaceWindowID,
       let request = imageWorkbench.assetResourceManagerNavigationRequest,
       ImageWorkbenchResourceNavigationPolicy.destination(
@@ -579,102 +580,11 @@ struct ImageWorkbenchView: View {
       return
     }
     stage = .resources
-    resourceMode = .manager
+    session.resourceMode = .manager
     imageWorkbench.consumeAssetResourceManagerNavigationRequest(request, from: workspaceWindowID)
   }
 
-  private func openDraft(_ draftID: UUID) {
+  func openDraft(_ draftID: UUID) {
     _ = store.focusDraft(draftID, section: .writing)
-  }
-}
-
-private struct RepositoryInventoryRefreshInput: Hashable {
-  let requestID: UUID
-  let imageRevision: UInt64
-  let profileID: UUID
-  let repositoryRootPath: String
-  let assetRoot: String
-  let stage: ImageWorkbenchContextStage
-  let resourceMode: ImageWorkbenchResourceMode
-}
-
-enum ImageWorkbenchResourceMode: String, CaseIterable, Identifiable, Hashable {
-  case repository
-  case manager
-
-  var id: String { rawValue }
-
-  var title: LocalizedStringKey {
-    switch self {
-    case .repository:
-      return "仓库图片"
-    case .manager:
-      return "资源管理"
-    }
-  }
-
-  var accessibilityTitle: String {
-    switch self {
-    case .repository:
-      return String(localized: "仓库图片")
-    case .manager:
-      return String(localized: "资源管理")
-    }
-  }
-
-  var systemImage: String {
-    switch self {
-    case .repository:
-      return "photo.stack"
-    case .manager:
-      return "archivebox"
-    }
-  }
-
-  var description: LocalizedStringKey {
-    switch self {
-    case .repository:
-      return "浏览仓库中的图片、查看引用关系，并把图片加入目标文章。"
-    case .manager:
-      return "扫描全仓库 Markdown 引用，清理孤立资源并安全压缩大图。"
-    }
-  }
-}
-
-enum ImageWorkbenchResourceNavigationDestination: Equatable {
-  case assetResourceManager
-}
-
-enum ImageWorkbenchResourceNavigationPolicy {
-  static func destination(
-    for request: AssetResourceManagerNavigationRequest,
-    activeProfileID: UUID,
-    windowID: UUID? = nil
-  ) -> ImageWorkbenchResourceNavigationDestination? {
-    guard request.profileID == activeProfileID, request.windowID == windowID else { return nil }
-    return .assetResourceManager
-  }
-}
-
-private struct ImageWorkbenchBatchCardStyle: ButtonStyle {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
-  let isAvailable: Bool
-
-  func makeBody(configuration: Configuration) -> some View {
-    configuration.label
-      .padding(.horizontal, 12)
-      .padding(.vertical, 6)
-      .frame(maxWidth: .infinity)
-      .background(
-        isAvailable ? workbenchAccentColor.opacity(0.08) : Color.primary.opacity(0.025),
-        in: RoundedRectangle(cornerRadius: 8)
-      )
-      .overlay {
-        RoundedRectangle(cornerRadius: 8)
-          .strokeBorder(
-            isAvailable ? workbenchAccentColor.opacity(0.12) : Color.primary.opacity(0.08)
-          )
-      }
-      .opacity(configuration.isPressed ? 0.75 : 1)
   }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 import XCTest
 
 @testable import PersonalSitePublisherMac
@@ -502,5 +503,149 @@ private final class PathProbeRecorder: @unchecked Sendable {
     lock.lock()
     storedMainThreadFlags.append(isMainThread)
     lock.unlock()
+  }
+}
+
+@MainActor
+final class SharedInboxIsolationTests: XCTestCase {
+  func testNormalRunRetainsInboxAccess() {
+    XCTAssertTrue(
+      SharedInboxAccessPolicy.allowsAccess(
+        environment: [:], isScreenshotBuild: false, isTestProcess: false
+      )
+    )
+  }
+
+  func testScreenshotBuildAndTestHostNeverAccessSharedInbox() {
+    XCTAssertFalse(
+      SharedInboxAccessPolicy.allowsAccess(
+        environment: [:], isScreenshotBuild: true, isTestProcess: false
+      )
+    )
+    XCTAssertFalse(
+      SharedInboxAccessPolicy.allowsAccess(
+        environment: [:], isScreenshotBuild: false, isTestProcess: true
+      )
+    )
+    XCTAssertFalse(SharedInboxAccessPolicy.isEnabled)
+    XCTAssertFalse(ExternalKnowledgeImportCoordinator.shared.isSharedInboxEnabled)
+  }
+
+  func testDemoUITestPreviewAndPerformanceFlagsDisableAccess() {
+    let isolatedEnvironments: [[String: String]] = [
+      ["PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO": "1"],
+      ["PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO": "true"],
+      ["PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO": "YES"],
+      ["PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST": "1"],
+      ["XCODE_RUNNING_FOR_PREVIEWS": "1"],
+      ["XCTestConfigurationFilePath": "/temporary/test.xctestconfiguration"],
+      ["XCTestBundlePath": "/temporary/test.xctest"],
+      ["XCTestSessionIdentifier": "isolated-test"],
+      ["CFFIXED_USER_HOME": "/temporary/isolated-home"],
+      ["PERSONAL_SITE_PUBLISHER_SCREENSHOT_PERSISTENCE_ROOT": "/temporary/demo"],
+      ["PERSONAL_SITE_PUBLISHER_SCREENSHOT_KNOWLEDGE_ROOT": "/temporary/library"],
+      ["PERSONAL_SITE_PUBLISHER_PERFORMANCE_PERSISTENCE_ROOT": "/temporary/performance"],
+      ["PERSONAL_SITE_PUBLISHER_PERFORMANCE_FIXTURE": "markdown-scroll"],
+      ["PERSONAL_SITE_PUBLISHER_PERFORMANCE_FIXTURE": " Markdown-Rich-Scroll "],
+    ]
+    for environment in isolatedEnvironments {
+      XCTAssertFalse(
+        SharedInboxAccessPolicy.allowsAccess(
+          environment: environment, isScreenshotBuild: false, isTestProcess: false
+        ),
+        "Unexpected shared inbox access: \(environment)"
+      )
+    }
+  }
+
+  func testDisabledCoordinatorNeverResolvesContainerOrConsumesStagedNote() async throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.rootURL) }
+    var containerLookupCount = 0
+    let coordinator = ExternalKnowledgeImportCoordinator(
+      isSharedInboxEnabled: false,
+      inboxContainerURL: {
+        containerLookupCount += 1
+        return fixture.rootURL
+      }
+    )
+
+    coordinator.install(store: fixture.store)
+    // Covers retries and activation/notification scheduling after installation.
+    coordinator.scheduleInboxDrain()
+    coordinator.scheduleInboxDrain()
+    await coordinator.drainTask?.value
+
+    XCTAssertEqual(containerLookupCount, 0)
+    XCTAssertNil(coordinator.drainTask)
+    XCTAssertNil(coordinator.inboxError)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.entryURL.path))
+    let importedNote = await fixture.store.knowledge.note(documentID: fixture.noteID)
+    XCTAssertNil(importedNote)
+  }
+
+  func testNormalCoordinatorRemovesStagedNoteOnlyAfterSuccessfulImport() async throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.rootURL) }
+    let coordinator = ExternalKnowledgeImportCoordinator(
+      isSharedInboxEnabled: true, inboxContainerURL: { fixture.rootURL }
+    )
+    coordinator.install(store: fixture.store)
+    await coordinator.drainTask?.value
+
+    let importedNote = await fixture.store.knowledge.note(documentID: fixture.noteID)
+    XCTAssertEqual(importedNote?.markdown, "A note staged in an isolated inbox.")
+    XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.entryURL.path))
+    XCTAssertNil(coordinator.inboxError)
+  }
+
+  func testFailedImportLeavesStagedBytesForRetry() async throws {
+    let fixture = try makeFixture(text: "")
+    defer { try? FileManager.default.removeItem(at: fixture.rootURL) }
+    let coordinator = ExternalKnowledgeImportCoordinator(
+      isSharedInboxEnabled: true, inboxContainerURL: { fixture.rootURL }
+    )
+    coordinator.install(store: fixture.store)
+    await coordinator.drainTask?.value
+
+    XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.entryURL.path))
+    XCTAssertNotNil(coordinator.inboxError)
+    let importedNote = await fixture.store.knowledge.note(documentID: fixture.noteID)
+    XCTAssertNil(importedNote)
+  }
+
+  private func makeFixture(text: String = "A note staged in an isolated inbox.") throws -> Fixture {
+    let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "SharedInboxIsolationTests-\(UUID().uuidString)", isDirectory: true
+    )
+    let noteID = UUID()
+    let entryURL = rootURL.appendingPathComponent("Inbox/\(noteID.uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: entryURL, withIntermediateDirectories: true)
+    let manifest: [String: Any] = [
+      "version": 1, "kind": "note", "title": "Isolated inbox note", "text": text,
+    ]
+    try JSONSerialization.data(withJSONObject: manifest).write(
+      to: entryURL.appendingPathComponent("manifest.json"), options: .atomic
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: rootURL.appendingPathComponent("workbench.json")),
+      safeMode: true,
+      knowledgeLibraryService: KnowledgeLibraryService(
+        rootURL: rootURL.appendingPathComponent("KnowledgeLibrary", isDirectory: true)
+      ),
+      managedAttachmentFileStore: ManagedAttachmentFileStore(
+        rootDirectoryURL: rootURL.appendingPathComponent("ManagedAttachments", isDirectory: true)
+      ),
+      rssReaderFileURL: rootURL.appendingPathComponent("RSSReader/reader.sqlite"),
+      workspaceBackupDirectoryURL: rootURL.appendingPathComponent("Backups", isDirectory: true)
+    )
+    return Fixture(rootURL: rootURL, entryURL: entryURL, noteID: noteID, store: store)
+  }
+
+  private struct Fixture {
+    let rootURL: URL
+    let entryURL: URL
+    let noteID: UUID
+    let store: WorkbenchStore
   }
 }

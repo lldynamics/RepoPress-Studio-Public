@@ -173,14 +173,14 @@ public enum LocalRepositoryServiceError: Error, LocalizedError, Sendable {
   public var errorDescription: String? {
     switch self {
     case .repositoryUnavailable:
-      return "未找到可用的本地仓库路径。"
+      return CoreL10n.text("未找到可用的本地仓库路径。")
     case .invalidBranchName:
-      return "分支名无效。"
+      return CoreL10n.text("分支名无效。")
     case .workingTreeHasChanges:
-      return "工作区存在未提交变更。请先提交、暂存处理或还原这些变更，再切换分支。"
+      return CoreL10n.text("工作区存在未提交变更。请先提交、暂存处理或还原这些变更，再切换分支。")
     case .commandFailed(let terminated, let output):
       let normalizedOutput = output.isEmpty ? "请检查分支与权限设置。" : output
-      return "Git 命令执行失败（退出码：\(terminated)）：\(normalizedOutput)"
+      return CoreL10n.format("Git 命令执行失败（退出码：%@）：%@", String(terminated), normalizedOutput)
     }
   }
 }

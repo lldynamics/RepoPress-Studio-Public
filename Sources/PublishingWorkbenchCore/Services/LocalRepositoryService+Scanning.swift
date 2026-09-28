@@ -82,13 +82,13 @@ extension LocalRepositoryService {
           severity: .warning,
           title: CoreL10n.text("未发现 .git"),
           message: CoreL10n.text("当前目录不是 Git 工作树，diff 和提交入口暂不可用。"),
-          field: "repository"
+          field: "repository",
+          code: .missingGitDirectory
         )
       )
     } else {
       issues.append(contentsOf: branchSyncIssues(gitStatus.branchStatus))
     }
-
     if !contentRootExists {
       issues.append(
         .init(

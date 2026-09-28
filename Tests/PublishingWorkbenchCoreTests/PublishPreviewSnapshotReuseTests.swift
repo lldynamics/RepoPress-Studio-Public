@@ -48,7 +48,8 @@ final class PublishPreviewSnapshotReuseTests: XCTestCase {
           severity: .error,
           title: "未发现 .git",
           message: "当前目录不是 Git 仓库。",
-          field: "repository"
+            field: "repository",
+            code: .missingGitDirectory
         ),
       ]
     ))

@@ -63,6 +63,7 @@ struct AIChatContextInspectorView: View {
   @Environment(\.workbenchAccentColor) var workbenchAccentColor
   @Environment(\.openSettings) var openSettings
   @Environment(\.settingsWorkspaceCommandAction) var settingsWorkspaceCommandAction
+  @Environment(\.workspaceWindowSession) var workspaceWindowSession
   let ai: WorkbenchAIFeatureFacade
   let selectedDraftID: UUID?
   let usesWindowDraftSelection: Bool
@@ -139,12 +140,14 @@ struct AIChatContextInspectorView: View {
 
       Divider()
 
-      if isAIKeyMissing {
-        missingAIKeyBanner
+      if connectionReadiness != .ready && connectionReadiness != .noDraft {
+        connectionBlockerBanner
         Divider()
       }
 
-      if agentToolAvailability?.message != nil {
+      if AIChatConnectionBlockerPresentation.shouldShowAgentToolBanner(
+        readiness: connectionReadiness
+      ) && agentToolAvailability?.message != nil {
         agentToolsUnavailableBanner
         Divider()
       }
@@ -155,10 +158,13 @@ struct AIChatContextInspectorView: View {
             AIChatContextInspectorContent(
               state: state,
               actions: actions,
-              isAIKeyMissing: isAIKeyMissing,
+              // The header owns the single connection blocker banner. Keep
+              // the conversation surface focused on the empty/chat state so
+              // a missing key is not announced twice.
+              isAIKeyMissing: false,
               configureAIConnection: openAISettings
             )
-              .padding(16)
+            .padding(16)
           }
           .defaultScrollAnchor(.bottom)
           .simultaneousGesture(

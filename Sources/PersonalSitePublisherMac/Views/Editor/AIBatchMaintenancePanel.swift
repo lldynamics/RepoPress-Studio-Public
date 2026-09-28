@@ -8,7 +8,7 @@ struct AIBatchMaintenancePanel: View {
   let store: WorkbenchStore
   let initialDraftIDs: Set<UUID>
   let siteProfileID: UUID
-  @ObservedObject private var maintenance: AIBatchMaintenanceStore
+  private let maintenance: AIBatchMaintenanceStore
   @State private var operation: AIBatchMaintenanceOperation = .summary
   @State private var selectedDraftIDs: Set<UUID>
   @State private var draftSearch = ""
@@ -18,7 +18,7 @@ struct AIBatchMaintenancePanel: View {
     self.store = store
     self.initialDraftIDs = initialDraftIDs
     self.siteProfileID = store.activeProfileID
-    _maintenance = ObservedObject(wrappedValue: store.aiBatchMaintenance)
+    maintenance = store.aiBatchMaintenance
     let eligible = store.drafts.filter {
       initialDraftIDs.contains($0.id) && $0.belongs(toSiteProfileID: store.activeProfileID)
         && !$0.isPrivate && !$0.bodyMarkdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

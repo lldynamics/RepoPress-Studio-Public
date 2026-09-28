@@ -325,3 +325,199 @@ final class ImageWorkbenchPresentationTests: XCTestCase {
     )
   }
 }
+
+final class RepositoryImageBrowserSessionTests: XCTestCase {
+  func testFolderScopeIsSegmentSafeAndCanExcludeDescendants() {
+    let images = [
+      asset("static/images/a.png"), asset("static/images/nested/b.png"),
+      asset("static/images-other/c.png"),
+    ]
+    let direct = RepositoryImageBrowserProjection.project(
+      images, scope: .folder("static/images"), includesSubfolders: false, query: "", filter: .all,
+      sortOrder: .nameAsc)
+    let recursive = RepositoryImageBrowserProjection.project(
+      images, scope: .folder("static/images"), includesSubfolders: true, query: "", filter: .all,
+      sortOrder: .nameAsc)
+    XCTAssertEqual(direct.map(\.filename), ["a.png"])
+    XCTAssertEqual(recursive.map(\.filename), ["a.png", "b.png"])
+  }
+
+  func testRecentWindowAndSearchRegistrationFilterCompose() {
+    let now = Date()
+    let images = [
+      asset("static/images/new.png", modifiedAt: now, registered: true),
+      asset("static/images/old.png", modifiedAt: now.addingTimeInterval(-31 * 86400)),
+      asset("static/images/unknown.png"),
+    ]
+    XCTAssertEqual(
+      RepositoryImageBrowserProjection.project(
+        images, scope: .recent, includesSubfolders: true, query: "", filter: .all,
+        sortOrder: .nameAsc, now: now
+      ).map(\.filename), ["new.png"])
+    XCTAssertEqual(
+      RepositoryImageBrowserProjection.project(
+        images, scope: .all, includesSubfolders: true, query: "new", filter: .registered,
+        sortOrder: .nameAsc
+      ).map(\.filename), ["new.png"])
+  }
+
+  @MainActor
+  func testRepeatedShiftArrowExtendsFromStableAnchor() {
+    let session = RepositoryImageBrowserSession()
+    session.visibleAssets = [asset("a.png"), asset("b.png"), asset("c.png")]
+    session.select("a.png")
+    session.moveSelection(by: 1, extending: true)
+    session.moveSelection(by: 1, extending: true)
+    XCTAssertEqual(session.selectedPaths, ["a.png", "b.png", "c.png"])
+    session.moveSelection(by: -1, extending: true)
+    XCTAssertEqual(session.selectedPaths, ["a.png", "b.png"])
+  }
+
+  @MainActor
+  func testRefreshPreservesSelectionExpansionAndTargetButProfileChangeClearsThem() {
+    let profile = SiteProfile.defaultProfile
+    let targetDraftID = UUID()
+    let session = RepositoryImageBrowserSession()
+    session.prepare(for: profile, preferredDraftID: targetDraftID)
+    session.selectedPaths = ["static/images/a.png", "static/images/b.png"]
+    session.expandedPaths = ["static/images", "static/images/nested"]
+
+    session.apply(inventory(profileID: profile.id, revisionID: UUID()))
+
+    XCTAssertEqual(session.selectedPaths, ["static/images/a.png", "static/images/b.png"])
+    XCTAssertTrue(session.expandedPaths.isSuperset(of: ["static/images", "static/images/nested"]))
+    XCTAssertEqual(session.targetDraftID, targetDraftID)
+
+    var changedProfile = profile
+    changedProfile.id = UUID()
+    session.prepare(for: changedProfile, preferredDraftID: nil)
+    XCTAssertTrue(session.selectedPaths.isEmpty)
+    XCTAssertTrue(session.expandedPaths.isEmpty)
+    XCTAssertNil(session.targetDraftID)
+  }
+
+  private func asset(
+    _ path: String,
+    modifiedAt: Date? = nil,
+    registered: Bool = false
+  ) -> RepositoryImageAsset {
+    RepositoryImageAsset(
+      repositoryPath: path,
+      absoluteFilePath: "/tmp/\(path)",
+      filename: (path as NSString).lastPathComponent,
+      fileExtension: "PNG",
+      byteSize: 1,
+      modifiedAt: modifiedAt,
+      references: registered
+        ? [RepositoryImageReference(draftID: UUID(), draftTitle: "Draft", isCover: false)] : []
+    )
+  }
+
+  private func inventory(profileID: UUID, revisionID: UUID) -> RepositoryImageInventory {
+    RepositoryImageInventory(
+      revisionID: revisionID,
+      profileID: profileID,
+      repositoryRootPath: "/tmp/repository",
+      assetRootPath: "static/images",
+      assets: [asset("static/images/a.png"), asset("static/images/b.png")],
+      directoryPaths: ["static/images", "static/images/nested"]
+    )
+  }
+}
+
+final class ImageBatchSelectionValidationTests: XCTestCase {
+  @MainActor
+  func testConfirmationFlushPreservesBufferedBodyAndRejectsChangedImageReferences() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: root.appendingPathComponent("state.json")),
+      safeMode: true)
+    var draft = try XCTUnwrap(store.selectedDraft)
+    draft.attachments = makeDraft().attachments
+    draft.bodyMarkdown = "![](/images/hero.png)"
+    store.updateDraft(draft)
+    let context = ImageBatchPreviewContext(store: store)
+    let body = store.draftBodyEditorBuffer(for: draft.id)
+    _ = store.stageDraftBody(
+      body.bodyMarkdown + "\nNew paragraph", for: draft.id, baseRevision: body.revision)
+    store.flushDraftBodyEditorBuffer(for: draft.id)
+    XCTAssertTrue(context.matches(store))
+    store.imageWorkbench.fillMissingMetadataForVisibleDrafts(includedAttachmentIDsByDraftID: [
+      draft.id: [draft.attachments[0].id]
+    ])
+    store.flushDraftBodyEditorBuffer(for: draft.id)
+    let updated = try XCTUnwrap(store.draft(for: draft.id))
+    XCTAssertTrue(updated.bodyMarkdown.contains("New paragraph"))
+    XCTAssertFalse(updated.bodyMarkdown.contains("![]"))
+
+    let nextContext = ImageBatchPreviewContext(store: store)
+    let next = store.draftBodyEditorBuffer(for: draft.id)
+    _ = store.stageDraftBody(
+      next.bodyMarkdown + "\n![](/images/new.png)", for: draft.id, baseRevision: next.revision)
+    store.flushDraftBodyEditorBuffer(for: draft.id)
+    XCTAssertFalse(nextContext.matches(store))
+  }
+
+  func testMatchingChildSelectionIsValid() {
+    let draft = makeDraft()
+    let item = makeItem(attachmentID: draft.attachments[0].id, path: "static/images/hero.png")
+    let affected = [ImageBatchAffectedItem(draftID: draft.id, draftTitle: draft.title, item: item)]
+
+    XCTAssertTrue(
+      ImageBatchSelectionValidation.isValid(
+        [draft.id: [draft.attachments[0].id]], affectedItems: affected, drafts: [draft]
+      ))
+  }
+
+  func testUnknownAttachmentPathAndDraftAreRejected() {
+    let draft = makeDraft()
+    let attachmentID = draft.attachments[0].id
+    let validItem = makeItem(attachmentID: attachmentID, path: "static/images/hero.png")
+    let affected = [
+      ImageBatchAffectedItem(draftID: draft.id, draftTitle: draft.title, item: validItem)
+    ]
+
+    XCTAssertFalse(
+      ImageBatchSelectionValidation.isValid(
+        [draft.id: [UUID()]], affectedItems: affected, drafts: [draft]
+      ))
+
+    let changedPath = makeItem(attachmentID: attachmentID, path: "static/images/moved.png")
+    XCTAssertFalse(
+      ImageBatchSelectionValidation.isValid(
+        [draft.id: [attachmentID]],
+        affectedItems: [
+          ImageBatchAffectedItem(draftID: draft.id, draftTitle: draft.title, item: changedPath)
+        ],
+        drafts: [draft]
+      ))
+
+    XCTAssertFalse(
+      ImageBatchSelectionValidation.isValid(
+        [UUID(): [attachmentID]], affectedItems: affected, drafts: [draft]
+      ))
+  }
+
+  private func makeDraft() -> ArticleDraft {
+    ArticleDraft(
+      siteProfileID: SiteProfile.defaultProfile.id, title: "Hero", slug: "hero",
+      attachments: [
+        DraftAttachment(
+          originalFilename: "hero.png", relativePublishPath: "/images/hero.png",
+          repositoryPath: "static/images/hero.png"
+        )
+      ]
+    )
+  }
+
+  private func makeItem(attachmentID: UUID, path: String) -> ImageWorkbenchItem {
+    ImageWorkbenchItem(
+      attachmentID: attachmentID, originalFilename: "hero.png",
+      relativePublishPath: "/images/hero.png", repositoryPath: path,
+      sourceFilePath: nil, byteSize: 1, dimensions: nil, fileExists: true,
+      isCover: false, isReferencedInMarkdown: true, missingAltText: false,
+      missingCaption: false, canOptimizeJPEG: false
+    )
+  }
+}

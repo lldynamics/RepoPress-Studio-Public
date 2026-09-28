@@ -1,4 +1,6 @@
 import AppKit
+import PublishingCoreSupport
+import PublishingTestSupport
 import SwiftUI
 import XCTest
 
@@ -562,10 +564,13 @@ final class MarkdownEditorAppKitInteractionCoordinatorTests: MarkdownEditorAppKi
     var selectedRange = NSRange(location: 0, length: 0)
     var isFrontMatterSelection = false
     var deliveredStatistics: [MarkdownEditorStatistics] = []
+    let clock = ManualClock()
     let coordinator = MacMarkdownTextView.Coordinator(
       text: Binding(get: { text }, set: { text = $0 }),
       bodyMarkdown: text,
       bodyUTF16Offset: 0,
+      bindingFlushClock: clock,
+      statisticsClock: clock,
       selectedRange: Binding(
         get: { selectedRange },
         set: { selectedRange = $0 }
@@ -587,15 +592,18 @@ final class MarkdownEditorAppKitInteractionCoordinatorTests: MarkdownEditorAppKi
       Notification(name: NSText.didChangeNotification, object: textView)
     )
 
-    try await Task.sleep(for: .milliseconds(150))
+    await clock.waitForSleepCount(2)
+    clock.advance(by: DebounceIntervals.markdownBindingFlush - .milliseconds(1))
     XCTAssertEqual(text, "正文")
     XCTAssertTrue(deliveredStatistics.isEmpty)
 
-    try await Task.sleep(for: .milliseconds(150))
+    clock.advance(by: .milliseconds(1))
+    await coordinator.waitForPendingBindingFlush()
     XCTAssertEqual(text, "正文一")
     XCTAssertTrue(deliveredStatistics.isEmpty)
 
-    try await Task.sleep(for: .milliseconds(300))
+    clock.advance(by: .milliseconds(260))
+    await coordinator.waitForPendingStatisticsDelivery()
     XCTAssertEqual(deliveredStatistics.last?.characterCount, 3)
   }
 

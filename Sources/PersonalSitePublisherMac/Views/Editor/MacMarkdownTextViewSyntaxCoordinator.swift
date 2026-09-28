@@ -495,8 +495,9 @@ extension MacMarkdownTextView.Coordinator {
       for: text,
       isInitialLoad: isInitialLoad
     )
+    let clock = statisticsClock
     statisticsTask = Task.detached(priority: .userInitiated) { [weak self, text] in
-      try? await Task.sleep(for: .seconds(delay))
+      try? await clock.sleep(for: .seconds(delay))
       guard !Task.isCancelled else { return }
       let updatedStatistics = MarkdownEditorStatistics.make(for: text)
       await self?.applyFullStatistics(
@@ -1553,8 +1554,9 @@ extension MacMarkdownTextView.Coordinator {
     statisticsGeneration += 1
     let generation = statisticsGeneration
     let delay = statisticsDelay
+    let clock = statisticsClock
     statisticsTask = Task { [weak self] in
-      try? await Task.sleep(for: .seconds(delay))
+      try? await clock.sleep(for: .seconds(delay))
       guard !Task.isCancelled, let self, self.statisticsGeneration == generation else { return }
       self.statisticsTask = nil
       let signpostState = self.syntaxHighlightSignposter.beginInterval("DeliverEditorStatistics")
@@ -1566,6 +1568,10 @@ extension MacMarkdownTextView.Coordinator {
       }
       self.onStatisticsChanged(self.statistics)
     }
+  }
+
+  func waitForPendingStatisticsDelivery() async {
+    await statisticsTask?.value
   }
 
   private static func clamped(_ range: NSRange, length: Int) -> NSRange {

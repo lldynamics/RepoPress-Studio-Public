@@ -7,6 +7,7 @@ import Foundation
 protocol WorkbenchAIDocumentCapability: AnyObject {
   var activeProfile: SiteProfile { get }
   var activeProfileID: UUID { get }
+  var repositoryReportRevision: UUID { get }
   var profiles: [SiteProfile] { get }
   var drafts: [ArticleDraft] { get }
   var visibleDrafts: [ArticleDraft] { get }
@@ -130,6 +131,7 @@ final class WorkbenchAIContextAdapter: WorkbenchAIContext {
 
   var activeProfile: SiteProfile { root.activeProfile }
   var activeProfileID: UUID { root.activeProfileID }
+  var repositoryReportRevision: UUID { root.repositoryReportRevision }
   var profiles: [SiteProfile] { root.profiles }
   var drafts: [ArticleDraft] { root.drafts }
   var visibleDrafts: [ArticleDraft] { root.visibleDrafts }

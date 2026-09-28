@@ -210,8 +210,13 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerView.swift" \
+  ".onDisappear(perform: handleComposerDisappear)" \
+  "markdown composer must invoke its disappearance teardown"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerLifecycle.swift" \
   "sceneCommandRouter.unregisterMarkdownEditor(owner: sceneCommandOwnerID)" \
-  "markdown composer must remove editor commands when its view disappears"
+  "markdown composer teardown must remove editor commands from the scene router"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MarkdownEditorEnhancementPanels.swift" \
@@ -239,17 +244,17 @@ require_literal \
   "draft history navigation must announce the destination article"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTopBarView.swift" \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspacePublishingStatusToolbar.swift" \
   ".accessibilityLabel(contextualStatusTitle)" \
   "publishing status control must expose its contextual accessibility label"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTopBarView.swift" \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspacePublishingStatusToolbar.swift" \
   ".accessibilityValue(\"\(currentToolbarStatus.area.title)：\(currentToolbarStatus.value)\")" \
   "publishing status control must expose its current priority status"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTopBarView.swift" \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspacePublishingStatusToolbar.swift" \
   "点击查看状态和发布操作。" \
   "publishing status control must explain the merged status and publishing entry"
 
@@ -343,7 +348,6 @@ done
 for top_bar_identifier in \
   "workspace-sidebar-toggle" \
   "workspace-profile-menu" \
-  "workspace-publishing-status" \
   "workspace-command-search" \
   "workspace-preview" \
   "workspace-task-center-toggle" \
@@ -354,6 +358,12 @@ for top_bar_identifier in \
     "1" \
     "top bar identifiers must remain unique"
 done
+
+require_literal_count \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspacePublishingStatusToolbar.swift" \
+  ".accessibilityIdentifier(\"workspace-publishing-status\")" \
+  "1" \
+  "publishing status identifier must remain unique"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTopBarView.swift" \
@@ -431,12 +441,12 @@ require_literal \
   "AI collaboration must expose the current-article/general-chat context switch"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/AIChat/AIChatModelQuickSwitchSheet.swift" \
+  "Sources/PersonalSitePublisherMac/Views/AIChat/AIChatConnectionStatusCapsule.swift" \
   ".accessibilityIdentifier(\"ai-assistant-connection-status\")" \
   "AI chat must expose its connection and model control"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/AIChat/AIChatModelQuickSwitchSheet.swift" \
+  "Sources/PersonalSitePublisherMac/Views/AIChat/AIChatConnectionStatusCapsule.swift" \
   ".accessibilityValue(statusDetail)" \
   "AI chat connection and model controls must expose their current value"
 
@@ -607,7 +617,8 @@ require_literal_any_file \
   ".accessibilityLabel(\"图片 Alt 文本\")" \
   "article inspector image alt field must expose an accessibility label" \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTaskInspector.swift" \
-  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTaskInspectorSections.swift"
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTaskInspectorSections.swift" \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTaskImageSection.swift"
 
 require_literal_any_file \
   ".accessibilityLabel(\"查找文本\")" \
@@ -949,7 +960,7 @@ require_literal \
   "image resources must have a direct primary route after the existing shortcuts"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspaceOverviewSections.swift" \
+  "Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspacePrimaryActions.swift" \
   '.accessibilityIdentifier("repository-action-open-images")' \
   "site workspace must expose the contextual image resources entry"
 
@@ -1160,18 +1171,25 @@ for repository_primary_identifier in \
   repository-action-scan \
   repository-action-import \
   repository-action-data-management \
-  repository-action-open-images \
+  repository-action-open-images; do
+  require_literal \
+    "Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspacePrimaryActions.swift" \
+    ".accessibilityIdentifier(\"$repository_primary_identifier\")" \
+    "repository primary actions must expose $repository_primary_identifier"
+done
+
+for repository_overview_identifier in \
   repository-next-action \
   repository-section-summary \
   repository-section-information; do
   require_literal \
     "Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspaceOverviewSections.swift" \
-    ".accessibilityIdentifier(\"$repository_primary_identifier\")" \
-    "repository overview must expose $repository_primary_identifier"
+    ".accessibilityIdentifier(\"$repository_overview_identifier\")" \
+    "repository overview must expose $repository_overview_identifier"
 done
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspaceOverviewSections.swift" \
+  "Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspacePrimaryActions.swift" \
   "openDataManagement(.migration)" \
   "repository data-management action must open the migration destination"
 

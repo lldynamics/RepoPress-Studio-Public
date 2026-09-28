@@ -56,11 +56,11 @@ package enum CredentialSafeProxyError: Error, Equatable, LocalizedError, Sendabl
   package var errorDescription: String? {
     switch self {
     case .invalidURL, .missingHost, .invalidPort, .invalidPath:
-      return "AI 代理地址无效。"
+      return CoreL10n.text("AI 代理地址无效。")
     case .unsupportedScheme:
-      return "AI 代理协议不受支持。"
+      return CoreL10n.text("AI 代理协议不受支持。")
     case .credentialsNotAllowed:
-      return "AI 代理地址不能包含用户名或密码。"
+      return CoreL10n.text("AI 代理地址不能包含用户名或密码。")
     }
   }
 }

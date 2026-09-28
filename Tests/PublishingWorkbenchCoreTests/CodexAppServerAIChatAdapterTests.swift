@@ -133,6 +133,35 @@ final class CodexAppServerAIChatAdapterTests: XCTestCase {
       updates, [AIChatStreamUpdate(contentDelta: "One complete update", isFinished: true)])
   }
 
+  func testStreamingHostAuthorizationRejectsBeforeStartingCodexTurn() async throws {
+    let service = RecordingCodexChatService(
+      completion: CodexAppServerCompletion(
+        text: "must not send", threadID: "thread", turnID: "turn")
+    )
+    let client = AIChatCompletionClient(
+      codexAppServerChatService: service,
+      codexAppServerRequestAuthorizer: AllowAllCodexRequestAuthorizer()
+    ).authorizingStreamingRequests {
+      throw CancellationError()
+    }
+    let stream = try await client.stream(
+      request: AIChatCompletionRequest(
+        model: AIProviderPreset.codexDefaultModel,
+        messages: [AIChatMessage(role: "user", content: "Do not send after revocation")]
+      ),
+      config: codexConfig,
+      apiKey: nil
+    )
+    do {
+      for try await _ in stream { XCTFail("A revoked stream must not yield a reply") }
+      XCTFail("Expected revoked authorization to end the stream")
+    } catch let error as CodexAppServerError {
+      XCTAssertEqual(error, .cancelled)
+    }
+    let request = await service.lastRequest
+    XCTAssertNil(request)
+  }
+
   func testPromptEncodingKeepsMessageContentInsideJSONBoundary() throws {
     let prompt = try AIChatCompletionClient.codexAppServerPrompt(for: [
       AIChatMessage(

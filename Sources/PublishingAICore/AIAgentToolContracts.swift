@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 /// A stable host-side identity for an Agent tool.
 ///
@@ -73,15 +74,15 @@ public enum AIAgentToolCatalogValidationError: Error, Equatable, LocalizedError,
   public var errorDescription: String? {
     switch self {
     case .blankRevision:
-      return "工具目录版本不能为空。"
+      return CoreL10n.text("工具目录版本不能为空。")
     case .blankToolID:
-      return "工具 ID 不能为空。"
+      return CoreL10n.text("工具 ID 不能为空。")
     case .duplicateToolID(let id):
-      return "工具 ID 重复：\(id.rawValue)。"
+      return CoreL10n.format("工具 ID 重复：%@。", id.rawValue)
     case .blankFunctionName:
-      return "工具函数名不能为空。"
+      return CoreL10n.text("工具函数名不能为空。")
     case .duplicateFunctionName(let name):
-      return "模型可见的工具函数名重复：\(name)。"
+      return CoreL10n.format("模型可见的工具函数名重复：%@。", name)
     }
   }
 }

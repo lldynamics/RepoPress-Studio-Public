@@ -1,6 +1,5 @@
-import PublishingWorkbenchCore
+import PublishingKnowledgeCore
 import SwiftUI
-
 
 struct KnowledgeDocumentListRowSnapshot: Identifiable {
   var id: UUID { document.id }

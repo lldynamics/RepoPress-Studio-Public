@@ -8,8 +8,7 @@ struct PublishingConsoleCommands: Commands {
   let store: WorkbenchStore
   @ObservedObject private var presentation: WorkbenchCommandPresentationFeatureFacade
   @FocusedObject private var commandRouter: WorkspaceSceneCommandRouter?
-  @Environment(\.openSettings) private var openSettings
-  @Environment(\.openWindow) private var openWindow
+  @FocusedValue(\.contentSaveCommandAction) private var contentSaveCommandAction
 
   init(store: WorkbenchStore) {
     self.store = store
@@ -17,25 +16,11 @@ struct PublishingConsoleCommands: Commands {
   }
 
   var body: some Commands {
-    CommandGroup(replacing: .newItem) {
-      Button(String(localized: "新建窗口")) {
-        openWindow(id: "main-workbench")
-      }
-      .keyboardShortcut("n", modifiers: [.command, .shift])
+    PublishingConsoleCreationCommands()
 
-      Divider()
-
-      Button(String(localized: "新建文章")) {
-        if writingDraftCommands != nil {
-          commandRouter?.writingDraftCommandActions?.createDraft()
-        } else {
-          store.createDraft()
-        }
-      }
-      .keyboardShortcut("n")
-    }
-
-    CommandGroup(replacing: .saveItem) {
+    // WindowGroup does not install the document scene's save-item group.
+    // Anchor our explicit save action to the always-present new-item group.
+    CommandGroup(after: .newItem) {
       Button(saveCommandTitle) {
         saveCurrentContent()
       }
@@ -52,6 +37,25 @@ struct PublishingConsoleCommands: Commands {
     }
 
     CommandGroup(after: .importExport) {
+      Menu(String(localized: "导出文章")) {
+        Button(String(localized: "Markdown…")) {
+          markdownEditorCommands?.exportDocument?(.markdown)
+        }
+        Button(String(localized: "HTML…")) {
+          markdownEditorCommands?.exportDocument?(.html)
+        }
+        Button(String(localized: "PDF…")) {
+          markdownEditorCommands?.exportDocument?(.pdf)
+        }
+        Divider()
+        Button(String(localized: "分享…")) {
+          markdownEditorCommands?.exportDocument?(.share)
+        }
+      }
+      .disabled(markdownEditorCommands?.exportDocument == nil)
+
+      Divider()
+
       if knowledgeLibraryCommands != nil {
         Button(String(localized: "导入资料…")) {
           commandRouter?.knowledgeLibraryCommandActions?.importSources()
@@ -130,50 +134,24 @@ struct PublishingConsoleCommands: Commands {
     }
 
     CommandMenu(String(localized: "前往")) {
-      Button(
-        workspaceFirstRunSetupCommandAction == nil
-          ? String(localized: "首次设置…")
-          : String(localized: "打开设置向导…")
-      ) {
-        workspaceFirstRunSetupCommandAction?.open()
-      }
-      .disabled(workspaceFirstRunSetupCommandAction == nil)
-
-      Button(String(localized: "设置…")) {
-        presentSettings(destination: nil)
-      }
-
-      Button(String(localized: "任务中心…")) {
-        commandRouter?.showTaskCenter?()
-      }
-      .keyboardShortcut("l", modifiers: [.command, .option])
-      .disabled(commandRouter?.showTaskCenter == nil)
-
-      Divider()
-
       Button(String(localized: "命令面板与快速打开")) {
         workspaceCommandPaletteAction?.open()
       }
       .keyboardShortcut("k", modifiers: [.command, .shift])
       .disabled(workspaceCommandPaletteAction == nil)
 
-      Menu(String(localized: "切换工作区")) {
-        ForEach(
-          WorkspaceNavigationPresentation.commandMenuItems.filter {
-            moduleVisibility.allows($0.section)
-          }
-        ) { item in
-          Button(workspaceNavigationLocalizedKey(item.displayNameLocalizationKey)) {
-            store.selectSection(item.section)
-          }
-          .keyboardShortcut(KeyEquivalent(item.keyboardShortcutKey), modifiers: [.command])
-        }
-      }
-
       Divider()
 
-      Menu(String(localized: "文章导航")) {
-        articleNavigationCommands
+      ForEach(
+        WorkspaceNavigationPresentation.commandMenuItems.filter {
+          moduleVisibility.allows($0.section)
+        }
+      ) { item in
+        Button(workspaceNavigationLocalizedKey(item.displayNameLocalizationKey)) {
+          store.selectSection(item.section)
+        }
+        .keyboardShortcut(KeyEquivalent(item.keyboardShortcutKey), modifiers: [.command])
+        .disabled(workspaceCommandPaletteAction == nil)
       }
 
       Button(workspaceNavigationLocalizedKey("workspace.maintenance")) {
@@ -181,12 +159,29 @@ struct PublishingConsoleCommands: Commands {
       }
       .keyboardShortcut("7")
       .disabled(workspaceCommandPaletteAction == nil)
+
+      Divider()
+
+      Menu(String(localized: "文章导航")) {
+        articleNavigationCommands
+      }
+
+      Button(String(localized: "任务中心…")) {
+        commandRouter?.showTaskCenter?()
+      }
+      .keyboardShortcut("l", modifiers: [.command, .option])
+      .disabled(commandRouter?.showTaskCenter == nil)
     }
 
     CommandMenu(String(localized: "发布")) {
+      Button(String(localized: "发布当前文章…")) {
+        publishDrawerCommandAction?.openCurrentArticle()
+      }
+      .disabled(publishDrawerCommandAction?.canPrepareCurrentArticle != true)
+
       Button(String(localized: "发布所有变更…")) {
         openPublishDrawerForAllChanges(
-          message: String(localized: "发布中心已打开；默认操作为发布所有变更，也可以仅发布当前文章。")
+          message: String(localized: "发布中心已打开，请确认整个仓库的变更范围。")
         )
       }
       .keyboardShortcut("p", modifiers: [.command, .option])
@@ -284,34 +279,16 @@ struct PublishingConsoleCommands: Commands {
     commandRouter?.workspaceInspectorCommandAction
   }
 
-  private var workspaceFirstRunSetupCommandAction: WorkspaceFirstRunSetupCommandAction? {
-    commandRouter?.workspaceFirstRunSetupCommandAction
-  }
-
-  private var settingsWorkspaceCommandAction: SettingsWorkspaceCommandAction? {
-    commandRouter?.settingsWorkspaceCommandAction
-  }
-
   private var rssReaderCommands: RSSReaderCommandActions? {
     moduleVisibility.rssEnabled ? commandRouter?.rssReaderCommandActions : nil
   }
 
-  private func presentSettings(destination: SettingsDestination?) {
-    if let settingsWorkspaceCommandAction {
-      settingsWorkspaceCommandAction.open(destination)
-    } else {
-      SettingsNavigation.open(destination: destination) {
-        openSettings()
-      }
-    }
-  }
-
   private var saveCommandTitle: String {
-    String(localized: "保存工作台")
+    contentSaveCommandAction?.title ?? String(localized: "保存当前文章")
   }
 
   private var canSaveCurrentContent: Bool {
-    true
+    contentSaveCommandAction?.isEnabled ?? (markdownEditorCommands?.saveDocument != nil)
   }
 
   @ViewBuilder
@@ -499,7 +476,12 @@ struct PublishingConsoleCommands: Commands {
   }
 
   private func saveCurrentContent() {
-    store.save()
+    if let contentSaveCommandAction {
+      guard contentSaveCommandAction.isEnabled else { return }
+      contentSaveCommandAction.save()
+    } else {
+      markdownEditorCommands?.saveDocument?()
+    }
   }
 
   private func chooseSiteRepository() {
@@ -669,6 +651,11 @@ struct PublishingConsoleMarkdownCommands: Commands {
     }
 
     CommandGroup(after: .help) {
+      Button(String(localized: "打开设置向导…")) {
+        commandRouter?.workspaceFirstRunSetupCommandAction?.open()
+      }
+      .disabled(commandRouter?.workspaceFirstRunSetupCommandAction == nil)
+
       Button(String(localized: "查看快捷键说明")) {
         if let showShortcutHelp = commandRouter?.showShortcutHelp {
           showShortcutHelp()

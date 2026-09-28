@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 public struct WorkbenchDiagnosticsContext: Codable, Equatable, Sendable {
   public var generatedAt: Date
@@ -189,7 +190,7 @@ public enum WorkbenchDiagnosticsExportError: LocalizedError, Equatable, Sendable
   public var errorDescription: String? {
     switch self {
     case .archiveCreationFailed(let status):
-      return "无法创建脱敏诊断包（ditto 退出码：\(status)）。"
+      return CoreL10n.format("无法创建脱敏诊断包（ditto 退出码：%@）。", String(status))
     }
   }
 }

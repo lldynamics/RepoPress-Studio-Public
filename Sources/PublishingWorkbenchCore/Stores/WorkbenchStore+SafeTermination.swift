@@ -119,12 +119,15 @@ extension WorkbenchStore {
       snapshot.drafts.append(recovered)
     }
     let exportSnapshot = snapshot
+    let retiredFeatureArchiveDirectoryURL =
+      persistenceStore.persistence.retiredFeatureArchiveDirectoryURL
     let knowledgeRootURL = knowledge.rootURL
     let rssURL = rssReaderFileURL
     let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development"
     let preview = try await Task.detached(priority: .userInitiated) {
       try WorkspaceBackupService().createBackup(
         at: destinationURL, snapshot: exportSnapshot, operationHistoryDocument: ledger,
+        retiredFeatureArchiveDirectoryURL: retiredFeatureArchiveDirectoryURL,
         knowledgeRootURL: knowledgeRootURL, rssDatabaseURL: rssURL,
         rssMediaDirectoryURL: rssURL.map { RSSReaderStore.mediaCacheDirectoryURL(for: $0) },
         applicationVersion: version

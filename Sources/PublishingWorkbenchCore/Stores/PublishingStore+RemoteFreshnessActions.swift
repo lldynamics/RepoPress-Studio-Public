@@ -56,12 +56,7 @@ extension PublishingStore {
   }
 
   func isRemoteFreshnessIssue(_ issue: PreflightIssue) -> Bool {
-    if issue.field == "remoteBaseline" {
-      return true
-    }
-    guard issue.field == "repository" else { return false }
-    return issue.title == CoreL10n.text("远端同路径变更")
-      || issue.title == CoreL10n.text("远端状态待确认")
+    issue.isDeferredRemoteIssue
   }
 
   func inspectDirectRemotePublishFreshness(
@@ -165,7 +160,8 @@ extension PublishingStore {
           severity: .error,
           title: CoreL10n.text("远端同路径变更"),
           message: conflictMessage,
-          field: "remoteBaseline"
+          field: "remoteBaseline",
+          code: .remoteBaselineChanged
         )
       )
     }

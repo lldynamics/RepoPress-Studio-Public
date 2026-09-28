@@ -153,14 +153,16 @@ struct WritingDraftRowPresentation {
     title = display.title.nilIfEmpty ?? String(localized: "未命名文章")
     // The list scope already says whether rows are general drafts, so only
     // status, privacy and the facts that differ per row are repeated here.
-    var parts = [draft.status.localizedDisplayName]
+    // Keep the full year at the start of the single metadata line so a narrow
+    // sidebar cannot truncate it at the end of the row.
+    var parts = [writingDraftListDateText(draft.metadataUpdatedAt)]
+    parts.append(draft.status.localizedDisplayName)
     if draft.isPrivate { parts.append(draft.visibility.localizedDisplayName) }
     if let source = draft.externalDraftSource {
       parts.append(
         source.isDetached
           ? String(localized: "外部文件（已断开）") : String(localized: "外部文件"))
     }
-    parts.append(writingDraftListDateText(draft.metadataUpdatedAt))
     metadata = parts.joined(separator: " · ")
     if draft.isPrivate {
       leadingSystemImage = display.isMasked ? "lock.shield.fill" : "lock.fill"
@@ -187,7 +189,12 @@ func writingDraftListDateText(
   if calendar.isDate(date, inSameDayAs: now) {
     return date.formatted(date: .omitted, time: .shortened)
   }
-  return date.formatted(date: .numeric, time: .omitted)
+  return date.formatted(
+    .dateTime
+      .year()
+      .month()
+      .day()
+  )
 }
 
 struct WritingDraftRow: View {

@@ -2,178 +2,6 @@ import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
 
-enum WorkspaceQuickSearchScope: Equatable {
-  case recent
-  case imageResources
-  case aiFixes
-}
-
-/// The command palette is the one search entry point. These scopes select
-/// local search corpora. Article results include live Markdown bodies;
-/// no scope sends a query to an AI/provider.
-enum WorkspaceUnifiedSearchScope: String, CaseIterable, Identifiable, Sendable {
-  case all
-  case articles
-  case resources
-  case rss
-  case settings
-  case commands
-
-  var id: String { rawValue }
-
-  var title: String {
-    switch self {
-    case .all: String(localized: "全部")
-    case .articles: String(localized: "文章")
-    case .resources: String(localized: "资料")
-    case .rss: "RSS"
-    case .settings: String(localized: "设置")
-    case .commands: String(localized: "命令")
-    }
-  }
-
-  var includesCommands: Bool { self == .all || self == .commands }
-  var includesArticles: Bool { self == .all || self == .articles }
-  var includesResources: Bool { self == .all || self == .resources }
-  var includesRSS: Bool { self == .all || self == .rss }
-  var includesSettings: Bool { self == .all || self == .settings }
-
-  static func availableScopes(for moduleVisibility: WorkspaceModuleVisibility) -> [Self] {
-    var scopes: [Self] = [.all, .articles]
-    if moduleVisibility.libraryEnabled || moduleVisibility.imagesEnabled {
-      scopes.append(.resources)
-    }
-    if moduleVisibility.rssEnabled {
-      scopes.append(.rss)
-    }
-    scopes.append(contentsOf: [.settings, .commands])
-    return scopes
-  }
-
-  func normalized(for moduleVisibility: WorkspaceModuleVisibility) -> Self {
-    switch self {
-    case .resources where !moduleVisibility.libraryEnabled && !moduleVisibility.imagesEnabled:
-      return .all
-    case .rss where !moduleVisibility.rssEnabled:
-      return .all
-    default:
-      return self
-    }
-  }
-}
-
-enum WorkspaceUnifiedSearchPresentation {
-  static let recentItemLimit = 6
-
-  static func matchingSettings(
-    query: String,
-    recentItemIDs: [String] = [],
-    moduleVisibility: WorkspaceModuleVisibility = .init()
-  ) -> [SettingsSearchItem] {
-    let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !normalized.isEmpty else {
-      let byID = Dictionary(uniqueKeysWithValues: SettingsSearchIndex.allItems.map { ($0.id, $0) })
-      let recent = recentItemIDs.compactMap { byID[$0] }
-      let fallback = SettingsSearchIndex.allItems.filter { item in
-        !recentItemIDs.contains(item.id)
-      }
-      return Array(
-        (recent + fallback)
-          .filter { item in moduleVisibility.rssEnabled || item.tab != .rss }
-          .prefix(recentItemLimit)
-      )
-    }
-    return SettingsSearchIndex.search(query: normalized).filter { item in
-      moduleVisibility.rssEnabled || item.tab != .rss
-    }
-  }
-
-  static func matchingSections(
-    _ sections: [WorkspaceSection],
-    query: String,
-    scope: WorkspaceUnifiedSearchScope,
-    moduleVisibility: WorkspaceModuleVisibility = .init()
-  ) -> [WorkspaceSection] {
-    let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
-    let normalizedScope = scope.normalized(for: moduleVisibility)
-    return sections.filter { section in
-      guard moduleVisibility.allows(section) else { return false }
-      let isInScope: Bool
-      switch section {
-      case .library, .images:
-        isInScope = normalizedScope.includesResources
-      case .rss:
-        isInScope = normalizedScope.includesRSS
-      case .writing, .sync, .contentHealth:
-        isInScope = normalizedScope.includesCommands
-      }
-      guard isInScope else { return false }
-      return normalized.isEmpty
-        || workspaceNavigationLocalizedString(section.displayNameLocalizationKey)
-          .localizedStandardContains(normalized)
-        || section.rawValue.localizedStandardContains(normalized)
-    }
-  }
-}
-
-enum WorkspaceQuickSearchPresentation {
-  static let recentResultLimit = 3
-  static let searchResultLimit = 40
-
-  static func resultSectionTitle(query: String, scope: WorkspaceQuickSearchScope) -> String {
-    let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard normalizedQuery.isEmpty else { return "搜索结果" }
-    switch scope {
-    case .recent:
-      return "最近变更"
-    case .imageResources:
-      return "图片资源"
-    case .aiFixes:
-      return String(localized: "AI 可修复")
-    }
-  }
-
-  static func scopedDrafts(
-    _ drafts: [ArticleDraft],
-    includedDraftIDs: Set<UUID>?
-  ) -> [ArticleDraft] {
-    guard let includedDraftIDs else { return drafts }
-    return drafts.filter { includedDraftIDs.contains($0.id) }
-  }
-
-  static func matchingDrafts(
-    drafts: [ArticleDraft],
-    query: String,
-    preferredDraftIDs: [UUID]? = nil,
-    matches: (ArticleDraft, String) -> Bool
-  ) -> [ArticleDraft] {
-    let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-    let orderedDrafts: [ArticleDraft]
-    if let preferredDraftIDs {
-      var draftByID: [UUID: ArticleDraft] = [:]
-      for draft in drafts where draftByID[draft.id] == nil {
-        draftByID[draft.id] = draft
-      }
-      orderedDrafts = preferredDraftIDs.compactMap { draftByID[$0] }
-    } else {
-      orderedDrafts = drafts.sorted { lhs, rhs in
-        if lhs.metadataUpdatedAt == rhs.metadataUpdatedAt {
-          return lhs.id.uuidString < rhs.id.uuidString
-        }
-        return lhs.metadataUpdatedAt > rhs.metadataUpdatedAt
-      }
-    }
-    guard !normalizedQuery.isEmpty else { return orderedDrafts }
-    return orderedDrafts.filter { matches($0, normalizedQuery) }
-  }
-
-  static func visibleDrafts(from matches: [ArticleDraft], query: String) -> [ArticleDraft] {
-    let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-    let limit = normalizedQuery.isEmpty ? recentResultLimit : searchResultLimit
-    return Array(matches.prefix(limit))
-  }
-}
-
 struct WorkspaceQuickSearchSnapshot {
   let matchingDrafts: [ArticleDraft]
   let visibleDrafts: [ArticleDraft]
@@ -185,9 +13,12 @@ struct WorkspaceQuickSearchView: View {
   @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let store: WorkbenchStore
   let scope: WorkspaceQuickSearchScope
+  let selectedSection: WorkspaceSection
+  let onSelectSection: (WorkspaceSection) -> Void
   @ObservedObject private var contentHealthSidebarProjection: ContentHealthSidebarProjection
   private let contentHealthFilter: Binding<ContentHealthContextFilter>?
   private let imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>?
+  private let imageBrowserSession: RepositoryImageBrowserSession?
   private let repositoryContextStage: Binding<RepositoryContextStage>?
   @ObservedObject private var draftListState: DraftListStore
   @State private var query = ""
@@ -196,25 +27,31 @@ struct WorkspaceQuickSearchView: View {
   init(
     store: WorkbenchStore,
     scope: WorkspaceQuickSearchScope,
+    selectedSection: WorkspaceSection,
+    onSelectSection: @escaping (WorkspaceSection) -> Void,
     contentHealthSidebarProjection: ContentHealthSidebarProjection,
     contentHealthFilter: Binding<ContentHealthContextFilter>? = nil,
     imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>? = nil,
+    imageBrowserSession: RepositoryImageBrowserSession? = nil,
     repositoryContextStage: Binding<RepositoryContextStage>? = nil
   ) {
     self.store = store
     self.scope = scope
+    self.selectedSection = selectedSection
+    self.onSelectSection = onSelectSection
     _contentHealthSidebarProjection = ObservedObject(
       wrappedValue: contentHealthSidebarProjection
     )
     self.contentHealthFilter = contentHealthFilter
     self.imageWorkbenchContextStage = imageWorkbenchContextStage
+    self.imageBrowserSession = imageBrowserSession
     self.repositoryContextStage = repositoryContextStage
     _draftListState = ObservedObject(wrappedValue: store.draftList)
   }
 
   var body: some View {
     VStack(spacing: 0) {
-      if scope != .imageResources {
+      if scope != .imageResources && contentHealthFilter == nil {
         searchField
           .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
           .padding(.vertical, WorkspaceSidebarMetrics.toolbarVerticalPadding)
@@ -234,12 +71,20 @@ struct WorkspaceQuickSearchView: View {
           .padding(.bottom, WorkspaceSidebarMetrics.toolbarVerticalPadding)
       }
 
-      Divider()
+      if contentHealthFilter == nil {
+        Divider()
 
-      if scope == .imageResources {
-        imageResourceState
-      } else {
-        searchResultsContent(searchSnapshot)
+        if scope == .imageResources {
+          if let imageBrowserSession, let imageWorkbenchContextStage {
+            RepositoryImageSidebarHost(
+              session: imageBrowserSession, stage: imageWorkbenchContextStage
+            )
+          } else {
+            imageResourceState
+          }
+        } else {
+          searchResultsContent(searchSnapshot)
+        }
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -254,11 +99,25 @@ struct WorkspaceQuickSearchView: View {
       ForEach(RepositoryContextStage.navigationStages) { item in
         repositoryStageButton(item, stage: stage)
       }
+      WorkspaceSidebarStageButton(
+        title: WorkspaceNavigationRouteDescriptor.accessibilityLabel(for: .contentHealth),
+        systemImage: WorkspaceSection.contentHealth.systemImage,
+        isSelected: selectedSection == .contentHealth,
+        help: WorkspaceNavigationRouteDescriptor.title(for: .contentHealth) + "（⌘5）",
+        identifier: "repository-sidebar-stage-checks"
+      ) {
+        contentHealthFilter?.wrappedValue = .overview
+        onSelectSection(.contentHealth)
+      }
     }
     .frame(maxWidth: .infinity)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("仓库与发布页面")
-    .accessibilityValue(stage.wrappedValue.primaryNavigationStage.accessibilityTitle)
+    .accessibilityValue(
+      selectedSection == .contentHealth
+        ? WorkspaceNavigationRouteDescriptor.title(for: .contentHealth)
+        : stage.wrappedValue.primaryNavigationStage.accessibilityTitle
+    )
     .accessibilityIdentifier("repository-sidebar-stage-navigation")
   }
 
@@ -266,10 +125,10 @@ struct WorkspaceQuickSearchView: View {
     _ item: RepositoryContextStage,
     stage: Binding<RepositoryContextStage>
   ) -> some View {
-    let isSelected = stage.wrappedValue.primaryNavigationStage == item
+    let isSelected = selectedSection == .sync && stage.wrappedValue.primaryNavigationStage == item
     let isDisabled = item.requiresRepository && !hasSelectedRepository
 
-    return sidebarStageButton(
+    return WorkspaceSidebarStageButton(
       title: item.title,
       systemImage: repositoryStageSystemImage(item),
       isSelected: isSelected,
@@ -278,6 +137,7 @@ struct WorkspaceQuickSearchView: View {
       identifier: "repository-sidebar-stage-\(item.rawValue)"
     ) {
       stage.wrappedValue = item
+      onSelectSection(.sync)
     }
   }
 
@@ -286,7 +146,7 @@ struct WorkspaceQuickSearchView: View {
   ) -> some View {
     VStack(spacing: 2) {
       ForEach(ImageWorkbenchContextStage.navigationStages) { item in
-        sidebarStageButton(
+        WorkspaceSidebarStageButton(
           title: item.title,
           systemImage: item.systemImage,
           isSelected: stage.wrappedValue == item,
@@ -294,6 +154,7 @@ struct WorkspaceQuickSearchView: View {
           identifier: "image-sidebar-stage-\(item.rawValue)"
         ) {
           stage.wrappedValue = item
+          if item == .resources { imageBrowserSession?.resourceMode = .repository }
         }
       }
     }
@@ -309,7 +170,7 @@ struct WorkspaceQuickSearchView: View {
   ) -> some View {
     VStack(spacing: 2) {
       ForEach(ContentHealthContextFilter.navigationFilters) { item in
-        sidebarStageButton(
+        WorkspaceSidebarStageButton(
           title: item.title,
           systemImage: item.systemImage,
           isSelected: filter.wrappedValue == item,
@@ -325,50 +186,6 @@ struct WorkspaceQuickSearchView: View {
     .accessibilityLabel("内容健康页面")
     .accessibilityValue(filter.wrappedValue.accessibilityTitle)
     .accessibilityIdentifier("content-health-sidebar-stage-navigation")
-  }
-
-  private func sidebarStageButton(
-    title: LocalizedStringKey,
-    systemImage: String,
-    isSelected: Bool,
-    isDisabled: Bool = false,
-    help: String,
-    identifier: String,
-    action: @escaping () -> Void
-  ) -> some View {
-    Button(action: action) {
-      HStack(spacing: 8) {
-        Image(systemName: systemImage)
-          .frame(width: 16)
-          .accessibilityHidden(true)
-
-        Text(title)
-          .font(.workbenchButtonLabel)
-          .lineLimit(1)
-
-        Spacer(minLength: 4)
-      }
-      // Source-list rows: unselected rows are plain, the selected row carries
-      // the only fill. No borders or trailing checkmark compete with content.
-      .foregroundStyle(isSelected ? workbenchAccentColor : Color.primary)
-      .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
-      .padding(.horizontal, 10)
-      .background {
-        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-          .fill(
-            isSelected
-              ? workbenchAccentColor.opacity(WorkbenchOpacity.accentBackground)
-              : Color.clear
-          )
-      }
-      .contentShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
-    }
-    .buttonStyle(WorkbenchFocusRingButtonStyle())
-    .disabled(isDisabled)
-    .help(help)
-    .accessibilityLabel(Text(title))
-    .accessibilityAddTraits(isSelected ? .isSelected : [])
-    .accessibilityIdentifier(identifier)
   }
 
   private func repositoryStageSystemImage(_ stage: RepositoryContextStage) -> String {

@@ -33,6 +33,33 @@ final class MarkdownTextViewSemanticRenderingTests: XCTestCase {
     XCTAssertLessThan(concealedWidth, normalWidth * 0.01)
     XCTAssertGreaterThan(palette.inactiveTaskMarkerLayoutFont.pointSize, markerFont.pointSize)
     XCTAssertLessThan(palette.inactiveTaskMarkerLayoutFont.pointSize, palette.baseFont.pointSize)
+    let taskWidth = NSAttributedString(
+      string: "- [ ] ", attributes: [.font: palette.inactiveTaskMarkerLayoutFont]
+    ).size().width
+    XCTAssertGreaterThanOrEqual(taskWidth, 18)
+  }
+
+  func testCodeBackgroundRemainsVisibleWhenAppearanceChanges() throws {
+    let palette = MarkdownTextViewSyntaxPalette(
+      configuration: MarkdownEditorComfortConfiguration()
+    )
+    for style in [MarkdownSyntaxHighlightStyle.codeBlock, .inlineCode] {
+      let background = try XCTUnwrap(palette.styleAttributes[style]?[.backgroundColor] as? NSColor)
+      for name in [NSAppearance.Name.aqua, .darkAqua] {
+        let appearance = try XCTUnwrap(NSAppearance(named: name))
+        appearance.performAsCurrentDrawingAppearance {
+          let resolved = background.usingColorSpace(.deviceRGB)
+          XCTAssertNotNil(resolved)
+          if name == .darkAqua {
+            XCTAssertGreaterThanOrEqual(resolved?.alphaComponent ?? 0, 0.12)
+            XCTAssertGreaterThan(resolved?.redComponent ?? 0, 0.9)
+          } else {
+            XCTAssertGreaterThanOrEqual(resolved?.alphaComponent ?? 0, 0.06)
+            XCTAssertLessThan(resolved?.redComponent ?? 1, 0.1)
+          }
+        }
+      }
+    }
   }
 
   func testPaintedTaskCheckboxReportsToggledStateWithoutChildView() throws {

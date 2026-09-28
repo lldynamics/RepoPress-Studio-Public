@@ -22,12 +22,15 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
     let isSidebarPresented: Bool
     let isInspectorPresented: Bool
     let canToggleInspector: Bool
+    var publishableArticleID: UUID? = nil
   }
 
   struct MarkdownPresentation: Equatable {
     let draftID: UUID
     let canRewriteSelection: Bool
     let canUseFindReplace: Bool
+    var canSaveDocument: Bool = false
+    var canExportDocument: Bool = false
   }
 
   struct RSSPresentation: Equatable {
@@ -186,6 +189,8 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
   private var presentationSnapshot: PresentationSnapshot {
     PresentationSnapshot(
       hasRootActions: publishDrawerCommandAction != nil,
+      publishableArticleID: publishDrawerCommandAction?.currentArticleID,
+      canPrepareCurrentArticle: publishDrawerCommandAction?.canPrepareCurrentArticle == true,
       focusModeIsActive: workspaceFocusModeCommandAction?.isActive,
       focusModeCanToggle: workspaceFocusModeCommandAction?.canToggle,
       sidebarIsPresented: workspaceSidebarCommandAction?.isPresented,
@@ -197,7 +202,9 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
         MarkdownPresentation(
           draftID: $0.draftID,
           canRewriteSelection: $0.canRewriteSelection,
-          canUseFindReplace: $0.canUseFindReplace
+          canUseFindReplace: $0.canUseFindReplace,
+          canSaveDocument: $0.saveDocument != nil,
+          canExportDocument: $0.exportDocument != nil
         )
       },
       writingOwner: writingOwner,
@@ -229,6 +236,8 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
 
   private struct PresentationSnapshot: Equatable {
     let hasRootActions: Bool
+    let publishableArticleID: UUID?
+    let canPrepareCurrentArticle: Bool
     let focusModeIsActive: Bool?
     let focusModeCanToggle: Bool?
     let sidebarIsPresented: Bool?
@@ -253,7 +262,8 @@ extension MarkdownEditorCommandActions {
     WorkspaceSceneCommandRouter.MarkdownPresentation(
       draftID: draftID,
       canRewriteSelection: canRewriteSelection,
-      canUseFindReplace: canUseFindReplace
+      canUseFindReplace: canUseFindReplace,
+      canSaveDocument: saveDocument != nil
     )
   }
 }

@@ -256,14 +256,6 @@ extension AIChatContextInspectorView {
     inputText.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
-  var availableChatContextReferences: [AIContextReference] {
-    if ai.chatContextMode == .general {
-      return ai.availableGeneralChatContextReferences()
-    }
-    guard let draft = inspectorDraft else { return [] }
-    return ai.availableChatContextReferences(for: draft)
-  }
-
   var primaryChatContextReferences: [AIContextReference] {
     availableChatContextReferences.filter {
       $0.kind != .specifiedArticle && $0.kind != .knowledgeEntry

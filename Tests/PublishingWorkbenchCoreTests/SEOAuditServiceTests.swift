@@ -141,4 +141,71 @@ final class SEOAuditServiceTests: XCTestCase {
     XCTAssertNil(decoded.warnsWhenBodyH1DuplicatesTitle)
     XCTAssertTrue(decoded.resolvedWarnsWhenBodyH1DuplicatesTitle)
   }
+
+  func testHugoThemeTitleHeadingControlsAutomaticDuplicateWarning() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "SEOAuditThemeH1-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let template = root.appendingPathComponent("themes/paper/layouts/_default/single.html")
+    try FileManager.default.createDirectory(
+      at: template.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try "theme = \"paper\"\n".write(
+      to: root.appendingPathComponent("hugo.toml"), atomically: true, encoding: .utf8)
+    var profile = SiteProfile(
+      name: "主题站点", siteKind: .hugo, localRepositoryRootPath: root.path)
+    let draft = duplicateTitleDraft(profile: profile)
+
+    try "<article><h1>{{ .Title }}</h1></article>".write(
+      to: template, atomically: true, encoding: .utf8)
+    let detector = ThemeTitleH1Detector()
+    XCTAssertTrue(detector.cachedOrDetect(profile: profile, repositoryRevision: UUID()) ?? false)
+    XCTAssertTrue(profile.resolvedWarnsWhenBodyH1DuplicatesTitle)
+    XCTAssertTrue(hasDuplicateTitleWarning(draft: draft, profile: profile))
+
+    try "<article><h2>{{ .Title }}</h2></article>".write(
+      to: template, atomically: true, encoding: .utf8)
+    // The view-facing getter keeps the last value until background refresh.
+    XCTAssertTrue(profile.resolvedWarnsWhenBodyH1DuplicatesTitle)
+    XCTAssertFalse(detector.cachedOrDetect(profile: profile, repositoryRevision: UUID()) ?? true)
+    XCTAssertFalse(profile.resolvedWarnsWhenBodyH1DuplicatesTitle)
+    XCTAssertFalse(hasDuplicateTitleWarning(draft: draft, profile: profile))
+
+    profile.resolvedWarnsWhenBodyH1DuplicatesTitle = true
+    XCTAssertTrue(hasDuplicateTitleWarning(draft: draft, profile: profile))
+    profile.resolvedWarnsWhenBodyH1DuplicatesTitle = false
+    XCTAssertFalse(hasDuplicateTitleWarning(draft: draft, profile: profile))
+  }
+
+  func testUnknownThemeLayoutKeepsLegacyDefaultEnabled() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "SEOAuditUnknownH1-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let template = root.appendingPathComponent("templates/page.html")
+    try FileManager.default.createDirectory(
+      at: template.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try "{% include \"article-title.html\" %}".write(
+      to: template, atomically: true, encoding: .utf8)
+    let profile = SiteProfile(
+      name: "Zola 主题站点", siteKind: .zola, localRepositoryRootPath: root.path)
+
+    XCTAssertTrue(profile.resolvedWarnsWhenBodyH1DuplicatesTitle)
+    XCTAssertTrue(
+      hasDuplicateTitleWarning(draft: duplicateTitleDraft(profile: profile), profile: profile))
+  }
+
+  private func duplicateTitleDraft(profile: SiteProfile) -> ArticleDraft {
+    ArticleDraft(
+      siteProfileID: profile.id,
+      title: "RepoPress 发布指南",
+      slug: "repopress-guide",
+      summary: "这是一段足够长的摘要，用于验证主题标题渲染对重复 H1 提示默认值的影响。",
+      bodyMarkdown: "# RepoPress 发布指南\n\n正文内容。"
+    )
+  }
+
+  private func hasDuplicateTitleWarning(draft: ArticleDraft, profile: SiteProfile) -> Bool {
+    SEOAuditService().report(draft: draft, profile: profile).findings.contains {
+      $0.title == "正文 H1 与标题重复" && $0.severity == .warning
+    }
+  }
 }

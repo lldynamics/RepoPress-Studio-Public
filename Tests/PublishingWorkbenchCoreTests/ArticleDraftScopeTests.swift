@@ -3,6 +3,33 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class ArticleDraftScopeTests: XCTestCase {
+  func testGettingStartedGuideMatchesCurrentNavigationAndEditor() throws {
+    let guide = try XCTUnwrap(
+      ArticleDraft.samples(profile: .defaultProfile, preferredLanguage: "zh-Hans")
+        .first { $0.softwareGuideID == "getting-started" }
+    )
+
+    XCTAssertEqual(ArticleDraft.currentSoftwareGuideSeedVersion, 9)
+    XCTAssertTrue(guide.bodyMarkdown.contains("全局搜索（⇧⌘K）"))
+    XCTAssertTrue(guide.bodyMarkdown.contains("五个一级入口"))
+    XCTAssertTrue(guide.bodyMarkdown.contains("站点检查"))
+    XCTAssertTrue(guide.bodyMarkdown.contains("通用草稿（General Drafts）"))
+    XCTAssertFalse(guide.bodyMarkdown.contains("编辑 / 预览 / 分屏"))
+  }
+
+  func testEnglishGettingStartedGuideUsesCurrentNavigationAndEditor() throws {
+    let guide = try XCTUnwrap(
+      ArticleDraft.samples(profile: .defaultProfile, preferredLanguage: "en")
+        .first { $0.softwareGuideID == "getting-started" }
+    )
+
+    XCTAssertTrue(guide.bodyMarkdown.contains("Global search (⇧⌘K)"))
+    XCTAssertTrue(guide.bodyMarkdown.contains("five primary workspace entries"))
+    XCTAssertTrue(guide.bodyMarkdown.contains("Site Checks"))
+    XCTAssertTrue(guide.bodyMarkdown.contains("General Drafts"))
+    XCTAssertFalse(guide.bodyMarkdown.contains("Edit, Preview, and Split"))
+  }
+
   func testLegacyDraftWithoutScopeStorageDecodesAsSiteDraft() throws {
     let profileID = UUID()
     let draft = ArticleDraft(siteProfileID: profileID, title: "Legacy")

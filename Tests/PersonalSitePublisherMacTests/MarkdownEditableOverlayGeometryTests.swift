@@ -129,6 +129,10 @@ final class MarkdownEditableOverlayGeometryTests: XCTestCase {
       MarkdownTextKit2RangeAdapter.rect(for: nestedTaskContentRange, in: textView)
     )
     XCTAssertEqual(taskDrawing.frame.midY, taskContentRect.midY, accuracy: 1)
+    XCTAssertGreaterThanOrEqual(
+      taskDrawing.frame.minX,
+      textView.textContainerOrigin.x + (textView.textContainer?.lineFragmentPadding ?? 0)
+    )
     XCTAssertLessThan(taskDrawing.frame.maxX, taskContentRect.minX)
     XCTAssertLessThan(try XCTUnwrap(taskDrawing.taskHitFrame).maxX, taskContentRect.minX)
     XCTAssertEqual(nestedTaskDrawing.frame.midY, nestedTaskContentRect.midY, accuracy: 1)

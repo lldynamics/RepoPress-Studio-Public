@@ -1,5 +1,4 @@
 import AppKit
-import PublishingWorkbenchCore
 import SwiftUI
 
 /// Applies the current workspace default once to windows restored from an

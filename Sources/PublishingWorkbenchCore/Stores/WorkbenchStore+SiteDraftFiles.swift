@@ -243,28 +243,57 @@ extension WorkbenchStore {
   /// Forces the latest site-draft Markdown to disk before termination or a
   /// publish operation. General drafts are deliberately excluded.
   @discardableResult
-  func flushPendingSiteDraftFileWrites(retryKnownFailures: Bool = true) -> Bool {
-    siteDraftFileFlushFailureIDs.removeAll()
-    cancelSiteDraftFileReconciliation()
-    let pendingIDs = Set(siteDraftFileAutosaveTasks.keys)
-      .union(siteDraftFileWritesInProgress)
-      .union(
-        siteDraftFileSaveStates.compactMap { id, state in
-          switch state {
-          case .pending, .failed:
-            return id
-          case .saved:
-            return nil
+  func flushPendingSiteDraftFileWrites(
+    retryKnownFailures: Bool = true,
+    targetDraftID: UUID? = nil
+  ) -> Bool {
+    let pendingIDs: Set<UUID>
+    if let targetDraftID {
+      // A synchronous caller must not race the serial async writer.  Keeping
+      // its ownership intact is safer than clearing the in-progress marker and
+      // allowing two conditional writes to reach the same file.
+      guard drafts.contains(where: { $0.id == targetDraftID }),
+        !siteDraftFileWritesInProgress.contains(targetDraftID)
+      else { return false }
+
+      siteDraftFileFlushFailureIDs.remove(targetDraftID)
+      if siteDraftFileAutosaveTasks[targetDraftID] != nil {
+        siteDraftFileSaveGenerations[targetDraftID] =
+          (siteDraftFileSaveGenerations[targetDraftID] ?? 0) &+ 1
+        siteDraftFileAutosaveTasks[targetDraftID]?.cancel()
+        siteDraftFileAutosaveTasks[targetDraftID] = nil
+      }
+      switch siteDraftFileSaveStates[targetDraftID] {
+      case .pending, .failed:
+        pendingIDs = [targetDraftID]
+      case .saved, nil:
+        pendingIDs = []
+      }
+    } else {
+      siteDraftFileFlushFailureIDs.removeAll()
+      cancelSiteDraftFileReconciliation()
+      pendingIDs = Set(siteDraftFileAutosaveTasks.keys)
+        .union(siteDraftFileWritesInProgress)
+        .union(
+          siteDraftFileSaveStates.compactMap { id, state in
+            switch state {
+            case .pending, .failed:
+              return id
+            case .saved:
+              return nil
+            }
           }
-        }
-      )
+        )
+    }
 
     for draftID in pendingIDs {
       siteDraftFileSaveGenerations[draftID] = (siteDraftFileSaveGenerations[draftID] ?? 0) &+ 1
       siteDraftFileAutosaveTasks[draftID]?.cancel()
     }
-    siteDraftFileAutosaveTasks.removeAll()
-    siteDraftFileWritesInProgress.removeAll()
+    if targetDraftID == nil {
+      siteDraftFileAutosaveTasks.removeAll()
+      siteDraftFileWritesInProgress.removeAll()
+    }
 
     var succeeded = true
     for draftID in pendingIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
@@ -307,7 +336,9 @@ extension WorkbenchStore {
         siteDraftFileSaveFailures[draftID] = nil
         scheduleDueOperationalRefresh()
       } catch {
-        if case LocalPublishPreviewError.missingRepositoryRoot = error {
+        if case LocalPublishPreviewError.missingRepositoryRoot = error,
+          targetDraftID == nil
+        {
           // The app-level recovery copy remains available until the user
           // selects a project folder, so this does not make termination unsafe.
         } else {

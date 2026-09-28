@@ -64,7 +64,9 @@ struct MarkdownTextViewSyntaxPalette {
       .underlineColor: NSColor.clear,
     ]
     inactiveMarkerLayoutFont = NSFont.systemFont(ofSize: 0.01)
-    inactiveTaskMarkerLayoutFont = NSFont.systemFont(ofSize: 3.5)
+    // Six concealed source characters must reserve the 16pt checkbox and its
+    // gap. The former proportional 3.5pt font pushed the box into the margin.
+    inactiveTaskMarkerLayoutFont = NSFont.monospacedSystemFont(ofSize: 6, weight: .regular)
     styleAttributes = [
       .heading: [
         .foregroundColor: WorkbenchThemeNSColor.primary,
@@ -85,9 +87,7 @@ struct MarkdownTextViewSyntaxPalette {
       .codeBlock: [
         .font: codeFont,
         .foregroundColor: NSColor.labelColor,
-        // A translucent label tint stays visible on both the white and the
-        // warm-paper surfaces; textBackgroundColor matched the editor itself.
-        .backgroundColor: NSColor.labelColor.withAlphaComponent(0.06),
+        .backgroundColor: Self.codeBackgroundColor,
       ],
       .link: [
         .foregroundColor: NSColor.linkColor,
@@ -113,13 +113,22 @@ struct MarkdownTextViewSyntaxPalette {
       .inlineCode: [
         .font: codeFont,
         .foregroundColor: NSColor.labelColor,
-        .backgroundColor: NSColor.labelColor.withAlphaComponent(0.07),
+        .backgroundColor: Self.codeBackgroundColor,
       ],
       .html: [
         .font: codeFont,
         .foregroundColor: NSColor.systemPurple,
       ],
     ]
+  }
+
+  private static var codeBackgroundColor: NSColor {
+    NSColor(name: nil) { appearance in
+      let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+      return isDark
+        ? NSColor.white.withAlphaComponent(0.14)
+        : NSColor.black.withAlphaComponent(0.06)
+    }
   }
 
   func matches(_ configuration: MarkdownEditorComfortConfiguration) -> Bool {

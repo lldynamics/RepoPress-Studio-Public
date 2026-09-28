@@ -1,5 +1,6 @@
 import Foundation
 import PublishingCoreSupport
+import os
 
 #if canImport(Darwin)
   import Darwin
@@ -748,20 +749,17 @@ private enum GitPipeSignalPolicy {
   }
 }
 
-private final class GitInputWriteOutcome: @unchecked Sendable {
-  private let lock = NSLock()
-  private var recordedError: String?
+private final class GitInputWriteOutcome: Sendable {
+  private let recordedError = OSAllocatedUnfairLock<String?>(initialState: nil)
 
   func record(_ errorMessage: String?) {
-    lock.lock()
-    if let errorMessage { recordedError = errorMessage }
-    lock.unlock()
+    recordedError.withLock { recorded in
+      if let errorMessage { recorded = errorMessage }
+    }
   }
 
   var errorMessage: String? {
-    lock.lock()
-    defer { lock.unlock() }
-    return recordedError
+    recordedError.withLock { $0 }
   }
 }
 
@@ -1303,42 +1301,45 @@ private enum GitCommandLogRedactor {
   }
 }
 
-private final class BoundedOutputCollector: @unchecked Sendable {
-  private let lock = NSLock()
+private final class BoundedOutputCollector: Sendable {
+  private struct State: Sendable {
+    var standardOutput = Data()
+    var standardError = Data()
+    var didTruncate = false
+  }
+
+  private let state = OSAllocatedUnfairLock(initialState: State())
   private let limit: Int
-  private var standardOutput = Data()
-  private var standardError = Data()
-  private var didTruncate = false
 
   init(limit: Int) {
     self.limit = limit
   }
 
   func append(_ data: Data, to stream: GitOutputStream) {
-    lock.lock()
-    defer { lock.unlock() }
-    let retainedByteCount = standardOutput.count + standardError.count
-    let remaining = max(0, limit - retainedByteCount)
-    if remaining > 0 {
-      switch stream {
-      case .standardOutput:
-        standardOutput.append(data.prefix(remaining))
-      case .standardError:
-        standardError.append(data.prefix(remaining))
+    state.withLock { state in
+      let retainedByteCount = state.standardOutput.count + state.standardError.count
+      let remaining = max(0, limit - retainedByteCount)
+      if remaining > 0 {
+        switch stream {
+        case .standardOutput:
+          state.standardOutput.append(data.prefix(remaining))
+        case .standardError:
+          state.standardError.append(data.prefix(remaining))
+        }
       }
-    }
-    if data.count > remaining {
-      didTruncate = true
+      if data.count > remaining {
+        state.didTruncate = true
+      }
     }
   }
 
   func result() -> (standardOutput: String, standardError: String, didTruncate: Bool) {
-    lock.lock()
-    defer { lock.unlock() }
-    return (
-      String(data: standardOutput, encoding: .utf8) ?? "",
-      String(data: standardError, encoding: .utf8) ?? "",
-      didTruncate
-    )
+    state.withLock { state in
+      (
+        String(data: state.standardOutput, encoding: .utf8) ?? "",
+        String(data: state.standardError, encoding: .utf8) ?? "",
+        state.didTruncate
+      )
+    }
   }
 }

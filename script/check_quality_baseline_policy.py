@@ -11,7 +11,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from quality_gate_common import QualityGateError, load_quality_baseline, resolve_diff_base
+from quality_gate_common import (
+    QualityGateError,
+    load_quality_baseline,
+    resolve_diff_base,
+    source_file_line_maximums,
+)
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -345,6 +350,192 @@ def compare_module_boundary_maximums(current: dict[str, int], base: dict[str, in
         )
 
 
+def source_swift_line_counts(root: Path) -> dict[str, int]:
+    """Return logical line counts for every current production Swift source file."""
+    source_root = root / "Sources"
+    if not source_root.is_dir():
+        fail("[configuration:source-file-lines] Sources directory is missing")
+    result: dict[str, int] = {}
+    for path in sorted(source_root.rglob("*.swift")):
+        if not path.is_file():
+            continue
+        try:
+            line_count = len(path.read_text(encoding="utf-8").splitlines())
+        except OSError as error:
+            fail(f"[configuration:source-file-lines] cannot read {path.relative_to(root)}: {error}")
+        result[path.relative_to(root).as_posix()] = line_count
+    return result
+
+
+def enforce_source_file_line_maximums(
+    root: Path,
+    maximums: dict[str, Any],
+) -> dict[str, int]:
+    """Enforce the baseline against both tracked and newly-created source files."""
+    default_maximum = maximums["defaultMaximum"]
+    existing_maximums = maximums["existingFileMaximums"]
+    counts = source_swift_line_counts(root)
+    for path, maximum in existing_maximums.items():
+        line_count = counts.get(path)
+        if line_count is None:
+            fail(
+                f"[configuration:source-file-lines] existing-file maximum refers to missing source file: {path}"
+            )
+        if line_count <= default_maximum:
+            fail(
+                f"[configuration:source-file-lines] existing-file maximum is stale after {path} fell to "
+                f"{line_count} lines; remove it from quality_baselines.json"
+            )
+        if line_count < maximum:
+            fail(
+                f"[configuration:source-file-lines] existing-file maximum for {path} is stale: "
+                f"{line_count} lines below its {maximum}-line maximum; "
+                "run check_quality_baseline_policy.py --tighten-source-lines"
+            )
+        if line_count > maximum:
+            fail(
+                f"[source-file-lines:maximum-exceeded] {path} has {line_count} lines, "
+                f"above its baseline maximum {maximum}"
+            )
+    for path, line_count in counts.items():
+        if line_count > default_maximum and path not in existing_maximums:
+            fail(
+                f"[source-file-lines:maximum-exceeded] {path} has {line_count} lines, "
+                f"above the {default_maximum}-line limit without a reviewed existing-file maximum"
+            )
+    return counts
+
+
+def tighten_source_file_line_maximums(root: Path, baseline_path: Path) -> int:
+    """Persist only reductions to recorded source-file ceilings."""
+    baseline = load_quality_baseline(baseline_path)
+    maximums = source_file_line_maximums(baseline)
+    assert maximums is not None
+    default_maximum = maximums["defaultMaximum"]
+    existing = baseline["sourceFileLineMaximums"]["existingFileMaximums"]
+    counts = source_swift_line_counts(root)
+    changed = 0
+    for path, maximum in list(existing.items()):
+        line_count = counts.get(path)
+        if line_count is None:
+            fail(f"[configuration:source-file-lines] existing-file maximum refers to missing source file: {path}")
+        if line_count <= default_maximum:
+            del existing[path]
+            changed += 1
+        elif line_count < maximum:
+            existing[path] = line_count
+            changed += 1
+    if changed:
+        baseline_path.write_text(json.dumps(baseline, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return changed
+
+
+def renamed_source_paths(root: Path, resolved_base: str) -> dict[str, str]:
+    """Map current source paths to their Git-recognized predecessors."""
+    statuses = git(
+        root,
+        "diff",
+        "--name-status",
+        "--find-renames=50%",
+        resolved_base,
+        "--",
+        "Sources",
+    ).splitlines()
+    result: dict[str, str] = {}
+    for status in statuses:
+        fields = status.split("\t")
+        if len(fields) == 3 and fields[0].startswith("R"):
+            old_path, new_path = fields[1:]
+            result[new_path] = old_path
+    return result
+
+
+def exact_untracked_rename_predecessor(
+    root: Path,
+    resolved_base: str,
+    path: str,
+    candidates: set[str],
+) -> str | None:
+    """Recognize an unstaged exact rename, which git diff omits as an untracked add."""
+    try:
+        current_text = (root / path).read_text(encoding="utf-8")
+    except OSError as error:
+        fail(f"[configuration:source-file-lines] cannot read renamed source {path}: {error}")
+    for candidate in sorted(candidates):
+        try:
+            base_text = git(root, "show", f"{resolved_base}:{candidate}")
+        except QualityGateError:
+            continue
+        if current_text == base_text:
+            return candidate
+    return None
+
+
+def compare_source_file_line_maximums(
+    root: Path,
+    resolved_base: str,
+    current: dict[str, Any],
+    base: dict[str, Any] | None,
+    counts: dict[str, int],
+) -> None:
+    """Keep historical per-file ceilings monotonic while allowing deletion or rename."""
+    default_maximum = current["defaultMaximum"]
+    current_existing = current["existingFileMaximums"]
+    if base is None:
+        for path, maximum in current_existing.items():
+            try:
+                git(root, "cat-file", "-e", f"{resolved_base}:{path}")
+            except QualityGateError as error:
+                fail(
+                    "[policy:threshold-relaxed] initial existing-file maximum requires a source file "
+                    f"present at the comparison base: {path} ({error})"
+                )
+            if maximum != counts[path]:
+                fail(
+                    f"[configuration:source-file-lines] initial existing-file maximum for {path} "
+                    f"must equal its current {counts[path]}-line count"
+                )
+        return
+
+    if current["defaultMaximum"] > base["defaultMaximum"]:
+        fail(
+            "[policy:threshold-relaxed] Swift source default file maximum increased "
+            f"from {base['defaultMaximum']} to {current['defaultMaximum']}"
+        )
+    base_existing = base["existingFileMaximums"]
+    renamed = renamed_source_paths(root, resolved_base)
+    removed = set(base_existing) - set(current_existing)
+    for path in removed:
+        line_count = counts.get(path)
+        if line_count is not None and line_count > default_maximum:
+            fail(
+                "[policy:threshold-relaxed] existing-file maximum was removed while "
+                f"{path} still has {line_count} lines"
+            )
+    for path, maximum in current_existing.items():
+        if path in base_existing:
+            compare_no_increase(
+                f"Swift source file maximum {path}", maximum, base_existing[path]
+            )
+            continue
+        predecessor = renamed.get(path)
+        if predecessor is None:
+            predecessor = exact_untracked_rename_predecessor(
+                root,
+                resolved_base,
+                path,
+                removed,
+            )
+        if predecessor not in removed:
+            fail(
+                "[policy:threshold-relaxed] new existing-file maximum requires a Git-recognized "
+                f"rename from a removed baseline file: {path}"
+            )
+        compare_no_increase(
+            f"renamed Swift source file maximum {path}", maximum, base_existing[predecessor]
+        )
+
+
 def enforce(root: Path, baseline_path: Path, requested_base: str | None) -> str:
     current = load_quality_baseline(baseline_path)
     current_tests = positive_test_minimums(current, "current quality baseline")
@@ -356,6 +547,12 @@ def enforce(root: Path, baseline_path: Path, requested_base: str | None) -> str:
         required=True,
     )
     assert current_module_maximums is not None
+    current_source_file_maximums = source_file_line_maximums(current)
+    assert current_source_file_maximums is not None
+    current_source_line_counts = enforce_source_file_line_maximums(
+        root,
+        current_source_file_maximums,
+    )
     current_target_coverage = current["sourceLineCoveragePercentMinimumByTarget"]
     assert isinstance(current_target_coverage, dict)
     if float(current["changedExecutableSourceLineCoveragePercentMinimum"]) != 100:
@@ -390,6 +587,13 @@ def enforce(root: Path, baseline_path: Path, requested_base: str | None) -> str:
         compare_test_minimums(current_tests, base_tests, set())
         current_format_total = sum(current_format.values())
         compare_no_increase("Swift format total migration maximum", current_format_total, base_format_total)
+        compare_source_file_line_maximums(
+            root,
+            resolved_base,
+            current_source_file_maximums,
+            None,
+            current_source_line_counts,
+        )
         fallback = " via all-zero SHA fallback to HEAD^" if diff_base.used_all_zero_fallback else ""
         return f"schema v1→v2 migration against {resolved_base} accepted{fallback}"
 
@@ -404,6 +608,7 @@ def enforce(root: Path, baseline_path: Path, requested_base: str | None) -> str:
         "base quality baseline",
         required=False,
     )
+    base_source_file_maximums = source_file_line_maximums(base, required=False)
     base_target_coverage = base["sourceLineCoveragePercentMinimumByTarget"]
     assert isinstance(base_target_coverage, dict)
     retired_source_targets, retired_test_targets = retired_targets(
@@ -431,6 +636,13 @@ def enforce(root: Path, baseline_path: Path, requested_base: str | None) -> str:
     compare_release_performance(current_performance, base_performance)
     if base_module_maximums is not None:
         compare_module_boundary_maximums(current_module_maximums, base_module_maximums)
+    compare_source_file_line_maximums(
+        root,
+        resolved_base,
+        current_source_file_maximums,
+        base_source_file_maximums,
+        current_source_line_counts,
+    )
     if float(base["changedExecutableSourceLineCoveragePercentMinimum"]) != 100:
         fail("[configuration:invalid-base-schema] base changed executable source coverage minimum must be 100")
     fallback = " via all-zero SHA fallback to HEAD^" if diff_base.used_all_zero_fallback else ""
@@ -467,6 +679,7 @@ def load_quality_baseline_from_payload(payload: dict[str, Any]) -> dict[str, Any
         fail("[configuration:invalid-baseline] base changed executable source coverage minimum must be 0 through 100")
     format_buckets(payload, "base quality baseline")
     release_performance_policy(payload, "base quality baseline")
+    source_file_line_maximums(payload, required=False)
     return payload
 
 
@@ -475,15 +688,23 @@ def main() -> int:
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
     parser.add_argument("--diff-base", help="Git base, then QUALITY_DIFF_BASE, GITHUB_BASE_REF, or HEAD")
+    parser.add_argument(
+        "--tighten-source-lines",
+        action="store_true",
+        help="lower stale source-file ceilings to current line counts and remove entries at or below the default",
+    )
     args = parser.parse_args()
     root = args.root.resolve()
     baseline = args.baseline if args.baseline.is_absolute() else root / args.baseline
     try:
+        tightened = tighten_source_file_line_maximums(root, baseline) if args.tighten_source_lines else 0
         result = enforce(root, baseline, args.diff_base)
     except QualityGateError as error:
         print(f"quality baseline policy: {error}", file=sys.stderr)
         return 1
     print(f"quality baseline policy: {result}")
+    if args.tighten_source_lines:
+        print(f"source-file ceilings tightened: {tightened}")
     return 0
 
 

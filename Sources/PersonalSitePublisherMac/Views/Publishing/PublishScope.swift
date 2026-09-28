@@ -1,5 +1,4 @@
 import Foundation
-import PublishingWorkbenchCore
 
 enum PublishScope: String, CaseIterable, Identifiable {
   case repository

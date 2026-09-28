@@ -49,13 +49,16 @@ extension MacMarkdownComposerView {
       },
       printDocument: {
         performMarkdownDocumentExport(.print)
-      }
+      },
+      saveDocument: saveCurrentEditorDocument,
+      exportDocument: performMarkdownDocumentExport
     )
   }
 
   var canUseFindReplace: Bool {
     guard !findQuery.isEmpty else { return false }
     guard !findMatchRefreshCoordinator.isPending else { return false }
+    guard !editorSessionState.findReplacePlanningCoordinator.isPending else { return false }
     guard currentFindScopeRange != nil else { return false }
     return findMatchSnapshot.errorMessage == nil
   }
@@ -112,9 +115,15 @@ extension MacMarkdownComposerView {
   }
 
   func restoreEditorSession(for draftID: UUID) {
+    let recoveryOwnerID = frontMatterRecoveryOwnerID
     let bodyUTF16Count = (editorBody as NSString).length
-    let editorSession = store.markdownEditorSessionState(for: draftID)
-      .normalized(bodyUTF16Count: bodyUTF16Count)
+    MarkdownFrontMatterRecoveryWindowRegistry.shared.register(recoveryOwnerID)
+    let editorSession = store.claimInvalidFrontMatterRecovery(
+      for: draftID,
+      windowID: recoveryOwnerID,
+      activeWindowIDs: MarkdownFrontMatterRecoveryWindowRegistry.shared.activeOwners
+    )
+    .normalized(bodyUTF16Count: bodyUTF16Count)
 
     selectedRange = editorSession.selectedRange(bodyUTF16Count: bodyUTF16Count)
     isFindReplacePresented = editorSession.isFindReplacePresented
@@ -165,7 +174,9 @@ extension MacMarkdownComposerView {
         : (editorSessionState.invalidFrontMatterBaseBodyRevision ?? editorBodyRevision),
       invalidFrontMatterBaseMetadataRevision: frontMatterIssue == nil
         ? nil
-        : editorSessionState.invalidFrontMatterBaseMetadataRevision
+        : editorSessionState.invalidFrontMatterBaseMetadataRevision,
+      invalidFrontMatterRecoveryOwnerWindowID: frontMatterIssue == nil
+        ? nil : frontMatterRecoveryOwnerID
     )
   }
 
@@ -227,6 +238,8 @@ extension MacMarkdownComposerView {
   }
 
   func persistEditorSession(for draftID: UUID) {
+    let recoveryOwnerID = frontMatterRecoveryOwnerID
+    MarkdownFrontMatterRecoveryWindowRegistry.shared.register(recoveryOwnerID)
     let state = currentEditorSessionState()
     editorSessionState.invalidFrontMatterBaseBodyMarkdown =
       state.invalidFrontMatterBaseBodyMarkdown
@@ -237,7 +250,8 @@ extension MacMarkdownComposerView {
     store.updateMarkdownEditorSessionState(
       state,
       for: draftID,
-      bodyUTF16Count: (editorBody as NSString).length
+      bodyUTF16Count: (editorBody as NSString).length,
+      windowID: recoveryOwnerID
     )
   }
 
@@ -327,5 +341,35 @@ extension MacMarkdownComposerView {
 
   func cancelFindMatchRefresh() {
     findMatchRefreshCoordinator.cancel()
+  }
+}
+
+extension MacMarkdownComposerView {
+  func saveCurrentEditorDocument() {
+    guard editorSessionState.commandTarget.flushPendingWrites(for: draft.id) else {
+      reportExplicitSave(String(localized: "请先完成当前输入，再保存文章。"))
+      return
+    }
+    flushEditorSessionSave(for: draft.id)
+    guard frontMatterIssue == nil else {
+      // Keep the invalid source in the existing recovery state. Never report
+      // a successful article save for the last valid parsed document.
+      reportExplicitSave(String(localized: "文章信息格式有误，请修正后再保存。当前原文仍保留在编辑器中。"))
+      return
+    }
+
+    let succeeded = store.saveDraftImmediately(draftID: draft.id)
+    let status = WorkbenchMarkdownEditorSaveStatusFeatureFacade(store: store, draftID: draft.id)
+    let message = succeeded
+      ? String(localized: "当前文章已保存。")
+      : store.externalDraftWriteFailures[draft.id]
+        ?? status.saveFailure?.message
+        ?? String(localized: "当前文章尚未保存完成，请检查保存状态后重试。")
+    reportExplicitSave(message)
+  }
+
+  private func reportExplicitSave(_ message: String) {
+    selectionActionMessage = message
+    EditorAccessibilityAnnouncementCenter.announce(message, priority: .high)
   }
 }

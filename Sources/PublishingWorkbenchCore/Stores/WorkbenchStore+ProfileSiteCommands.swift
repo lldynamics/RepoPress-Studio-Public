@@ -31,6 +31,17 @@ extension WorkbenchStore {
     invalidateDraftDerivedCaches()
   }
 
+  /// An inspector may display an article from another site in this window.
+  /// Change only that article's site without selecting it as the active site.
+  public func setH1DuplicateWarning(_ isEnabled: Bool, forProfileID profileID: UUID) {
+    guard let index = publishingStore.profiles.firstIndex(where: { $0.id == profileID }) else {
+      return
+    }
+    publishingStore.profiles[index].warnsWhenBodyH1DuplicatesTitle = isEnabled
+    invalidateDraftDerivedCaches()
+    save()
+  }
+
   public func applySiteKindDefaults(_ siteKind: SiteKind) {
     publishingStore.applySiteKindDefaults(siteKind, store: self)
     invalidateDraftDerivedCaches()

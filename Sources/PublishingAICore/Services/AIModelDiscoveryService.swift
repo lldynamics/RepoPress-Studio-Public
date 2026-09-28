@@ -96,9 +96,9 @@ public enum AIModelDiscoveryError: LocalizedError, Equatable, Sendable {
     case .httpStatus(let status, let body, let retryAfterSeconds):
       let retryHint =
         retryAfterSeconds.map {
-          "\n服务器建议等待 \(Self.durationText($0)) 后再手动重试。"
+          CoreL10n.format("\n服务器建议等待 %@ 后再手动重试。", Self.durationText($0))
         } ?? ""
-      return "AI 模型列表请求失败：HTTP \(status)\n\(body)\(retryHint)"
+      return CoreL10n.format("AI 模型列表请求失败：HTTP %d\n%@%@", status, body, retryHint)
     case .paginationInvalid:
       return CoreL10n.text("AI 模型服务返回了无效的分页游标。")
     case .paginationLoop:
@@ -114,9 +114,9 @@ public enum AIModelDiscoveryError: LocalizedError, Equatable, Sendable {
 
   private static func durationText(_ seconds: TimeInterval) -> String {
     if seconds < 1 {
-      return String(format: "%.1f 秒", seconds)
+      return CoreL10n.format("%.1f 秒", seconds)
     }
-    return "\(Int(ceil(seconds))) 秒"
+    return CoreL10n.format("%d 秒", Int(ceil(seconds)))
   }
 }
 

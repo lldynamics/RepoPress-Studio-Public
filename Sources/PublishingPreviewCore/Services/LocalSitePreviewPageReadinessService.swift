@@ -27,27 +27,37 @@ public struct LocalSitePreviewPageProbeResult: Sendable {
 public struct LocalSitePreviewPageReadinessService: Sendable {
   private let probe: @Sendable (URLRequest) async throws -> LocalSitePreviewPageProbeResult
   private let pause: @Sendable (Duration) async throws -> Void
+  private let elapsed: @Sendable () -> Duration
 
   public init() {
-    probe = Self.performProbe
-    pause = { duration in try await Task.sleep(for: duration) }
+    self.init(probe: Self.performProbe, clock: ContinuousClock())
   }
 
   public init(
     probe: @escaping @Sendable (URLRequest) async throws -> LocalSitePreviewPageProbeResult
   ) {
-    self.init(
-      probe: probe,
-      pause: { duration in try await Task.sleep(for: duration) }
-    )
+    self.init(probe: probe, clock: ContinuousClock())
   }
 
   public init(
     probe: @escaping @Sendable (URLRequest) async throws -> LocalSitePreviewPageProbeResult,
     pause: @escaping @Sendable (Duration) async throws -> Void
   ) {
+    let clock = ContinuousClock()
+    let start = clock.now
     self.probe = probe
     self.pause = pause
+    self.elapsed = { start.duration(to: clock.now) }
+  }
+
+  public init<C: Clock & Sendable>(
+    probe: @escaping @Sendable (URLRequest) async throws -> LocalSitePreviewPageProbeResult,
+    clock: C
+  ) where C.Duration == Duration {
+    let start = clock.now
+    self.probe = probe
+    self.pause = { duration in try await clock.sleep(for: duration) }
+    self.elapsed = { start.duration(to: clock.now) }
   }
 
   public func waitUntilReady(
@@ -60,8 +70,7 @@ public struct LocalSitePreviewPageReadinessService: Sendable {
       max(1, maxAttempts),
       LocalSitePreviewStartupBudget.maximumReadinessAttempts(for: .quartz)
     )
-    let clock = ContinuousClock()
-    let deadline = maximumWait.map { clock.now + $0 }
+    let deadline = maximumWait.map { elapsed() + $0 }
 
     var request = URLRequest(url: url)
     request.httpMethod = "GET"
@@ -73,13 +82,13 @@ public struct LocalSitePreviewPageReadinessService: Sendable {
     for attempt in 0..<attemptCount {
       guard
         !Task.isCancelled,
-        deadline.map({ clock.now < $0 }) ?? true
+        deadline.map({ elapsed() < $0 }) ?? true
       else { return false }
       do {
         let result = try await probe(request)
         guard
           !Task.isCancelled,
-          deadline.map({ clock.now < $0 }) ?? true
+          deadline.map({ elapsed() < $0 }) ?? true
         else { return false }
         if result.responseURL == request.url, (200...299).contains(result.statusCode) {
           return true

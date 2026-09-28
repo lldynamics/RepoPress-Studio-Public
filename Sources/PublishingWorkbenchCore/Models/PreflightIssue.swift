@@ -41,6 +41,13 @@ public enum PreflightIssueCategory: String, Codable, Hashable, Sendable {
   case slugRedirectCandidate
 }
 
+public enum PreflightIssueCode: String, Codable, Hashable, Sendable {
+  case missingGitDirectory
+  case remoteStatusUnconfirmed
+  case remoteSamePathChanges
+  case remoteBaselineChanged
+}
+
 public enum PreflightIssueField: String, Codable, Hashable, Sendable {
   case scope
   case title
@@ -71,6 +78,7 @@ public struct PreflightIssue: Identifiable, Codable, Hashable, Sendable {
   public var field: String?
   public var category: PreflightIssueCategory?
   public var relatedValue: String?
+  public var code: PreflightIssueCode?
 
   public init(
     id: UUID = UUID(),
@@ -79,7 +87,8 @@ public struct PreflightIssue: Identifiable, Codable, Hashable, Sendable {
     message: String,
     field: String? = nil,
     category: PreflightIssueCategory? = nil,
-    relatedValue: String? = nil
+    relatedValue: String? = nil,
+    code: PreflightIssueCode? = nil
   ) {
     self.id = id
     self.severity = severity
@@ -88,6 +97,7 @@ public struct PreflightIssue: Identifiable, Codable, Hashable, Sendable {
     self.field = field
     self.category = category
     self.relatedValue = relatedValue
+    self.code = code
   }
 }
 
@@ -154,6 +164,18 @@ public extension PreflightIssue {
 
   var isPublicRiskIssue: Bool {
     category == .publicRisk
+  }
+}
+
+extension PreflightIssue {
+  public var isDeferredRemoteIssue: Bool {
+    switch code {
+    case .remoteStatusUnconfirmed, .remoteSamePathChanges, .remoteBaselineChanged:
+      return true
+    default:
+      // Existing serialized previews used this dedicated field before codes existed.
+      return field == "remoteBaseline"
+    }
   }
 }
 

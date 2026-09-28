@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 import PublishingKnowledgeCore
 import PublishingWorkbenchCore
+import os
 
 enum RSSArticleHTMLRenderer {
   private struct SanitizedBody {
@@ -65,90 +66,90 @@ enum RSSArticleHTMLRenderer {
     options: [.caseInsensitive]
   )
 
-  final class RSSArticleRenderCache: @unchecked Sendable {
+  final class RSSArticleRenderCache: Sendable {
     static let shared = RSSArticleRenderCache()
     static let defaultCostLimit = 4 * 1024 * 1024
 
-    private struct Entry {
+    private struct Entry: Sendable {
       let html: String
       let byteCost: Int
     }
 
-    private let lock = NSLock()
-    private var cache: [String: Entry] = [:]
-    private var keys: [String] = []
+    private struct State: Sendable {
+      var cache: [String: Entry] = [:]
+      var keys: [String] = []
+      var currentCost = 0
+    }
+
     private let costLimit: Int
-    private var currentCost = 0
+    private let state: OSAllocatedUnfairLock<State>
 
     init(costLimit: Int = RSSArticleRenderCache.defaultCostLimit) {
       self.costLimit = max(1, costLimit)
+      self.state = OSAllocatedUnfairLock(initialState: State())
     }
 
     func html(forKey key: String) -> String? {
-      lock.lock()
-      defer { lock.unlock() }
-      guard let entry = cache[key] else { return nil }
-      touch(key)
-      return entry.html
+      state.withLock { state in
+        guard let entry = state.cache[key] else { return nil }
+        touch(key, in: &state)
+        return entry.html
+      }
     }
 
     func setHTML(_ html: String, forKey key: String) {
-      lock.lock()
-      defer { lock.unlock() }
-      let byteCost = html.utf8.count
-      if let previous = cache.removeValue(forKey: key) {
-        currentCost -= previous.byteCost
-        keys.removeAll { $0 == key }
-      }
-      guard byteCost <= costLimit else {
-        return
-      }
-      while currentCost + byteCost > costLimit, let oldest = keys.first {
-        keys.removeFirst()
-        if let removed = cache.removeValue(forKey: oldest) {
-          currentCost -= removed.byteCost
+      state.withLock { state in
+        let byteCost = html.utf8.count
+        if let previous = state.cache.removeValue(forKey: key) {
+          state.currentCost -= previous.byteCost
+          state.keys.removeAll { $0 == key }
         }
+        guard byteCost <= costLimit else {
+          return
+        }
+        while state.currentCost + byteCost > costLimit, let oldest = state.keys.first {
+          state.keys.removeFirst()
+          if let removed = state.cache.removeValue(forKey: oldest) {
+            state.currentCost -= removed.byteCost
+          }
+        }
+        state.keys.append(key)
+        state.cache[key] = Entry(html: html, byteCost: byteCost)
+        state.currentCost += byteCost
       }
-      keys.append(key)
-      cache[key] = Entry(html: html, byteCost: byteCost)
-      currentCost += byteCost
     }
 
     func invalidate(articleID: String) {
-      lock.lock()
-      defer { lock.unlock() }
-      let matchingKeys = cache.keys.filter { $0.hasPrefix("\(articleID)|") }
-      for key in matchingKeys {
-        if let removed = cache.removeValue(forKey: key) {
-          currentCost -= removed.byteCost
+      state.withLock { state in
+        let matchingKeys = state.cache.keys.filter { $0.hasPrefix("\(articleID)|") }
+        for key in matchingKeys {
+          if let removed = state.cache.removeValue(forKey: key) {
+            state.currentCost -= removed.byteCost
+          }
         }
+        state.keys.removeAll { matchingKeys.contains($0) }
       }
-      keys.removeAll { matchingKeys.contains($0) }
     }
 
     var byteCost: Int {
-      lock.lock()
-      defer { lock.unlock() }
-      return currentCost
+      state.withLock { $0.currentCost }
     }
 
     var count: Int {
-      lock.lock()
-      defer { lock.unlock() }
-      return cache.count
+      state.withLock { $0.cache.count }
     }
 
     func clear() {
-      lock.lock()
-      defer { lock.unlock() }
-      cache.removeAll()
-      keys.removeAll()
-      currentCost = 0
+      state.withLock { state in
+        state.cache.removeAll()
+        state.keys.removeAll()
+        state.currentCost = 0
+      }
     }
 
-    private func touch(_ key: String) {
-      keys.removeAll { $0 == key }
-      keys.append(key)
+    private func touch(_ key: String, in state: inout State) {
+      state.keys.removeAll { $0 == key }
+      state.keys.append(key)
     }
   }
 

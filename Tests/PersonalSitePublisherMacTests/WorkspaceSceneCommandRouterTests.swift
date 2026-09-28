@@ -205,6 +205,57 @@ final class WorkspaceSceneCommandRouterTests: XCTestCase {
     XCTAssertNil(secondRouter.showTaskCenter)
   }
 
+  func testExportAvailabilityChangesRepublishMenuPresentation() {
+    let router = WorkspaceSceneCommandRouter()
+    let owner = UUID()
+    var actions = makeMarkdownActions(draftID: UUID(), showFindReplace: {})
+    var notificationCount = 0
+    let cancellable = router.objectWillChange.sink { notificationCount += 1 }
+
+    router.registerMarkdownEditor(actions, owner: owner)
+    drainDefaultRunLoop()
+    XCTAssertNil(router.markdownEditorCommandActions?.exportDocument)
+
+    actions.exportDocument = { _ in }
+    router.registerMarkdownEditor(actions, owner: owner)
+    drainDefaultRunLoop()
+    XCTAssertEqual(notificationCount, 2)
+
+    actions.exportDocument = nil
+    router.registerMarkdownEditor(actions, owner: owner)
+    drainDefaultRunLoop()
+    XCTAssertNil(router.markdownEditorCommandActions?.exportDocument)
+    XCTAssertEqual(notificationCount, 3)
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testExportRoutesToLatestEditorInItsWindowAndClearsOnUnmount() {
+    let first = WorkspaceSceneCommandRouter()
+    let second = WorkspaceSceneCommandRouter()
+    let firstOwner = UUID()
+    let secondOwner = UUID()
+    var firstExports: [String] = []
+    var secondExports: [String] = []
+    var actions = makeMarkdownActions(draftID: UUID(), showFindReplace: {})
+    actions.exportDocument = { firstExports.append("old-\($0.rawValue)") }
+    first.registerMarkdownEditor(actions, owner: firstOwner)
+    actions.exportDocument = { firstExports.append($0.rawValue) }
+    first.registerMarkdownEditor(actions, owner: firstOwner)
+
+    var otherActions = makeMarkdownActions(draftID: UUID(), showFindReplace: {})
+    otherActions.exportDocument = { secondExports.append($0.rawValue) }
+    second.registerMarkdownEditor(otherActions, owner: secondOwner)
+
+    first.markdownEditorCommandActions?.exportDocument?(.html)
+    XCTAssertEqual(firstExports, ["html"])
+    XCTAssertTrue(secondExports.isEmpty)
+
+    first.unregisterMarkdownEditor(owner: firstOwner)
+    XCTAssertNil(first.markdownEditorCommandActions?.exportDocument)
+    second.markdownEditorCommandActions?.exportDocument?(.markdown)
+    XCTAssertEqual(secondExports, ["markdown"])
+  }
+
   private func drainDefaultRunLoop() {
     let deadline = Date(timeIntervalSinceNow: 0.05)
     repeat {

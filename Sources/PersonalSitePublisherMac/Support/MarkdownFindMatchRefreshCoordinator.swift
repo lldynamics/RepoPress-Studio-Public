@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import PublishingCoreSupport
 import PublishingMarkdownCore
 
 struct MarkdownFindMatchRefreshResult: Equatable, Sendable {
@@ -11,11 +12,12 @@ struct MarkdownFindMatchRefreshResult: Equatable, Sendable {
 
 @MainActor
 final class MarkdownFindMatchRefreshCoordinator: ObservableObject {
-  typealias Scanner = @Sendable (
-    _ text: String,
-    _ query: String,
-    _ options: MarkdownFindOptions
-  ) -> MarkdownFindMatchRefreshResult?
+  typealias Scanner =
+    @Sendable (
+      _ text: String,
+      _ query: String,
+      _ options: MarkdownFindOptions
+    ) -> MarkdownFindMatchRefreshResult?
 
   private struct Request: Sendable {
     let text: String
@@ -26,15 +28,18 @@ final class MarkdownFindMatchRefreshCoordinator: ObservableObject {
   private var task: Task<Void, Never>?
   private var generation: UInt64 = 0
   private let debounce: Duration
+  private let clock: any Clock<Duration>
   private let scanner: Scanner
 
   @Published private(set) var isPending = false
 
   init(
-    debounce: Duration = .milliseconds(120),
+    debounce: Duration = DebounceIntervals.markdownFindMatches,
+    clock: any Clock<Duration> = ContinuousClock(),
     scanner: @escaping Scanner = MarkdownFindMatchRefreshCoordinator.compute
   ) {
     self.debounce = debounce
+    self.clock = clock
     self.scanner = scanner
   }
 
@@ -58,10 +63,11 @@ final class MarkdownFindMatchRefreshCoordinator: ObservableObject {
     isPending = true
     let request = Request(text: text, query: query, options: options)
     let debounce = self.debounce
+    let clock = self.clock
     let scanner = self.scanner
     task = Task.detached(priority: .userInitiated) { [weak self] in
       do {
-        try await Task.sleep(for: debounce)
+        try await clock.sleep(for: debounce)
       } catch {
         return
       }
@@ -82,6 +88,10 @@ final class MarkdownFindMatchRefreshCoordinator: ObservableObject {
     task?.cancel()
     task = nil
     isPending = false
+  }
+
+  func waitUntilIdle() async {
+    await task?.value
   }
 
   private func finish(

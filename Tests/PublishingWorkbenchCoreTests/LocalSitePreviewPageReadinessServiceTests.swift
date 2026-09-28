@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import PublishingPreviewCore
+import PublishingTestSupport
 import XCTest
 
 private actor IgnoringCancellationProbe {
@@ -44,17 +45,28 @@ final class LocalSitePreviewPageReadinessServiceTests: XCTestCase {
   }
 
   func testRetriesUntilTheExactPageReturnsSuccess() async {
+    let clock = ManualClock()
     let counter = LockedProbeCounter()
-    let service = LocalSitePreviewPageReadinessService { request in
-      let attempt = counter.increment()
-      return LocalSitePreviewPageProbeResult(
-        statusCode: attempt < 3 ? 404 : 200,
-        responseURL: request.url
-      )
-    }
+    let service = LocalSitePreviewPageReadinessService(
+      probe: { request in
+        let attempt = counter.increment()
+        return LocalSitePreviewPageProbeResult(
+          statusCode: attempt < 3 ? 404 : 200,
+          responseURL: request.url
+        )
+      },
+      clock: clock
+    )
     let url = URL(string: "http://127.0.0.1:4321/article")!
 
-    let result = await service.waitUntilReady(url, maxAttempts: 3)
+    let readiness = Task { await service.waitUntilReady(url, maxAttempts: 3) }
+    await clock.waitForSleepCount(1)
+    XCTAssertEqual(counter.value, 1)
+    clock.advance(by: .milliseconds(250))
+    await clock.waitForSleepCount(2)
+    XCTAssertEqual(counter.value, 2)
+    clock.advance(by: .milliseconds(350))
+    let result = await readiness.value
 
     XCTAssertTrue(result)
     XCTAssertEqual(counter.value, 3)
@@ -104,16 +116,44 @@ final class LocalSitePreviewPageReadinessServiceTests: XCTestCase {
   }
 
   func testDeadlineRejectsLateSuccessfulProbe() async {
-    let service = LocalSitePreviewPageReadinessService { request in
-      try await Task.sleep(for: .milliseconds(40))
-      return LocalSitePreviewPageProbeResult(statusCode: 200, responseURL: request.url)
+    let clock = ManualClock()
+    let service = LocalSitePreviewPageReadinessService(
+      probe: { request in
+        try await clock.sleep(for: .milliseconds(40))
+        return LocalSitePreviewPageProbeResult(statusCode: 200, responseURL: request.url)
+      },
+      clock: clock
+    )
+    let readiness = Task {
+      await service.waitUntilReady(
+        URL(string: "http://127.0.0.1:4321/article")!,
+        maxAttempts: 2,
+        maximumWait: .milliseconds(10)
+      )
     }
+    await clock.waitForSleepCount(1)
+    clock.advance(by: .milliseconds(40))
+    let result = await readiness.value
+    XCTAssertFalse(result)
+  }
+
+  func testDeadlineStartsWhenWaitBegins() async {
+    let clock = ManualClock()
+    let service = LocalSitePreviewPageReadinessService(
+      probe: { request in
+        LocalSitePreviewPageProbeResult(statusCode: 200, responseURL: request.url)
+      },
+      clock: clock
+    )
+    clock.advance(by: .seconds(1))
+
     let result = await service.waitUntilReady(
       URL(string: "http://127.0.0.1:4321/article")!,
-      maxAttempts: 2,
+      maxAttempts: 1,
       maximumWait: .milliseconds(10)
     )
-    XCTAssertFalse(result)
+
+    XCTAssertTrue(result)
   }
 
   func testDoesNotAcceptASuccessfulResponseFromRedirectedURL() async {

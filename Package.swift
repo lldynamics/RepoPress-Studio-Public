@@ -222,10 +222,17 @@ let package = Package(
       ]
     ),
     .testTarget(
+      name: "PublishingTestSupport",
+      swiftSettings: [
+        .swiftLanguageMode(.v6)
+      ]
+    ),
+    .testTarget(
       name: "PublishingMarkdownCoreTests",
       dependencies: [
         "PublishingCoreSupport",
         "PublishingMarkdownCore",
+        "PublishingTestSupport",
       ],
       swiftSettings: [
         .swiftLanguageMode(.v6)
@@ -302,6 +309,7 @@ let package = Package(
         "PublishingBackupCore",
         "PublishingSyncCore",
         "PublishingWorkbenchCore",
+        "PublishingTestSupport",
       ],
       swiftSettings: [
         .swiftLanguageMode(.v6)
@@ -321,6 +329,7 @@ let package = Package(
         "PublishingBackupCore",
         "PublishingSyncCore",
         "PublishingWorkbenchCore",
+        "PublishingTestSupport",
       ],
       swiftSettings: [
         .swiftLanguageMode(.v6)

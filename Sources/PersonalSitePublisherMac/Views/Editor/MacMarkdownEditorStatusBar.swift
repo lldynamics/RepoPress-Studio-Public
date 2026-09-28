@@ -150,6 +150,10 @@ private struct MarkdownEditorStatisticsControl: View {
         }
       }
 
+      Text("字数按中文字数与西文单词合计。")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+
       Divider()
 
       VStack(alignment: .leading, spacing: 6) {

@@ -5,6 +5,11 @@ import PublishingDomainContracts
 import PublishingGitCore
 
 extension WorkbenchStore {
+  /// Cheap identity for derived repository observations such as theme defaults.
+  public var repositoryReportRevision: UUID {
+    repositoryStore.repositoryLineDiffReportRevision
+  }
+
   public var repositoryMergeConflictSession: RepositoryMergeConflictSession? {
     repositoryStore.repositoryMergeConflictSession(for: activeProfile, store: self)
   }

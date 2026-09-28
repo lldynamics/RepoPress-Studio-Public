@@ -18,20 +18,27 @@ and release lifecycle.
   social previews, deployment status, release history, and rollback tools.
 - A local knowledge library, PDF and web imports, macOS Share Sheet and Shortcuts intake, semantic search, RSS reading,
   image tools, and complete workspace backup and restore. Backups exclude
-  Keychain credentials.
+  service credentials.
+- The workspace has five primary entries for Writing, Library, Reading, Images, and Site; Reading is backed by RSS,
+  and Site Checks live inside the site workspace.
 - Optional bring-your-own-key AI workflows for article-aware chat, editing,
   metadata suggestions, reviews, and release copy.
 
 ## Product and privacy boundary
 
-RepoPress Studio is local-first, not fully offline. Files stay on the user's
-device by default. Network access occurs only for actions the user initiates,
-such as repository operations, deployment checks, AI requests, webpage imports,
-or update checks.
+RepoPress Studio is local-first. Files stay on the user's device by default.
+Repository operations, deployment checks, AI requests, webpage imports, RSS
+refreshes, and update checks contact their respective services. Enabling RSS
+background refresh, automatic repository sync, iCloud note sync, or automatic
+update checks also allows the corresponding background network activity.
 
-RepoPress does not include service credentials. Repository, deployment, and AI
-keys configured in the app are stored in macOS Keychain and must never be added
-to this repository. The macOS codebase does not include in-app purchases or a
+RepoPress does not include service credentials. Repository and deployment keys
+are stored in macOS Keychain. AI keys default to Keychain; users can explicitly
+choose a restricted local file or session-only storage. Switching sources does
+not copy keys automatically, and workspace backups exclude all these credentials.
+Never add credentials to this repository. The AI settings show the selected credential
+storage mode; note sync settings describe the CloudKit scope.
+The macOS codebase does not include in-app purchases or a
 paid-entitlement system; that statement does not describe the separately
 released iOS app.
 

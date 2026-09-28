@@ -15,6 +15,7 @@ struct WorkspaceShellSplitLayout: View {
   let isInspectorPresented: Bool
   @Binding var contentHealthFilter: ContentHealthContextFilter
   @Binding var imageWorkbenchContextStage: ImageWorkbenchContextStage
+  let imageBrowserSession: RepositoryImageBrowserSession
   @Binding var repositoryContextStage: RepositoryContextStage
   @Binding var repositoryChangedFileSelection: RepositoryChangedFileSelection?
   @Binding var knowledgeInspectorPresentation: KnowledgeLibraryInspectorPresentationState
@@ -40,6 +41,7 @@ struct WorkspaceShellSplitLayout: View {
     isInspectorPresented: Bool,
     contentHealthFilter: Binding<ContentHealthContextFilter>,
     imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>,
+    imageBrowserSession: RepositoryImageBrowserSession,
     repositoryContextStage: Binding<RepositoryContextStage>,
     repositoryChangedFileSelection: Binding<RepositoryChangedFileSelection?>,
     knowledgeInspectorPresentation: Binding<KnowledgeLibraryInspectorPresentationState>,
@@ -63,6 +65,7 @@ struct WorkspaceShellSplitLayout: View {
     self.isInspectorPresented = isInspectorPresented
     _contentHealthFilter = contentHealthFilter
     _imageWorkbenchContextStage = imageWorkbenchContextStage
+    self.imageBrowserSession = imageBrowserSession
     _repositoryContextStage = repositoryContextStage
     _repositoryChangedFileSelection = repositoryChangedFileSelection
     _knowledgeInspectorPresentation = knowledgeInspectorPresentation
@@ -85,7 +88,7 @@ struct WorkspaceShellSplitLayout: View {
       if showsCompactNavigationRail {
         WorkspaceCompactNavigationRail(
           selectedSection: selectedSection,
-          contentHealthFilter: $contentHealthFilter,
+          siteIssueCount: contentHealthSidebarProjection.knownIssueCount(for: store.activeProfile.id),
           onSelectSection: onSelectSection
         )
 
@@ -103,6 +106,7 @@ struct WorkspaceShellSplitLayout: View {
           writingListState: writingListState,
           contentHealthFilter: $contentHealthFilter,
           imageWorkbenchContextStage: $imageWorkbenchContextStage,
+          imageBrowserSession: imageBrowserSession,
           repositoryContextStage: $repositoryContextStage,
           contentHealthSidebarProjection: contentHealthSidebarProjection,
           rssStore: rssStore,
@@ -123,6 +127,7 @@ struct WorkspaceShellSplitLayout: View {
         selectedDraftID: selectedDraftID,
         contentHealthFilter: $contentHealthFilter,
         imageWorkbenchContextStage: $imageWorkbenchContextStage,
+        imageBrowserSession: imageBrowserSession,
         repositoryContextStage: $repositoryContextStage,
         repositoryChangedFileSelection: $repositoryChangedFileSelection,
         contentHealthSidebarProjection: contentHealthSidebarProjection,

@@ -142,7 +142,8 @@ struct SiteMaintenanceActionQueueSection: View {
         Label("当前没有需要优先处理的维护事项。", systemImage: "checkmark.circle")
           .foregroundStyle(.secondary)
       } else {
-        let visibleActions = showsAllActions
+        let visibleActions =
+          showsAllActions
           ? report.actionItems
           : Array(report.actionItems.prefix(maximumVisibleCount))
         ForEach(Array(visibleActions.enumerated()), id: \.element.id) { index, item in
@@ -219,9 +220,14 @@ struct SiteMaintenanceActionQueueSection: View {
             .font(.caption)
             .foregroundStyle(.secondary)
           Spacer()
-          Text(item.priority.localizedDisplayName)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(siteMaintenanceActionPriorityForeground(item.priority))
+          Text(
+            String.localizedStringWithFormat(
+              String(localized: "优先级：%@"),
+              item.priority.localizedDisplayName
+            )
+          )
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(siteMaintenanceActionPriorityForeground(item.priority))
         }
 
         Text(item.summary)

@@ -38,6 +38,29 @@ final class PublishDrawerConnectionPresentationTests: XCTestCase {
       PublishDrawerConnectionPresentation.make(preview: preview(issues: [remoteIssue])).canStart)
   }
 
+  func testRemoteIssuesUseStableCodesAcrossDifferentDisplayTranslations() {
+    let remoteIssues: [PreflightIssue] = [
+      .init(
+        severity: .warning, title: "Remote Same-Path Changes", message: "Review remote diff",
+        field: "repository", code: .remoteSamePathChanges),
+      .init(
+        severity: .warning, title: "Remote Status Unconfirmed", message: "Check at confirmation",
+        field: "repository", code: .remoteStatusUnconfirmed),
+    ]
+    for issue in remoteIssues {
+      XCTAssertTrue(
+        PublishDrawerConnectionPresentation.make(preview: preview(issues: [issue])).canStart)
+    }
+
+    let unrelated = PreflightIssue(
+      severity: .error, title: "Remote Same-Path Changes", message: "Different cause",
+      field: "repository")
+    XCTAssertFalse(
+      PublishDrawerConnectionPresentation.make(
+        preview: preview(issues: remoteIssues + [unrelated])
+      ).canStart)
+  }
+
   func testGroupingPreservesAllDetailsStrongestSeverityAndDifferentPaths() {
     let issues: [PreflightIssue] = [
       .init(severity: .warning, title: "未选择仓库", message: "选择根目录", field: "repository"),
@@ -55,5 +78,18 @@ final class PublishDrawerConnectionPresentationTests: XCTestCase {
     XCTAssertTrue(grouped[0].message.contains("选择根目录"))
     XCTAssertTrue(grouped[0].message.contains("当前操作需要仓库"))
     XCTAssertEqual(grouped[0].id, issues[0].id)
+  }
+
+  func testGroupingKeepsDistinctIssueCodesSeparate() {
+    let issues: [PreflightIssue] = [
+      .init(
+        severity: .warning, title: "Remote check", message: "Refresh first",
+        field: "repository", code: .remoteStatusUnconfirmed),
+      .init(
+        severity: .warning, title: "Remote check", message: "Review paths",
+        field: "repository", code: .remoteSamePathChanges),
+    ]
+
+    XCTAssertEqual(PublishReadinessIssueGrouping.coalesced(issues).count, 2)
   }
 }

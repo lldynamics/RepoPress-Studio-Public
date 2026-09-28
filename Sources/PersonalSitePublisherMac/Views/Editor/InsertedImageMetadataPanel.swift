@@ -1,6 +1,5 @@
 import AppKit
 import PublishingDomainContracts
-import PublishingWorkbenchCore
 import SwiftUI
 
 struct InsertedImageMetadataDraft: Identifiable, Equatable {

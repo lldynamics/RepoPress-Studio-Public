@@ -6,6 +6,24 @@ import XCTest
 
 @MainActor
 final class WorkbenchStoreProfileTests: XCTestCase {
+  func testH1InspectorSettingWritesArticleSiteWithoutSwitchingActiveSite() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let articleSite = store.activeProfile
+    let otherSite = store.createProfile(named: "当前站点")
+    let draft = ArticleDraft(siteProfileID: articleSite.id, title: "其他站点文章", slug: "other-site")
+
+    XCTAssertEqual(store.activeProfileID, otherSite.id)
+    XCTAssertEqual(store.profile(for: draft).id, articleSite.id)
+    store.setH1DuplicateWarning(false, forProfileID: store.profile(for: draft).id)
+
+    XCTAssertEqual(store.activeProfileID, otherSite.id)
+    XCTAssertEqual(
+      store.profiles.first(where: { $0.id == articleSite.id })?.warnsWhenBodyH1DuplicatesTitle,
+      false)
+    XCTAssertNil(
+      store.profiles.first(where: { $0.id == otherSite.id })?.warnsWhenBodyH1DuplicatesTitle)
+  }
+
   func testStartupMigratesLegacyCodexSentinelAndPreservesConfigFields() throws {
     let persistenceURL = try temporaryPersistenceURL(prefix: "CodexSentinelMigration")
     defer { try? FileManager.default.removeItem(at: persistenceURL.deletingLastPathComponent()) }
@@ -921,7 +939,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(backgroundSnapshot.localPublishReadiness.commitReadiness, .blocked)
     XCTAssertTrue(
       backgroundSnapshot.localPublishReadiness.commitBlockingIssues.contains {
-        $0.title == "未发现 .git"
+        $0.code == .missingGitDirectory
       }
     )
     XCTAssertNotEqual(store.selectedDraftID, draft.id)

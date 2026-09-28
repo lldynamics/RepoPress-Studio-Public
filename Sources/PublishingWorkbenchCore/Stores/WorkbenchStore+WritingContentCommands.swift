@@ -233,7 +233,7 @@ extension WorkbenchStore {
     let requestedDraftListNotification = notifyingDraftList
     preflightRefreshTask = Task { [weak self] in
       do {
-        try await Task.sleep(nanoseconds: 600_000_000)
+        try await Task.sleep(for: DebounceIntervals.preflightRefresh)
       } catch {
         return
       }
@@ -531,28 +531,6 @@ extension WorkbenchStore {
       selectedRange: selectedRange,
       store: self
     )
-  }
-
-  public func updateActiveEditorSelection(
-    draftID: UUID,
-    selectedRange: NSRange,
-    selectedText: String,
-    bodyUTF16Count: Int
-  ) {
-    publishingStore.updateActiveEditorSelection(
-      draftID: draftID,
-      selectedRange: selectedRange,
-      selectedText: selectedText,
-      bodyUTF16Count: bodyUTF16Count
-    )
-  }
-
-  public func clearActiveEditorSelection(for draftID: UUID? = nil) {
-    publishingStore.clearActiveEditorSelection(for: draftID)
-  }
-
-  public func activeEditorSelectionRange(for draft: ArticleDraft) -> NSRange? {
-    publishingStore.activeEditorSelectionRange(for: draft)
   }
 
   public func saveCustomMarkdownSnippet(_ snippet: MarkdownSnippet) {

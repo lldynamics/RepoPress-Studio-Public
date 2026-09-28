@@ -262,6 +262,89 @@ final class ArticleTranslationIntegrationTests: XCTestCase {
     XCTAssertTrue(staleIssues.contains { $0.title == "译文已过期" })
   }
 
+  func testPublishingMetadataDoesNotExpireTranslationButWordsDo() throws {
+    let profile = SiteProfile.defaultProfile
+    let source = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "原稿",
+      slug: "source",
+      summary: "原摘要",
+      bodyMarkdown: String(repeating: "原稿正文。", count: 20)
+    )
+    var translated = try AITranslationDraftPlanningService.plan(
+      source: source,
+      profile: profile,
+      targetLanguageCode: "en",
+      translatedTitle: "Translation",
+      translatedSummary: "Summary",
+      translatedBodyMarkdown: String(repeating: "Translated body. ", count: 12)
+    ).translatedDraft
+    XCTAssertNotNil(translated.translationLink?.sourceTranslationFingerprint)
+
+    var published = source
+    published.status = .published
+    published.draft = false
+    published.date = published.date.addingTimeInterval(86_400)
+    published.tags = ["new-tag"]
+    XCTAssertNotEqual(source.repositoryContentFingerprint, published.repositoryContentFingerprint)
+    XCTAssertEqual(source.translationContentFingerprint, published.translationContentFingerprint)
+    XCTAssertEqual(translated.translationFreshness(source: published, profile: profile), .current)
+    let publishedIssues = PreflightCheckService().run(
+      draft: translated,
+      allDrafts: [published, translated],
+      profile: profile,
+      includeRepositoryReadiness: false
+    )
+    XCTAssertFalse(publishedIssues.contains { $0.title == "译文已过期" })
+
+    published.summary = "修改后的摘要"
+    XCTAssertEqual(translated.translationFreshness(source: published, profile: profile), .stale)
+    XCTAssertTrue(translated.markTranslationReviewed(source: published, profile: profile))
+    XCTAssertEqual(translated.translationFreshness(source: published, profile: profile), .current)
+    let restored = try JSONDecoder().decode(
+      ArticleDraft.self, from: JSONEncoder().encode(translated)
+    )
+    XCTAssertEqual(restored.translationFreshness(source: published, profile: profile), .current)
+    published.bodyMarkdown += "新增段落"
+    XCTAssertEqual(restored.translationFreshness(source: published, profile: profile), .stale)
+    XCTAssertFalse(translated.markTranslationReviewed(source: nil, profile: profile))
+  }
+
+  func testLegacyTranslationRemainsCurrentWhenOnlyPublicationStateChanges() throws {
+    let profile = SiteProfile.defaultProfile
+    var source = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "原稿",
+      slug: "source",
+      bodyMarkdown: "原稿正文"
+    )
+    source.status = .ready
+    source.draft = false
+    let translatedID = UUID()
+    let translated = ArticleDraft(
+      id: translatedID,
+      siteProfileID: profile.id,
+      title: "Translation",
+      bodyMarkdown: "Translated body",
+      translationLink: AITranslationDraftLink(
+        sourceDraftID: source.id,
+        translatedDraftID: translatedID,
+        targetLanguageCode: "en",
+        sourceContentFingerprint: source.repositoryContentFingerprint,
+        createdAt: Date(),
+        sourceMarkdownPath: profile.markdownPath(for: source)
+      )
+    )
+    let restored = try JSONDecoder().decode(
+      ArticleDraft.self, from: JSONEncoder().encode(translated)
+    )
+    XCTAssertNil(restored.translationLink?.sourceTranslationFingerprint)
+    source.status = .published
+    XCTAssertEqual(restored.translationFreshness(source: source, profile: profile), .current)
+    source.title = "内容变了"
+    XCTAssertEqual(restored.translationFreshness(source: source, profile: profile), .stale)
+  }
+
   func testHugoAndLanguageDirectoryPathsFollowSourceFilename() throws {
     var profile = SiteProfile.defaultProfile
     profile.applyPublishingDefaults(for: .hugo)

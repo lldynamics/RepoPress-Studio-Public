@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 /// The Git sequencer state that must be explicitly finished or aborted before
 /// normal repository operations may safely continue.
@@ -97,30 +98,57 @@ public enum RepositoryOperationLifecycleError: Error, LocalizedError, Hashable, 
   public var errorDescription: String? {
     switch self {
     case .repositoryUnavailable:
-      return "未找到可用的本地 Git 仓库。"
+      return CoreL10n.text("未找到可用的本地 Git 仓库。")
     case .notGitWorktree:
-      return "所选目录不是 Git 工作树。"
+      return CoreL10n.text("所选目录不是 Git 工作树。")
     case .notRepositoryRoot:
-      return "所选目录不是 Git 工作树根目录。"
+      return CoreL10n.text("所选目录不是 Git 工作树根目录。")
     case let .invalidRepository(message):
-      return "Git 仓库状态无效：\(message)"
+      return CoreL10n.format("Git 仓库状态无效：%@", message)
     case .noOperationInProgress:
-      return "当前没有需要完成或放弃的 Git 合并/变基操作。"
+      return CoreL10n.text("当前没有需要完成或放弃的 Git 合并/变基操作。")
     case let .unexpectedOperation(expected, actual):
-      return "当前正在进行\(actual.displayName)，不能执行\(expected.displayName)操作。"
+      return CoreL10n.format(
+        "当前正在进行%@，不能执行%@操作。",
+        Self.localizedOperationName(actual),
+        Self.localizedOperationName(expected)
+      )
     case .ambiguousOperation:
-      return "检测到多个 Git 操作状态，无法安全继续。请在终端检查仓库后重试。"
+      return CoreL10n.text("检测到多个 Git 操作状态，无法安全继续。请在终端检查仓库后重试。")
     case let .unresolvedConflicts(count):
-      return "仍有 \(count) 个未解决冲突。请先逐个确认最终内容并暂存。"
+      return CoreL10n.format("仍有 %d 个未解决冲突。请先逐个确认最终内容并暂存。", count)
     case .invalidCommitMessage:
-      return "合并提交说明不能为空或超过安全长度。"
+      return CoreL10n.text("合并提交说明不能为空或超过安全长度。")
     case .repositoryChanged:
-      return "仓库在操作期间发生变化，请重新扫描后再处理。"
+      return CoreL10n.text("仓库在操作期间发生变化，请重新扫描后再处理。")
     case let .commandFailed(operation, terminated, output):
       let detail = output.trimmingCharacters(in: .whitespacesAndNewlines)
-      return "\(operation)失败（退出码：\(terminated)）：\(detail.isEmpty ? "请检查 Git 工作区状态。" : detail)"
+      return CoreL10n.format(
+        "%@失败（退出码：%d）：%@",
+        operation,
+        terminated,
+        detail.isEmpty ? CoreL10n.text("请检查 Git 工作区状态。") : detail
+      )
     case let .operationDidNotFinish(kind):
-      return "\(kind.displayName)命令已返回，但 Git 操作状态尚未结束。请重新扫描后再处理。"
+      return CoreL10n.format(
+        "%@命令已返回，但 Git 操作状态尚未结束。请重新扫描后再处理。",
+        Self.localizedOperationName(kind)
+      )
+    }
+  }
+
+  private static func localizedOperationName(_ kind: RepositoryOperationLifecycleKind) -> String {
+    switch kind {
+    case .none:
+      return CoreL10n.text("无进行中的 Git 操作")
+    case .merge:
+      return CoreL10n.text("合并")
+    case .rebase:
+      return CoreL10n.text("变基")
+    case .unmergedIndex:
+      return CoreL10n.text("待恢复的冲突")
+    case .ambiguous:
+      return CoreL10n.text("无法确认的 Git 操作")
     }
   }
 }

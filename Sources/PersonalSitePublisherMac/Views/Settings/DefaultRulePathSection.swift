@@ -113,7 +113,8 @@ struct DefaultRulePathSection: View {
         targetLanguageCode: "en",
         sourceContentFingerprint: source.repositoryContentFingerprint,
         createdAt: Date(),
-        sourceMarkdownPath: activeProfile.markdownPath(for: source)
+        sourceMarkdownPath: activeProfile.markdownPath(for: source),
+        sourceTranslationFingerprint: source.translationContentFingerprint
       )
     )
     return activeProfile.markdownPath(for: translated)

@@ -57,9 +57,10 @@ struct AIChatConversationIdentity: Equatable, Sendable {
   private let aiConnectionTestService: AIConnectionTestService
   let aiDataSharingConsentStore: AIDataSharingConsentStore
   let imageWorkbenchService: SiteImageWorkbenchService
-  private let seoAuditService: SEOAuditService
-  private let seoSocialPreviewService: SEOSocialPreviewService
+  let seoAuditService: SEOAuditService
+  let seoSocialPreviewService: SEOSocialPreviewService
   let aiChatOperationCoordinator = AIChatOperationCoordinator()
+  var activeStreamingAuthorization: ActiveStreamingAuthorization?
   @Published public internal(set) var aiWritingStylePreview: AIWritingStyleProfilePreview? = nil
   @Published public internal(set) var isAIWritingStyleExtractionRunning = false
   /// Caps observable chat updates at about 20 FPS while network chunks are
@@ -414,40 +415,6 @@ struct AIChatConversationIdentity: Equatable, Sendable {
     seoAuditService.report(draft: draft, profile: store.profile(for: draft))
   }
 
-  public func seoInspectorPresentation(
-    for draft: ArticleDraft
-  ) async throws -> WorkbenchSEOInspectorPresentation {
-    let profile = store.profile(for: draft)
-    let cachedSnapshot = seoSocialPreviewSnapshots[draft.id]
-    let relatedSuggestions = store.relatedArticleSuggestions(for: draft, limit: 3)
-    let actionMessage = seoSocialPreviewMessage
-    let auditService = seoAuditService
-    let previewService = seoSocialPreviewService
-    let task = Task.detached(priority: .utility) {
-      try Task.checkCancellation()
-      let report = auditService.report(draft: draft, profile: profile)
-      try Task.checkCancellation()
-      let currentSnapshot = previewService.snapshot(draft: draft, profile: profile)
-      try Task.checkCancellation()
-      return WorkbenchSEOInspectorPresentation(
-        draftID: draft.id,
-        report: report,
-        socialPreviewSnapshot: cachedSnapshot,
-        cachePresentation: SEOSocialPreviewCachePresentation(
-          snapshot: cachedSnapshot,
-          isStale: cachedSnapshot?.signature != currentSnapshot.signature
-        ),
-        relatedArticleSuggestions: relatedSuggestions,
-        actionMessage: actionMessage
-      )
-    }
-    return try await withTaskCancellationHandler {
-      try await task.value
-    } onCancel: {
-      task.cancel()
-    }
-  }
-
   public func seoSitemapPreview(for draft: ArticleDraft) -> SEOSitemapPreview {
     seoSocialPreviewService.sitemapPreview(
       drafts: store.drafts,
@@ -476,20 +443,6 @@ struct AIChatConversationIdentity: Equatable, Sendable {
 
   public func refreshAIKeyAvailability() {
     refreshAIKeyAvailability(for: store.activeProfile)
-  }
-
-  public var aiCredentialStorageMode: AICredentialStorageMode {
-    aiCredentialStore.storageMode
-  }
-
-  public func setAICredentialStorageMode(_ mode: AICredentialStorageMode) {
-    guard mode != aiCredentialStore.storageMode else { return }
-    aiCredentialStore.setStorageMode(mode)
-    refreshAIKeyAvailability()
-    aiActionMessage = CoreL10n.format(
-      "API Key 保存位置已切换为 %@。不同保存位置之间不会自动复制或删除 Key。",
-      credentialStorageModeName(mode)
-    )
   }
 
   public func aiKeyAvailability(
@@ -543,6 +496,7 @@ struct AIChatConversationIdentity: Equatable, Sendable {
         forConnectionProfileID: connection.id,
         legacyProfile: connection.canUseLegacyCredentials ? store.activeProfile : nil
       )
+      cancelStreamingAuthorization(connectionID: connection.id)
       refreshAIKeyAvailability()
       aiActionMessage = CoreL10n.format(
         "AI API Key 已保存到 %@。",
@@ -564,6 +518,7 @@ struct AIChatConversationIdentity: Equatable, Sendable {
         legacyProfiles: connection.canUseLegacyCredentials ? [store.activeProfile] : []
       )
       refreshAIKeyAvailability()
+      cancelStreamingAuthorization(connectionID: connection.id)
       aiActionMessage = "AI API Key 已删除。"
       aiChatMessage = "AI API Key 已删除，请重新配置后再发送消息。"
     } catch {
@@ -579,17 +534,6 @@ struct AIChatConversationIdentity: Equatable, Sendable {
       message += " \(recoveryHint)"
     }
     return message
-  }
-
-  private func credentialStorageModeName(_ mode: AICredentialStorageMode) -> String {
-    switch mode {
-    case .localFile:
-      return CoreL10n.text("本地配置文件")
-    case .keychain:
-      return "Keychain"
-    case .session:
-      return CoreL10n.text("本次会话")
-    }
   }
 
   public func testAIConnection(
@@ -762,77 +706,5 @@ struct AIChatConversationIdentity: Equatable, Sendable {
       for: config,
       codexAccountStatus: codexAccountStatus
     )
-  }
-
-  public var isRemoteAIEnabled: Bool {
-    aiDataSharingConsentStore.isRemoteAIEnabled
-  }
-
-  public func setRemoteAIEnabled(_ enabled: Bool) {
-    let changed = aiDataSharingConsentStore.isRemoteAIEnabled != enabled
-    aiDataSharingConsentStore.setRemoteAIEnabled(enabled)
-    guard changed else { return }
-    objectWillChange.send()
-    let message =
-      enabled
-      ? "已开启远程 AI；原有逐服务授权会恢复生效。"
-      : "已关闭远程 AI。逐服务授权会保留，重新开启后恢复；本地 AI 仍可用。"
-    aiActionMessage = message
-    aiChatMessage = message
-  }
-
-  public func grantAIDataSharingConsent() {
-    let config = store.aiProviderConfig(for: store.activeProfile)
-    grantAIDataSharingConsent(for: config)
-  }
-
-  public func grantAIDataSharingConsent(
-    for config: AIProviderConfig,
-    enablingRemoteAI: Bool = false,
-    codexAccountStatus: CodexAppServerAccountStatus? = nil
-  ) {
-    if enablingRemoteAI, !config.isLocalEndpoint, !config.dataSharingDestination.isEmpty {
-      aiDataSharingConsentStore.setRemoteAIEnabled(true)
-    }
-    let granted = aiDataSharingConsentStore.grant(
-      for: config,
-      codexAccountStatus: codexAccountStatus
-    )
-    let presentation = aiDataSharingConsentStore.presentation(
-      for: config,
-      codexAccountStatus: codexAccountStatus
-    )
-    if config.isLocalEndpoint {
-      aiActionMessage = "当前为本地 AI 服务，内容不会发送给第三方服务商。"
-    } else if config.dataSharingDestination.isEmpty {
-      aiActionMessage = "尚未配置 API 基础地址，授权暂不生效。"
-    } else if config.usesCodexAppServer && !granted {
-      aiActionMessage = "请先登录 ChatGPT，并在当前账户下重新同意内容发送。"
-    } else if !presentation.isRemoteAIEnabled {
-      aiActionMessage = "已保留此服务的逐项授权，但远程 AI 总闸已关闭；当前不会发送远程请求。"
-    } else {
-      aiActionMessage =
-        "已允许向 \(config.normalizedDisplayName)（\(config.dataSharingDestination)）发送内容。"
-    }
-  }
-
-  /// Explicit Codex consent is bound to the account status obtained by the
-  /// account section immediately after login. A status-less call remains
-  /// fail-closed and cannot upgrade a legacy grant.
-  public func grantCodexAIDataSharingConsent(
-    for accountStatus: CodexAppServerAccountStatus
-  ) {
-    let config = store.aiProviderConfig(for: store.activeProfile)
-    grantAIDataSharingConsent(
-      for: config,
-      enablingRemoteAI: true,
-      codexAccountStatus: accountStatus
-    )
-  }
-
-  public func revokeAIDataSharingConsent() {
-    let config = store.aiProviderConfig(for: store.activeProfile)
-    aiDataSharingConsentStore.revoke(for: config)
-    aiActionMessage = "已撤销 \(config.normalizedDisplayName) 的内容发送授权。"
   }
 }

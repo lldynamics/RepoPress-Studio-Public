@@ -4,20 +4,17 @@ import SwiftUI
 struct WorkspaceTaskNavigation: View {
   @WorkspaceModuleVisibilityStorage private var moduleVisibility
   @Environment(\.workbenchAccentColor) private var workbenchAccentColor
-  let store: WorkbenchStore
   let selectedSection: WorkspaceSection
-  @Binding var contentHealthFilter: ContentHealthContextFilter
+  let siteIssueCount: Int?
   let onSelectSection: (WorkspaceSection) -> Void
 
   init(
-    store: WorkbenchStore,
     selectedSection: WorkspaceSection,
-    contentHealthFilter: Binding<ContentHealthContextFilter>,
+    siteIssueCount: Int?,
     onSelectSection: @escaping (WorkspaceSection) -> Void
   ) {
-    self.store = store
     self.selectedSection = selectedSection
-    _contentHealthFilter = contentHealthFilter
+    self.siteIssueCount = siteIssueCount
     self.onSelectSection = onSelectSection
   }
 
@@ -40,40 +37,59 @@ struct WorkspaceTaskNavigation: View {
       WorkspaceNavigationRouteDescriptor.primarySection(for: selectedSection) == section
 
     return Button {
-      if section == .contentHealth, !isSelected {
-        contentHealthFilter = .overview
-      }
       onSelectSection(section)
     } label: {
-      Image(systemName: section.systemImage)
-        .font(.system(size: 15, weight: .medium))
-        .frame(maxWidth: .infinity, minHeight: 32)
-        .foregroundStyle(isSelected ? workbenchAccentColor : Color.primary)
-        .background {
-          RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-            .fill(
-              isSelected
-                ? AnyShapeStyle(
-                  workbenchAccentColor.opacity(WorkbenchOpacity.accentBackground)
-                )
-                : WorkbenchBackgroundStyle.control
-            )
-        }
-        .overlay {
-          RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-            .strokeBorder(
-              isSelected
-                ? workbenchAccentColor.opacity(0.30)
-                : Color.primary.opacity(0.08),
-              lineWidth: 1
-            )
-        }
-        .contentShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+      VStack(spacing: 4) {
+        Image(systemName: section.systemImage)
+          .font(.system(size: 15, weight: .medium))
+          .overlay(alignment: .topTrailing) {
+            if section == .sync, (siteIssueCount ?? 0) > 0 {
+              Circle()
+                .fill(WorkbenchTheme.warning)
+                .frame(width: 6, height: 6)
+                .offset(x: 5, y: -2)
+            }
+          }
+        Text(WorkspaceNavigationRouteDescriptor.accessibilityLabel(for: section))
+          .font(.workbenchMetadata)
+          .lineLimit(1)
+      }
+      .frame(maxWidth: .infinity, minHeight: 48)
+      .foregroundStyle(isSelected ? workbenchAccentColor : Color.primary)
+      .background {
+        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+          .fill(
+            isSelected
+              ? AnyShapeStyle(
+                workbenchAccentColor.opacity(WorkbenchOpacity.accentBackground)
+              )
+              : WorkbenchBackgroundStyle.control
+          )
+      }
+      .overlay {
+        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+          .strokeBorder(
+            isSelected
+              ? workbenchAccentColor.opacity(0.30)
+              : Color.primary.opacity(0.08),
+            lineWidth: 1
+          )
+      }
+      .contentShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
     }
     .buttonStyle(WorkbenchFocusRingButtonStyle())
-    .help(title + shortcutHint(for: section))
+    .help(
+      [
+        title + shortcutHint(for: section),
+        WorkspaceNavigationRouteDescriptor.checksHint(for: section, issueCount: siteIssueCount),
+      ]
+      .filter { !$0.isEmpty }.joined(separator: "\n")
+    )
     .accessibilityLabel(WorkspaceNavigationRouteDescriptor.accessibilityLabel(for: section))
     .accessibilityValue(isSelected ? "已选中" : "未选中")
+    .accessibilityHint(
+      WorkspaceNavigationRouteDescriptor.checksHint(for: section, issueCount: siteIssueCount)
+    )
     .accessibilityAddTraits(isSelected ? .isSelected : [])
     .accessibilityIdentifier("workspace-sidebar-\(section.rawValue)")
   }

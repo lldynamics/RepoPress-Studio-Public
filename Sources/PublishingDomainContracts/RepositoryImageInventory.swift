@@ -56,6 +56,8 @@ public struct RepositoryImageInventory: Hashable, Sendable {
   public let repositoryRootPath: String
   public let assetRootPath: String
   public let assets: [RepositoryImageAsset]
+  /// Real directories, including empty ones, relative to the repository root.
+  public let directoryPaths: [String]
   public let wasTruncated: Bool
 
   public init(
@@ -64,6 +66,7 @@ public struct RepositoryImageInventory: Hashable, Sendable {
     repositoryRootPath: String,
     assetRootPath: String,
     assets: [RepositoryImageAsset],
+    directoryPaths: [String] = [],
     wasTruncated: Bool = false
   ) {
     self.revisionID = revisionID
@@ -71,6 +74,7 @@ public struct RepositoryImageInventory: Hashable, Sendable {
     self.repositoryRootPath = repositoryRootPath
     self.assetRootPath = assetRootPath
     self.assets = assets
+    self.directoryPaths = directoryPaths
     self.wasTruncated = wasTruncated
   }
 

@@ -126,7 +126,12 @@ struct RepositoryContextInspectorView: View {
   @ViewBuilder
   private var blockerSection: some View {
     let issues = statusState.repositoryReport?.preflightIssues ?? []
-    if let issue = issues.first(where: { $0.severity == .error })
+    let repositoryFailureIsShownInOverview =
+      store.repositoryOperationLifecycle?.readFailure != nil
+      || statusState.repositoryReport?.hasGitDirectory == false
+    if repositoryFailureIsShownInOverview {
+      EmptyView()
+    } else if let issue = issues.first(where: { $0.severity == .error })
       ?? issues.first(where: { $0.severity == .warning })
     {
       // Only an error blocks; a warning is shown under a neutral heading so the

@@ -8,7 +8,12 @@ import PublishingWorkbenchCore
 /// The extension only stages bytes; the configured workbench owns every library write.
 @MainActor
 final class ExternalKnowledgeImportCoordinator: NSObject, ObservableObject {
-  static let shared = ExternalKnowledgeImportCoordinator()
+  static let shared = ExternalKnowledgeImportCoordinator(
+    isSharedInboxEnabled: SharedInboxAccessPolicy.isEnabled,
+    inboxContainerURL: {
+      FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)
+    }
+  )
 
   static let appGroupIdentifier = "3H8UVVUCP3.com.jinfang.repopress.intake"
   static let notificationName = Notification.Name("com.jinfang.repopress.intake.ready")
@@ -17,12 +22,17 @@ final class ExternalKnowledgeImportCoordinator: NSObject, ObservableObject {
   static let maximumURLByteCount = 16_384
 
   @Published private(set) var inboxError: String?
+  let isSharedInboxEnabled: Bool
+  private let inboxContainerURL: @MainActor () -> URL?
   private weak var workbenchStore: WorkbenchStore?
-  private var drainTask: Task<Void, Never>?
+  private(set) var drainTask: Task<Void, Never>?
   private var needsAnotherDrain = false
 
-  private override init() {
+  init(isSharedInboxEnabled: Bool, inboxContainerURL: @escaping @MainActor () -> URL?) {
+    self.isSharedInboxEnabled = isSharedInboxEnabled
+    self.inboxContainerURL = inboxContainerURL
     super.init()
+    guard isSharedInboxEnabled else { return }
     DistributedNotificationCenter.default().addObserver(
       self,
       selector: #selector(inboxDidChange(_:)),
@@ -36,12 +46,13 @@ final class ExternalKnowledgeImportCoordinator: NSObject, ObservableObject {
   }
 
   func install(store: WorkbenchStore) {
+    guard isSharedInboxEnabled else { return }
     workbenchStore = store
     scheduleInboxDrain()
   }
 
   func scheduleInboxDrain() {
-    guard workbenchStore != nil else { return }
+    guard isSharedInboxEnabled, workbenchStore != nil else { return }
     guard drainTask == nil else {
       needsAnotherDrain = true
       return
@@ -174,12 +185,9 @@ final class ExternalKnowledgeImportCoordinator: NSObject, ObservableObject {
   }
 
   private func drainInbox() async {
+    guard isSharedInboxEnabled else { return }
     let fileManager = FileManager.default
-    guard
-      let container = fileManager.containerURL(
-        forSecurityApplicationGroupIdentifier: Self.appGroupIdentifier
-      )
-    else {
+    guard let container = inboxContainerURL() else {
       inboxError = "系统共享暂存区不可用。请检查 RepoPress 的 App Group 签名。"
       return
     }

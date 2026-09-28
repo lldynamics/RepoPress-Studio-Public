@@ -37,6 +37,175 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
   }
 
+  func testDraftAndGeneralContinuationRejectRevokedConsentAndChangedCredentials() async throws {
+    for general in [false, true] {
+      for mutation in [
+        "remote-off", "revoke", "delete-key", "rotate-key", "connection", "legacy-connection",
+        "storage", "site-connection",
+      ] {
+        try await exerciseContinuationAuthorization(general: general, mutation: mutation)
+      }
+    }
+  }
+
+  func testDraftAndGeneralContinuationStillRecoversWhileAuthorizationIsCurrent() async throws {
+    for general in [false, true] {
+      try await exerciseContinuationAuthorization(general: general, mutation: nil)
+    }
+  }
+
+  func testInitialArticleStreamingAuthorizationFailureRemovesUnsentTurn() async throws {
+    let (store, transport, persistenceURL) = makeInitialStreamingAuthorizationFailureStore()
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let oldUser = AIPublishingChatMessage(role: .user, content: "已发送的问题")
+    let oldAssistant = AIPublishingChatMessage(role: .assistant, content: "历史回复")
+    store.prepareAIChat(for: draft)
+    store.setAIChatMessages([oldUser, oldAssistant])
+
+    let reply = await store.ai.sendChatMessage("不会发送的新问题", draft: draft)
+
+    XCTAssertNil(reply)
+    XCTAssertEqual(store.aiChatMessages, [oldUser, oldAssistant])
+    XCTAssertTrue(store.aiChatMessage?.contains("授权状态已变化") == true)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 0)
+  }
+
+  func testInitialGeneralStreamingAuthorizationFailureRemovesUnsentTurn() async throws {
+    let (store, transport, persistenceURL) = makeInitialStreamingAuthorizationFailureStore()
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let conversation = try XCTUnwrap(store.ai.startNewGeneralChatConversation())
+    let oldUser = AIPublishingChatMessage(role: .user, content: "已发送的通用问题")
+    let oldAssistant = AIPublishingChatMessage(role: .assistant, content: "通用历史回复")
+    store.aiStore.updateGeneralConversationMessages(conversation.id) { messages in
+      messages.append(contentsOf: [oldUser, oldAssistant])
+    }
+
+    let reply = await store.ai.sendGeneralChatMessage(
+      "不会发送的新通用问题",
+      conversationID: conversation.id
+    )
+
+    XCTAssertNil(reply)
+    let messages = try XCTUnwrap(
+      store.aiConversations.first(where: { $0.id == conversation.id })?.messages
+    )
+    XCTAssertEqual(messages, [oldUser, oldAssistant])
+    XCTAssertTrue(store.aiChatMessage?.contains("授权状态已变化") == true)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 0)
+  }
+
+  private func makeInitialStreamingAuthorizationFailureStore() -> (
+    store: WorkbenchStore,
+    transport: RecordingAIChatTransport,
+    persistenceURL: URL
+  ) {
+    let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
+    let client = AIChatCompletionClient(transport: transport)
+      .authorizingStreamingRequests {
+        throw AIChatCompletionClientError.preparedRequestAuthorizationExpired
+      }
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("AIInitialStreamingGateFailure-\(UUID().uuidString).json")
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(client: client),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
+    )
+    var profile = store.activeProfile
+    profile.aiProviderConfig = streamingSupportedConfig(remoteAIConfig)
+    store.updateActiveProfile(profile)
+    return (store, transport, persistenceURL)
+  }
+
+  private func exerciseContinuationAuthorization(general: Bool, mutation: String?) async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let consentStore = AIDataSharingConsentStore(
+      defaults: testConsentDefaults,
+      storageKey: "stream-recovery-\(UUID().uuidString)"
+    )
+    let transport = InterruptibleAIChatStreamingTransport()
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: root.appendingPathComponent("workbench.json")),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      ),
+      aiDataSharingConsentStore: consentStore
+    )
+    var profile = store.activeProfile
+    var config = remoteAIConfig
+    config.requiresAPIKey = true
+    profile.aiProviderConfig = streamingSupportedConfig(config)
+    store.updateActiveProfile(profile)
+    consentStore.grant(for: store.activeProfile.aiProviderConfig)
+    XCTAssertTrue(store.ai.saveAPIKey("initial-test-key"))
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let conversationID =
+      general
+      ? try XCTUnwrap(store.ai.startNewGeneralChatConversation()).id
+      : nil
+    let task = Task {
+      if general {
+        return await store.ai.sendGeneralChatMessage(
+          "Continue safely.", conversationID: conversationID)
+      }
+      return await store.ai.sendChatMessage("Continue safely.", draft: draft)
+    }
+    defer { task.cancel() }
+    try await transport.waitForFirstRequest()
+    // Revoke only after the UI has actually received text. A request entering
+    // the transport alone does not prove that any response has been consumed.
+    func visibleReply() -> String? {
+      if let conversationID {
+        return store.aiConversations.first(where: { $0.id == conversationID })?.messages.last?
+          .content
+      }
+      return store.ai.chatMessages.last?.content
+    }
+    for _ in 0..<200 {
+      if visibleReply() == "partial" { break }
+      await transport.publishCheckpoint()
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    XCTAssertEqual(visibleReply(), "partial", "general=\(general)")
+    switch mutation {
+    case "remote-off":
+      store.aiStore.setRemoteAIEnabled(false)
+    case "revoke":
+      store.aiStore.revokeAIDataSharingConsent()
+    case "delete-key":
+      store.ai.deleteAPIKey()
+    case "rotate-key":
+      XCTAssertTrue(store.ai.saveAPIKey("rotated-test-key"))
+    case "connection":
+      var connection = store.activeAIConnectionProfile
+      connection.config.baseURL = "https://changed.example/v1"
+      store.updateAIConnectionProfile(connection)
+    case "legacy-connection":
+      var profile = store.activeProfile
+      profile.aiProviderConfig.model = "changed-model"
+      store.updateActiveProfile(profile)
+    case "storage":
+      store.aiStore.setAICredentialStorageMode(.session)
+    case "site-connection":
+      let newConnection = store.createAIConnectionProfile(named: "Other", preset: .custom)
+      XCTAssertTrue(store.selectAIConnectionProfile(newConnection.id))
+    default:
+      break
+    }
+    await transport.interruptFirstResponse()
+    let reply = await task.value
+    let count = await transport.requestCount
+    let shouldStop = mutation != nil && !(general && mutation == "site-connection")
+    XCTAssertEqual(count, shouldStop ? 1 : 2, "general=\(general), mutation=\(mutation ?? "none")")
+    XCTAssertEqual(reply?.content, shouldStop ? "partial" : "partial complete")
+  }
+
   func testStoreStreamsAIChatReplyIntoCurrentConversationWithoutPerRequestPayloadPrompt()
     async throws
   {

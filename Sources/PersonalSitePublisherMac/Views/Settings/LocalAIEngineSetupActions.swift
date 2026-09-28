@@ -1,6 +1,5 @@
 import AppKit
 import PublishingAICore
-import PublishingWorkbenchCore
 import SwiftUI
 
 @MainActor

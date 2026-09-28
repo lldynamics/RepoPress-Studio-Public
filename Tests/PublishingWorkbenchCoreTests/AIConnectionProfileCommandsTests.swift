@@ -192,7 +192,10 @@ final class AIConnectionProfileCommandsTests: XCTestCase {
       "must-survive"
     )
     XCTAssertTrue(store.aiActionMessage?.contains("AI 连接未删除") == true)
-    XCTAssertTrue(store.aiActionMessage?.contains("Keychain") == true)
+    let keychainError = KeychainTokenStoreError.unhandledStatus(errSecAuthFailed)
+    XCTAssertTrue(store.aiActionMessage?.contains(keychainError.localizedDescription) == true)
+    XCTAssertTrue(
+      store.aiActionMessage?.contains(try XCTUnwrap(keychainError.recoveryHint)) == true)
   }
 
   func testSelectingAnotherConnectionDeletesLegacySiteCredentialBeforeSwitch() throws {

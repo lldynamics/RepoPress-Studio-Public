@@ -1,5 +1,5 @@
 import AppKit
-import PublishingWorkbenchCore
+import PublishingKnowledgeCore
 import SwiftUI
 
 struct KnowledgeLibraryRestorePreviewView: View {

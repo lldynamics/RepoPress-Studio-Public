@@ -1,17 +1,21 @@
 import Foundation
 import PublishingCoreSupport
+import os
 
-private final class AIChatTransportCache: @unchecked Sendable {
-  private struct Entry {
+private final class AIChatTransportCache: Sendable {
+  private struct Entry: Sendable {
     let transport: AIChatTransport
     var lastAccess: UInt64
   }
 
+  private struct State: Sendable {
+    var entries: [String: Entry] = [:]
+    var accessCounter: UInt64 = 0
+  }
+
   private static let maximumEntryCount = 8
 
-  private let lock = NSLock()
-  private var entries: [String: Entry] = [:]
-  private var accessCounter: UInt64 = 0
+  private let state = OSAllocatedUnfairLock(initialState: State())
 
   func transport(
     proxyURL: String?,
@@ -37,27 +41,27 @@ private final class AIChatTransportCache: @unchecked Sendable {
       } ?? "direct"
     let key = "\(proxyKey)|first:\(firstByteTimeout)|resource:\(resourceTimeout)"
 
-    lock.lock()
-    defer { lock.unlock() }
-    accessCounter &+= 1
-    if var entry = entries[key] {
-      entry.lastAccess = accessCounter
-      entries[key] = entry
-      return entry.transport
-    }
+    return try state.withLock { state in
+      state.accessCounter &+= 1
+      if var entry = state.entries[key] {
+        entry.lastAccess = state.accessCounter
+        state.entries[key] = entry
+        return entry.transport
+      }
 
-    let transport = try URLSessionAIChatTransport.makeValidated(
-      firstByteTimeout: firstByteTimeout,
-      resourceTimeout: resourceTimeout,
-      proxyURL: validatedProxyURL
-    )
-    if entries.count >= Self.maximumEntryCount,
-      let oldestKey = entries.min(by: { $0.value.lastAccess < $1.value.lastAccess })?.key
-    {
-      entries.removeValue(forKey: oldestKey)
+      let transport = try URLSessionAIChatTransport.makeValidated(
+        firstByteTimeout: firstByteTimeout,
+        resourceTimeout: resourceTimeout,
+        proxyURL: validatedProxyURL
+      )
+      if state.entries.count >= Self.maximumEntryCount,
+        let oldestKey = state.entries.min(by: { $0.value.lastAccess < $1.value.lastAccess })?.key
+      {
+        state.entries.removeValue(forKey: oldestKey)
+      }
+      state.entries[key] = Entry(transport: transport, lastAccess: state.accessCounter)
+      return transport
     }
-    entries[key] = Entry(transport: transport, lastAccess: accessCounter)
-    return transport
   }
 }
 
@@ -72,6 +76,22 @@ public struct AIChatCompletionClient: Sendable {
   let codexAppServerRequestAuthorizer: (any CodexAppServerRequestAuthorizing)?
   private let transportCache: AIChatTransportCache
   var nonStreamingRequestAuthorization: (@Sendable () async throws -> Void)?
+  package var streamingRequestCancellation: AIChatStreamingRequestCancellation?
+  var streamingRequestAuthorization: (@Sendable () async throws -> Void)?
+
+  /// Revalidates live host authorization at every streaming send, including
+  /// continuation requests. The original prepared request only seals a snapshot.
+  package func authorizingStreamingRequests(
+    _ authorization: @escaping @Sendable () async throws -> Void
+  ) -> AIChatCompletionClient {
+    var copy = self
+    let previous = streamingRequestAuthorization
+    copy.streamingRequestAuthorization = {
+      try await previous?()
+      try await authorization()
+    }
+    return copy
+  }
 
   /// Request-scoped authorization is repeated at each actual non-streaming
   /// transport attempt, including retries and the app-server backend.
@@ -85,6 +105,18 @@ public struct AIChatCompletionClient: Sendable {
       try await authorization()
     }
     return copy
+  }
+
+  func authorizeStreamingTransmission() async throws {
+    do {
+      try await streamingRequestAuthorization?()
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      // A revoked or changed host context is terminal, never a network retry.
+      throw AIChatCompletionClientError.requestAuthorizationChanged
+    }
+    try Task.checkCancellation()
   }
 
   public init(
@@ -122,6 +154,8 @@ public struct AIChatCompletionClient: Sendable {
       codexAppServerRequestAuthorizer: authorizer
     )
     copy.nonStreamingRequestAuthorization = nonStreamingRequestAuthorization
+    copy.streamingRequestAuthorization = streamingRequestAuthorization
+    copy.streamingRequestCancellation = streamingRequestCancellation
     return copy
   }
 

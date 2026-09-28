@@ -1,5 +1,6 @@
 
 import Foundation
+import PublishingCoreSupport
 public enum WorkbenchInitialSnapshotSource: Sendable {
   case persistence
   case preloaded(WorkbenchSnapshotLoadResult)
@@ -35,15 +36,15 @@ public enum WorkbenchPersistenceError: LocalizedError, Sendable {
   public var errorDescription: String? {
     switch self {
     case .unrecoverableSnapshot:
-      return "工作台数据无法读取，原始文件未被覆盖。"
+      return CoreL10n.text("工作台数据无法读取，原始文件未被覆盖。")
     case .retiredFeatureArchiveConflict(let fileName):
-      return "退役功能数据归档冲突：\(fileName)。原始文件未被覆盖。"
+      return CoreL10n.format("退役功能数据归档冲突：%@。原始文件未被覆盖。", fileName)
     case .recoveryFilesUnavailable:
-      return "没有可归档或导出的工作台故障文件。"
+      return CoreL10n.text("没有可归档或导出的工作台故障文件。")
     case .invalidRecoverySnapshot(let message):
-      return "所选恢复文件不是有效的工作台快照：\(message)"
+      return CoreL10n.format("所选恢复文件不是有效的工作台快照：%@", message)
     case .recoveryArchiveCleanupFailed(let path, let reason):
-      return "归档工作台故障文件失败：\(reason)。临时归档目录保留在 \(path)。"
+      return CoreL10n.format("归档工作台故障文件失败：%@。临时归档目录保留在 %@。", reason, path)
     }
   }
 }

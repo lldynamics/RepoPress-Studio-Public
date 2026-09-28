@@ -3,7 +3,7 @@
 
 This extracts compiler-checked app-target localization keys, supplements them
 with literal and semantic keys, and validates explicit CoreL10n calls used by
-PublishingWorkbenchCore services.
+the app and Publishing Core services.
 """
 
 from __future__ import annotations
@@ -52,6 +52,20 @@ DYNAMIC_KEYS_PATH = ROOT / "script" / "ui_localization_dynamic_keys.json"
 DYNAMIC_KEY_GROUPS = ("runtime", "sourceLiterals")
 FORMAT_PATTERN = re.compile(
     r"%(?:\d+\$)?(?:@|[-+0-9.#]*(?:hh|h|ll|l|z|t|j)?[a-zA-Z])"
+)
+INTEGER_FORMAT_PATTERN = re.compile(r"%(?:\d+\$)?(?:lld|ld|d|i|u|f|g|e)")
+ENGLISH_PLURAL_COUNT_NOUN_PATTERN = re.compile(
+    r"\b(?:"
+    r"annotations|archives|articles|assets|attachments|backlinks|backups|blockers|"
+    r"branches|candidates|captions|changes|characters|choices|commands|completions|"
+    r"conflicts|conversations|copies|credentials|days|deletions|diagnostics|"
+    r"dimensions|documents|drafts|entries|errors|excerpts|feeds|fields|files|filters|"
+    r"hunks|identifiers|images|issues|items|lines|mappings|markers|matches|messages|"
+    r"minutes|models|notes|occurrences|passages|paths|points|records|redirects|"
+    r"references|replacements|requests|resources|rules|settings|snippets|"
+    r"subscriptions|updates|vectors|versions|warnings|words"
+    r")\b",
+    re.IGNORECASE,
 )
 CJK_PATTERN = re.compile(r"[\u3400-\u9fff]")
 SUSPICIOUS_LITERAL_EXPRESSION_PATTERN = re.compile(
@@ -368,7 +382,10 @@ def extract_display_name_semantic_keys() -> dict[str, str]:
 
 def extract_core_localization_keys() -> dict[str, str]:
     extracted: dict[str, str] = {}
-    for source_root in PUBLISHING_CORE_SOURCE_ROOTS:
+    # CoreL10n is also used by the Mac presentation layer. Keep those calls in
+    # the same resource check so a new app-side Core key cannot silently fall
+    # back to its Chinese source text in English UI.
+    for source_root in (*PUBLISHING_CORE_SOURCE_ROOTS, SOURCE_ROOT):
         for source_path in sorted(source_root.rglob("*.swift")):
             source = source_path.read_text(encoding="utf-8")
             for raw_value in CORE_LOCALIZATION_CALL_PATTERN.findall(source):
@@ -458,20 +475,116 @@ def placeholders(value: str) -> list[str]:
 
 
 def localized_value(entry: dict, language: str) -> str | None:
-    return (
+    direct_value = (
         entry.get("localizations", {})
         .get(language, {})
         .get("stringUnit", {})
         .get("value")
     )
+    if isinstance(direct_value, str):
+        substitutions = localized_plural_substitutions(entry, language)
+        for name, values in substitutions.items():
+            other = values.get("other")
+            if isinstance(other, str):
+                direct_value = direct_value.replace(f"%#@{name}@", other)
+        return direct_value
+    plural_values = localized_plural_values(entry, language)
+    return plural_values.get("other") if plural_values else None
 
 
 def localized_state(entry: dict, language: str) -> str | None:
-    return (
+    direct_state = (
         entry.get("localizations", {})
         .get(language, {})
         .get("stringUnit", {})
         .get("state")
+    )
+    if isinstance(direct_state, str):
+        return direct_state
+    return localized_plural_states(entry, language).get("other")
+
+
+def localized_plural_values(entry: dict, language: str) -> dict[str, str]:
+    plural = (
+        entry.get("localizations", {})
+        .get(language, {})
+        .get("variations", {})
+        .get("plural", {})
+    )
+    values: dict[str, str] = {}
+    if not isinstance(plural, dict):
+        return values
+    for category, variation in plural.items():
+        value = variation.get("stringUnit", {}).get("value") if isinstance(variation, dict) else None
+        if isinstance(value, str):
+            values[category] = value
+    return values
+
+
+def localized_plural_states(entry: dict, language: str) -> dict[str, str]:
+    plural = (
+        entry.get("localizations", {})
+        .get(language, {})
+        .get("variations", {})
+        .get("plural", {})
+    )
+    states: dict[str, str] = {}
+    if not isinstance(plural, dict):
+        return states
+    for category, variation in plural.items():
+        state = variation.get("stringUnit", {}).get("state") if isinstance(variation, dict) else None
+        if isinstance(state, str):
+            states[category] = state
+    return states
+
+
+def localized_plural_substitutions(entry: dict, language: str) -> dict[str, dict[str, str]]:
+    substitutions = (
+        entry.get("localizations", {})
+        .get(language, {})
+        .get("substitutions", {})
+    )
+    values: dict[str, dict[str, str]] = {}
+    if not isinstance(substitutions, dict):
+        return values
+    for name, substitution in substitutions.items():
+        plural = substitution.get("variations", {}).get("plural", {}) if isinstance(substitution, dict) else {}
+        if not isinstance(plural, dict):
+            continue
+        categories = {
+            category: variation.get("stringUnit", {}).get("value")
+            for category, variation in plural.items()
+            if isinstance(variation, dict)
+            and isinstance(variation.get("stringUnit", {}).get("value"), str)
+        }
+        if categories:
+            values[name] = categories
+    return values
+
+
+def localized_effective_plural_values(entry: dict, language: str) -> dict[str, str]:
+    """Expand catalog plural substitutions into the displayed one/other text."""
+    localization = entry.get("localizations", {}).get(language, {})
+    direct = localization.get("stringUnit", {}).get("value")
+    substitutions = localized_plural_substitutions(entry, language)
+    if not isinstance(direct, str) or not substitutions:
+        return localized_plural_values(entry, language)
+    categories = set().union(*(values.keys() for values in substitutions.values()))
+    effective: dict[str, str] = {}
+    for category in categories:
+        value = direct
+        for name, values in substitutions.items():
+            replacement = values.get(category)
+            if isinstance(replacement, str):
+                value = value.replace(f"%#@{name}@", replacement)
+        effective[category] = value
+    return effective
+
+
+def requires_english_plural_variation(value: str) -> bool:
+    return bool(
+        INTEGER_FORMAT_PATTERN.search(value)
+        and ENGLISH_PLURAL_COUNT_NOUN_PATTERN.search(value)
     )
 
 
@@ -497,6 +610,26 @@ def validate(catalog: dict, extracted: dict[str, str], model_keys: set[str]) -> 
             missing.append(f"{key}: en placeholders differ")
         if CJK_PATTERN.search(en_value):
             missing.append(f"{key}: English value contains CJK text")
+        if requires_english_plural_variation(en_value):
+            substitution_values = localized_plural_substitutions(entry, "en")
+            if substitution_values:
+                if not all({"one", "other"}.issubset(values) for values in substitution_values.values()):
+                    missing.append(f"{key}: en plural substitutions require one/other variations")
+                continue
+            plural_values = localized_plural_values(entry, "en")
+            plural_states = localized_plural_states(entry, "en")
+            required_categories = {"one", "other"}
+            if set(plural_values).intersection(required_categories) != required_categories:
+                missing.append(f"{key}: en count noun requires one/other plural variations")
+            else:
+                for category in sorted(required_categories):
+                    plural_value = plural_values[category]
+                    if plural_states.get(category) != "translated":
+                        missing.append(f"{key}: en plural {category} state must be translated")
+                    if sorted(placeholders(plural_value)) != source_placeholders:
+                        missing.append(f"{key}: en plural {category} placeholders differ")
+                    if CJK_PATTERN.search(plural_value):
+                        missing.append(f"{key}: English plural {category} value contains CJK text")
     return missing
 
 
@@ -704,6 +837,193 @@ def stale_reviewed_translation_keys(
     return sorted(set(translations).difference(managed_keys))
 
 
+def reviewed_translation_expectation(
+    key: str, source_value: str, reviewed_translation: object
+) -> tuple[str, str | dict[str, str]] | None:
+    """Return the reviewed zh-Hans/en values for one managed key."""
+    # Format-only keys (for example "%@ · %@。%@") carry compiler-owned
+    # punctuation and argument semantics; a legacy string master value is not
+    # enough evidence to reinterpret either language.
+    format_free_key = FORMAT_PATTERN.sub("", key)
+    if not re.search(r"[A-Za-z\u3400-\u9fff]", format_free_key):
+        return None
+    if isinstance(reviewed_translation, dict):
+        chinese_value = reviewed_translation.get("zh-Hans")
+        english_value = reviewed_translation.get("en")
+        if not isinstance(chinese_value, str) or not chinese_value.strip():
+            raise RuntimeError(f"missing reviewed zh-Hans translation: {key}")
+        if isinstance(english_value, dict):
+            plural = {
+                category: value
+                for category, value in english_value.items()
+                if category in {"one", "other"}
+                and isinstance(value, str)
+                and value.strip()
+            }
+            if set(plural) != {"one", "other"}:
+                raise RuntimeError(f"missing reviewed en plural translation: {key}")
+            return chinese_value, plural
+        if not isinstance(english_value, str) or not english_value.strip():
+            raise RuntimeError(f"missing reviewed en translation: {key}")
+        return chinese_value, english_value
+    if isinstance(reviewed_translation, str) and reviewed_translation.strip():
+        if key.startswith("display."):
+            raise RuntimeError(
+                f"semantic display-name key requires reviewed zh-Hans/en values: {key}"
+            )
+        if CJK_PATTERN.search(source_value):
+            return source_value, reviewed_translation
+        return reviewed_translation, source_value
+    return None
+
+
+def canonical_translation_value(value: str) -> str:
+    """Normalize implicit arguments without discarding explicit argument identity."""
+    next_implicit = 1
+
+    def normalize(match: re.Match[str]) -> str:
+        nonlocal next_implicit
+        token = match.group(0)
+        position = match.group(1)
+        if position is None:
+            position = str(next_implicit)
+            next_implicit += 1
+        return f"%{position}${match.group(2)}"
+
+    return re.sub(
+        r"%(?:(\d+)\$)?([-+0-9.#]*(?:hh|h|ll|l|z|t|j)?[a-zA-Z@])",
+        normalize,
+        value,
+    )
+
+
+def translation_value_matches(actual: str | None, expected: str) -> bool:
+    return (
+        isinstance(actual, str)
+        and canonical_translation_value(actual) == canonical_translation_value(expected)
+    )
+
+
+def reviewed_translation_drift(
+    catalog: dict, extracted: dict[str, str], translations: dict | None = None
+) -> list[str]:
+    """Report managed catalog values that differ from the reviewed master mapping."""
+    translations = load_reviewed_translations() if translations is None else translations
+    failures: list[str] = []
+    strings = catalog.get("strings", {})
+    for key, source_value in extracted.items():
+        reviewed = translations.get(key)
+        expectation = reviewed_translation_expectation(key, source_value, reviewed)
+        if expectation is None:
+            continue
+        chinese_value, english_value = expectation
+        entry = strings.get(key, {})
+        if not translation_value_matches(localized_value(entry, "zh-Hans"), chinese_value):
+            failures.append(f"{key}: zh-Hans differs from reviewed translation")
+        if isinstance(english_value, dict):
+            actual = localized_effective_plural_values(entry, "en")
+            for category, expected in sorted(english_value.items()):
+                if not translation_value_matches(actual.get(category), expected):
+                    failures.append(f"{key}: en {category} differs from reviewed translation")
+        elif not translation_value_matches(localized_value(entry, "en"), english_value):
+            failures.append(f"{key}: en differs from reviewed translation")
+    return failures
+
+
+def _localization(entry: dict, language: str) -> dict:
+    localizations = entry.setdefault("localizations", {})
+    value = localizations.setdefault(language, {})
+    if not isinstance(value, dict):
+        value = {}
+        localizations[language] = value
+    return value
+
+
+def update_localization_string(entry: dict, language: str, value: str) -> None:
+    """Update a direct value while retaining surrounding catalog metadata."""
+    localization = _localization(entry, language)
+    unit = localization.get("stringUnit")
+    if isinstance(unit, dict):
+        unit["value"] = value
+        unit["state"] = "translated"
+        return
+    plural = localization.get("variations", {}).get("plural", {})
+    if isinstance(plural, dict) and plural:
+        for variation in plural.values():
+            if isinstance(variation, dict):
+                variation.setdefault("stringUnit", {})["value"] = value
+                variation["stringUnit"]["state"] = "translated"
+        return
+    localization["stringUnit"] = {"state": "translated", "value": value}
+
+
+def update_localization_plural(
+    entry: dict, language: str, values: dict[str, str], *, key: str = ""
+) -> None:
+    """Update plural text in-place, retaining comments, substitutions and states."""
+    localization = _localization(entry, language)
+    substitutions = localization.get("substitutions")
+    if isinstance(substitutions, dict) and substitutions:
+        direct_unit = localization.get("stringUnit")
+        direct = direct_unit.get("value") if isinstance(direct_unit, dict) else None
+        if isinstance(direct_unit, dict):
+            direct_unit["state"] = "translated"
+        names = list(substitutions)
+        updates: list[tuple[dict, str]] = []
+        if isinstance(direct, str) and names:
+            parts = re.split(r"(%#@[A-Za-z0-9_.-]+@)", direct)
+            markers = [part[3:-1] for part in parts if part.startswith("%#@")]
+            static = [part for part in parts if not part.startswith("%#@")]
+            for category, expected in values.items():
+                pattern = "^" + "(.*?)".join(re.escape(part) for part in static) + "$"
+                match = re.match(pattern, expected)
+                if not match or len(markers) != len(match.groups()):
+                    raise RuntimeError(
+                        f"reviewed plural template mismatch: {key or language}"
+                    )
+                captures = dict(zip(markers, match.groups()))
+                for name, substitution in substitutions.items():
+                    replacement = captures.get(name)
+                    plural = substitution.get("variations", {}).get("plural", {})
+                    if not isinstance(plural, dict) or not isinstance(replacement, str):
+                        raise RuntimeError(
+                            f"reviewed plural substitution mismatch: {key or language}"
+                        )
+                    variation = plural.get(category)
+                    if not isinstance(variation, dict):
+                        variation = {
+                            "stringUnit": {"state": "translated", "value": replacement}
+                        }
+                        plural[category] = variation
+                    updates.append((variation, replacement))
+            for variation, replacement in updates:
+                unit = variation.setdefault("stringUnit", {})
+                unit["value"] = replacement
+                unit["state"] = "translated"
+        elif not isinstance(direct, str):
+            raise RuntimeError(f"reviewed plural template mismatch: {key or language}")
+        return
+    plural = localization.get("variations", {}).get("plural")
+    if isinstance(plural, dict) and plural:
+        for category, variation in plural.items():
+            if category in values and isinstance(variation, dict):
+                unit = variation.setdefault("stringUnit", {})
+                unit["value"] = values[category]
+                unit["state"] = "translated"
+        for category, value in values.items():
+            if category not in plural:
+                plural[category] = {
+                    "stringUnit": {"state": "translated", "value": value}
+                }
+        return
+    localization.pop("stringUnit", None)
+    localization.setdefault("variations", {}).setdefault("plural", {})
+    for category, value in values.items():
+        localization["variations"]["plural"][category] = {
+            "stringUnit": {"state": "translated", "value": value}
+        }
+
+
 def prune_catalog(catalog: dict, managed_keys: set[str]) -> list[str]:
     strings = catalog.setdefault("strings", {})
     removed = sorted(set(strings).difference(managed_keys))
@@ -734,6 +1054,19 @@ def synchronize(catalog: dict, extracted: dict[str, str]) -> dict:
     for key, source_value in extracted.items():
         entry = strings.get(key, {})
         source_placeholders = sorted(placeholders(source_value))
+        reviewed_translation = translations.get(key)
+        expectation = reviewed_translation_expectation(
+            key, source_value, reviewed_translation
+        )
+        if expectation is not None:
+            chinese_value, english_value = expectation
+            update_localization_string(entry, "zh-Hans", chinese_value)
+            if isinstance(english_value, dict):
+                update_localization_plural(entry, "en", english_value, key=key)
+            else:
+                update_localization_string(entry, "en", english_value)
+            strings[key] = entry
+            continue
         existing_values_are_valid = (
             localized_value(entry, "zh-Hans")
             and localized_value(entry, "en")
@@ -744,31 +1077,31 @@ def synchronize(catalog: dict, extracted: dict[str, str]) -> dict:
         )
         if existing_values_are_valid:
             continue
-        reviewed_translation = translations.get(key)
-        if isinstance(reviewed_translation, dict):
-            chinese_value = reviewed_translation.get("zh-Hans")
-            english_value = reviewed_translation.get("en")
-            if not isinstance(chinese_value, str) or not chinese_value.strip():
-                raise RuntimeError(f"missing reviewed zh-Hans translation: {key}")
-            if not isinstance(english_value, str) or not english_value.strip():
-                raise RuntimeError(f"missing reviewed en translation: {key}")
-            strings[key] = catalog_entry(chinese_value, english_value)
-        elif isinstance(reviewed_translation, str) and reviewed_translation.strip():
-            if key.startswith("display."):
-                raise RuntimeError(f"semantic display-name key requires reviewed zh-Hans/en values: {key}")
-            if CJK_PATTERN.search(source_value):
-                strings[key] = catalog_entry(source_value, reviewed_translation)
-            else:
-                strings[key] = catalog_entry(reviewed_translation, source_value)
-        else:
+        if expectation is None:
             raise RuntimeError(f"missing reviewed offline translation: {key}")
     return catalog
 
 
-def catalog_entry(chinese_value: str, english_value: str) -> dict:
+def catalog_entry(chinese_value: str, english_value: str | dict[str, str]) -> dict:
+    english_localization: dict
+    if isinstance(english_value, dict):
+        english_localization = {
+            "variations": {
+                "plural": {
+                    category: {
+                        "stringUnit": {"state": "translated", "value": value}
+                    }
+                    for category, value in sorted(english_value.items())
+                }
+            }
+        }
+    else:
+        english_localization = {
+            "stringUnit": {"state": "translated", "value": english_value}
+        }
     return {
         "localizations": {
-            "en": {"stringUnit": {"state": "translated", "value": english_value}},
+            "en": english_localization,
             "zh-Hans": {"stringUnit": {"state": "translated", "value": chinese_value}},
         }
     }
@@ -838,11 +1171,12 @@ def main() -> int:
     model_keys = set(workspace_navigation_keys) | set(display_name_semantic_keys)
     core_extracted = extract_core_localization_keys()
     core_failures = validate_core_localizations(core_extracted)
+    reviewed_translation_keys = set(extracted) | set(core_extracted)
 
     if arguments.check:
         translations = load_reviewed_translations()
         stale_catalog = stale_catalog_keys(catalog, set(extracted))
-        stale_translations = stale_reviewed_translation_keys(translations, set(extracted))
+        stale_translations = stale_reviewed_translation_keys(translations, reviewed_translation_keys)
         unregistered_cjk_keys = unregistered_cjk_ui_keys(catalog, extracted)
         unregistered_cjk_key_set = set(unregistered_cjk_keys)
         registered_or_non_cjk = {
@@ -855,6 +1189,9 @@ def main() -> int:
             for key in unregistered_cjk_keys
         ]
         failures += validate(catalog, registered_or_non_cjk, model_keys) + core_failures
+        failures += reviewed_translation_drift(
+            catalog, registered_or_non_cjk, translations
+        )
         failures += [f"{key}: stale catalog key" for key in stale_catalog]
         failures += [f"{key}: stale reviewed translation key" for key in stale_translations]
         if failures:

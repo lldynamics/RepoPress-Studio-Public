@@ -618,7 +618,7 @@ extension WorkbenchAIStore {
     return aiConversations.first { $0.id == conversationID }
   }
 
-  private func updateGeneralConversationMessages(
+  func updateGeneralConversationMessages(
     _ conversationID: UUID,
     update: (inout [AIPublishingChatMessage]) -> Void
   ) {
@@ -784,7 +784,7 @@ extension WorkbenchAIStore {
       switch attempt.transport.preparedRequest.mode {
       case .streaming:
         return try await generateStreamingGeneralAIChatReply(
-          transport: attempt.transport,
+          attempt: attempt,
           conversationID: conversationID,
           operationID: operationID,
           apiKey: token
@@ -808,6 +808,9 @@ extension WorkbenchAIStore {
         conversationID: conversationID,
         operationID: operationID
       )
+      if error == .requestAuthorizationChanged {
+        discardUnsentGeneralAIChatUserMessage(conversationID: conversationID)
+      }
       store.setAIChatFailureMessage(CoreL10n.format("AI 通用对话失败：%@", error.localizedDescription))
       if error.didReceivePartialContent {
         return aiConversations.first(where: { $0.id == conversationID })?.messages.last {
@@ -1187,7 +1190,7 @@ extension WorkbenchAIStore {
     return true
   }
 
-  private func currentGeneralAIChatAPIKey(
+  func currentGeneralAIChatAPIKey(
     conversationID: UUID,
     matching expectedConfig: AIProviderConfig,
     connectionProfileID expectedConnectionProfileID: UUID
@@ -1208,102 +1211,6 @@ extension WorkbenchAIStore {
       throw AIOutboundPayloadConfirmationError.drifted
     }
     return try aiChatAvailableAPIKey(for: connection)
-  }
-
-  private func generateStreamingGeneralAIChatReply(
-    transport: AIPreparedPublishingChatTransport,
-    conversationID: UUID,
-    operationID: UUID,
-    apiKey: String?
-  ) async throws -> AIPublishingChatMessage {
-    let replyStream = try await aiPublishingAssistantService.streamPrepared(
-      transport,
-      apiKey: apiKey
-    )
-    try checkAIChatOperation(operationID)
-    var assistantMessage = replyStream.initialMessage
-    updateGeneralConversationMessages(conversationID) { $0.append(assistantMessage) }
-    let clock = ContinuousClock()
-    var pendingContent = ""
-    var pendingTokenUsage: AIChatTokenUsage?
-    var nextPublishAt = clock.now.advanced(by: aiChatStreamPublishInterval)
-
-    func flushPendingStreamUpdate(force: Bool = false) {
-      guard !pendingContent.isEmpty || pendingTokenUsage != nil else { return }
-      guard force || clock.now >= nextPublishAt else { return }
-      assistantMessage.content += pendingContent
-      pendingContent = ""
-      if let tokenUsage = pendingTokenUsage {
-        assistantMessage.tokenUsage = tokenUsage
-        pendingTokenUsage = nil
-      }
-      updateGeneralConversationMessages(conversationID) { messages in
-        if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
-          messages[index] = assistantMessage
-        }
-      }
-      nextPublishAt = clock.now.advanced(by: aiChatStreamPublishInterval)
-    }
-
-    do {
-      for try await update in replyStream.updates {
-        try checkAIChatOperation(operationID)
-        pendingContent += update.contentDelta
-        if let tokenUsage = update.tokenUsage { pendingTokenUsage = tokenUsage }
-        flushPendingStreamUpdate(force: update.isFinished)
-        if update.isFinished { break }
-      }
-      try checkAIChatOperation(operationID)
-      flushPendingStreamUpdate(force: true)
-      let finalContent = assistantMessage.content.trimmedForPublishing
-      guard !finalContent.isEmpty else { throw AIChatCompletionClientError.emptyContent }
-      assistantMessage.content = finalContent
-      updateGeneralConversationMessages(conversationID) { messages in
-        if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
-          messages[index] = assistantMessage
-        }
-      }
-      store.setAIChatMessage("AI 已回复。")
-      return assistantMessage
-    } catch is CancellationError {
-      flushPendingStreamUpdate(force: true)
-      let finalContent = assistantMessage.content.trimmedForPublishing
-      guard !finalContent.isEmpty else {
-        updateGeneralConversationMessages(conversationID) { messages in
-          messages.removeAll { $0.id == assistantMessage.id }
-        }
-        throw CancellationError()
-      }
-      assistantMessage.content = finalContent
-      updateGeneralConversationMessages(conversationID) { messages in
-        if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
-          messages[index] = assistantMessage
-        }
-      }
-      store.setAIChatMessage("AI 回复已停止。")
-      return assistantMessage
-    } catch let error as AIChatCompletionClientError where error.didReceivePartialContent {
-      flushPendingStreamUpdate(force: true)
-      let finalContent = assistantMessage.content.trimmedForPublishing
-      guard !finalContent.isEmpty else {
-        updateGeneralConversationMessages(conversationID) { messages in
-          messages.removeAll { $0.id == assistantMessage.id }
-        }
-        throw error
-      }
-      assistantMessage.content = finalContent
-      updateGeneralConversationMessages(conversationID) { messages in
-        if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
-          messages[index] = assistantMessage
-        }
-      }
-      throw error
-    } catch {
-      updateGeneralConversationMessages(conversationID) { messages in
-        messages.removeAll { $0.id == assistantMessage.id }
-      }
-      throw error
-    }
   }
 
   private func generateCompleteGeneralAIChatReply(

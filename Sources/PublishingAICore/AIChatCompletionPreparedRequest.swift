@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// The exact transport shape used by a prepared request. Preparation is
 /// side-effect free; only the later completePrepared/streamPrepared methods
@@ -14,16 +15,15 @@ public enum AIChatTransportMode: String, Codable, Hashable, Sendable {
 
 /// Final, reviewable request material shared by privacy preview and the AI
 /// transport. `encodedBody` is canonical JSON and never contains an API key.
-private final class AIPreparedRequestConsumption: @unchecked Sendable {
-  private let lock = NSLock()
-  private var isConsumed = false
+private final class AIPreparedRequestConsumption: Sendable {
+  private let isConsumed = OSAllocatedUnfairLock(initialState: false)
 
   func consume() -> Bool {
-    lock.lock()
-    defer { lock.unlock() }
-    guard !isConsumed else { return false }
-    isConsumed = true
-    return true
+    isConsumed.withLock { consumed in
+      guard !consumed else { return false }
+      consumed = true
+      return true
+    }
   }
 }
 

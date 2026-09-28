@@ -246,6 +246,138 @@ final class MarkdownEditorSessionStateTests: XCTestCase {
     XCTAssertEqual(recovered.buffer.bodyMarkdown, "另一窗口正文")
   }
 
+  func testNonOwnerSessionSaveCannotClearOwnedFrontMatterRecovery() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: try temporaryPersistenceURL(prefix: "FrontMatterRecoveryOwner")
+      )
+    )
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let ownerWindowID = UUID()
+    let otherWindowID = UUID()
+    let recovery = MarkdownEditorSessionState(
+      invalidFrontMatterDocument: "---\ntitle broken\n---\n恢复正文",
+      invalidFrontMatterBaseBodyMarkdown: draft.bodyMarkdown,
+      invalidFrontMatterBaseBodyRevision: 0,
+      invalidFrontMatterRecoveryOwnerWindowID: ownerWindowID
+    )
+    let bodyLength = (draft.bodyMarkdown as NSString).length
+    store.updateMarkdownEditorSessionState(
+      recovery, for: draft.id, bodyUTF16Count: bodyLength, windowID: ownerWindowID
+    )
+
+    store.updateMarkdownEditorSessionState(
+      .empty, for: draft.id, bodyUTF16Count: bodyLength, windowID: otherWindowID
+    )
+    let preserved = store.claimInvalidFrontMatterRecovery(
+      for: draft.id, windowID: ownerWindowID
+    )
+    XCTAssertEqual(preserved.invalidFrontMatterDocument, recovery.invalidFrontMatterDocument)
+    XCTAssertEqual(preserved.invalidFrontMatterRecoveryOwnerWindowID, ownerWindowID)
+    XCTAssertEqual(preserved.invalidFrontMatterRecoveryVersion, 1)
+
+    store.updateMarkdownEditorSessionState(
+      .empty, for: draft.id, bodyUTF16Count: bodyLength, windowID: ownerWindowID
+    )
+    XCTAssertNil(
+      store.markdownEditorSessionState(for: draft.id)
+        .invalidFrontMatterRecoveryRecords?[ownerWindowID]
+    )
+  }
+
+  func testTwoWindowsKeepIndependentInvalidFrontMatterRecoveryDocuments() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: try temporaryPersistenceURL(prefix: "FrontMatterRecoveryTwoWindows")
+      )
+    )
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let firstWindowID = UUID()
+    let secondWindowID = UUID()
+    let length = (draft.bodyMarkdown as NSString).length
+    for (windowID, document) in [
+      (firstWindowID, "---\ntitle first broken\n---\n第一份恢复"),
+      (secondWindowID, "---\ntitle second broken\n---\n第二份恢复"),
+    ] {
+      store.updateMarkdownEditorSessionState(
+        MarkdownEditorSessionState(invalidFrontMatterDocument: document),
+        for: draft.id,
+        bodyUTF16Count: length,
+        windowID: windowID
+      )
+    }
+
+    XCTAssertEqual(
+      store.claimInvalidFrontMatterRecovery(for: draft.id, windowID: firstWindowID)
+        .invalidFrontMatterDocument,
+      "---\ntitle first broken\n---\n第一份恢复"
+    )
+    XCTAssertEqual(
+      store.claimInvalidFrontMatterRecovery(for: draft.id, windowID: secondWindowID)
+        .invalidFrontMatterDocument,
+      "---\ntitle second broken\n---\n第二份恢复"
+    )
+  }
+
+  func testLegacyAndWindowRecoveryPreserveWhitespaceExactly() throws {
+    let document = "\n---\ntitle broken\n---\nBody  \n\n"
+    for legacy in [false, true] {
+      let store = WorkbenchStore(
+        persistence: WorkbenchPersistence(
+          fileURL: try temporaryPersistenceURL(prefix: "FrontMatterRecoveryWhitespace")
+        )
+      )
+      let draft = try XCTUnwrap(store.selectedDraft)
+      let windowID = UUID()
+      store.updateMarkdownEditorSessionState(
+        MarkdownEditorSessionState(invalidFrontMatterDocument: document),
+        for: draft.id,
+        bodyUTF16Count: draft.bodyMarkdown.utf16.count,
+        windowID: legacy ? nil : windowID
+      )
+      let recovered = store.claimInvalidFrontMatterRecovery(for: draft.id, windowID: windowID)
+      XCTAssertEqual(recovered.invalidFrontMatterDocument, document)
+      XCTAssertEqual(recovered.invalidFrontMatterRecoveryRecords?[windowID]?.document, document)
+    }
+  }
+
+  func testRestartClaimsPersistedOrphanRecoveryWithoutStealingAnActiveOwner() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: try temporaryPersistenceURL(prefix: "FrontMatterRecoveryOrphan")
+      )
+    )
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let formerWindowID = UUID()
+    let restartedWindowID = UUID()
+    let activeWindowID = UUID()
+    store.updateMarkdownEditorSessionState(
+      MarkdownEditorSessionState(invalidFrontMatterDocument: "---\nbroken\n---\n恢复内容"),
+      for: draft.id,
+      bodyUTF16Count: (draft.bodyMarkdown as NSString).length,
+      windowID: formerWindowID
+    )
+
+    let restarted = store.claimInvalidFrontMatterRecovery(
+      for: draft.id,
+      windowID: restartedWindowID,
+      activeWindowIDs: []
+    )
+    XCTAssertEqual(restarted.invalidFrontMatterDocument, "---\nbroken\n---\n恢复内容")
+    XCTAssertEqual(restarted.invalidFrontMatterRecoveryOwnerWindowID, restartedWindowID)
+
+    let protected = store.claimInvalidFrontMatterRecovery(
+      for: draft.id,
+      windowID: activeWindowID,
+      activeWindowIDs: [restartedWindowID]
+    )
+    XCTAssertNil(protected.invalidFrontMatterDocument)
+    XCTAssertNotNil(
+      store.markdownEditorSessionState(for: draft.id)
+        .invalidFrontMatterRecoveryRecords?[restartedWindowID]
+    )
+  }
+
   func testStorePersistsWritingSessionPerArticleAndRemovesItAfterPermanentDeletion() throws {
     let persistenceURL = try temporaryPersistenceURL(prefix: "MarkdownEditorSessionState")
     let persistence = WorkbenchPersistence(fileURL: persistenceURL)

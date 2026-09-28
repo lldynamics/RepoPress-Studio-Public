@@ -1,22 +1,18 @@
 import Foundation
+import os
 
 /// `WorkbenchAIAgentLoopService` converts model-transport errors into a result
 /// termination. Keep a small side channel so a revoked knowledge binding can
 /// still use the dedicated zero-send cancellation path.
-private final class AgentKnowledgeAuthorizationState: @unchecked Sendable {
-  private let lock = NSLock()
-  private var changed = false
+private final class AgentKnowledgeAuthorizationState: Sendable {
+  private let state = OSAllocatedUnfairLock(initialState: false)
 
   func markChanged() {
-    lock.lock()
-    changed = true
-    lock.unlock()
+    state.withLock { $0 = true }
   }
 
   var didChange: Bool {
-    lock.lock()
-    defer { lock.unlock() }
-    return changed
+    state.withLock { $0 }
   }
 }
 

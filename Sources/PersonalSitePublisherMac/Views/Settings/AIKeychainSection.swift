@@ -128,11 +128,21 @@ struct AIKeychainSection: View {
 
         Spacer()
 
-        Button("刷新状态") {
+        Button(tokenAvailability.accessState == .accessFailed ? "重试" : "刷新状态") {
           onRefreshState()
         }
         .buttonStyle(.borderless)
-        .accessibilityLabel("刷新 AI Key 状态")
+        .accessibilityLabel(
+          tokenAvailability.accessState == .accessFailed ? "重试读取 AI Key 状态" : "刷新 AI Key 状态"
+        )
+
+        if tokenAvailability.accessState == .accessFailed {
+          Button("重新授权") {
+            isAPIKeyFocused = true
+          }
+          .buttonStyle(.borderless)
+          .help("重新输入并保存 API Key，以重新触发系统授权提示。")
+        }
 
         Button("删除", role: .destructive) {
           isDeleteConfirmationPresented = true
@@ -144,7 +154,7 @@ struct AIKeychainSection: View {
 
       if let accessFailureMessage = tokenAvailability.accessFailureMessage {
         AccessibleStatusMessage(
-          message: String(localized: "操作失败：\(accessFailureMessage)"),
+          message: accessFailureMessage,
           severity: .error
         )
         .textSelection(.enabled)

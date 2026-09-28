@@ -244,6 +244,7 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
   public func send(_ data: Data) async throws {
     do {
       try withWriteLock {
+        try Task.checkCancellation()
         let handle: FileHandle = try withLock {
           guard started, !terminated, let input else {
             throw CodexAppServerError.processNotRunning
@@ -257,6 +258,7 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
         try handle.write(contentsOf: data)
       }
     } catch {
+      if error is CancellationError { throw CodexAppServerError.cancelled }
       if let error = error as? CodexAppServerError {
         throw error
       }

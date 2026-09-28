@@ -6,6 +6,20 @@ import PublishingGitCore
 @testable import PublishingWorkbenchCore
 
 final class RepositoryOperationLifecycleTests: XCTestCase {
+  func testNonGitDirectoryDoesNotReportZeroChangesAsSuccessfulScan() {
+    let report = RepositoryScanReport(
+      rootPath: "/tmp/site", detectedKind: nil, expectedKind: .hugo,
+      hasGitDirectory: false, contentRootExists: true, assetRootExists: true,
+      markdownFileCount: 0, imageFileCount: 0, changedFiles: [],
+      preflightIssues: []
+    )
+
+    let state = RepositoryScanState.finished(report: report)
+
+    XCTAssertEqual(state.message, "未发现 .git")
+    XCTAssertFalse(state.message.contains("0 个本地变更"))
+  }
+
   func testRepositoryReadFailuresRemainBlockedAndIdentifyTheirCause() throws {
     let service = LocalRepositoryService()
     let missing = service.operationLifecycle(profile: SiteProfile(name: "Missing"))

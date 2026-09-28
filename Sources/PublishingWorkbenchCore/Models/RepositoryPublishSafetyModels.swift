@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 public enum RepositoryPublishSafetySeverity: String, Hashable, Sendable {
   case warning
@@ -71,7 +72,7 @@ public enum RepositoryPublishSafetyError: LocalizedError, Equatable, Sendable {
         let suffix = remaining == 0 ? "" : "（另有 \(remaining) 个路径）"
         return "\(diagnostic.title)：\(paths)\(suffix)"
       }.joined(separator: "\n")
-      return "发布前安全检查已停止本次提交：\n\(details)"
+      return CoreL10n.format("发布前安全检查已停止本次提交：\n%@", details)
     }
   }
 }

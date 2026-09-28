@@ -4,18 +4,22 @@ extension WorkbenchAIStore {
   /// Context choices exposed by the independent general chat window. These
   /// are only choices; none of them is attached to a request until the user
   /// explicitly selects it.
-  public func availableGeneralAIChatContextReferences() -> [AIContextReference] {
+  public func availableGeneralAIChatContextReferences(
+    windowID: UUID? = nil
+  ) -> [AIContextReference] {
     var references: [AIContextReference] = []
     if let draft = store.selectedDraft {
       if let selection = store.activeEditorSelection,
         selection.draftID == draft.id,
+        windowID == nil || selection.windowID == windowID,
         selection.validatedRange(in: draft) != nil
       {
         references.append(
           .currentSelection(
             draftID: draft.id,
             range: selection.range,
-            characterCount: selection.selectedText.count
+            characterCount: selection.selectedText.count,
+            originatingWindowID: windowID
           )
         )
       }
@@ -87,9 +91,11 @@ extension WorkbenchAIStore {
           let draftID = reference.resourceID.flatMap(UUID.init(uuidString:)),
           let draft = store.visibleDrafts.first(where: { $0.id == draftID }),
           let requestedRange = reference.sourceRange?.nsRange,
+          let originatingWindowID = reference.originatingWindowID,
           let active = store.activeEditorSelection,
           active.draftID == draftID,
-          active.range == requestedRange
+          active.range == requestedRange,
+          active.windowID == originatingWindowID
         else { return false }
         return active.validatedRange(in: draft) != nil
       case .currentArticle, .publishCheck:
@@ -220,20 +226,23 @@ extension WorkbenchAIStore {
   }
 
   public func availableAIChatContextReferences(
-    for draft: ArticleDraft
+    for draft: ArticleDraft,
+    windowID: UUID? = nil
   ) -> [AIContextReference] {
     let profile = store.profile(for: draft)
     let issues = store.preflightIssues(for: draft)
     var references: [AIContextReference] = []
 
     if let selection = store.activeEditorSelection,
+      windowID == nil || selection.windowID == windowID,
       selection.validatedRange(in: draft) != nil
     {
       references.append(
         .currentSelection(
           draftID: draft.id,
           range: selection.range,
-          characterCount: selection.selectedText.count
+          characterCount: selection.selectedText.count,
+          originatingWindowID: windowID
         )
       )
     }
@@ -310,9 +319,11 @@ extension WorkbenchAIStore {
         guard
           reference.resourceID == draft.id.uuidString,
           let requestedRange = reference.sourceRange?.nsRange,
+          let originatingWindowID = reference.originatingWindowID,
           let active = store.activeEditorSelection,
           active.draftID == draft.id,
-          active.range == requestedRange
+          active.range == requestedRange,
+          active.windowID == originatingWindowID
         else {
           return false
         }

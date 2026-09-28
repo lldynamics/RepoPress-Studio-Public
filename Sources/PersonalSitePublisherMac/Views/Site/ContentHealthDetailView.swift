@@ -69,6 +69,11 @@ struct ContentHealthDetailView: View {
       .onChange(of: severityFilter) { _, _ in
         rebuildArticlePresentation()
       }
+      .onChange(of: sourceFilter) { _, source in
+        if source == .maintenance {
+          severityFilter = .all
+        }
+      }
       .onDisappear {
         cancelContentHealthWork(showsCancelledState: false)
       }
@@ -195,10 +200,18 @@ struct ContentHealthDetailView: View {
       sourceFilter.includesSite && aiFixFilter != .fixable
       ? presentation.siteIssues
       : []
+    let visibleSummary = ContentHealthVisibleSummary(
+      rows: visibleRows,
+      siteIssues: visibleSiteIssues,
+      maintenanceItems: visibleMaintenanceItems,
+      passingDraftCount: sourceFilter.includesArticles && severityFilter == .all
+        && aiFixFilter == .all && filter == .overview
+        ? snapshot.passingDraftCount : 0
+    )
     let selectedRow = selectedHealthRow(in: presentation, visibleRows: visibleRows)
 
     return VStack(alignment: .leading, spacing: 16) {
-      contentHeader(snapshot, usesCompactLayout: usesCompactHeader)
+      contentHeader(snapshot, summary: visibleSummary, usesCompactLayout: usesCompactHeader)
       contentFilters
 
       if sourceFilter == .maintenance {
@@ -230,13 +243,14 @@ struct ContentHealthDetailView: View {
   @ViewBuilder
   private func contentHeader(
     _ snapshot: ContentHealthSnapshot,
+    summary: ContentHealthVisibleSummary,
     usesCompactLayout: Bool
   ) -> some View {
     if usesCompactLayout {
       VStack(alignment: .leading, spacing: 10) {
         contentTitle(snapshot)
         snapshotStatus(snapshot)
-        healthSummary(snapshot, usesCompactLayout: true)
+        healthSummary(summary, usesCompactLayout: true)
       }
     } else {
       HStack(alignment: .top, spacing: 16) {
@@ -244,7 +258,7 @@ struct ContentHealthDetailView: View {
         Spacer(minLength: 16)
         VStack(alignment: .trailing, spacing: 8) {
           snapshotStatus(snapshot)
-          healthSummary(snapshot, usesCompactLayout: false)
+          healthSummary(summary, usesCompactLayout: false)
         }
       }
     }
@@ -294,7 +308,7 @@ struct ContentHealthDetailView: View {
         severityPicker
         sourcePicker
         aiFixPicker
-        articleGroupingPicker
+        articleGroupingControl
       }
 
       VStack(alignment: .leading, spacing: 10) {
@@ -304,8 +318,20 @@ struct ContentHealthDetailView: View {
         }
         HStack(spacing: 10) {
           aiFixPicker
-          articleGroupingPicker
+          articleGroupingControl
         }
+      }
+    }
+  }
+
+  private var articleGroupingControl: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      articleGroupingPicker
+      if !sourceFilter.includesArticles {
+        Text(String(localized: "仅文章来源可用"))
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: true, vertical: false)
       }
     }
   }
@@ -317,6 +343,8 @@ struct ContentHealthDetailView: View {
       }
     }
     .pickerStyle(.segmented)
+    .disabled(sourceFilter == .maintenance)
+    .help("维护事项使用优先级；切换到文章或站点来源后可按严重级别筛选。")
     .tint(workbenchAccentColor)
     .labelsHidden()
     .frame(minWidth: 220, maxWidth: 280)
@@ -334,6 +362,11 @@ struct ContentHealthDetailView: View {
     .fixedSize(horizontal: true, vertical: false)
     .disabled(!sourceFilter.includesArticles)
     .accessibilityLabel("文章分组方式")
+    .help(
+      sourceFilter.includesArticles
+        ? String(localized: "按行动队列、处理方式、站点或文件整理文章")
+        : String(localized: "当前来源筛选不包含文章，因此文章分组方式不可用")
+    )
   }
 
   private var sourcePicker: some View {
@@ -399,21 +432,12 @@ struct ContentHealthDetailView: View {
 
   @ViewBuilder
   private var maintenanceIssueSection: some View {
-    if sourceFilter.includesMaintenance {
+    if sourceFilter.includesMaintenance && severityFilter == .all {
       if let snapshot = maintenanceState.snapshot {
-        let items = snapshot.report.actionItems.filter { item in
-          let matchesSeverity: Bool
-          switch severityFilter {
-          case .all: matchesSeverity = true
-          case .errors: matchesSeverity = item.priority == .high
-          case .warnings: matchesSeverity = item.priority == .medium
-          }
-          return matchesSeverity
-            && aiFixFilter.includes(canUseAI: item.draftID != nil)
-        }
+        let items = visibleMaintenanceItems
         if !items.isEmpty || sourceFilter == .maintenance {
           VStack(alignment: .leading, spacing: 8) {
-            Label("上次维护扫描 \(snapshot.generatedAt.workbenchShortText)", systemImage: "clock")
+            Text(String(localized: "维护事项按优先级显示；严重级别筛选仅适用于检查问题。"))
               .font(.caption)
               .foregroundStyle(.secondary)
             SiteMaintenanceActionQueueSection(
@@ -465,6 +489,13 @@ struct ContentHealthDetailView: View {
           .foregroundStyle(.secondary)
       }
     }
+  }
+
+  private var visibleMaintenanceItems: [MaintenanceActionItem] {
+    guard sourceFilter.includesMaintenance && severityFilter == .all else { return [] }
+    return maintenanceState.snapshot?.report.actionItems.filter { item in
+      aiFixFilter.includes(canUseAI: item.draftID != nil)
+    } ?? []
   }
 
   private func maintenanceReport(
@@ -555,7 +586,8 @@ struct ContentHealthDetailView: View {
         healthSnapshot = snapshot
         sidebarProjection.replace(
           profileID: snapshot.profileID,
-          aiFixQueueItems: snapshot.aiFixQueueItems
+          aiFixQueueItems: snapshot.aiFixQueueItems,
+          issueCount: snapshot.errorCount + snapshot.warningCount
         )
         articlePresentation = nil
         healthSnapshotErrorMessage = nil
@@ -656,21 +688,9 @@ struct ContentHealthDetailView: View {
   }
 
   private func healthSummary(
-    _ snapshot: ContentHealthSnapshot,
+    _ summary: ContentHealthVisibleSummary,
     usesCompactLayout: Bool
   ) -> some View {
-    let readiness = UnifiedPublishReadinessPresentation.make(
-      plan: store.batchPublishPlan,
-      preview: store.batchRemotePublishPreviewSnapshot,
-      profile: store.activeProfile,
-      pendingDeletionCount: store.pendingRemoteRepositoryCleanupRequests.count,
-      contentHealth: .init(
-        errorCount: snapshot.errorCount,
-        warningCount: snapshot.warningCount,
-        aiFixCount: snapshot.aiFixQueueItems.count,
-        passingDraftCount: snapshot.passingDraftCount
-      )
-    )
     return LazyVGrid(
       columns: Array(
         repeating: GridItem(.flexible(minimum: 108), spacing: 8),
@@ -680,49 +700,78 @@ struct ContentHealthDetailView: View {
       spacing: 8
     ) {
       healthSummaryBadge(
-        title: "错误",
-        value: readiness.contentHealth.errorCount,
+        title: "检查错误",
+        value: summary.errorCount,
         systemImage: "xmark.octagon",
-        color: WorkbenchTheme.risk
+        color: WorkbenchTheme.risk,
+        action: {
+          filter = .overview
+          sourceFilter = .all
+          aiFixFilter = .all
+          severityFilter = .errors
+        }
       )
       healthSummaryBadge(
-        title: "警告",
-        value: readiness.contentHealth.warningCount,
+        title: "检查警告",
+        value: summary.warningCount,
         systemImage: "exclamationmark.triangle",
-        color: WorkbenchTheme.warning
+        color: WorkbenchTheme.warning,
+        action: {
+          filter = .overview
+          sourceFilter = .all
+          aiFixFilter = .all
+          severityFilter = .warnings
+        }
       )
       healthSummaryBadge(
         title: "AI 修复",
-        value: readiness.contentHealth.aiFixCount,
+        value: summary.aiFixCount,
         systemImage: "sparkles",
-        color: WorkbenchTheme.inventoryForeground
+        color: WorkbenchTheme.inventoryForeground,
+        action: {
+          filter = .overview
+          sourceFilter = .all
+          aiFixFilter = .fixable
+          severityFilter = .all
+        }
       )
       healthSummaryBadge(
-        title: "通过",
-        value: readiness.contentHealth.passingDraftCount,
-        systemImage: "checkmark.circle",
-        color: WorkbenchTheme.success
+        title: sourceFilter == .maintenance ? "维护项" : "通过（统计）",
+        value: sourceFilter == .maintenance
+          ? summary.maintenanceCount : summary.passingDraftCount,
+        systemImage: sourceFilter == .maintenance ? "wrench.and.screwdriver" : "checkmark.circle",
+        color: WorkbenchTheme.success,
+        help: sourceFilter == .maintenance
+          ? String(localized: "当前筛选下显示的维护事项数量。")
+          : String(localized: "通过是当前筛选下没有错误或警告的文章统计，不能作为筛选条件。")
       )
     }
     .frame(maxWidth: usesCompactLayout ? 300 : 552, alignment: .leading)
-    .accessibilityElement(children: .ignore)
+    .accessibilityElement(children: .contain)
     .accessibilityLabel("内容健康摘要")
-    .accessibilityValue(contentHealthReadinessAccessibilityValue(readiness))
+    .accessibilityValue(contentHealthReadinessAccessibilityValue(summary))
   }
 
   private func healthSummaryBadge(
     title: LocalizedStringKey,
     value: Int,
     systemImage: String,
-    color: Color
+    color: Color,
+    action: (() -> Void)? = nil,
+    help: String? = nil
   ) -> some View {
-    HStack(spacing: 5) {
+    let badge = HStack(spacing: 5) {
       Image(systemName: systemImage)
         .accessibilityHidden(true)
       Text(title)
       Text("\(value)")
         .fontWeight(.semibold)
         .monospacedDigit()
+      if action != nil {
+        Image(systemName: "line.3.horizontal.decrease.circle")
+          .font(.caption)
+          .accessibilityHidden(true)
+      }
     }
     .font(.callout.weight(.medium))
     .foregroundStyle(value > 0 ? color : Color.secondary)
@@ -730,22 +779,41 @@ struct ContentHealthDetailView: View {
     .padding(.vertical, 6)
     .frame(maxWidth: .infinity, alignment: .center)
     .background(
-      value > 0
-        ? AnyShapeStyle(color.opacity(WorkbenchOpacity.noticeBackground))
-        : WorkbenchBackgroundStyle.control,
+      action == nil
+        ? AnyShapeStyle(Color.clear)
+        : value > 0
+          ? AnyShapeStyle(color.opacity(WorkbenchOpacity.noticeBackground))
+          : WorkbenchBackgroundStyle.control,
       in: Capsule()
     )
+    return Group {
+      if let action {
+        Button(action: action) {
+          badge
+        }
+        .buttonStyle(.plain)
+        .help(help ?? String(localized: "点击后按此项筛选检查问题。"))
+        .accessibilityHint(String(localized: "点击以应用对应的检查筛选。"))
+      } else {
+        if let help {
+          badge.help(help)
+        } else {
+          badge
+        }
+      }
+    }
   }
 
   private func contentHealthReadinessAccessibilityValue(
-    _ readiness: UnifiedPublishReadinessPresentation
+    _ summary: ContentHealthVisibleSummary
   ) -> String {
-    let health = readiness.contentHealth
     return [
-      "\(health.errorCount) 个错误",
-      "\(health.warningCount) 个警告",
-      "\(health.aiFixCount) 项可用 AI 修复",
-      "\(health.passingDraftCount) 篇文章通过",
+      "\(summary.errorCount) 个错误",
+      "\(summary.warningCount) 个警告",
+      "\(summary.aiFixCount) 项可用 AI 修复",
+      sourceFilter == .maintenance
+        ? "\(summary.maintenanceCount) 项维护事项"
+        : "\(summary.passingDraftCount) 篇文章通过",
     ].joined(separator: "，")
   }
 
@@ -1334,94 +1402,4 @@ struct ContentHealthDetailView: View {
     refreshContentHealthSnapshot()
     return .applied(result)
   }
-}
-
-private struct ContentHealthSkeletonLoadingView: View {
-  let cancel: () -> Void
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      VStack(alignment: .leading, spacing: 10) {
-        HStack {
-          VStack(alignment: .leading, spacing: 4) {
-            skeletonBar(width: 140, height: 22)
-            skeletonBar(width: 260, height: 14)
-          }
-          Spacer()
-          skeletonBar(width: 110, height: 16)
-        }
-
-        HStack(alignment: .top, spacing: 10) {
-          ProgressView()
-            .controlSize(.small)
-            .accessibilityHidden(true)
-          VStack(alignment: .leading, spacing: 4) {
-            Text("正在生成内容健康快照")
-              .font(.caption.weight(.semibold))
-            Text("正在检查 Front Matter、链接、SEO 与内容风险。当前分析未提供可显示的分阶段进度。")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-          Spacer(minLength: 8)
-          Button("取消", action: cancel)
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .accessibilityIdentifier("content-health-loading-cancel")
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-          WorkbenchBackgroundStyle.card,
-          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-        )
-      }
-
-      LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 10)], spacing: 10) {
-        ForEach(0..<4) { _ in
-          VStack(alignment: .leading, spacing: 8) {
-            skeletonBar(width: 60, height: 12)
-            skeletonBar(width: 40, height: 20)
-          }
-          .padding(12)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .background(
-            WorkbenchBackgroundStyle.card,
-            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-          )
-        }
-      }
-
-      VStack(alignment: .leading, spacing: 8) {
-        ForEach(0..<3) { _ in
-          HStack(spacing: 12) {
-            Circle()
-              .fill(Color.primary.opacity(0.08))
-              .frame(width: 16, height: 16)
-            VStack(alignment: .leading, spacing: 4) {
-              skeletonBar(width: 220, height: 14)
-              skeletonBar(width: 140, height: 10)
-            }
-            Spacer()
-            skeletonBar(width: 50, height: 14)
-          }
-          .padding(12)
-          .background(
-            WorkbenchBackgroundStyle.card,
-            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-          )
-        }
-      }
-    }
-    .padding(WorkbenchSpacing.card)
-    .frame(maxWidth: .infinity, minHeight: 360, alignment: .leading)
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("正在生成内容健康快照，进度未知")
-  }
-
-  private func skeletonBar(width: CGFloat, height: CGFloat) -> some View {
-    RoundedRectangle(cornerRadius: 4)
-      .fill(Color.primary.opacity(0.08))
-      .frame(width: width, height: height)
-  }
-
 }

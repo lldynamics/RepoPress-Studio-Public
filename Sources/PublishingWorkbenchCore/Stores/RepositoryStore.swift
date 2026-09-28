@@ -92,7 +92,7 @@ public final class RepositoryStore: ObservableObject {
   // A new scan is a new Git-state revision.  Never reuse a patch across it:
   // the same path can refer to different staged, working-tree, or upstream
   // content after a refresh.
-  private var repositoryLineDiffReportRevision = UUID()
+  private(set) var repositoryLineDiffReportRevision = UUID()
   private var repositoryLineDiffCache: [RepositoryLineDiffKey: RepositoryLineDiffCacheValue] = [:]
   private var repositoryLineDiffTasks: [RepositoryLineDiffKey: Task<String?, Never>] = [:]
   private var repositoryAutoSyncTask: Task<Bool, Never>?

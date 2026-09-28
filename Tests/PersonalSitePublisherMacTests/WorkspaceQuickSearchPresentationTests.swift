@@ -62,6 +62,40 @@ final class WorkspaceQuickSearchPresentationTests: XCTestCase {
     }
   }
 
+  func testContentHealthSidebarProjectionExposesOnlyTheLatestReadyIssueCount() async {
+    await MainActor.run {
+      let projection = ContentHealthSidebarProjection()
+      let profileID = UUID()
+      let otherProfileID = UUID()
+
+      XCTAssertNil(projection.knownIssueCount(for: profileID))
+
+      projection.replace(profileID: profileID, aiFixQueueItems: [], issueCount: 4)
+      XCTAssertEqual(projection.knownIssueCount(for: profileID), 4)
+      XCTAssertNil(projection.knownIssueCount(for: otherProfileID))
+
+      // A completed snapshot remains visible until a new check starts.
+      projection.cancelLoading()
+      XCTAssertEqual(projection.knownIssueCount(for: profileID), 4)
+
+      projection.beginLoading(profileID: profileID)
+      XCTAssertNil(projection.knownIssueCount(for: profileID))
+      projection.cancelLoading()
+      XCTAssertNil(projection.knownIssueCount(for: profileID))
+
+      projection.replace(profileID: profileID, aiFixQueueItems: [], issueCount: -2)
+      XCTAssertEqual(projection.knownIssueCount(for: profileID), 0)
+
+      projection.beginLoading(profileID: profileID)
+      projection.markFailed(profileID: profileID)
+      XCTAssertNil(projection.knownIssueCount(for: profileID))
+
+      projection.beginLoading(profileID: profileID)
+      projection.cancelLoading()
+      XCTAssertNil(projection.knownIssueCount(for: profileID))
+    }
+  }
+
   func testContentHealthQueueCancellationEndsLoadingAndAllowsRetry() async {
     await MainActor.run {
       let projection = ContentHealthSidebarProjection()

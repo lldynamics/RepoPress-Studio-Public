@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import PublishingCoreSupport
 
 public final class KnowledgeNoteSnapshotPreferences: @unchecked Sendable {
   public static let standard = KnowledgeNoteSnapshotPreferences(userDefaults: .standard)
@@ -544,13 +545,13 @@ public enum KnowledgeNoteSnapshotBackupService {
     public var errorDescription: String? {
       switch self {
       case .destinationIsNotDirectory:
-        return "所选快照位置不是文件夹。"
+        return CoreL10n.text("所选快照位置不是文件夹。")
       case .iCloudContainerUnavailable:
-        return "iCloud 容器不可用。请检查 iCloud 登录状态与应用配置。"
+        return CoreL10n.text("iCloud 容器不可用。请检查 iCloud 登录状态与应用配置。")
       case .coordinationFailed:
-        return "无法协调访问这份笔记快照。"
+        return CoreL10n.text("无法协调访问这份笔记快照。")
       case .verificationFailed:
-        return "快照写入后校验失败，未将其登记为备份。"
+        return CoreL10n.text("快照写入后校验失败，未将其登记为备份。")
       }
     }
   }

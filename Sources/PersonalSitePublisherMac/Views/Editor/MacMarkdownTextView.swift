@@ -101,6 +101,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
   var reportsScrollSourceLine = true
   var scrollSyncUpdate: MarkdownScrollSyncUpdate?
   var scrollRestorationUpdate: MarkdownScrollSyncUpdate?
+  var bindingFlushClock: any Clock<Duration> = ContinuousClock()
+  var statisticsClock: any Clock<Duration> = ContinuousClock()
+  var commandTarget: MarkdownEditorCommandTarget? = nil
+  var commandTargetDocumentID: UUID? = nil
   var onStatisticsChanged: (MarkdownEditorStatistics) -> Void
   var onFileDropTargetChanged: (Bool) -> Void
   var onPasteMessage: (String) -> Void
@@ -125,6 +129,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
       text: $text,
       bodyMarkdown: bodyMarkdown,
       bodyUTF16Offset: bodyUTF16Offset,
+      bindingFlushClock: bindingFlushClock,
+      statisticsClock: statisticsClock,
       allowsLiveBodyChanges: allowsLiveBodyChanges,
       selectedRange: $selectedRange,
       isFrontMatterSelection: $isFrontMatterSelection,
@@ -150,6 +156,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
   }
 
   func makeNSView(context: Context) -> NSScrollView {
+    commandTarget?.coordinator = context.coordinator
+    commandTarget?.documentID = commandTargetDocumentID
     let scrollView = MarkdownEditorScrollView()
     scrollView.contentView = MarkdownFrontMatterClipView()
     scrollView.foldedFrontMatterBodyOffset = isFrontMatterFolded ? bodyUTF16Offset : 0
@@ -635,7 +643,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
     // cadence made binding flushes race the next AppKit edit, while the old
     // 180 ms statistics delivery could start a second window-wide layout.
     // The live body channel above still stages every accepted edit immediately.
-    let bindingFlushDelay: TimeInterval = 0.24
+    let bindingFlushClock: any Clock<Duration>
+    let statisticsClock: any Clock<Duration>
     let statisticsDelay = MarkdownEditorStatisticsDelayPolicy.incrementalDeliveryDelay
     var isApplyingAutomaticPairing = false
 
@@ -643,6 +652,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
       text: Binding<String>,
       bodyMarkdown: String,
       bodyUTF16Offset: Int,
+      bindingFlushClock: any Clock<Duration> = ContinuousClock(),
+      statisticsClock: any Clock<Duration> = ContinuousClock(),
       allowsLiveBodyChanges: Bool = true,
       selectedRange: Binding<NSRange>,
       isFrontMatterSelection: Binding<Bool>,
@@ -668,6 +679,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
       _text = text
       self.bodyMarkdown = bodyMarkdown
       self.bodyUTF16Offset = bodyUTF16Offset
+      self.bindingFlushClock = bindingFlushClock
+      self.statisticsClock = statisticsClock
       let delimitedBodyUTF16Offset = Self.delimitedBodyUTF16Offset(in: text.wrappedValue)
       cachedDocumentEnvelope = (
         revision: 0,
@@ -717,6 +730,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
       text: Binding<String>,
       bodyMarkdown: String,
       bodyUTF16Offset: Int,
+      bindingFlushClock: any Clock<Duration> = ContinuousClock(),
+      statisticsClock: any Clock<Duration> = ContinuousClock(),
       selectedRange: Binding<NSRange>,
       isFrontMatterSelection: Binding<Bool>,
       comfortConfiguration: MarkdownEditorComfortConfiguration,
@@ -731,6 +746,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
         text: text,
         bodyMarkdown: bodyMarkdown,
         bodyUTF16Offset: bodyUTF16Offset,
+        bindingFlushClock: bindingFlushClock,
+        statisticsClock: statisticsClock,
         selectedRange: selectedRange,
         isFrontMatterSelection: isFrontMatterSelection,
         comfortConfiguration: comfortConfiguration,
@@ -928,20 +945,6 @@ struct MacMarkdownTextView: NSViewRepresentable {
       lastCommittedIsFrontMatterSelection = incomingFrontMatterSelection
       rescheduleBindingFlushIfNeeded()
       return true
-    }
-
-    private func scheduleBindingFlush() {
-      bindingFlushTask?.cancel()
-      let delay = bindingFlushDelay
-      bindingFlushTask = Task { @MainActor [weak self] in
-        do {
-          try await Task.sleep(for: .seconds(delay))
-        } catch {
-          return
-        }
-        guard !Task.isCancelled else { return }
-        self?.flushPendingBindingWrites()
-      }
     }
 
     private func rescheduleBindingFlushIfNeeded() {

@@ -142,6 +142,8 @@ class UIProductContractTests(unittest.TestCase):
             shutil.copy2(ROOT / "script/check_ui_product_contract.sh", gate)
             overview = views / "Repository/RepositoryWorkspaceOverviewSections.swift"
             original = overview.read_text()
+            primary_actions = views / "Repository/RepositoryWorkspacePrimaryActions.swift"
+            original_primary_actions = primary_actions.read_text()
 
             def run_gate():
                 return subprocess.run(["bash", str(gate)], capture_output=True, text=True)
@@ -177,6 +179,12 @@ class UIProductContractTests(unittest.TestCase):
                     result = run_gate()
                     self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
             overview.write_text(original)
+            self.assertIn('repository-primary-actions', original_primary_actions)
+            primary_actions.write_text(
+                original_primary_actions.replace('repository-action-select-folder', 'missing-action', 1)
+            )
+            self.assertNotEqual(run_gate().returncode, 0, "extracted repository actions must remain covered")
+            primary_actions.write_text(original_primary_actions)
             history = views / "Publishing/ReleaseHistoryDetailView.swift"
             original_history = history.read_text()
             self.assertIn("releaseActionCommandDisclosure(item)", original_history)

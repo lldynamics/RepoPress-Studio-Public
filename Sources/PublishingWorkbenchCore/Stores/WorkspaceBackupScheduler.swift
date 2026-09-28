@@ -3,7 +3,6 @@ import CryptoKit
 import Darwin
 import Foundation
 import PublishingBackupCore
-import PublishingKnowledgeCore
 
 public enum WorkspaceBackupSchedulerStatusLevel: Equatable, Sendable {
   case info
@@ -66,7 +65,7 @@ public final class WorkspaceBackupScheduler: ObservableObject {
   @Published public private(set) var cloudUploadStatus: WorkspaceBackupCloudUploadStatus =
     .noBackup
 
-  private weak var store: WorkbenchStore?
+  private let source: any WorkspaceBackupSource
   private let defaults: UserDefaults
   private let fileManagerDependency: SendableFileManager
   private var fileManager: FileManager { fileManagerDependency.value }
@@ -84,7 +83,7 @@ public final class WorkspaceBackupScheduler: ObservableObject {
     fileManager: FileManager = .default,
     defaultDestinationFolderURL: URL? = nil
   ) {
-    self.store = store
+    self.source = WorkbenchBackupSourceAdapter(store: store)
     self.defaults = defaults
     self.fileManagerDependency = SendableFileManager(fileManager)
     self.defaultDestinationFolderURL = defaultDestinationFolderURL?.standardizedFileURL
@@ -355,7 +354,7 @@ public final class WorkspaceBackupScheduler: ObservableObject {
 
   func performBackup(isAutomatic: Bool) async {
     guard !isRunning else { return }
-    guard let store else {
+    guard source.isAvailable else {
       setStatus(
         CoreL10n.text("自动备份暂不可用：工作区尚未准备完成"),
         level: .error
@@ -381,7 +380,9 @@ public final class WorkspaceBackupScheduler: ObservableObject {
       let preservesHistory = settings.preserveAutomaticBackupHistoryOnSelectedDisk
         && isLocalDiskDestination
       if preservesHistory {
-        let estimate = try estimatedBackupBytes(store: store, categories: selectedCategories)
+        let estimate = try source.estimatedBackupBytes(
+          categories: selectedCategories, fileManager: fileManager
+        )
         try requireSelectedDiskBackupSpace(
           estimatedBytes: estimate,
           at: folderURL
@@ -404,7 +405,7 @@ public final class WorkspaceBackupScheduler: ObservableObject {
           : Self.selectedDiskBackupMaximumByteCount
       )
       guard
-        let createdPreview = await store.createWorkspaceBackup(
+        let createdPreview = await source.createBackup(
           at: backupURL,
           applicationVersion: currentApplicationVersion,
           limits: schedulerBackupLimits,
@@ -413,7 +414,7 @@ public final class WorkspaceBackupScheduler: ObservableObject {
         )
       else {
         throw WorkspaceBackupError.sourceUnavailable(
-          CoreL10n.format("%@；备份未创建", store.lastSaveStatus)
+          CoreL10n.format("%@；备份未创建", source.lastSaveStatus)
         )
       }
       let appVersion = currentApplicationVersion
@@ -657,79 +658,6 @@ public final class WorkspaceBackupScheduler: ObservableObject {
       return true
     }
     return (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.isUbiquitousItemKey]).isUbiquitousItem) == true
-  }
-
-  private func estimatedBackupBytes(
-    store: WorkbenchStore,
-    categories: Set<WorkspaceBackupCategory>
-  ) throws -> Int64 {
-    var total: Int64 = 0
-    if categories.contains(.workbench) {
-      let snapshot = store.persistenceStore.persistence.snapshot(from: store)
-      total = Int64(try JSONEncoder().encode(snapshot).count)
-      var countedAttachmentPaths = Set<String>()
-      let attachments = snapshot.drafts.flatMap(\.attachments)
-        + snapshot.recycledDrafts.flatMap { $0.draft.attachments }
-        + snapshot.draftVersions.flatMap { $0.draft.attachments }
-      for attachment in attachments {
-        guard let sourcePath = attachment.sourceFilePath else { continue }
-        let sourceURL = URL(fileURLWithPath: sourcePath)
-        guard countedAttachmentPaths.insert(sourceURL.standardizedFileURL.path).inserted else { continue }
-        total = try addingEstimate(total, estimatedSize(at: sourceURL))
-      }
-    }
-    if categories.contains(.knowledgeLibrary) {
-      let size = try estimatedSize(at: store.knowledge.rootURL)
-      total = try addingEstimate(total, size)
-    }
-    if categories.contains(.rssReader), let rssURL = store.rssReaderFileURL {
-      var databaseSize = try estimatedSize(at: rssURL)
-      databaseSize = try addingEstimate(
-        databaseSize,
-        estimatedSize(at: URL(fileURLWithPath: rssURL.path + "-wal"))
-      )
-      databaseSize = try addingEstimate(
-        databaseSize,
-        estimatedSize(at: URL(fileURLWithPath: rssURL.path + "-shm"))
-      )
-      total = try addingEstimate(total, databaseSize)
-      total = try addingEstimate(
-        total,
-        estimatedSize(at: RSSReaderStore.mediaCacheDirectoryURL(for: rssURL))
-      )
-    }
-    if categories.contains(.operationHistory) {
-      let history = try WorkbenchOperationLedgerPersistence.encodedDocument(store.operationHistory.document)
-      total = try addingEstimate(total, Int64(history.count))
-    }
-    return total
-  }
-
-  private func estimatedSize(at root: URL) throws -> Int64 {
-    guard fileManager.fileExists(atPath: root.path) else { return 0 }
-    let values = try root.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey, .fileSizeKey])
-    if values.isRegularFile == true { return Int64(values.fileSize ?? 0) }
-    guard values.isDirectory == true,
-          let enumerator = fileManager.enumerator(
-            at: root,
-            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey]
-          ) else { return 0 }
-    var size: Int64 = 0
-    for case let fileURL as URL in enumerator {
-      let fileValues = try fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-      if fileValues.isRegularFile == true {
-        size = try addingEstimate(size, Int64(fileValues.fileSize ?? 0))
-      }
-    }
-    return size
-  }
-
-  private func addingEstimate(_ lhs: Int64, _ rhs: Int64) throws -> Int64 {
-    let addition = lhs.addingReportingOverflow(rhs)
-    guard !addition.overflow else {
-      throw WorkspaceBackupError.backupTooLarge(maximumByteCount: Self.selectedDiskBackupMaximumByteCount)
-    }
-    return addition.partialValue
   }
 
   private func backupErrorDescription(_ error: Error) -> String {

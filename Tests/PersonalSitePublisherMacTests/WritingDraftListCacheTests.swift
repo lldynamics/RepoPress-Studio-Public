@@ -21,7 +21,12 @@ final class WritingDraftListCacheTests: XCTestCase {
     )
     XCTAssertEqual(
       writingDraftListDateText(previousDay, now: now, calendar: calendar),
-      previousDay.formatted(date: .numeric, time: .omitted)
+      previousDay.formatted(
+        .dateTime
+          .year()
+          .month()
+          .day()
+      )
     )
   }
 

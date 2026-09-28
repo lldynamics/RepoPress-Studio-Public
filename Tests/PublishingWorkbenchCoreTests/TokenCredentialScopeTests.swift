@@ -50,6 +50,15 @@ final class TokenCredentialScopeTests: XCTestCase {
     XCTAssertFalse(KeychainTokenStore.isRecoverableDeletionOwnershipStatus(errSecAuthFailed))
   }
 
+  func testInvalidKeychainRequestUsesReadableSinglePrefix() {
+    let message = KeychainTokenStoreError.unhandledStatus(errSecParam).localizedDescription
+
+    XCTAssertTrue(message.contains("无法访问系统钥匙串"))
+    XCTAssertTrue(message.contains("-50"))
+    XCTAssertTrue(message.contains("请重试"))
+    XCTAssertFalse(message.contains("Keychain 操作失败"))
+  }
+
   func testTokenAvailabilityDistinguishesMissingFromAccessFailure() throws {
     let available = KeychainTokenAvailability(hasToken: true)
     let missing = KeychainTokenAvailability(hasToken: false)

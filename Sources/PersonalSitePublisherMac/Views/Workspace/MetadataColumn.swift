@@ -6,6 +6,8 @@ struct MetadataColumn: View {
   private let store: WorkbenchStore
   let selectedSection: WorkspaceSection
   let selectedDraftID: UUID?
+  let imageBrowserSession: RepositoryImageBrowserSession
+  let onOpenImageDraft: (UUID) -> Void
   @ObservedObject private var contentPresentation: WorkbenchContentPresentationFeatureFacade
   let rssStore: RSSReaderStore
   @Binding private var repositoryChangedFileSelection: RepositoryChangedFileSelection?
@@ -22,6 +24,8 @@ struct MetadataColumn: View {
     store: WorkbenchStore,
     selectedSection: WorkspaceSection,
     selectedDraftID: UUID?,
+    imageBrowserSession: RepositoryImageBrowserSession,
+    onOpenImageDraft: @escaping (UUID) -> Void,
     rssStore: RSSReaderStore,
     repositoryChangedFileSelection: Binding<RepositoryChangedFileSelection?>,
     aiChatSurfaceState: Binding<AIChatSurfaceState>,
@@ -35,6 +39,8 @@ struct MetadataColumn: View {
     self.store = store
     self.selectedSection = selectedSection
     self.selectedDraftID = selectedDraftID
+    self.imageBrowserSession = imageBrowserSession
+    self.onOpenImageDraft = onOpenImageDraft
     _contentPresentation = ObservedObject(wrappedValue: store.contentPresentation)
     self.rssStore = rssStore
     _repositoryChangedFileSelection = repositoryChangedFileSelection
@@ -72,7 +78,11 @@ struct MetadataColumn: View {
           .padding(14)
         }
         .background(.bar)
-      case .articleMetadata, .articleChecks, .articleImages:
+      case .articleImages:
+        RepositoryImageInspectorHost(
+          store: store, session: imageBrowserSession, onOpenDraft: onOpenImageDraft
+        )
+      case .articleMetadata, .articleChecks:
         articleInspector
           .opacity(isAssistantOverlayPresented ? 0 : 1)
           .allowsHitTesting(!isAssistantOverlayPresented)

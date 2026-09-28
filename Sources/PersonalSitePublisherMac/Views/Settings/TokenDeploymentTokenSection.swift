@@ -12,10 +12,12 @@ struct TokenDeploymentTokenSection: View {
   @State private var isJustSaved = false
   @State private var saveFailureMessage: String?
   @State private var saveFeedbackResetTask: Task<Void, Never>?
+  @FocusState private var isDeploymentTokenFocused: Bool
 
   var body: some View {
     Section("部署凭据") {
       SecureField(String(localized: "部署平台访问令牌"), text: deploymentTokenInput)
+        .focused($isDeploymentTokenFocused)
         .accessibilityLabel("部署平台访问令牌")
         .accessibilityHint(deploymentTokenHint)
 
@@ -67,8 +69,19 @@ struct TokenDeploymentTokenSection: View {
 
         Spacer()
 
-        Button("刷新状态", action: onRefreshTokenState)
+        Button(
+          tokenAvailability.accessState == .accessFailed ? "重试" : "刷新状态",
+          action: onRefreshTokenState
+        )
+        .buttonStyle(.borderless)
+
+        if tokenAvailability.accessState == .accessFailed {
+          Button("重新授权") {
+            isDeploymentTokenFocused = true
+          }
           .buttonStyle(.borderless)
+          .help("重新输入并保存令牌，以重新触发系统授权提示。")
+        }
 
         Button("删除", role: .destructive) {
           isDeleteConfirmationPresented = true
@@ -78,7 +91,7 @@ struct TokenDeploymentTokenSection: View {
       }
 
       if let accessFailureMessage = tokenAvailability.accessFailureMessage {
-        Text("操作失败：\(accessFailureMessage)")
+        Text(accessFailureMessage)
           .font(.caption)
           .foregroundStyle(WorkbenchTheme.warning)
           .textSelection(.enabled)

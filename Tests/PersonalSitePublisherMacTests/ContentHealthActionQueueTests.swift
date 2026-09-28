@@ -114,6 +114,31 @@ final class ContentHealthActionQueueTests: XCTestCase {
     )
   }
 
+  func testVisibleSummaryCountsOnlyDisplayedSources() {
+    let article = makeRow(
+      title: "Article",
+      issues: [.init(severity: .error, title: "错误", message: "修正")]
+    )
+    let maintenance = MaintenanceActionItem(
+      id: "maintenance", kind: .taxonomy, priority: .high,
+      title: "整理标签", summary: "待处理", detail: "", draftID: nil,
+      targetPath: nil, systemImage: "tag"
+    )
+
+    let maintenanceOnly = ContentHealthVisibleSummary(
+      rows: [], siteIssues: [], maintenanceItems: [maintenance], passingDraftCount: 0
+    )
+    XCTAssertEqual(maintenanceOnly.errorCount, 0)
+    XCTAssertEqual(maintenanceOnly.warningCount, 0)
+    XCTAssertEqual(maintenanceOnly.maintenanceCount, 1)
+
+    let articleOnly = ContentHealthVisibleSummary(
+      rows: [article], siteIssues: [], maintenanceItems: [], passingDraftCount: 0
+    )
+    XCTAssertEqual(articleOnly.errorCount, 1)
+    XCTAssertEqual(articleOnly.maintenanceCount, 0)
+  }
+
   func testPresentationServiceBuildsSnapshotAndFilteredRowsAsynchronously() async throws {
     let draftID = UUID()
     let error = PreflightIssue(

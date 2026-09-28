@@ -37,6 +37,9 @@ public struct AIContextReference: Codable, Identifiable, Hashable, Sendable {
   public let resourceID: String?
   public let displayName: String
   public let sourceRange: AIStructuredEditSourceRange?
+  /// Selection references are tied to the window that offered them. This
+  /// prevents two windows showing one draft from silently exchanging ranges.
+  public let originatingWindowID: UUID?
   public let characterCount: Int
 
   public init(
@@ -45,6 +48,7 @@ public struct AIContextReference: Codable, Identifiable, Hashable, Sendable {
     resourceID: String? = nil,
     displayName: String = "",
     sourceRange: AIStructuredEditSourceRange? = nil,
+    originatingWindowID: UUID? = nil,
     characterCount: Int
   ) {
     self.id = id
@@ -52,18 +56,21 @@ public struct AIContextReference: Codable, Identifiable, Hashable, Sendable {
     self.resourceID = resourceID?.trimmingCharacters(in: .whitespacesAndNewlines)
     self.displayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
     self.sourceRange = sourceRange
+    self.originatingWindowID = originatingWindowID
     self.characterCount = max(0, characterCount)
   }
 
   public static func currentSelection(
     draftID: ArticleDraft.ID,
     range: NSRange,
-    characterCount: Int
+    characterCount: Int,
+    originatingWindowID: UUID? = nil
   ) -> AIContextReference {
     AIContextReference(
       kind: .currentSelection,
       resourceID: draftID.uuidString,
       sourceRange: AIStructuredEditSourceRange(range),
+      originatingWindowID: originatingWindowID,
       characterCount: characterCount
     )
   }

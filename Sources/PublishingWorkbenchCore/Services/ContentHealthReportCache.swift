@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import PublishingDomainContracts
+import os
 
 /// Lightweight observability for the in-memory content-health cache.
 ///
@@ -34,7 +35,7 @@ struct ContentHealthReportCacheStatistics: Equatable, Sendable {
 /// service actor-isolated. Each draft keeps only its latest full health
 /// fingerprint, so a stale entry is never returned merely because the draft ID
 /// is unchanged and old profile/presentation variants do not accumulate.
-final class ContentHealthReportCache: @unchecked Sendable {
+final class ContentHealthReportCache: Sendable {
   static let defaultMaximumEntryCount = 512
 
   private struct Entry: Sendable {
@@ -43,75 +44,81 @@ final class ContentHealthReportCache: @unchecked Sendable {
     var lastAccess: UInt64
   }
 
-  private let lock = NSLock()
+  private struct State: Sendable {
+    var entries: [UUID: Entry] = [:]
+    var accessCounter: UInt64 = 0
+    var hitCount = 0
+    var missCount = 0
+    var uncacheableCount = 0
+  }
+
   private let maximumEntryCount: Int
-  private var entries: [UUID: Entry] = [:]
-  private var accessCounter: UInt64 = 0
-  private var hitCount = 0
-  private var missCount = 0
-  private var uncacheableCount = 0
+  private let state: OSAllocatedUnfairLock<State>
 
   init(maximumEntryCount: Int = ContentHealthReportCache.defaultMaximumEntryCount) {
     self.maximumEntryCount = max(1, maximumEntryCount)
+    self.state = OSAllocatedUnfairLock(initialState: State())
   }
 
   func prune(keepingDraftIDs draftIDs: Set<UUID>) {
-    lock.lock()
-    defer { lock.unlock() }
-    entries = entries.filter { draftIDs.contains($0.key) }
+    state.withLock { state in
+      state.entries = state.entries.filter { draftIDs.contains($0.key) }
+    }
   }
 
   func lookup(_ key: ContentHealthReportCacheKey?) -> DraftPreflightSummary? {
-    lock.lock()
-    defer { lock.unlock() }
+    state.withLock { state in
+      guard let key else {
+        state.uncacheableCount += 1
+        state.missCount += 1
+        return nil
+      }
 
-    guard let key else {
-      uncacheableCount += 1
-      missCount += 1
-      return nil
+      guard var entry = state.entries[key.draftID], entry.key == key else {
+        state.missCount += 1
+        return nil
+      }
+
+      state.hitCount += 1
+      state.accessCounter &+= 1
+      entry.lastAccess = state.accessCounter
+      state.entries[key.draftID] = entry
+      return entry.summary
     }
-
-    guard var entry = entries[key.draftID], entry.key == key else {
-      missCount += 1
-      return nil
-    }
-
-    hitCount += 1
-    accessCounter &+= 1
-    entry.lastAccess = accessCounter
-    entries[key.draftID] = entry
-    return entry.summary
   }
 
   func insert(_ summary: DraftPreflightSummary, for key: ContentHealthReportCacheKey) {
-    lock.lock()
-    defer { lock.unlock() }
-
-    accessCounter &+= 1
-    entries[key.draftID] = Entry(key: key, summary: summary, lastAccess: accessCounter)
-    evictIfNeeded()
+    state.withLock { state in
+      state.accessCounter &+= 1
+      state.entries[key.draftID] = Entry(
+        key: key,
+        summary: summary,
+        lastAccess: state.accessCounter
+      )
+      evictIfNeeded(&state)
+    }
   }
 
   var statistics: ContentHealthReportCacheStatistics {
-    lock.lock()
-    defer { lock.unlock() }
-    return ContentHealthReportCacheStatistics(
-      hitCount: hitCount,
-      missCount: missCount,
-      uncacheableCount: uncacheableCount,
-      entryCount: entries.count
-    )
+    state.withLock { state in
+      ContentHealthReportCacheStatistics(
+        hitCount: state.hitCount,
+        missCount: state.missCount,
+        uncacheableCount: state.uncacheableCount,
+        entryCount: state.entries.count
+      )
+    }
   }
 
-  private func evictIfNeeded() {
-    guard entries.count > maximumEntryCount else { return }
-    let overflow = entries.count - maximumEntryCount
-    let keysToRemove = entries
+  private func evictIfNeeded(_ state: inout State) {
+    guard state.entries.count > maximumEntryCount else { return }
+    let overflow = state.entries.count - maximumEntryCount
+    let keysToRemove = state.entries
       .sorted { lhs, rhs in lhs.value.lastAccess < rhs.value.lastAccess }
       .prefix(overflow)
       .map(\.key)
     for key in keysToRemove {
-      entries.removeValue(forKey: key)
+      state.entries.removeValue(forKey: key)
     }
   }
 }

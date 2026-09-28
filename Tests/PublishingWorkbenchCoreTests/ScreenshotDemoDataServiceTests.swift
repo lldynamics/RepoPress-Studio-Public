@@ -30,6 +30,20 @@ import XCTest
       XCTAssertTrue(snapshot.releaseRecords.contains { $0.kind == .remotePublishFailure })
       XCTAssertFalse(snapshot.deploymentStatusSnapshots.isEmpty)
       XCTAssertEqual(snapshot.deploymentStatusSnapshots.first?.level, .success)
+      let ledger = ReleaseLedgerService().ledger(
+        releaseRecords: snapshot.releaseRecords,
+        deploymentStatusSnapshots: Dictionary(
+          uniqueKeysWithValues: snapshot.deploymentStatusSnapshots.compactMap { status in
+            status.releaseRecordID.map { ($0, status) }
+          }
+        )
+      )
+      let checkedRecordID = try XCTUnwrap(snapshot.deploymentStatusSnapshots.first?.releaseRecordID)
+      XCTAssertEqual(ledger.entries.first { $0.id == checkedRecordID }?.status, .succeeded)
+      XCTAssertFalse(
+        ledger.actionItems.contains {
+          $0.recordID == checkedRecordID && $0.kind == .observeDeployment
+        })
       XCTAssertFalse(snapshot.seoSocialPreviewSnapshots.isEmpty)
       XCTAssertEqual(
         Set(snapshot.seoSocialPreviewSnapshots.first?.cards.map(\.kind) ?? []),

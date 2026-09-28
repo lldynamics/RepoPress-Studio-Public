@@ -117,3 +117,79 @@ final class DraftScopedPreflightTests: XCTestCase {
     return try XCTUnwrap(store.drafts.first(where: { $0.id == draft.id }))
   }
 }
+
+@MainActor
+final class DraftScopedPreflightRequestKeyTests: XCTestCase {
+  func testRepeatedReadsAndAnotherWindowsSelectionKeepTheSameKey() throws {
+    let store = try makeStore()
+    let first = try XCTUnwrap(store.drafts.first)
+    let second = ArticleDraft(siteProfileID: store.activeProfileID, title: "Second", slug: "second")
+    store.updateDraft(second)
+    let key = try XCTUnwrap(store.draftScopedPreflightRequestKey(for: first.id))
+
+    store.selectDraft(second.id)
+
+    XCTAssertEqual(store.draftScopedPreflightRequestKey(for: first.id), key)
+    XCTAssertNil(store.draftScopedPreflightRequestKey(for: UUID()))
+  }
+
+  func testPendingBodyAndSiblingChangesInvalidateTheWindowRequest() throws {
+    let store = try makeStore()
+    let first = try XCTUnwrap(store.drafts.first)
+    var second = ArticleDraft(siteProfileID: store.activeProfileID, title: "Second", slug: "second")
+    store.updateDraft(second)
+    let initial = try XCTUnwrap(store.draftScopedPreflightRequestKey(for: first.id))
+    let buffer = store.draftBodyEditorBuffer(for: first.id)
+
+    _ = store.stageDraftBody("Pending body", for: first.id, baseRevision: buffer.revision)
+    let pending = try XCTUnwrap(store.draftScopedPreflightRequestKey(for: first.id))
+    XCTAssertNotEqual(initial, pending)
+
+    second.slug = first.slug
+    store.updateDraft(second)
+    XCTAssertNotEqual(store.draftScopedPreflightRequestKey(for: first.id), pending)
+  }
+
+  func testProfileAndRepositoryInvalidationRefreshTheRequest() throws {
+    let store = try makeStore()
+    let draft = try XCTUnwrap(store.drafts.first)
+    let initial = try XCTUnwrap(store.draftScopedPreflightRequestKey(for: draft.id))
+
+    store.updateActiveProfile { $0.siteKind = .hugo }
+    let changedProfile = try XCTUnwrap(store.draftScopedPreflightRequestKey(for: draft.id))
+    XCTAssertNotEqual(initial, changedProfile)
+
+    store.setRepositoryReport(nil)
+    XCTAssertNotEqual(store.draftScopedPreflightRequestKey(for: draft.id), changedProfile)
+  }
+
+  func testRepositoryReportRevisionIsTheOnlyRepositoryRequestInput() {
+    let profile = SiteProfile(name: "Test")
+    let repositoryReportRevision = UUID()
+    let first = DraftScopedPreflightRequestKey(
+      draftID: UUID(), bodyRevision: 1, hasPendingBody: false,
+      draftMutationRevision: 1, linkAuditInputGeneration: 1,
+      profile: profile, repositoryReportRevision: repositoryReportRevision
+    )
+    let second = DraftScopedPreflightRequestKey(
+      draftID: first.draftID, bodyRevision: first.bodyRevision,
+      hasPendingBody: first.hasPendingBody,
+      draftMutationRevision: first.draftMutationRevision,
+      linkAuditInputGeneration: first.linkAuditInputGeneration,
+      profile: first.profile, repositoryReportRevision: repositoryReportRevision
+    )
+
+    XCTAssertEqual(first, second)
+  }
+
+  private func makeStore() throws -> WorkbenchStore {
+    let persistence = try TestWorkbenchFactory.persistence(prefix: "DraftPreflightRequestKey")
+    let rootURL = persistence.fileURL.deletingLastPathComponent()
+    addTeardownBlock { try? FileManager.default.removeItem(at: rootURL) }
+    let store = WorkbenchStore(persistence: persistence, safeMode: true)
+    store.updateDraft(
+      ArticleDraft(siteProfileID: store.activeProfileID, title: "First", slug: "first")
+    )
+    return store
+  }
+}

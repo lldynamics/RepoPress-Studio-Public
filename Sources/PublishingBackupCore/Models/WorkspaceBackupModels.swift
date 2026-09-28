@@ -120,7 +120,10 @@ public struct WorkspaceBackupAttachmentReference: Codable, Hashable, Sendable {
 }
 
 public struct WorkspaceBackupManifest: Codable, Hashable, Sendable {
-  public static let currentFormatVersion = 4
+  /// v4 introduced explicit category selections. v5 adds the optional
+  /// RetiredFeatureArchives payload under the workbench category.
+  public static let categorySelectionFormatVersion = 4
+  public static let currentFormatVersion = 5
   public static let minimumSupportedFormatVersion = 1
   public static let attachmentMarkerPrefix = "workspace-backup-attachment://"
 
@@ -141,7 +144,9 @@ public struct WorkspaceBackupManifest: Codable, Hashable, Sendable {
   public var totalByteCount: Int64
   public var attachmentReferences: [WorkspaceBackupAttachmentReference]
   public var files: [WorkspaceBackupFileRecord]
-  /// Added in v4. Nil means a legacy v1-v3 full backup.
+  /// Added in v4. Nil means a legacy v1-v3 full backup. v5 additionally
+  /// permits the strict RetiredFeatureArchives compatibility payload within
+  /// the workbench category.
   public var selectedCategories: [WorkspaceBackupCategory]?
   public var categorySummaries: [WorkspaceBackupCategorySummary]?
 

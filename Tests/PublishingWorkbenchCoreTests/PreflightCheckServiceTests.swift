@@ -680,3 +680,188 @@ final class ThemeShortcodeCatalogServiceTests: XCTestCase {
     try contents.write(to: url, atomically: true, encoding: .utf8)
   }
 }
+
+final class ThemeShortcodeCatalogCacheTests: XCTestCase {
+  func testZolaWithoutConfigInvalidatesComponentsOutsideLegacyDirectory() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    var profile = fixture.profile
+    profile.siteKind = .zola
+    let template = fixture.root.appendingPathComponent("templates/components.html")
+    try write("{% component ui.card(title: string) %}{% endcomponent %}", at: template)
+    XCTAssertEqual(
+      ThemeShortcodeCatalogService().catalog(profile: profile).definitions.map(\.name), ["ui.card"])
+
+    try write("{% component ui.panel(title: string) %}{% endcomponent %}", at: template)
+    XCTAssertEqual(
+      ThemeShortcodeCatalogService().catalog(profile: profile).definitions.map(\.name), ["ui.panel"]
+    )
+  }
+
+  override func setUp() {
+    super.setUp()
+    ThemeShortcodeCatalogService.resetCacheForTesting()
+  }
+
+  override func tearDown() {
+    ThemeShortcodeCatalogService.resetCacheForTesting()
+    super.tearDown()
+  }
+
+  func testNewServiceInstanceReusesStableCatalogWithoutAnotherScan() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    try write(
+      "{{ .Get \"title\" }}",
+      at: fixture.root.appendingPathComponent("layouts/_shortcodes/card.html"))
+
+    XCTAssertEqual(catalog(for: fixture).definitions.map(\.name), ["card"])
+    let afterFirstScan = ThemeShortcodeCatalogService.cacheStatistics
+    XCTAssertEqual(catalog(for: fixture).definitions.map(\.name), ["card"])
+    let afterSecondScan = ThemeShortcodeCatalogService.cacheStatistics
+
+    XCTAssertEqual(afterFirstScan.insertCount, 1)
+    XCTAssertEqual(afterSecondScan.insertCount, 1)
+    XCTAssertEqual(afterSecondScan.hitCount, 1)
+  }
+
+  func testInPlaceTemplateEditInvalidatesCachedCatalog() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    let template = fixture.root.appendingPathComponent("layouts/_shortcodes/card.html")
+    try write("{{ .Get \"old\" }}", at: template)
+
+    XCTAssertEqual(catalog(for: fixture).definitions[0].parameters.map(\.name), ["old"])
+    let handle = try FileHandle(forWritingTo: template)
+    defer { try? handle.close() }
+    try handle.seek(toOffset: 0)
+    try handle.write(contentsOf: Data("{{ .Get \"new\" }}".utf8))
+    try handle.synchronize()
+
+    XCTAssertEqual(catalog(for: fixture).definitions[0].parameters.map(\.name), ["new"])
+    XCTAssertEqual(ThemeShortcodeCatalogService.cacheStatistics.insertCount, 2)
+  }
+
+  func testAddDeleteAndConfiguredThemeChangeInvalidateInputs() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    let rootShortcodes = fixture.root.appendingPathComponent("layouts/_shortcodes")
+    try write("{{ .Get \"value\" }}", at: rootShortcodes.appendingPathComponent("first.html"))
+
+    XCTAssertEqual(catalog(for: fixture).definitions.map(\.name), ["first"])
+    try write("{{ .Get \"value\" }}", at: rootShortcodes.appendingPathComponent("second.html"))
+    XCTAssertEqual(catalog(for: fixture).definitions.map(\.name), ["first", "second"])
+    try FileManager.default.removeItem(at: rootShortcodes.appendingPathComponent("second.html"))
+    XCTAssertEqual(catalog(for: fixture).definitions.map(\.name), ["first"])
+
+    try write("theme = \"one\"\n", at: fixture.root.appendingPathComponent("hugo.toml"))
+    try write(
+      "{{ .Get \"one\" }}",
+      at: fixture.root.appendingPathComponent("themes/one/layouts/_shortcodes/theme.html"))
+    try write(
+      "{{ .Get \"two\" }}",
+      at: fixture.root.appendingPathComponent("themes/two/layouts/_shortcodes/theme.html"))
+    XCTAssertEqual(catalog(for: fixture).selectedThemeName, "one")
+    try write("theme = \"two\"\n", at: fixture.root.appendingPathComponent("hugo.toml"))
+    XCTAssertEqual(catalog(for: fixture).selectedThemeName, "two")
+  }
+
+  func testRepositoryPathsRemainIsolated() throws {
+    let first = try makeFixture()
+    let second = try makeFixture()
+    defer {
+      try? FileManager.default.removeItem(at: first.root)
+      try? FileManager.default.removeItem(at: second.root)
+    }
+    try write(
+      "{{ .Get \"first\" }}",
+      at: first.root.appendingPathComponent("layouts/_shortcodes/card.html"))
+    try write(
+      "{{ .Get \"second\" }}",
+      at: second.root.appendingPathComponent("layouts/_shortcodes/card.html"))
+
+    XCTAssertEqual(catalog(for: first).definitions[0].parameters.map(\.name), ["first"])
+    XCTAssertEqual(catalog(for: second).definitions[0].parameters.map(\.name), ["second"])
+    XCTAssertEqual(ThemeShortcodeCatalogService.cacheStatistics.entryCount, 2)
+  }
+
+  func testIntermediateDirectorySymbolicLinkDoesNotFingerprintOutsideTemplates() throws {
+    let fixture = try makeFixture()
+    let outside = try temporaryDirectory(named: "theme-shortcode-cache-outside")
+    defer {
+      try? FileManager.default.removeItem(at: fixture.root)
+      try? FileManager.default.removeItem(at: outside)
+    }
+    try write("{{ .Get \"outside\" }}", at: outside.appendingPathComponent("_shortcodes/card.html"))
+    let layouts = fixture.root.appendingPathComponent("layouts")
+    try FileManager.default.createSymbolicLink(at: layouts, withDestinationURL: outside)
+
+    let keyBefore = try XCTUnwrap(
+      ThemeShortcodeCatalogCacheKey.make(rootURL: fixture.root, siteKind: .hugo))
+    try write("{{ .Get \"changed\" }}", at: outside.appendingPathComponent("_shortcodes/card.html"))
+    let keyAfterOutsideEdit = try XCTUnwrap(
+      ThemeShortcodeCatalogCacheKey.make(rootURL: fixture.root, siteKind: .hugo))
+    XCTAssertEqual(keyBefore, keyAfterOutsideEdit)
+
+    try FileManager.default.removeItem(at: layouts)
+    try write("{{ .Get \"inside\" }}", at: layouts.appendingPathComponent("_shortcodes/card.html"))
+    let keyAfterRestoringDirectory = try XCTUnwrap(
+      ThemeShortcodeCatalogCacheKey.make(rootURL: fixture.root, siteKind: .hugo))
+    XCTAssertNotEqual(keyBefore, keyAfterRestoringDirectory)
+  }
+
+  func testCapacityEvictsLeastRecentlyUsedCatalog() throws {
+    let cache = ThemeShortcodeCatalogCache(maximumEntryCount: 2)
+    let first = try temporaryDirectory(named: "theme-shortcode-cache-lru")
+    let second = try temporaryDirectory(named: "theme-shortcode-cache-lru")
+    let third = try temporaryDirectory(named: "theme-shortcode-cache-lru")
+    defer {
+      try? FileManager.default.removeItem(at: first)
+      try? FileManager.default.removeItem(at: second)
+      try? FileManager.default.removeItem(at: third)
+    }
+    let firstKey = try XCTUnwrap(
+      ThemeShortcodeCatalogCacheKey.make(rootURL: first, siteKind: .hugo))
+    let secondKey = try XCTUnwrap(
+      ThemeShortcodeCatalogCacheKey.make(rootURL: second, siteKind: .hugo))
+    let thirdKey = try XCTUnwrap(
+      ThemeShortcodeCatalogCacheKey.make(rootURL: third, siteKind: .hugo))
+
+    cache.insert(ThemeShortcodeCatalog(), for: firstKey)
+    cache.insert(ThemeShortcodeCatalog(), for: secondKey)
+    XCTAssertNotNil(cache.lookup(firstKey))
+    cache.insert(ThemeShortcodeCatalog(), for: thirdKey)
+
+    XCTAssertNotNil(cache.lookup(firstKey))
+    XCTAssertNil(cache.lookup(secondKey))
+    XCTAssertNotNil(cache.lookup(thirdKey))
+    XCTAssertEqual(cache.statistics.entryCount, 2)
+  }
+
+  private func makeFixture() throws -> (root: URL, profile: SiteProfile) {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("theme-shortcode-cache-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    return (
+      root,
+      SiteProfile(name: "Theme cache fixture", siteKind: .hugo, localRepositoryRootPath: root.path)
+    )
+  }
+
+  private func catalog(for fixture: (root: URL, profile: SiteProfile)) -> ThemeShortcodeCatalog {
+    ThemeShortcodeCatalogService().catalog(profile: fixture.profile)
+  }
+
+  private func temporaryDirectory(named name: String) throws -> URL {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("\(name)-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    return url
+  }
+
+  private func write(_ contents: String, at url: URL) throws {
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try contents.write(to: url, atomically: true, encoding: .utf8)
+  }
+}

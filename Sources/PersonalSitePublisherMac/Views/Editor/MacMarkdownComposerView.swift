@@ -6,13 +6,14 @@ struct MacMarkdownComposerView: View {
   @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @Binding var draft: ArticleDraft
   let store: WorkbenchStore
+  let bindingFlushClock: any Clock<Duration>
   let aiActions: WorkbenchAIFeatureFacade
   @ObservedObject var inlineAIReviewState: AIInlineStructuredEditReviewState
   @Environment(\.aiChatWorkspaceCommandAction) var aiChatWorkspaceCommandAction
   @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
   @Environment(\.accessibilityVoiceOverEnabled) private var accessibilityVoiceOverEnabled
   @Environment(\.workspaceWindowSession) var workspaceWindowSession
-  @Environment(\.workspaceWindowIsKey) private var workspaceWindowIsKey
+  @Environment(\.workspaceWindowIsKey) var workspaceWindowIsKey
   @EnvironmentObject var sceneCommandRouter: WorkspaceSceneCommandRouter
   @StateObject var editorState: WorkbenchMarkdownEditorFeatureFacade
   @StateObject var editorSessionState: MarkdownComposerEditorSessionState
@@ -155,7 +156,8 @@ struct MacMarkdownComposerView: View {
 
   init(
     draft: Binding<ArticleDraft>,
-    store: WorkbenchStore
+    store: WorkbenchStore,
+    bindingFlushClock: any Clock<Duration> = ContinuousClock()
   ) {
     _draft = draft
     let initialDraft = draft.wrappedValue
@@ -177,6 +179,7 @@ struct MacMarkdownComposerView: View {
       )
     )
     self.store = store
+    self.bindingFlushClock = bindingFlushClock
     aiActions = store.ai
     _inlineAIReviewState = ObservedObject(
       wrappedValue: store.ai.inlineStructuredEditReviewState
@@ -335,6 +338,7 @@ struct MacMarkdownComposerView: View {
       // sheet. It remains unconsumed until this window becomes key; owned
       // requests still reject every non-owner and every replay.
       guard isKeyWindow else { return }
+      syncActiveEditorSelection()
       applyEditorFocusRequest()
     }
     .onChange(of: selectedRange) { oldRange, newRange in
@@ -376,22 +380,31 @@ struct MacMarkdownComposerView: View {
       }
       .onChange(of: isFrontMatterSelection) { _, isSelected in
         if isSelected {
-          store.clearActiveEditorSelection(for: draft.id)
+          guard workspaceWindowIsKey, let windowID = workspaceWindowSession?.windowID else {
+            return
+          }
+          store.clearActiveEditorSelection(
+            for: draft.id,
+            windowID: windowID
+          )
         } else {
           syncActiveEditorSelection()
         }
       }
       .onChange(of: findQuery) { _, _ in
+        editorSessionState.findReplacePlanningCoordinator.cancel()
         findReplaceMessage = ""
         refreshFindMatchSnapshot()
         saveCurrentEditorSession()
       }
       .onChange(of: findOptions) { _, _ in
+        editorSessionState.findReplacePlanningCoordinator.cancel()
         findReplaceMessage = ""
         refreshFindMatchSnapshot()
         saveCurrentEditorSession()
       }
       .onChange(of: replacementText) { _, _ in
+        editorSessionState.findReplacePlanningCoordinator.cancel()
         saveCurrentEditorSession()
       }
       .onChange(of: isFindReplacePresented) { _, _ in
@@ -403,6 +416,7 @@ struct MacMarkdownComposerView: View {
         saveCurrentEditorSession()
       }
       .onChange(of: editorBodyRevision) { _, _ in
+        editorSessionState.findReplacePlanningCoordinator.cancel()
         pendingFindReplacePreview = nil
         refreshFindMatchSnapshot()
       }
@@ -466,14 +480,7 @@ struct MacMarkdownComposerView: View {
     await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
     guard !Task.isCancelled else { return }
     syncEditorBodyFromStore()
-    let restoredSession = store.markdownEditorSessionState(for: draft.id)
-    restoreInvalidFrontMatterDocument(
-      restoredSession.invalidFrontMatterDocument,
-      baseBodyMarkdown: restoredSession.invalidFrontMatterBaseBodyMarkdown,
-      baseBodyRevision: restoredSession.invalidFrontMatterBaseBodyRevision,
-      baseMetadataRevision: restoredSession.invalidFrontMatterBaseMetadataRevision
-    )
-    refreshFindMatchSnapshot()
+    restoreEditorSession(for: draft.id)
     syncActiveEditorSelection()
     refreshMarkdownCursorContextSnapshot()
     applyEditorFocusRequest()
@@ -653,22 +660,6 @@ struct MacMarkdownComposerView: View {
       .onDisappear(perform: handleComposerDisappear)
   }
 
-  private func handleComposerDisappear() {
-    sceneCommandRouter.unregisterMarkdownEditor(owner: sceneCommandOwnerID)
-    cancelFindMatchRefresh()
-    editorSessionSaveTask?.cancel()
-    editorSessionSaveTask = nil
-    markdownAnalysisTask?.cancel()
-    markdownAnalysisTask = nil
-    cancelAttachmentImport()
-    persistEditorSession(for: draft.id)
-    cancelSelectionAIAction()
-    cancelInlineGhostText()
-    cancelAIPromptClipboardTask()
-    externalBrowserPreviewCoordinator.cancelPendingOpen()
-    store.clearActiveEditorSelection(for: draft.id)
-  }
-
   // Full-bleed writing surface: the pane itself is the page, so the editor is
   // not inset as a bordered card inside it.
   var editorSurface: some View {
@@ -706,6 +697,9 @@ struct MacMarkdownComposerView: View {
           reportsScrollSourceLine: false,
           scrollSyncUpdate: nil,
           scrollRestorationUpdate: editorScrollRestorationUpdate,
+          bindingFlushClock: bindingFlushClock,
+          commandTarget: editorSessionState.commandTarget,
+          commandTargetDocumentID: draft.id,
           onStatisticsChanged: { statistics in
             receiveEditorStatistics(statistics, for: statisticsDraftID)
           },
@@ -1131,27 +1125,6 @@ struct MacMarkdownComposerView: View {
     slashCommandSelectedIndex = 0
   }
 
-}
-
-extension MarkdownFrontMatterEditingIssue {
-  fileprivate var workbenchMessage: String {
-    switch self {
-    case .invalidDelimiter:
-      return String(localized: "起止分隔符缺失或与当前站点的 Front Matter 格式不匹配。")
-    case .concurrentBodyChange:
-      return String(localized: "另一窗口已修改正文；恢复原文仍保留，未覆盖另一窗口的内容。")
-    case .malformedLine(let line):
-      return String(localized: "第 \(line) 行不是有效的键值格式。")
-    case .missingDate:
-      return String(localized: "缺少必需的 date 字段。")
-    case .invalidDate:
-      return String(localized: "date 字段不是有效日期。")
-    case .invalidDraftFlag:
-      return String(localized: "draft 字段必须使用有效的布尔值。")
-    case .invalidVisibility:
-      return String(localized: "visibility 字段不是受支持的可见性值。")
-    }
-  }
 }
 
 extension MacMarkdownComposerView {

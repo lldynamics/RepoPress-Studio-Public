@@ -1,8 +1,8 @@
 import CoreGraphics
 import Foundation
+import PublishingCoreSupport
 import ImageIO
 import UniformTypeIdentifiers
-
 public struct ImageDimensions: Codable, Hashable, Sendable {
   public var width: Int
   public var height: Int
@@ -603,13 +603,13 @@ public enum ImageWorkbenchError: LocalizedError {
   public var errorDescription: String? {
     switch self {
     case .cannotCreateOptimizedImage(let filename):
-      return "无法创建优化图片：\(filename)"
+      return CoreL10n.format("无法创建优化图片：%@", filename)
     case .cannotFinalizeOptimizedImage(let filename):
-      return "无法写入优化图片：\(filename)"
+      return CoreL10n.format("无法写入优化图片：%@", filename)
     case .unsafeImageDimensions(let filename, let width, let height):
-      return "图片尺寸超过安全处理上限：\(filename)（\(width) × \(height)）"
+      return CoreL10n.format("图片尺寸超过安全处理上限：%@（%@ × %@）", filename, String(width), String(height))
     case .externalToolTimedOut(let tool):
-      return "\(tool) 执行超时，已停止。"
+      return CoreL10n.format("%@ 执行超时，已停止。", tool)
     }
   }
 }

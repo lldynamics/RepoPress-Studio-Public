@@ -306,3 +306,30 @@ enum ContentHealthLayoutMetrics {
     return primaryWidth < regularHeaderMinimumPrimaryWidth
   }
 }
+
+struct ContentHealthVisibleSummary {
+  let errorCount: Int
+  let warningCount: Int
+  let aiFixCount: Int
+  let passingDraftCount: Int
+  let maintenanceCount: Int
+
+  init(
+    rows: [ContentHealthArticleRowModel],
+    siteIssues: [PreflightIssue],
+    maintenanceItems: [MaintenanceActionItem],
+    passingDraftCount: Int
+  ) {
+    let articleErrorCount = rows.reduce(0) { $0 + $1.errorCount }
+    let articleWarningCount = rows.reduce(0) { $0 + $1.warningCount }
+    errorCount = articleErrorCount + siteIssues.filter { $0.severity == .error }.count
+    warningCount = articleWarningCount + siteIssues.filter { $0.severity == .warning }.count
+    aiFixCount =
+      rows.filter { $0.aiFixItem != nil }.count
+      + maintenanceItems.filter {
+        $0.draftID != nil
+      }.count
+    self.passingDraftCount = passingDraftCount
+    maintenanceCount = maintenanceItems.count
+  }
+}

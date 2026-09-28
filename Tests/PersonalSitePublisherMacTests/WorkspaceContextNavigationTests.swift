@@ -14,27 +14,38 @@ final class WorkspaceContextNavigationTests: XCTestCase {
     XCTAssertEqual(WorkspaceResponsiveLayoutSnapshot(width: 1_240).band, .standardInspector)
   }
 
-  func testCompactRailExposesTheSixDirectWorkspaceRoutes() {
+  func testCompactRailExposesTheFiveVisualWorkspaceRoutesInOrder() {
     XCTAssertEqual(
       WorkspaceCompactNavigationRail.primarySections,
-      [.writing, .library, .rss, .sync, .contentHealth, .images]
+      [.writing, .library, .rss, .images, .sync]
     )
   }
 
-  func testFullAndCompactRailsShareTheCommandShortcutOrder() {
+  func testVisualRailAndCommandMenuKeepSeparateStableOrders() {
     XCTAssertEqual(
       WorkspaceNavigationRouteDescriptor.primarySections,
-      WorkspaceNavigationPresentation.commandMenuItems.map(\.section)
+      [.writing, .library, .rss, .images, .sync]
     )
     XCTAssertEqual(
       WorkspaceNavigationRouteDescriptor.primarySections,
       WorkspaceCompactNavigationRail.primarySections
     )
     XCTAssertEqual(
-      Set(WorkspaceCompactNavigationRail.primarySections).count,
-      6
+      WorkspaceNavigationPresentation.commandMenuItems.map(\.section),
+      [.writing, .library, .rss, .sync, .contentHealth, .images]
+    )
+    XCTAssertEqual(
+      WorkspaceNavigationPresentation.commandMenuItems.map(\.keyboardShortcutKey),
+      ["1", "2", "3", "4", "5", "6"]
     )
     XCTAssertEqual(WorkspaceNavigationRouteDescriptor.primarySection(for: .images), .images)
+    XCTAssertEqual(WorkspaceNavigationRouteDescriptor.primarySection(for: .contentHealth), .sync)
+    XCTAssertEqual(WorkspaceSection.sync.systemImage, "globe")
+    XCTAssertTrue(
+      WorkspaceNavigationRouteDescriptor.checksHint(for: .sync, issueCount: 3).contains("3")
+    )
+    XCTAssertEqual(WorkspaceNavigationRouteDescriptor.checksHint(for: .writing, issueCount: 3), "")
+    XCTAssertEqual(WorkspaceNavigationRouteDescriptor.checksHint(for: .sync, issueCount: nil), "")
   }
 
   func testSectionSwitchKeepsAnExistingDraftContextAvailableToTheWindowSession() {

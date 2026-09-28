@@ -40,6 +40,12 @@ extension WritingDraftColumn {
       createDraft: {
         store.createDraft()
       },
+      createGeneralDraft: {
+        store.createGeneralDraft()
+      },
+      presentTemplatePicker: {
+        isTemplatePickerPresented = true
+      },
       focusSearch: {
         isSearchFieldFocused = true
       },

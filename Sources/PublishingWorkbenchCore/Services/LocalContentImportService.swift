@@ -1,6 +1,6 @@
 import Foundation
+import PublishingCoreSupport
 import PublishingDomainContracts
-
 public struct LocalContentImportResult: Codable, Hashable, Sendable {
   public var importedDrafts: [ArticleDraft]
   public var skippedPaths: [String]
@@ -59,9 +59,9 @@ public enum LocalContentImportProjectDocumentError: LocalizedError, Equatable, S
   public var errorDescription: String? {
     switch self {
     case .invalidRepositoryPath(let path):
-      return "路径不是站点内容目录中的安全 Markdown 路径：\(path)"
+      return CoreL10n.format("路径不是站点内容目录中的安全 Markdown 路径：%@", path)
     case .roundTripPathMismatch(let path):
-      return "文章路径与当前站点发布规则不一致，无法建立项目文件绑定：\(path)"
+      return CoreL10n.format("文章路径与当前站点发布规则不一致，无法建立项目文件绑定：%@", path)
     }
   }
 }

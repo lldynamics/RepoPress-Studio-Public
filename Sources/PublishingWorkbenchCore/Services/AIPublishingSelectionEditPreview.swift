@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 public enum AIPublishingSelectionEditApplication: String, Codable, Hashable, Sendable {
   case replaceRange
@@ -80,15 +81,15 @@ public enum AIPublishingSelectionEditPreviewApplyError: LocalizedError, Equatabl
   public var errorDescription: String? {
     switch self {
     case .draftChanged:
-      return "当前文章已切换，请重新生成 AI 预览。"
+      return CoreL10n.text("当前文章已切换，请重新生成 AI 预览。")
     case .sourceBodyChanged:
-      return "文章正文已变化，请重新生成 AI 预览。"
+      return CoreL10n.text("文章正文已变化，请重新生成 AI 预览。")
     case .emptyReplacement:
-      return "AI 预览内容为空，未应用。"
+      return CoreL10n.text("AI 预览内容为空，未应用。")
     case .invalidRange:
-      return "原选区已经失效，请重新选择正文。"
+      return CoreL10n.text("原选区已经失效，请重新选择正文。")
     case .originalTextChanged:
-      return "原选区内容已变化，请重新生成 AI 预览。"
+      return CoreL10n.text("原选区内容已变化，请重新生成 AI 预览。")
     }
   }
 }

@@ -13,21 +13,21 @@ final class WorkspaceModuleVisibilityTests: XCTestCase {
   func testEachFlagFiltersOnlyItsPrimarySection() {
     let rss = WorkspaceModuleVisibility(rssEnabled: false)
     XCTAssertFalse(rss.allows(.rss))
-    XCTAssertEqual(rss.primarySections, [.writing, .library, .sync, .contentHealth, .images])
+    XCTAssertEqual(rss.primarySections, [.writing, .library, .images, .sync])
 
     let library = WorkspaceModuleVisibility(libraryEnabled: false)
     XCTAssertFalse(library.allows(.library))
-    XCTAssertEqual(library.primarySections, [.writing, .rss, .sync, .contentHealth, .images])
+    XCTAssertEqual(library.primarySections, [.writing, .rss, .images, .sync])
 
     let images = WorkspaceModuleVisibility(imagesEnabled: false)
     XCTAssertFalse(images.allows(.images))
-    XCTAssertEqual(images.primarySections, [.writing, .library, .rss, .sync, .contentHealth])
+    XCTAssertEqual(images.primarySections, [.writing, .library, .rss, .sync])
   }
 
   func testAllOffPreservesCoreSectionsAndFallsBackToWriting() {
     let visibility = WorkspaceModuleVisibility(
       rssEnabled: false, libraryEnabled: false, imagesEnabled: false)
-    XCTAssertEqual(visibility.primarySections, [.writing, .sync, .contentHealth])
+    XCTAssertEqual(visibility.primarySections, [.writing, .sync])
     XCTAssertEqual(visibility.resolvedSection(.rss), .writing)
     XCTAssertEqual(visibility.resolvedSection(.library), .writing)
     XCTAssertEqual(visibility.resolvedSection(.images), .writing)

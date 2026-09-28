@@ -1,5 +1,6 @@
 import Foundation
 import PublishingPreviewCore
+import os
 
 #if canImport(Darwin)
   import Darwin
@@ -607,72 +608,82 @@ private actor LocalSitePreviewStopExecutor {
   }
 }
 
-final class LocalSitePreviewLogCollector: @unchecked Sendable {
+final class LocalSitePreviewLogCollector: Sendable {
   private static let maximumLineBytes = 4_096
-  enum Stream {
+  enum Stream: Sendable {
     case standardOutput
     case standardError
   }
 
-  private let lock = NSLock()
+  private struct State: Sendable {
+    var recentLogLines: [String] = []
+    var pendingOutputData = Data()
+    var pendingErrorData = Data()
+  }
+
   private let maximumLineCount: Int
-  private var recentLogLines: [String] = []
-  private var pendingOutputData = Data()
-  private var pendingErrorData = Data()
+  private let state: OSAllocatedUnfairLock<State>
 
   init(maximumLineCount: Int) {
     self.maximumLineCount = maximumLineCount
+    self.state = OSAllocatedUnfairLock(initialState: State())
   }
 
   func append(_ data: Data, stream: Stream = .standardOutput) {
-    lock.lock()
-    defer { lock.unlock() }
-    var pendingData = stream == .standardOutput ? pendingOutputData : pendingErrorData
-    pendingData.append(data)
+    state.withLock { state in
+      var pendingData =
+        stream == .standardOutput
+        ? state.pendingOutputData
+        : state.pendingErrorData
+      pendingData.append(data)
 
-    while let newlineIndex = pendingData.firstIndex(of: 0x0A) {
-      var lineData = pendingData.prefix(upTo: newlineIndex)
-      pendingData.removeSubrange(...newlineIndex)
-      if lineData.last == 0x0D {
-        lineData.removeLast()
+      while let newlineIndex = pendingData.firstIndex(of: 0x0A) {
+        var lineData = pendingData.prefix(upTo: newlineIndex)
+        pendingData.removeSubrange(...newlineIndex)
+        if lineData.last == 0x0D {
+          lineData.removeLast()
+        }
+        appendLine(
+          String(decoding: lineData.prefix(Self.maximumLineBytes), as: UTF8.self),
+          to: &state
+        )
       }
-      appendLineLocked(String(decoding: lineData.prefix(Self.maximumLineBytes), as: UTF8.self))
-    }
-    if pendingData.count > Self.maximumLineBytes {
-      pendingData.removeAll(keepingCapacity: true)
-    }
-    if stream == .standardOutput {
-      pendingOutputData = pendingData
-    } else {
-      pendingErrorData = pendingData
+      if pendingData.count > Self.maximumLineBytes {
+        pendingData.removeAll(keepingCapacity: true)
+      }
+      if stream == .standardOutput {
+        state.pendingOutputData = pendingData
+      } else {
+        state.pendingErrorData = pendingData
+      }
     }
   }
 
   func reset() {
-    lock.lock()
-    recentLogLines = []
-    pendingOutputData = Data()
-    pendingErrorData = Data()
-    lock.unlock()
+    state.withLock { state in
+      state.recentLogLines = []
+      state.pendingOutputData = Data()
+      state.pendingErrorData = Data()
+    }
   }
 
   func lines(includePendingLine: Bool = false) -> [String] {
-    lock.lock()
-    defer { lock.unlock() }
-    guard includePendingLine else { return recentLogLines }
-    return recentLogLines
-      + [pendingOutputData, pendingErrorData].compactMap { data in
-        guard !data.isEmpty else { return nil }
-        let line = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .newlines)
-        return line.isEmpty ? nil : line
-      }
+    state.withLock { state in
+      guard includePendingLine else { return state.recentLogLines }
+      return state.recentLogLines
+        + [state.pendingOutputData, state.pendingErrorData].compactMap { data in
+          guard !data.isEmpty else { return nil }
+          let line = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .newlines)
+          return line.isEmpty ? nil : line
+        }
+    }
   }
 
-  private func appendLineLocked(_ line: String) {
+  private func appendLine(_ line: String, to state: inout State) {
     guard !line.isEmpty else { return }
-    recentLogLines.append(line)
-    if recentLogLines.count > maximumLineCount {
-      recentLogLines.removeFirst(recentLogLines.count - maximumLineCount)
+    state.recentLogLines.append(line)
+    if state.recentLogLines.count > maximumLineCount {
+      state.recentLogLines.removeFirst(state.recentLogLines.count - maximumLineCount)
     }
   }
 }

@@ -92,7 +92,7 @@ public struct SEOAuditService: Sendable {
       contentsOf: headingFindings(
         h1Headings,
         title: title,
-        warnsWhenBodyH1DuplicatesTitle: profile.resolvedWarnsWhenBodyH1DuplicatesTitle
+        profile: profile
       ))
     findings.append(contentsOf: coverFindings(hasCover: hasCover, draft: draft))
     findings.append(contentsOf: taxonomyFindings(draft: draft, profile: profile))
@@ -208,7 +208,7 @@ public struct SEOAuditService: Sendable {
   private func headingFindings(
     _ h1Headings: [String],
     title: String,
-    warnsWhenBodyH1DuplicatesTitle: Bool
+    profile: SiteProfile
   ) -> [SEOAuditFinding] {
     if h1Headings.isEmpty {
       return [
@@ -238,7 +238,7 @@ public struct SEOAuditService: Sendable {
       && h1Headings.contains {
         normalizedHeadingTitle($0) == normalizedHeadingTitle(title)
       }
-    if warnsWhenBodyH1DuplicatesTitle && hasDuplicatedTitle {
+    if hasDuplicatedTitle && profile.resolvedWarnsWhenBodyH1DuplicatesTitle {
       findings.append(
         .init(
           severity: .warning,

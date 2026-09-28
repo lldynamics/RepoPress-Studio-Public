@@ -11,6 +11,8 @@ public struct AITranslationDraftLink: Codable, Hashable, Sendable {
   /// The source's planned repository path when the translation was created.
   /// Optional so plans written before native translation paths still decode.
   public var sourceMarkdownPath: String?
+  /// Nil identifies snapshots created before translation-only fingerprints.
+  public var sourceTranslationFingerprint: String?
 
   public init(
     sourceDraftID: ArticleDraft.ID,
@@ -18,7 +20,8 @@ public struct AITranslationDraftLink: Codable, Hashable, Sendable {
     targetLanguageCode: String,
     sourceContentFingerprint: String,
     createdAt: Date,
-    sourceMarkdownPath: String? = nil
+    sourceMarkdownPath: String? = nil,
+    sourceTranslationFingerprint: String? = nil
   ) {
     self.sourceDraftID = sourceDraftID
     self.translatedDraftID = translatedDraftID
@@ -26,6 +29,7 @@ public struct AITranslationDraftLink: Codable, Hashable, Sendable {
     self.sourceContentFingerprint = sourceContentFingerprint
     self.createdAt = createdAt
     self.sourceMarkdownPath = sourceMarkdownPath
+    self.sourceTranslationFingerprint = sourceTranslationFingerprint
   }
 }
 

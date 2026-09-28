@@ -1,5 +1,7 @@
 import AppKit
+import PublishingCoreSupport
 import PublishingMarkdownCore
+import PublishingTestSupport
 import PublishingWorkbenchCore
 import SwiftUI
 import XCTest
@@ -140,8 +142,13 @@ final class MarkdownEditorAppKitInteractionExplicitEditTests:
 
     MacMarkdownEditorTerminationFlushRegistry.flushPendingWritesForTermination()
 
+    let persistedSession = store.markdownEditorSessionState(for: originalDraft.id)
+    XCTAssertEqual(persistedSession.invalidFrontMatterDocument, updated)
+    let recoveryOwnerID = try XCTUnwrap(persistedSession.invalidFrontMatterRecoveryOwnerWindowID)
     XCTAssertEqual(
-      store.markdownEditorSessionState(for: originalDraft.id).invalidFrontMatterDocument, updated)
+      persistedSession.invalidFrontMatterRecoveryRecords?[recoveryOwnerID]?.document,
+      updated
+    )
     let terminationResult = await store.prepareForSafeTermination()
     XCTAssertEqual(terminationResult, .saved)
     let reloaded = WorkbenchStore(persistence: persistence, safeMode: true)
@@ -240,6 +247,7 @@ final class MarkdownEditorAppKitInteractionExplicitEditTests:
     let store = WorkbenchStore(persistence: persistence, safeMode: true)
     let originalDraft = try XCTUnwrap(store.selectedDraft)
     var boundDraft = originalDraft
+    let bindingFlushClock = ManualClock()
     let composer = MacMarkdownComposerView(
       draft: Binding(
         get: { store.draft(for: originalDraft.id) ?? boundDraft },
@@ -248,7 +256,8 @@ final class MarkdownEditorAppKitInteractionExplicitEditTests:
           XCTAssertTrue(store.updateDraftFromEditor(updated))
         }
       ),
-      store: store
+      store: store,
+      bindingFlushClock: bindingFlushClock
     )
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 900, height: 700),
@@ -280,7 +289,7 @@ final class MarkdownEditorAppKitInteractionExplicitEditTests:
     // The body observer can settle while its selection observer still reports
     // the beginning of the body. Moving only the caret afterwards must reopen
     // the slash command path without another text edit.
-    try await Task.sleep(for: .milliseconds(400))
+    await advanceBindingFlush(bindingFlushClock, coordinator: coordinator)
     let expectedBody = originalDraft.bodyMarkdown + "\n/"
     XCTAssertEqual(store.draftBodyEditorBuffer(for: originalDraft.id).bodyMarkdown, expectedBody)
     XCTAssertEqual(textView.selectedRange(), NSRange(location: bodyStart, length: 0))
@@ -300,7 +309,7 @@ final class MarkdownEditorAppKitInteractionExplicitEditTests:
       NSRange(location: (expectedBody as NSString).length, length: 0),
       "The existing selection delegate must enqueue the body-relative late caret."
     )
-    try await Task.sleep(for: .milliseconds(400))
+    await advanceBindingFlush(bindingFlushClock, coordinator: coordinator)
     XCTAssertEqual(
       coordinator.selectedRange,
       NSRange(location: (expectedBody as NSString).length, length: 0),
@@ -316,7 +325,7 @@ final class MarkdownEditorAppKitInteractionExplicitEditTests:
       NSRange(location: (textView.string as NSString).length, length: 0)
     )
     textView.insertText("NEXT_INPUT", replacementRange: textView.selectedRange())
-    try await Task.sleep(for: .milliseconds(400))
+    await advanceBindingFlush(bindingFlushClock, coordinator: coordinator)
     XCTAssertTrue(textView.string.hasSuffix("\n## NEXT_INPUT"))
     XCTAssertTrue(
       store.draftBodyEditorBuffer(for: originalDraft.id).bodyMarkdown.hasSuffix("\n## NEXT_INPUT")
@@ -744,6 +753,16 @@ final class MarkdownEditorAppKitInteractionExplicitEditTests:
       width: max(viewRect.width, 1),
       height: viewRect.height
     )
+  }
+
+  private func advanceBindingFlush(
+    _ clock: ManualClock,
+    coordinator: MacMarkdownTextView.Coordinator
+  ) async {
+    await clock.waitForPendingSleepCount(1)
+    clock.advance(by: DebounceIntervals.markdownBindingFlush)
+    await coordinator.waitForPendingBindingFlush()
+    await Task.yield()
   }
 
   private func mountedMarkdownTextView(in window: NSWindow) async throws

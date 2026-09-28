@@ -1,6 +1,6 @@
 import Foundation
+import PublishingCoreSupport
 import PublishingAICore
-
 /// A task-resolved, privacy-bound transport. The request and its prepared
 /// client seal are intentionally exposed to Core callers so an authorization gate
 /// and a later agent round can reuse the exact normalized body without a
@@ -53,12 +53,6 @@ public struct AIPublishingAssistantService: Sendable {
 
   public init(client: AIChatCompletionClient = AIChatCompletionClient()) {
     self.client = client
-  }
-
-  func authorizingNonStreamingRequests(
-    _ authorization: @escaping @Sendable () async throws -> Void
-  ) -> AIPublishingAssistantService {
-    AIPublishingAssistantService(client: client.authorizingNonStreamingRequests(authorization))
   }
 
   public func perform(
@@ -674,19 +668,19 @@ public enum AIPublishingAssistantError: LocalizedError, Equatable {
   public var errorDescription: String? {
     switch self {
     case .dataSharingConsentRequired(let providerName, let destination):
-      return "发送前，请先在“设置 → AI 写作”中同意将内容发送给 \(providerName)（\(destination)）处理。"
+      return CoreL10n.format("发送前，请先在“设置 → AI 写作”中同意将内容发送给 %@（%@）处理。", providerName, destination)
     case .missingAPIKey:
-      return "请先在 Settings 的 AI 页保存 API Key。"
+      return CoreL10n.text("请先在 Settings 的 AI 页保存 API Key。")
     case .emptyChatMessage:
-      return "请先输入要发送给 AI 的内容。"
+      return CoreL10n.text("请先输入要发送给 AI 的内容。")
     case .unsupportedImageAttachments(let providerName):
-      return "\(providerName) 当前接口不支持图片输入，请切换到支持视觉输入的模型。"
+      return CoreL10n.format("%@ 当前接口不支持图片输入，请切换到支持视觉输入的模型。", providerName)
     case .emptyMetadataSuggestion:
-      return "AI 没有返回可应用的元数据建议。"
+      return CoreL10n.text("AI 没有返回可应用的元数据建议。")
     case .emptyImageTextTargets:
-      return "当前文章没有需要生成 alt/caption 的图片。"
+      return CoreL10n.text("当前文章没有需要生成 alt/caption 的图片。")
     case .emptyImageTextSuggestions:
-      return "AI 没有返回可应用的图片 alt/caption 建议。"
+      return CoreL10n.text("AI 没有返回可应用的图片 alt/caption 建议。")
     }
   }
 }

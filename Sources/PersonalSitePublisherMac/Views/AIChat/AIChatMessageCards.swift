@@ -6,15 +6,18 @@ struct AIChatMessageSurface<Content: View>: View {
   @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let role: AIPublishingChatRole
   let timestamp: Date?
+  let headerAccessory: (() -> AnyView)?
   @ViewBuilder let content: () -> Content
 
   init(
     role: AIPublishingChatRole,
     timestamp: Date? = nil,
+    headerAccessory: (() -> AnyView)? = nil,
     @ViewBuilder content: @escaping () -> Content
   ) {
     self.role = role
     self.timestamp = timestamp
+    self.headerAccessory = headerAccessory
     self.content = content
   }
 
@@ -35,6 +38,9 @@ struct AIChatMessageSurface<Content: View>: View {
         }
         if !isUser {
           Spacer(minLength: 0)
+        }
+        if let headerAccessory {
+          headerAccessory()
         }
       }
       .foregroundStyle(isUser ? workbenchAccentColor : WorkbenchTheme.primary)

@@ -55,7 +55,7 @@ struct WorkspaceTaskMetadataSection: View {
           TextField("输入文章标题", text: $draft.title)
             .textFieldStyle(.roundedBorder)
             .accessibilityLabel("元数据标题")
-            .accessibilityValue(draft.title.isEmpty ? "未填写" : draft.title)
+            .accessibilityValue(draft.title.isEmpty ? String(localized: "未填写") : draft.title)
         }
         .id(PublishMetadataFieldAnchor.id(for: "title"))
         metadataField("固定链接（Slug）") {
@@ -77,7 +77,7 @@ struct WorkspaceTaskMetadataSection: View {
               }
             }
             .accessibilityLabel("文章固定链接")
-            .accessibilityValue(slugText.isEmpty ? "未填写" : slugText)
+            .accessibilityValue(slugText.isEmpty ? String(localized: "未填写") : slugText)
           if !draft.pendingSlugRedirectPaths.isEmpty {
             Button {
               store.selectSection(.contentHealth)
@@ -159,7 +159,9 @@ struct WorkspaceTaskMetadataSection: View {
             Toggle("标记为草稿", isOn: $draft.draft)
               .id(PublishMetadataFieldAnchor.id(for: "draft"))
               .accessibilityLabel("草稿状态")
-              .accessibilityValue(draft.draft ? "草稿" : "非草稿")
+              .accessibilityValue(
+                draft.draft ? String(localized: "草稿") : String(localized: "非草稿")
+              )
           }
 
           InspectorSection("作者") {
@@ -168,7 +170,8 @@ struct WorkspaceTaskMetadataSection: View {
                 .textFieldStyle(.roundedBorder)
                 .accessibilityLabel("文章作者")
                 .accessibilityValue(
-                  draft.authors.isEmpty ? "未填写" : draft.authors.joined(separator: "，"))
+                  draft.authors.isEmpty
+                    ? String(localized: "未填写") : draft.authors.joined(separator: "，"))
             }
           }
 
@@ -194,24 +197,7 @@ struct WorkspaceTaskMetadataSection: View {
             )
 
             if let link = draft.translationLink {
-              let source = store.drafts.first(where: { $0.id == link.sourceDraftID })
-              let sourceProfile = source.map { store.profile(for: $0) }
-              let freshness = draft.translationFreshness(source: source, profile: sourceProfile)
-              InspectorStatRow(
-                title: String(localized: "关联译文"),
-                value: "\(link.targetLanguageCode) · \(translationStatusText(freshness))",
-                systemImage: freshness == .current
-                  ? "globe" : "exclamationmark.arrow.triangle.2.circlepath"
-              )
-              if let source {
-                Button {
-                  store.selectDraft(source.id)
-                } label: {
-                  Label("查看原稿：\(source.title)", systemImage: "arrow.up.left")
-                }
-                .buttonStyle(.link)
-                .accessibilityIdentifier("metadata-open-translation-source")
-              }
+              TranslationRelationshipSection(draft: $draft, store: store, link: link)
             }
 
             Text(draft.repositoryPath?.normalizedRelativePath() ?? "计划路径：\(state.markdownPath)")
@@ -252,15 +238,6 @@ struct WorkspaceTaskMetadataSection: View {
     }
     .onDisappear {
       cancelSummaryGeneration()
-    }
-  }
-
-  private func translationStatusText(_ freshness: ArticleTranslationFreshness?) -> String {
-    switch freshness {
-    case .current: return String(localized: "与原稿一致")
-    case .stale: return String(localized: "原稿已变化，译文待核对")
-    case .sourceMissing: return String(localized: "找不到原稿")
-    case .none: return String(localized: "状态未知")
     }
   }
 
@@ -359,31 +336,49 @@ struct WorkspaceTaskMetadataSection: View {
 
         Spacer(minLength: 0)
 
-        Button(action: generateAISummary) {
-          if isGeneratingSummary {
-            HStack(spacing: 5) {
-              ProgressView()
-                .controlSize(.small)
-              Text("生成中")
+        if summaryAIAvailability.isEnabled || isGeneratingSummary {
+          Button(action: generateAISummary) {
+            if isGeneratingSummary {
+              HStack(spacing: 5) {
+                ProgressView()
+                  .controlSize(.small)
+                Text("生成中")
+              }
+            } else {
+              Label(summaryAIButtonTitle, systemImage: "sparkles")
             }
-          } else {
-            Label(summaryAIButtonTitle, systemImage: "sparkles")
           }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+          .disabled(isGeneratingSummary)
+          .help(summaryAIUnavailableReason ?? summaryAIButtonHelp)
+          .accessibilityIdentifier("metadata-summary-ai-button")
+          .accessibilityLabel(summaryAIButtonTitle)
+          .accessibilityValue(isGeneratingSummary ? String(localized: "生成中") : summaryAIButtonTitle)
+        } else {
+          // Keep the action name legible without presenting an inert button
+          // with the system's low-contrast disabled tint.
+          Label(summaryAIButtonTitle, systemImage: "sparkles")
+            .font(.callout)
+            .foregroundStyle(.primary)
+            .help(summaryAIUnavailableReason ?? summaryAIButtonHelp)
+            .accessibilityIdentifier("metadata-summary-ai-unavailable")
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .disabled(!summaryAIAvailability.isEnabled)
-        .help(summaryAIAvailability.unavailableReason ?? summaryAIButtonHelp)
-        .accessibilityIdentifier("metadata-summary-ai-button")
-        .accessibilityLabel("AI 自动生成摘要")
-        .accessibilityValue(isGeneratingSummary ? "生成中" : summaryAIButtonTitle)
+      }
+
+      if let summaryAIUnavailableReason {
+        Label(summaryAIUnavailableReason, systemImage: "info.circle")
+          .font(.caption)
+          .foregroundStyle(WorkbenchTheme.warning)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityIdentifier("metadata-summary-ai-unavailable-reason")
       }
 
       TextField("输入用于列表和搜索的文章摘要", text: $draft.summary, axis: .vertical)
         .textFieldStyle(.roundedBorder)
         .lineLimit(2...5)
         .accessibilityLabel("文章摘要")
-        .accessibilityValue(draft.summary.isEmpty ? "未填写" : draft.summary)
+        .accessibilityValue(draft.summary.isEmpty ? String(localized: "未填写") : draft.summary)
 
       if let summaryGenerationMessage {
         Label {
@@ -407,7 +402,7 @@ struct WorkspaceTaskMetadataSection: View {
   private var summaryAIButtonTitle: String {
     draft.summary.trimmedForPublishing.isEmpty
       ? String(localized: "AI 生成")
-      : String(localized: "AI 修复")
+      : String(localized: "AI 改写")
   }
 
   private var summaryAIButtonHelp: String {
@@ -425,6 +420,16 @@ struct WorkspaceTaskMetadataSection: View {
       draft: draft,
       isAIEnabled: isAIEnabled,
       activeAction: isGeneratingSummary || summaryAI.isActionRunning ? .suggestSummary : nil
+    )
+  }
+
+  private var summaryAIUnavailableReason: String? {
+    let profile = store.profile(for: draft)
+    let config = summaryAI.providerConfig(for: profile)
+    return WorkspaceTaskInspectorPresentation.summaryAIUnavailableReason(
+      availability: summaryAIAvailability,
+      requiresAPIKey: config.requiresAPIKey,
+      hasAPIKey: summaryAI.tokenAvailability.hasToken
     )
   }
 
@@ -537,6 +542,7 @@ private struct WorkspaceTaskSEOPresentationKey: Hashable {
   let editorMetadataRevision: UInt64
   let updatedAt: Date
   let profile: SiteProfile
+  let repositoryReportRevision: UUID
   let cachedSnapshotSignature: String?
   let cachedSnapshotDate: Date?
   let maintenanceSnapshotDate: Date?
@@ -605,18 +611,38 @@ struct WorkspaceTaskSEOSection: View {
         InspectorStatRow(
           title: "状态", value: report.statusTitle, systemImage: "chart.bar.doc.horizontal")
         InspectorStatRow(
-          title: "标题", value: "\(report.titleCharacterCount) 字", systemImage: "doc.plaintext")
+          title: "标题",
+          value: WorkspaceTaskInspectorPresentation.seoCharacterCountText(
+            report.titleCharacterCount),
+          systemImage: "doc.plaintext"
+        )
         InspectorStatRow(
-          title: "摘要", value: "\(report.summaryCharacterCount) 字", systemImage: "text.alignleft")
+          title: "摘要",
+          value: WorkspaceTaskInspectorPresentation.seoCharacterCountText(
+            report.summaryCharacterCount),
+          systemImage: "text.alignleft"
+        )
         InspectorStatRow(title: "H1", value: "\(report.h1Count)", systemImage: "number")
 
-        Toggle("提示正文 H1 与标题重复", isOn: h1DuplicateWarningBinding)
-          .toggleStyle(.checkbox)
-          .controlSize(.small)
-          .help("此站点启用时，正文 H1 与 Front Matter title 相同会显示一条非阻断建议。")
-          .accessibilityLabel("提示正文 H1 与标题重复")
-          .accessibilityValue(
-            h1DuplicateWarningBinding.wrappedValue ? "已开启" : "已关闭")
+        VStack(alignment: .leading, spacing: 4) {
+          Toggle("提示正文 H1 与标题重复", isOn: h1DuplicateWarningBinding)
+            .toggleStyle(.checkbox)
+            .controlSize(.small)
+            .help("此站点启用时，正文 H1 与 Front Matter title 相同会显示一条非阻断建议。")
+            .accessibilityLabel("提示正文 H1 与标题重复")
+            .accessibilityValue(
+              store.profile(for: draft).resolvedWarnsWhenBodyH1DuplicatesTitle
+                ? String(localized: "已开启") : String(localized: "已关闭")
+            )
+          Text(
+            String(
+              format: String(localized: "此设置应用到“%@”的所有文章。"),
+              store.profile(for: draft).name
+            )
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        }
 
         HStack {
           Button {
@@ -671,15 +697,37 @@ struct WorkspaceTaskSEOSection: View {
         isExpanded: $showsSocialPreview
       ) {
         if let snapshot {
+          let imagePresentation = WorkspaceTaskInspectorPresentation.socialImagePresentation(
+            imagePath: snapshot.imagePath,
+            imageDimensions: snapshot.imageDimensions
+          )
           InspectorStatRow(
-            title: "标题", value: "\(snapshot.titleCharacterCount) 字", systemImage: "doc.plaintext")
+            title: "标题",
+            value: WorkspaceTaskInspectorPresentation.seoCharacterCountText(
+              snapshot.titleCharacterCount
+            ),
+            systemImage: "doc.plaintext"
+          )
           InspectorStatRow(
-            title: "描述", value: "\(snapshot.descriptionCharacterCount) 字",
-            systemImage: "text.alignleft")
-          InspectorStatRow(
-            title: "图片",
-            value: snapshot.imageDimensions?.workbenchDimensionText
-              ?? (snapshot.imagePath == nil ? "未设置" : "已设置"), systemImage: "photo")
+            title: "描述",
+            value: WorkspaceTaskInspectorPresentation.seoCharacterCountText(
+              snapshot.descriptionCharacterCount
+            ),
+            systemImage: "text.alignleft"
+          )
+          VStack(alignment: .leading, spacing: 4) {
+            InspectorStatRow(title: "图片", value: imagePresentation.value, systemImage: "photo")
+              .foregroundStyle(
+                imagePresentation.warning == nil ? Color.primary : WorkbenchTheme.warning)
+            if let warning = imagePresentation.warning {
+              Label(warning, systemImage: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(WorkbenchTheme.warning)
+                .fixedSize(horizontal: false, vertical: true)
+                .help(warning)
+                .accessibilityIdentifier("seo-social-image-size-warning")
+            }
+          }
           Text(snapshot.canonicalURLText)
             .font(.caption.monospaced())
             .foregroundStyle(.secondary)
@@ -759,6 +807,7 @@ struct WorkspaceTaskSEOSection: View {
       editorMetadataRevision: draft.editorMetadataRevision,
       updatedAt: draft.updatedAt,
       profile: store.profile(for: draft),
+      repositoryReportRevision: store.repositoryReportRevision,
       cachedSnapshotSignature: cachedSnapshot?.signature,
       cachedSnapshotDate: cachedSnapshot?.generatedAt,
       maintenanceSnapshotDate: seoObservation.maintenanceSnapshotDate,
@@ -770,9 +819,7 @@ struct WorkspaceTaskSEOSection: View {
     Binding(
       get: { store.profile(for: draft).resolvedWarnsWhenBodyH1DuplicatesTitle },
       set: { isEnabled in
-        store.updateActiveProfile {
-          $0.resolvedWarnsWhenBodyH1DuplicatesTitle = isEnabled
-        }
+        store.setH1DuplicateWarning(isEnabled, forProfileID: store.profile(for: draft).id)
       }
     )
   }
@@ -914,16 +961,19 @@ struct WorkspaceTaskSEOSection: View {
     limit: Int,
     isWithinBudget: Bool
   ) -> some View {
-    Label {
-      Text("\(fieldName) \(countText) 字符")
+    let localizedFieldName = String(localized: String.LocalizationValue(fieldName))
+    return Label {
+      Text("\(localizedFieldName) \(countText) 字符")
     } icon: {
       Image(systemName: isWithinBudget ? "checkmark.circle" : "exclamationmark.triangle")
     }
     .font(.caption.monospacedDigit())
     .foregroundStyle(isWithinBudget ? Color.secondary : WorkbenchTheme.warning)
-    .help("\(fieldName)建议不超过 \(limit) 字符")
-    .accessibilityLabel("\(fieldName)字符数")
-    .accessibilityValue("\(countText) 字符，建议不超过 \(limit) 字符")
+    .help("\(localizedFieldName)建议不超过 \(limit) 字符")
+    .accessibilityLabel("\(localizedFieldName)字符数")
+    .accessibilityValue(
+      "\(countText) 字符，建议不超过 \(limit) 字符"
+    )
   }
 
   @ViewBuilder
@@ -1484,197 +1534,5 @@ private struct IssueCompactRow: View {
         .foregroundStyle(workbenchAccentColor)
         .fixedSize(horizontal: true, vertical: false)
     }
-  }
-}
-
-struct WorkspaceTaskImageState {
-  let report: ImageWorkbenchReport?
-  let actionMessage: String?
-  let focusedAttachmentID: UUID?
-}
-
-struct WorkspaceTaskImageActions {
-  let fillMissingMetadataForCurrentDraft: () -> Void
-  let optimizeJPEGForCurrentDraft: () -> Void
-  let openImageWorkbench: () -> Void
-  let refreshReport: () -> Void
-}
-
-struct WorkspaceTaskImageSection: View {
-  @WorkspaceModuleVisibilityStorage private var moduleVisibility
-  @Binding var draft: ArticleDraft
-  let state: WorkspaceTaskImageState
-  let actions: WorkspaceTaskImageActions
-
-  var body: some View {
-    let report = state.report
-
-    return VStack(alignment: .leading, spacing: 14) {
-      InspectorSection("当前文章") {
-        if let report {
-          InspectorStatRow(title: "图片", value: "\(report.items.count)", systemImage: "photo")
-          InspectorStatRow(
-            title: "缺 alt", value: "\(report.missingAltTextCount)", systemImage: "text.quote")
-          InspectorStatRow(
-            title: "缺源图", value: "\(report.missingSourceCount)", systemImage: "xmark.octagon")
-          InspectorStatRow(
-            title: "可压缩 JPEG", value: "\(report.optimizableJPEGCount)",
-            systemImage: "arrow.down.forward")
-          Label(
-            report.coverStatus.state.localizedDisplayName,
-            systemImage: report.coverStatus.state.systemImage
-          )
-          .font(.caption)
-          .foregroundStyle(report.coverStatus.state.color)
-          .lineLimit(2)
-        } else {
-          ProgressView {
-            Text("正在读取当前文章图片…")
-          }
-          .controlSize(.small)
-        }
-      }
-
-      InspectorSection("图片元数据") {
-        if draft.attachments.isEmpty {
-          Text("当前文章还没有图片附件。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        } else {
-          ForEach(draft.attachments) { attachment in
-            ImageMetadataEditorRow(
-              attachment: attachment,
-              item: report?.items.first { $0.attachmentID == attachment.id },
-              altText: attachmentStringBinding(for: attachment.id, keyPath: \.altText),
-              caption: attachmentStringBinding(for: attachment.id, keyPath: \.caption),
-              isCover: attachmentCoverBinding(for: attachment.id),
-              isFocused: state.focusedAttachmentID == attachment.id
-            )
-            .id(attachment.id)
-          }
-        }
-      }
-
-      if moduleVisibility.imagesEnabled {
-        InspectorSection("图片工作台") {
-          Button {
-            actions.openImageWorkbench()
-          } label: {
-            Label("打开图片工作台", systemImage: "photo.on.rectangle")
-          }
-          .controlSize(.small)
-        }
-      }
-
-      actionMessage(state.actionMessage)
-    }
-  }
-
-  private func attachmentStringBinding(
-    for attachmentID: UUID,
-    keyPath: WritableKeyPath<DraftAttachment, String>
-  ) -> Binding<String> {
-    Binding(
-      get: {
-        draft.attachments.first { $0.id == attachmentID }?[keyPath: keyPath] ?? ""
-      },
-      set: { value in
-        guard let index = draft.attachments.firstIndex(where: { $0.id == attachmentID }) else {
-          return
-        }
-        draft.attachments[index][keyPath: keyPath] = value
-        actions.refreshReport()
-      }
-    )
-  }
-
-  private func attachmentCoverBinding(for attachmentID: UUID) -> Binding<Bool> {
-    Binding(
-      get: { draft.coverAttachmentID == attachmentID },
-      set: { isCover in
-        if isCover {
-          draft.coverAttachmentID = attachmentID
-        } else if draft.coverAttachmentID == attachmentID {
-          draft.coverAttachmentID = nil
-        }
-        actions.refreshReport()
-      }
-    )
-  }
-}
-
-private struct ImageMetadataEditorRow: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
-  let attachment: DraftAttachment
-  let item: ImageWorkbenchItem?
-  @Binding var altText: String
-  @Binding var caption: String
-  @Binding var isCover: Bool
-  let isFocused: Bool
-
-  @FocusState private var isAltFocused: Bool
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 7) {
-      HStack(alignment: .firstTextBaseline) {
-        Text(attachment.originalFilename)
-          .font(.callout.weight(.medium))
-          .workbenchTruncatedIdentity(attachment.originalFilename)
-
-        if item?.isCover == true {
-          Image(systemName: "star.fill")
-            .foregroundStyle(.secondary)
-        }
-
-        Spacer()
-
-        Image(systemName: item?.fileExists == false ? "xmark.octagon" : "checkmark.circle")
-          .foregroundStyle(item?.fileExists == false ? WorkbenchTheme.risk : Color.secondary)
-      }
-
-      Text(attachment.relativePublishPath)
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
-        .workbenchTruncatedIdentity(attachment.relativePublishPath, lineLimit: 2)
-
-      TextField("Alt", text: $altText)
-        .textFieldStyle(.roundedBorder)
-        .focused($isAltFocused)
-        .accessibilityLabel("图片 Alt 文本")
-        .accessibilityValue(altText.isEmpty ? "未填写" : altText)
-
-      TextField("Caption", text: $caption)
-        .textFieldStyle(.roundedBorder)
-        .accessibilityLabel("图片 Caption")
-        .accessibilityValue(caption.isEmpty ? "未填写" : caption)
-
-      Toggle("设为文章封面", isOn: $isCover)
-        .toggleStyle(.checkbox)
-        .controlSize(.small)
-    }
-    .padding(8)
-    .background(
-      isFocused ? workbenchAccentColor.opacity(0.10) : Color.clear,
-      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-    )
-    .overlay {
-      if isFocused {
-        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-          .stroke(workbenchAccentColor.opacity(0.45), lineWidth: 1)
-      }
-    }
-    .onAppear {
-      if isFocused {
-        isAltFocused = true
-      }
-    }
-    .onChange(of: isFocused) { _, shouldFocus in
-      if shouldFocus {
-        isAltFocused = true
-      }
-    }
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("图片元数据 \(attachment.originalFilename)")
-    .accessibilityValue(item?.fileExists == false ? "源图缺失" : "源图可用")
   }
 }

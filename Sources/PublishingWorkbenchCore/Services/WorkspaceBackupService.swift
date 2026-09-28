@@ -48,6 +48,10 @@ public final class WorkspaceBackupService: Sendable {
 
   public static let manifestFileName = "manifest.json"
   public static let workbenchRelativePath = "workbench/workbench.json"
+  /// Compatibility-only workbench payload. It is deliberately distinct from
+  /// the Codable snapshot so validation can reject every other workbench
+  /// subpath while retaining archived fields created by older versions.
+  public static let retiredFeatureArchivesRelativePrefix = "workbench/RetiredFeatureArchives"
   public static let operationHistoryRelativePath = "operation-history/operation-log.json"
   public static let knowledgePackageName = "knowledge.pslibrarybackup"
   public static let rssDirectoryName = "rss"
@@ -112,6 +116,7 @@ public final class WorkspaceBackupService: Sendable {
     at destinationURL: URL,
     snapshot: WorkbenchSnapshot,
     operationHistoryDocument: WorkbenchOperationLedgerDocument? = nil,
+    retiredFeatureArchiveDirectoryURL: URL? = nil,
     knowledgeRootURL: URL,
     rssDatabaseURL: URL? = nil,
     rssMediaDirectoryURL: URL? = nil,
@@ -165,9 +170,24 @@ public final class WorkspaceBackupService: Sendable {
       try workbenchData.write(to: workbenchURL, options: .atomic)
       records.append(try fileRecord(
         relativePath: Self.workbenchRelativePath,
-        component: .workbenchState,
-        under: temporaryURL
-      ))
+          component: .workbenchState,
+          under: temporaryURL
+        ))
+      if let retiredFeatureArchiveDirectoryURL {
+        for sourceURL in try regularFileURLs(in: retiredFeatureArchiveDirectoryURL) {
+          try Task.checkCancellation()
+          let relativePath = try relativePath(
+            of: sourceURL, under: retiredFeatureArchiveDirectoryURL)
+          let archiveRelativePath = Self.retiredFeatureArchivesRelativePrefix + "/" + relativePath
+          records.append(
+            try copyRegularFile(
+              from: sourceURL,
+              to: temporaryURL.appendingPathComponent(archiveRelativePath),
+              relativePath: archiveRelativePath,
+              component: .workbenchState
+            ))
+        }
+      }
     }
 
     if selectedCategories.contains(.operationHistory) {
@@ -261,14 +281,26 @@ public final class WorkspaceBackupService: Sendable {
       throw WorkspaceBackupError.sourceUnavailable(Self.rssDatabaseRelativePath)
     }
 
+    let includesRetiredFeatureArchives = records.contains {
+      $0.relativePath.hasPrefix(Self.retiredFeatureArchivesRelativePrefix + "/")
+    }
     // Preserve the historical contracts for callers that do not yet supply an
     // operation ledger. A complete app backup supplies the ledger and writes
     // v3; legacy workspace-only and RSS-aware callers continue to write v1/v2.
-    let formatVersion = hasExplicitCategorySelection
-      ? WorkspaceBackupManifest.currentFormatVersion
-      : (operationHistoryDocument != nil
-          ? 3
-          : (includesRSS ? 2 : WorkspaceBackupManifest.minimumSupportedFormatVersion))
+    // The optional retired-feature payload adds a strict v5 path grammar, so
+    // it must never be emitted under an older manifest version.
+    let writesCategoryManifest = hasExplicitCategorySelection || includesRetiredFeatureArchives
+    let formatVersion: Int
+    if includesRetiredFeatureArchives {
+      formatVersion = WorkspaceBackupManifest.currentFormatVersion
+    } else if hasExplicitCategorySelection {
+      formatVersion = WorkspaceBackupManifest.categorySelectionFormatVersion
+    } else {
+      formatVersion =
+        operationHistoryDocument != nil
+        ? 3
+        : (includesRSS ? 2 : WorkspaceBackupManifest.minimumSupportedFormatVersion)
+    }
 
     records.sort { $0.relativePath < $1.relativePath }
     try Task.checkCancellation()
@@ -288,10 +320,10 @@ public final class WorkspaceBackupService: Sendable {
       totalByteCount: totalByteCount,
       attachmentReferences: preparedAttachments.references.map(\.reference),
       files: records,
-      selectedCategories: hasExplicitCategorySelection
+      selectedCategories: writesCategoryManifest
         ? WorkspaceBackupCategory.allCases.filter { selectedCategories.contains($0) }
         : nil,
-      categorySummaries: hasExplicitCategorySelection
+      categorySummaries: writesCategoryManifest
         ? categorySummaries(for: records, selectedCategories: selectedCategories)
         : nil
     )
@@ -370,8 +402,16 @@ public final class WorkspaceBackupService: Sendable {
       }
     }
     var manifest = validated.manifest
-    manifest.formatVersion = WorkspaceBackupManifest.currentFormatVersion
-    manifest.selectedCategories = WorkspaceBackupCategory.allCases.filter { categories.contains($0) }
+    let includesRetiredFeatureArchives = chosenRecords.contains {
+      $0.relativePath.hasPrefix(Self.retiredFeatureArchivesRelativePrefix + "/")
+    }
+    manifest.formatVersion =
+      includesRetiredFeatureArchives
+      ? WorkspaceBackupManifest.currentFormatVersion
+      : WorkspaceBackupManifest.categorySelectionFormatVersion
+    manifest.selectedCategories = WorkspaceBackupCategory.allCases.filter {
+      categories.contains($0)
+    }
     manifest.files = chosenRecords
     manifest.fileCount = chosenRecords.count
     manifest.totalByteCount = try validateFileLimits(chosenRecords)

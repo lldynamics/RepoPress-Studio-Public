@@ -448,12 +448,6 @@ extension WorkbenchAIStore {
     return operationID
   }
 
-  func finishAIChatOperation(_ operationID: UUID) {
-    guard aiChatOperationCoordinator.finish(operationID) else { return }
-    store.setAIChatRunning(false)
-    store.save()
-  }
-
   func checkAIChatOperation(_ operationID: UUID) throws {
     try aiChatOperationCoordinator.check(operationID)
   }

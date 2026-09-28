@@ -50,7 +50,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "workspace-sidebar-rss",
       "workspace-sidebar-library",
       "workspace-sidebar-sync",
-      "workspace-sidebar-contentHealth",
       "workspace-sidebar-writing",
       "workspace-sidebar-images",
     ]
@@ -77,7 +76,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     }
   }
 
-  func testSixPrimaryRoutesRevealTheirDestinationsDirectly() throws {
+  func testFivePrimaryRoutesRevealTheirDestinationsDirectly() throws {
     launchApplication(
       surface: "sync-api-publish",
       screenshotContentSize: CGSize(width: 1080, height: 720)
@@ -100,10 +99,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
         destination: "repository-workspace"
       ),
       (
-        section: "workspace-sidebar-contentHealth",
-        destination: "content-health-workspace"
-      ),
-      (
         section: "workspace-sidebar-writing",
         destination: "writing-draft-list"
       ),
@@ -118,7 +113,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     }
 
     // At 1080pt the Inspector can be revealed on demand. The full sidebar is
-    // replaced by the compact rail, whose six icon buttons must keep routing
+    // replaced by the compact rail, whose five icon buttons must keep routing
     // inside this same workbench window.
     let compactWindow = window
     let compactWindowIdentifier = compactWindow.identifier
@@ -140,7 +135,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       .matching(identifier: "workspace-compact-navigation-rail")
       .firstMatch
     XCTAssertTrue(compactRail.waitForExistence(timeout: 10))
-    for section in ["rss", "library", "sync", "contentHealth", "writing"] {
+    for section in ["rss", "library", "sync", "writing", "images"] {
       let button = compactWindow.buttons
         .matching(identifier: "workspace-compact-rail-\(section)")
         .firstMatch
@@ -1272,15 +1267,31 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
   func testContentHealthHasOneProblemListWithFilters() throws {
     launchApplication(surface: "writing")
     select(
-      "workspace-sidebar-contentHealth",
-      revealing: "content-health-stage-overview"
+      "workspace-sidebar-sync",
+      revealing: "repository-workspace"
+    )
+    select(
+      "repository-sidebar-stage-checks",
+      revealing: "content-health-workspace"
     )
 
     for identifier in [
-      "workspace-quick-search",
-      "workspace-quick-search-field",
-      "content-health-sidebar-stage-navigation",
-      "content-health-sidebar-stage-overview",
+      "workspace-sidebar-writing",
+      "workspace-sidebar-library",
+      "workspace-sidebar-rss",
+      "workspace-sidebar-images",
+      "workspace-sidebar-sync",
+    ] {
+      assertUniqueIdentifier(identifier)
+    }
+    XCTAssertFalse(
+      element(identifier: "workspace-sidebar-contentHealth").exists,
+      "Site Checks must remain a Site child route, not a primary sidebar entry."
+    )
+
+    for identifier in [
+      "repository-sidebar-stage-navigation",
+      "repository-sidebar-stage-checks",
       "content-health-workspace",
       "content-health-stage-overview",
       "content-health-severity-filter",
@@ -1290,7 +1301,36 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       assertUniqueIdentifier(identifier)
     }
 
-    XCTAssertFalse(application.buttons["content-health-sidebar-stage-maintenance"].exists)
+    XCTAssertEqual(
+      element(identifier: "repository-sidebar-stage-checks").value as? String,
+      "已选中"
+    )
+    XCTAssertEqual(element(identifier: "workspace-sidebar-sync").value as? String, "已选中")
+    XCTAssertEqual(
+      element(identifier: "repository-sidebar-stage-overview").value as? String,
+      "未选中"
+    )
+
+    select(
+      "repository-sidebar-stage-overview",
+      revealing: "repository-workspace"
+    )
+    application.typeKey("5", modifierFlags: [.command])
+    let checksStage = element(identifier: "repository-sidebar-stage-checks")
+    XCTAssertEqual(
+      XCTWaiter.wait(
+        for: [XCTNSPredicateExpectation(
+          predicate: NSPredicate(format: "value == %@", "已选中"), object: checksStage
+        )], timeout: 10
+      ), .completed
+    )
+
+    let screenshot = XCTAttachment(screenshot: application.screenshot())
+    screenshot.name = "site-checks-navigation"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+
+    XCTAssertFalse(application.buttons["repository-sidebar-stage-maintenance"].exists)
   }
 
   func testAIComposerUsesReturnForNewlineAndKeepsCommandReturnOutOfText() throws {
@@ -2227,9 +2267,9 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
   private func openFirstRunSetupWizard() {
     application.activate()
-    let goMenu = application.menuBars.menuBarItems["前往"]
-    XCTAssertTrue(goMenu.waitForExistence(timeout: 10))
-    goMenu.click()
+    let helpMenu = application.menuBars.menuBarItems["帮助"]
+    XCTAssertTrue(helpMenu.waitForExistence(timeout: 10))
+    helpMenu.click()
     let wizard = application.menuItems["打开设置向导…"]
     XCTAssertTrue(wizard.waitForExistence(timeout: 5))
     wizard.click()

@@ -137,3 +137,108 @@ final class ImageMetadataEditingServiceTests: XCTestCase {
     )
   }
 }
+
+@MainActor
+final class RepositoryImageUsageEditingTests: XCTestCase {
+  func testEditingByDraftAndAttachmentIDLeavesOtherDraftAndSelectionUntouched() throws {
+    let store = makeStore()
+    let first = makeDraft(body: "![old](/images/hero.png)")
+    let second = makeDraft(body: "second")
+    store.updateDraft(first)
+    store.updateDraft(second)
+    store.selectDraft(first.id)
+    let originalSecond = try XCTUnwrap(store.draft(for: second.id))
+
+    XCTAssertTrue(
+      store.editRepositoryImageUsage(
+        draftID: first.id, attachmentID: first.attachments[0].id,
+        expectedRepositoryPath: "static/images/hero.png", profileID: store.activeProfile.id,
+        edit: .caption("说明")
+      ))
+
+    XCTAssertEqual(store.selectedDraft?.id, first.id)
+    XCTAssertEqual(store.draft(for: second.id), originalSecond)
+    XCTAssertEqual(store.draft(for: first.id)?.attachments[0].caption, "说明")
+    XCTAssertEqual(store.draft(for: first.id)?.bodyMarkdown, first.bodyMarkdown)
+  }
+
+  func testAltPreservesInputWhitespaceAndSynchronizesEscapedMarkdownAndStagedBody() throws {
+    let store = makeStore()
+    var draft = makeDraft(body: "![old](/images/hero.png)")
+    draft.externalDraftSource = ExternalDraftSource(
+      mappingID: UUID(), relativePath: "hero.md", importedTitle: "Hero", importedFingerprint: "fp"
+    )
+    store.updateDraft(draft)
+    let staged = "前置\n![old](/images/hero.png)\n结尾"
+    let buffer = store.draftBodyEditorBuffer(for: draft.id)
+    XCTAssertEqual(
+      store.stageDraftBody(staged, for: draft.id, baseRevision: buffer.revision)?.wasAccepted, true)
+    let input = "  [hero]  "
+
+    XCTAssertTrue(
+      store.editRepositoryImageUsage(
+        draftID: draft.id, attachmentID: draft.attachments[0].id,
+        expectedRepositoryPath: "static/images/hero.png", profileID: store.activeProfile.id,
+        edit: .altText(input)
+      ))
+
+    let updated = try XCTUnwrap(store.draft(for: draft.id))
+    XCTAssertEqual(updated.attachments[0].altText, input)
+    XCTAssertTrue(updated.bodyMarkdown.contains("![\\[hero\\]](/images/hero.png)"))
+    XCTAssertTrue(updated.bodyMarkdown.contains("前置"))
+    XCTAssertTrue(updated.bodyMarkdown.contains("结尾"))
+    XCTAssertEqual(updated.externalDraftSource?.relativePath, "hero.md")
+  }
+
+  func testCaptionAndCoverDoNotRewriteBodyAndStalePathOrForeignProfileAreRejected() throws {
+    let store = makeStore()
+    let draft = makeDraft(body: "![old](/images/hero.png)")
+    store.updateDraft(draft)
+    let attachmentID = draft.attachments[0].id
+
+    XCTAssertTrue(
+      store.editRepositoryImageUsage(
+        draftID: draft.id, attachmentID: attachmentID,
+        expectedRepositoryPath: "static/images/hero.png", profileID: store.activeProfile.id,
+        edit: .cover(true)
+      ))
+    XCTAssertEqual(store.draft(for: draft.id)?.bodyMarkdown, draft.bodyMarkdown)
+    XCTAssertEqual(store.draft(for: draft.id)?.coverAttachmentID, attachmentID)
+
+    var moved = try XCTUnwrap(store.draft(for: draft.id))
+    moved.attachments[0].repositoryPath = "static/images/moved.png"
+    store.updateDraft(moved)
+    XCTAssertFalse(
+      store.editRepositoryImageUsage(
+        draftID: draft.id, attachmentID: attachmentID,
+        expectedRepositoryPath: "static/images/hero.png", profileID: store.activeProfile.id,
+        edit: .caption("stale")
+      ))
+    XCTAssertFalse(
+      store.editRepositoryImageUsage(
+        draftID: draft.id, attachmentID: attachmentID,
+        expectedRepositoryPath: "static/images/moved.png", profileID: UUID(),
+        edit: .caption("foreign")
+      ))
+  }
+
+  private func makeStore() -> WorkbenchStore {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("repository-image-usage-\(UUID().uuidString).json")
+    addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+    return WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url), safeMode: true)
+  }
+
+  private func makeDraft(body: String) -> ArticleDraft {
+    let attachment = DraftAttachment(
+      originalFilename: "hero.png", relativePublishPath: "/images/hero.png",
+      repositoryPath: "static/images/hero.png", altText: "old"
+    )
+    return ArticleDraft(
+      siteProfileID: makeProfileID, title: UUID().uuidString, slug: UUID().uuidString,
+      bodyMarkdown: body, attachments: [attachment]
+    )
+  }
+
+  private var makeProfileID: UUID { SiteProfile.defaultProfile.id }
+}

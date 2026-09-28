@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 /// Narrow dependency boundary between the existing AI request pipeline and Codex App Server.
 /// Tests can replace this service without starting a real child process.
@@ -92,19 +93,19 @@ extension CodexAppServerError: LocalizedError {
   public var errorDescription: String? {
     switch self {
     case .executableNotFound:
-      return "未找到 Codex 运行组件。请先在 AI 设置中完成安装。"
+      return CoreL10n.text("未找到 Codex 运行组件。请先在 AI 设置中完成安装。")
     case .processNotRunning, .processExited, .endOfStream:
-      return "ChatGPT 连接组件已停止。请在 AI 设置中重新检测后重试。"
+      return CoreL10n.text("ChatGPT 连接组件已停止。请在 AI 设置中重新检测后重试。")
     case .invalidJSON, .invalidResponse:
-      return "ChatGPT 连接组件返回了无法识别的响应。"
+      return CoreL10n.text("ChatGPT 连接组件返回了无法识别的响应。")
     case .rpc(_, let message), .turnFailed(let message):
-      return "ChatGPT 请求失败：\(message)"
+      return CoreL10n.format("ChatGPT 请求失败：%@", message)
     case .turnInterrupted:
-      return "ChatGPT 已中断本次回复。"
+      return CoreL10n.text("ChatGPT 已中断本次回复。")
     case .cancelled:
-      return "ChatGPT 请求已取消。"
+      return CoreL10n.text("ChatGPT 请求已取消。")
     case .accountAuthorizationRequired:
-      return "ChatGPT 账户已变化或尚未完成授权，请重新登录并同意内容发送。"
+      return CoreL10n.text("ChatGPT 账户已变化或尚未完成授权，请重新登录并同意内容发送。")
     }
   }
 }
@@ -126,6 +127,12 @@ extension AIChatCompletionClient {
     )
     let completion: CodexAppServerCompletion
     try await nonStreamingRequestAuthorization?()
+    if prepared.mode == .streaming {
+      // Account authorization above can suspend; check the live host state
+      // after it and immediately before the app-server turn starts.
+      try await authorizeStreamingTransmission()
+    }
+    try validatePrepared(prepared, against: config, apiKey: nil)
     try Task.checkCancellation()
     if dynamicTools.isEmpty {
       completion = try await codexAppServerChatService.complete(
@@ -221,5 +228,41 @@ extension AIChatCompletionClient {
 
       \(json)
       """
+  }
+}
+
+extension AIChatCompletionClient {
+  func codexAppServerStream(
+    prepared: AIPreparedAIChatCompletionRequest,
+    config: AIProviderConfig
+  ) -> AsyncThrowingStream<AIChatStreamUpdate, Error> {
+    AsyncThrowingStream { continuation in
+      let task = Task(priority: .userInitiated) {
+        defer { streamingRequestCancellation?.finish() }
+        do {
+          let result = try await completeWithCodexAppServer(
+            prepared: prepared,
+            config: config
+          )
+          try Task.checkCancellation()
+          continuation.yield(
+            AIChatStreamUpdate(
+              contentDelta: result.content,
+              tokenUsage: result.tokenUsage,
+              isFinished: true
+            )
+          )
+          continuation.finish()
+        } catch is CancellationError {
+          continuation.finish(throwing: CodexAppServerError.cancelled)
+        } catch {
+          continuation.finish(throwing: error)
+        }
+      }
+      streamingRequestCancellation?.register(task)
+      continuation.onTermination = { @Sendable _ in
+        task.cancel()
+      }
+    }
   }
 }

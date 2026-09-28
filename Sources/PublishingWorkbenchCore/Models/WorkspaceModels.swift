@@ -60,7 +60,7 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
     case .rss:
       return "dot.radiowaves.left.and.right"
     case .sync:
-      return "arrow.triangle.2.circlepath"
+      return "globe"
     case .contentHealth:
       return "checklist"
     case .images:
@@ -342,47 +342,6 @@ public struct ImageInspectorFocusRequest: Identifiable, Equatable, Sendable {
     self.id = id
     self.draftID = draftID
     self.attachmentID = attachmentID
-  }
-}
-
-public struct ActiveEditorSelection: Equatable, Sendable {
-  public var draftID: UUID
-  public var range: NSRange
-  public var selectedText: String
-  public var bodyUTF16Count: Int
-
-  public init(
-    draftID: UUID,
-    range: NSRange,
-    selectedText: String,
-    bodyUTF16Count: Int
-  ) {
-    self.draftID = draftID
-    self.range = range
-    self.selectedText = selectedText
-    self.bodyUTF16Count = bodyUTF16Count
-  }
-
-  public var hasSelectedText: Bool {
-    range.length > 0 && !selectedText.trimmedForPublishing.isEmpty
-  }
-
-  public func validatedRange(in draft: ArticleDraft) -> NSRange? {
-    guard draft.id == draftID, hasSelectedText else {
-      return nil
-    }
-    let source = draft.bodyMarkdown as NSString
-    guard bodyUTF16Count == source.length,
-      range.location >= 0,
-      range.length > 0,
-      range.location + range.length <= source.length
-    else {
-      return nil
-    }
-    guard source.substring(with: range) == selectedText else {
-      return nil
-    }
-    return range
   }
 }
 

@@ -4,6 +4,42 @@ import XCTest
 @testable import PublishingAICore
 
 final class AIChatStreamRecoveryTests: XCTestCase {
+  func testRevocationAfterAuthorizationCancelsBeforeTransportDispatch() async throws {
+    let transport = InterruptibleAIChatStreamingTransport(pausesBeforeSending: true)
+    let cancellation = AIChatStreamingRequestCancellation()
+    var client = AIChatCompletionClient(transport: transport)
+      .authorizingStreamingRequests {}
+    client.streamingRequestCancellation = cancellation
+    let stream = try await client.stream(
+      request: AIChatCompletionRequest(
+        model: "model", messages: [AIChatMessage(role: "user", content: "Hello")]
+      ),
+      config: localConfig, apiKey: nil
+    )
+    try await transport.waitForFirstRequest()
+    cancellation.cancel()
+    await transport.releaseSendGate()
+    do {
+      _ = try await collectRecoveryContent(from: stream)
+      XCTFail("Revoked request must terminate")
+    } catch is CancellationError {
+      // Expected: revocation crossed the already-authorized transport wait.
+    }
+    let count = await transport.requestCount
+    XCTAssertEqual(count, 0)
+  }
+
+  func testRevocationBeforeProducerRegistrationCancelsThatProducer() async {
+    let cancellation = AIChatStreamingRequestCancellation()
+    cancellation.cancel()
+    let task = Task<Void, Never> {
+      try? await Task.sleep(for: .seconds(5))
+    }
+    cancellation.register(task)
+    XCTAssertTrue(task.isCancelled)
+    await task.value
+  }
+
   func testPlainTextInterruptionRecoversWithTwoPOSTsWithoutDuplicateText() async throws {
     let transport = RecoveryStreamingTransport(attempts: [
       .init(

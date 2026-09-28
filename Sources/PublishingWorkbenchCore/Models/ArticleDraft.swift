@@ -717,28 +717,6 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
   }
 
-  /// Recomputed from the live source so editing it marks a translation stale
-  /// without rewriting every translated article in the snapshot.
-  public func translationFreshness(
-    source: ArticleDraft?,
-    profile: SiteProfile? = nil
-  ) -> ArticleTranslationFreshness? {
-    guard let translationLink else { return nil }
-    guard let source, source.id == translationLink.sourceDraftID else {
-      return .sourceMissing
-    }
-    guard source.siteProfileID == siteProfileID else { return .stale }
-    guard source.repositoryContentFingerprint == translationLink.sourceContentFingerprint else {
-      return .stale
-    }
-    if let profile, let originalPath = translationLink.sourceMarkdownPath,
-      profile.markdownPath(for: source) != originalPath
-    {
-      return .stale
-    }
-    return .current
-  }
-
   /// Advances only the general content timestamp. Prefer
   /// `markMetadataUpdated` or `markBodyUpdated` when the mutation kind is
   /// known so list ordering and editor concurrency remain explicit.

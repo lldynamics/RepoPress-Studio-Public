@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import PublishingTestSupport
 import PublishingWorkbenchCore
 import XCTest
 
@@ -126,20 +127,17 @@ final class MarkdownComposerPerformanceTests: XCTestCase {
       replacingBaseBody: initialBuffer.bodyMarkdown,
       notifyEditorObservers: false
     )
+    let clock = ManualClock()
     let coordinator = KnowledgeContextQueryRefreshCoordinator(
       draft: draft,
       store: store,
-      debounceDuration: .milliseconds(60)
+      debounceDuration: .milliseconds(60),
+      clock: clock
     )
-    let initialRefresh = expectation(description: "initial idle query refresh")
-    var cancellables = Set<AnyCancellable>()
-    coordinator.$query
-      .dropFirst()
-      .filter { $0.contains("初始正文") }
-      .sink { _ in initialRefresh.fulfill() }
-      .store(in: &cancellables)
-
-    await fulfillment(of: [initialRefresh], timeout: 2)
+    await clock.waitForSleepCount(1)
+    clock.advance(by: .milliseconds(60))
+    await coordinator.waitUntilIdle()
+    XCTAssertTrue(coordinator.query.contains("初始正文"))
     let initialQuery = coordinator.query
     let buffer = store.draftBodyEditorBuffer(for: draft.id)
     _ = store.stageDraftBody(
@@ -150,16 +148,13 @@ final class MarkdownComposerPerformanceTests: XCTestCase {
       notifyEditorObservers: false
     )
 
-    try await Task.sleep(for: .milliseconds(20))
+    await clock.waitForSleepCount(2)
+    clock.advance(by: .milliseconds(59))
     XCTAssertEqual(coordinator.query, initialQuery)
 
-    let idleRefresh = expectation(description: "updated idle query refresh")
-    coordinator.$query
-      .dropFirst()
-      .filter { $0.contains("新正文") }
-      .sink { _ in idleRefresh.fulfill() }
-      .store(in: &cancellables)
-    await fulfillment(of: [idleRefresh], timeout: 2)
+    clock.advance(by: .milliseconds(1))
+    await coordinator.waitUntilIdle()
+    XCTAssertTrue(coordinator.query.contains("新正文"))
   }
 
   func testSSGDerivedDataKeyUsesRevisionForConstantSizeBodyIdentity() {

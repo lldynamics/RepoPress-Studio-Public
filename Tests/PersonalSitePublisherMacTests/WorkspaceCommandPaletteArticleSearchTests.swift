@@ -1,4 +1,6 @@
 import Foundation
+import PublishingCoreSupport
+import PublishingTestSupport
 import XCTest
 
 @testable import PersonalSitePublisherMac
@@ -6,6 +8,29 @@ import XCTest
 
 @MainActor
 final class WorkspaceCommandPaletteArticleSearchTests: XCTestCase {
+  func testDebounceRunsOnlyAfterClockAdvancesToDeadline() async throws {
+    let clock = ManualClock()
+    let profileID = UUID()
+    let draft = makeDraft(profileID: profileID, title: "时钟", body: "正文命中")
+    let search = WorkspaceCommandPaletteArticleSearch(clock: clock)
+
+    search.update(
+      query: "命中", scope: .articles, articleScope: .allDrafts,
+      activeProfileID: profileID,
+      inputs: [DraftFullTextSearchInput(draft: draft, bodyMarkdown: draft.bodyMarkdown)],
+      masksPrivateContent: false
+    )
+    await clock.waitForSleepCount(1)
+    clock.advance(by: DebounceIntervals.commandPaletteArticles - .milliseconds(1))
+    XCTAssertTrue(search.snapshot.displayedHits.isEmpty)
+    XCTAssertTrue(search.isSearching)
+
+    clock.advance(by: .milliseconds(1))
+    await search.waitUntilIdle()
+    XCTAssertEqual(search.snapshot.displayedHits.map(\.draftID), [draft.id])
+    XCTAssertFalse(search.isSearching)
+  }
+
   func testLiveBufferSearchPreservesUTF16BodyRange() async throws {
     let profileID = UUID()
     let draft = makeDraft(profileID: profileID, title: "实时正文", body: "旧正文")
@@ -147,8 +172,6 @@ final class WorkspaceCommandPaletteArticleSearchTests: XCTestCase {
       query: "正文", scope: .resources, articleScope: .allDrafts, activeProfileID: profileID,
       inputs: [input], masksPrivateContent: false
     )
-    try await Task.sleep(for: .milliseconds(30))
-
     let queries = await recorder.queries
     XCTAssertEqual(queries, [])
     XCTAssertTrue(search.snapshot.displayedHits.isEmpty)
@@ -176,10 +199,11 @@ final class WorkspaceCommandPaletteArticleSearchTests: XCTestCase {
       debounce: { _ in }
     )
 
-    search.update(
-      query: "旧查询", scope: .articles, articleScope: .allDrafts, activeProfileID: profileID,
-      inputs: inputs, masksPrivateContent: false
-    )
+    let oldTask = try XCTUnwrap(
+      search.update(
+        query: "旧查询", scope: .articles, articleScope: .allDrafts, activeProfileID: profileID,
+        inputs: inputs, masksPrivateContent: false
+      ))
     try await waitForGate(gate)
     search.update(
       query: "新结果", scope: .articles, articleScope: .currentSite, activeProfileID: profileID,
@@ -189,7 +213,7 @@ final class WorkspaceCommandPaletteArticleSearchTests: XCTestCase {
     XCTAssertEqual(search.snapshot.displayedHits.map(\.draftID), [current.id])
 
     await gate.release()
-    try await Task.sleep(for: .milliseconds(30))
+    await oldTask.value
     XCTAssertEqual(search.snapshot.displayedHits.map(\.draftID), [current.id])
   }
 
@@ -209,14 +233,15 @@ final class WorkspaceCommandPaletteArticleSearchTests: XCTestCase {
       debounce: { _ in }
     )
 
-    search.update(
-      query: "正文", scope: .articles, articleScope: .allDrafts, activeProfileID: profileID,
-      inputs: [input], masksPrivateContent: false
-    )
+    let oldTask = try XCTUnwrap(
+      search.update(
+        query: "正文", scope: .articles, articleScope: .allDrafts, activeProfileID: profileID,
+        inputs: [input], masksPrivateContent: false
+      ))
     try await waitForGate(gate)
     search.cancel()
     await gate.release()
-    try await Task.sleep(for: .milliseconds(30))
+    await oldTask.value
 
     XCTAssertTrue(search.snapshot.displayedHits.isEmpty)
     XCTAssertFalse(search.isSearching)
@@ -250,9 +275,7 @@ final class WorkspaceCommandPaletteArticleSearchTests: XCTestCase {
     file: StaticString = #filePath,
     line: UInt = #line
   ) async throws {
-    for _ in 0..<100 where search.isSearching {
-      try await Task.sleep(for: .milliseconds(10))
-    }
+    await search.waitUntilIdle()
     XCTAssertFalse(search.isSearching, "search did not finish", file: file, line: line)
   }
 
@@ -261,11 +284,7 @@ final class WorkspaceCommandPaletteArticleSearchTests: XCTestCase {
     file: StaticString = #filePath,
     line: UInt = #line
   ) async throws {
-    for _ in 0..<100 {
-      if await gate.hasWaiter { return }
-      try await Task.sleep(for: .milliseconds(10))
-    }
-    XCTFail("search did not enter the gate", file: file, line: line)
+    await gate.waitUntilHasWaiter()
   }
 }
 
@@ -279,6 +298,7 @@ private actor SearchRecorder {
 
 private actor SearchGate {
   private var continuation: CheckedContinuation<Void, Never>?
+  private var waiterObserver: CheckedContinuation<Void, Never>?
   private var isOpen = false
 
   var hasWaiter: Bool { continuation != nil }
@@ -287,7 +307,14 @@ private actor SearchGate {
     guard !isOpen else { return }
     await withCheckedContinuation { continuation in
       self.continuation = continuation
+      waiterObserver?.resume()
+      waiterObserver = nil
     }
+  }
+
+  func waitUntilHasWaiter() async {
+    guard continuation == nil else { return }
+    await withCheckedContinuation { waiterObserver = $0 }
   }
 
   func release() {

@@ -93,19 +93,22 @@ public enum ImagePrivacySanitizingError: LocalizedError, Equatable, Sendable {
   public var errorDescription: String? {
     switch self {
     case .sourceUnavailable(let path):
-      return "图片源文件不可读取：\(path)"
+      return CoreL10n.format("图片源文件不可读取：%@", path)
     case .destinationMustDiffer(let path):
-      return "脱敏副本不能覆盖原图：\(path)"
+      return CoreL10n.format("脱敏副本不能覆盖原图：%@", path)
     case .destinationExists(let path):
-      return "脱敏副本目标已存在：\(path)"
+      return CoreL10n.format("脱敏副本目标已存在：%@", path)
     case .unsupportedImage(let typeIdentifier):
-      return "不支持的图片类型：\(typeIdentifier ?? "未知类型")"
+      return CoreL10n.format(
+        "不支持的图片类型：%@",
+        typeIdentifier ?? CoreL10n.text("未知类型")
+      )
     case .multiFrameImage(let frameCount):
-      return "为避免破坏动画或多帧图片，已拒绝处理 \(frameCount) 帧图片。"
+      return CoreL10n.format("为避免破坏动画或多帧图片，已拒绝处理 %@ 帧图片。", String(frameCount))
     case .invalidImage(let reason):
-      return "图片无效：\(reason)"
+      return CoreL10n.format("图片无效：%@", reason)
     case .writeFailed(let path, let reason):
-      return "无法写入脱敏副本：\(path)。\(reason)"
+      return CoreL10n.format("无法写入脱敏副本：%@。%@", path, reason)
     }
   }
 }

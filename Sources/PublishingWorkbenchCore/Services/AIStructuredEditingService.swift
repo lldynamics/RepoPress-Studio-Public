@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 /// A range in the source Markdown, measured in UTF-16 code units.
 ///
@@ -78,31 +79,31 @@ public enum AIStructuredEditValidationError: LocalizedError, Equatable, Sendable
   public var errorDescription: String? {
     switch self {
     case .emptyResponse:
-      return "AI 返回内容为空。"
+      return CoreL10n.text("AI 返回内容为空。")
     case .responseIsNotStrictJSON:
-      return "AI 返回内容必须是完整 JSON，或仅包含一个 JSON 代码围栏。"
+      return CoreL10n.text("AI 返回内容必须是完整 JSON，或仅包含一个 JSON 代码围栏。")
     case .invalidJSONContract:
-      return "AI 返回的 JSON 不符合结构化修改协议。"
+      return CoreL10n.text("AI 返回的 JSON 不符合结构化修改协议。")
     case .unsupportedSchemaVersion(let version):
-      return "不支持结构化修改协议版本 \(version)。"
+      return CoreL10n.format("不支持结构化修改协议版本 %@。", String(version))
     case .tooManyChanges(let maximum):
-      return "AI 返回的修改项过多，单次最多允许 \(maximum) 项。"
+      return CoreL10n.format("AI 返回的修改项过多，单次最多允许 %@ 项。", String(maximum))
     case .duplicateIdentifier(let identifier):
-      return "AI 返回了重复的修改编号：\(identifier)。"
+      return CoreL10n.format("AI 返回了重复的修改编号：%@。", identifier)
     case .emptyIdentifier:
-      return "AI 返回了缺少编号的修改项。"
+      return CoreL10n.text("AI 返回了缺少编号的修改项。")
     case .emptyReason(let identifier):
-      return "修改项 \(identifier) 缺少修改原因。"
+      return CoreL10n.format("修改项 %@ 缺少修改原因。", identifier)
     case .invalidConfidence(let identifier):
-      return "修改项 \(identifier) 的置信度必须位于 0 到 1 之间。"
+      return CoreL10n.format("修改项 %@ 的置信度必须位于 0 到 1 之间。", identifier)
     case .invalidRange(let identifier):
-      return "修改项 \(identifier) 的原文范围无效。"
+      return CoreL10n.format("修改项 %@ 的原文范围无效。", identifier)
     case .originalLengthMismatch(let identifier):
-      return "修改项 \(identifier) 的原文字数与范围长度不一致。"
+      return CoreL10n.format("修改项 %@ 的原文字数与范围长度不一致。", identifier)
     case .originalTextChanged(let identifier):
-      return "修改项 \(identifier) 对应的原文已经变化，请重新校对。"
+      return CoreL10n.format("修改项 %@ 对应的原文已经变化，请重新校对。", identifier)
     case .overlappingChanges(let first, let second):
-      return "修改项 \(first) 与 \(second) 的原文范围重叠。"
+      return CoreL10n.format("修改项 %@ 与 %@ 的原文范围重叠。", first, second)
     }
   }
 }
@@ -375,7 +376,7 @@ public enum AIStructuredEditReviewError: LocalizedError, Equatable, Sendable {
   public var errorDescription: String? {
     switch self {
     case .unknownProposal(let identifier):
-      return "找不到修改项 \(identifier)。"
+      return CoreL10n.format("找不到修改项 %@。", identifier)
     }
   }
 }

@@ -130,6 +130,13 @@ extension WorkspaceBackupService {
           CoreL10n.format("组件与文件路径不一致：%@", record.relativePath)
         )
       }
+      if record.relativePath.hasPrefix(Self.retiredFeatureArchivesRelativePrefix + "/"),
+        manifest.formatVersion < WorkspaceBackupManifest.currentFormatVersion
+      {
+        throw WorkspaceBackupError.invalidManifest(
+          CoreL10n.text("退役归档要求 v5 备份格式")
+        )
+      }
       let actual = try fileRecord(
         relativePath: record.relativePath,
         component: record.component,
@@ -186,12 +193,14 @@ extension WorkspaceBackupService {
         throw WorkspaceBackupError.invalidWorkbenchSnapshot(error.localizedDescription)
       }
       guard let snapshot else { throw WorkspaceBackupError.missingFile(Self.workbenchRelativePath) }
-      try validateAttachmentReferences(in: snapshot, references: manifest.attachmentReferences, files: manifest.files)
+      try validateAttachmentReferences(
+        in: snapshot, references: manifest.attachmentReferences, files: manifest.files)
       guard manifest.profileCount == snapshot.profiles.count,
-            manifest.draftCount == snapshot.drafts.count,
-            manifest.draftVersionCount == snapshot.draftVersions.count,
-            manifest.releaseRecordCount == snapshot.releaseRecords.count,
-            manifest.unresolvedAttachmentCount == unresolvedAttachmentCount(in: snapshot) else {
+        manifest.draftCount == snapshot.drafts.count,
+        manifest.draftVersionCount == snapshot.draftVersions.count,
+        manifest.releaseRecordCount == snapshot.releaseRecords.count,
+        manifest.unresolvedAttachmentCount == unresolvedAttachmentCount(in: snapshot)
+      else {
         throw WorkspaceBackupError.invalidManifest(CoreL10n.text("工作区数据统计与快照不一致"))
       }
     } else if manifest.attachmentReferences.isEmpty,
@@ -358,6 +367,9 @@ extension WorkspaceBackupService {
 
   func component(for relativePath: String) -> WorkspaceBackupComponent? {
     if relativePath == Self.workbenchRelativePath { return .workbenchState }
+    if relativePath.hasPrefix(Self.retiredFeatureArchivesRelativePrefix + "/") {
+      return .workbenchState
+    }
     if relativePath == Self.operationHistoryRelativePath { return .operationHistory }
     if relativePath.hasPrefix(Self.attachmentsDirectoryName + "/") {
       return .draftAttachments
@@ -425,11 +437,19 @@ extension WorkspaceBackupService {
 
   func regularFileURLs(in directoryURL: URL) throws -> [URL] {
     guard fileManager.fileExists(atPath: directoryURL.path) else { return [] }
-    guard let enumerator = fileManager.enumerator(
-      at: directoryURL,
-      includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey],
-      options: []
-    ) else {
+    let rootValues = try directoryURL.resourceValues(
+      forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+    )
+    guard rootValues.isDirectory == true, rootValues.isSymbolicLink != true else {
+      throw WorkspaceBackupError.invalidPath(directoryURL.path)
+    }
+    guard
+      let enumerator = fileManager.enumerator(
+        at: directoryURL,
+        includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey],
+        options: []
+      )
+    else {
       throw WorkspaceBackupError.sourceUnavailable(directoryURL.path)
     }
     var files: [URL] = []
@@ -499,4 +519,5 @@ extension WorkspaceBackupService {
       sha256: try sha256(of: url, relativePath: relativePath)
     )
   }
+
 }

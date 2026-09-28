@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 import PublishingKnowledgeCore
 
 /// Errors exposed by the read-only knowledge tools.
@@ -16,15 +17,15 @@ public enum WorkbenchAgentKnowledgeError: LocalizedError, Equatable, Sendable {
   public var errorDescription: String? {
     switch self {
     case .emptyQuery:
-      return "资料库搜索词不能为空。"
+      return CoreL10n.text("资料库搜索词不能为空。")
     case .missingDocument:
-      return "找不到这条资料。"
+      return CoreL10n.text("找不到这条资料。")
     case .notAllowed:
-      return "这条资料未允许远程 AI 使用。"
+      return CoreL10n.text("这条资料未允许远程 AI 使用。")
     case .cancelled:
-      return "资料库操作已取消。"
+      return CoreL10n.text("资料库操作已取消。")
     case .unavailable:
-      return "资料库暂时不可用。"
+      return CoreL10n.text("资料库暂时不可用。")
     }
   }
 }

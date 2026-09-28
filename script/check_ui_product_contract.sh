@@ -32,12 +32,12 @@ fi
 if grep -Fq 'private var optimizationMenu' "$VIEWS/Images/ImageWorkbenchView.swift"; then fail "primary image operations returned to legacy menu"; fi
 for source in \
   Repository/RepositoryWorkspaceView.swift:repository-workspace \
-  Repository/RepositoryWorkspaceOverviewSections.swift:repository-primary-actions \
-  Repository/RepositoryWorkspaceOverviewSections.swift:repository-action-select-folder \
-  Repository/RepositoryWorkspaceOverviewSections.swift:repository-action-scan \
-  Repository/RepositoryWorkspaceOverviewSections.swift:repository-action-import \
-  Repository/RepositoryWorkspaceOverviewSections.swift:repository-action-data-management \
-  Repository/RepositoryWorkspaceOverviewSections.swift:repository-action-open-images \
+  Repository/RepositoryWorkspacePrimaryActions.swift:repository-primary-actions \
+  Repository/RepositoryWorkspacePrimaryActions.swift:repository-action-select-folder \
+  Repository/RepositoryWorkspacePrimaryActions.swift:repository-action-scan \
+  Repository/RepositoryWorkspacePrimaryActions.swift:repository-action-import \
+  Repository/RepositoryWorkspacePrimaryActions.swift:repository-action-data-management \
+  Repository/RepositoryWorkspacePrimaryActions.swift:repository-action-open-images \
   Repository/RepositoryWorkspaceOverviewSections.swift:repository-next-action \
   Repository/RepositoryWorkspaceOverviewSections.swift:repository-section-summary \
   Repository/RepositoryWorkspaceOverviewSections.swift:repository-section-information \

@@ -1,6 +1,6 @@
 import AppKit
 import PublishingCoreSupport
-import PublishingWorkbenchCore
+import PublishingMarkdownCore
 
 protocol MarkdownPasteboardSource {
   func readObjects(

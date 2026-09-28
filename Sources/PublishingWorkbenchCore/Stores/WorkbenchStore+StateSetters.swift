@@ -4,6 +4,11 @@ extension WorkbenchStore {
   public func updateActiveProfile(_ profile: SiteProfile) {
     let previousProfile = publishingStore.profiles.first(where: { $0.id == profile.id })
     let synchronizedProfile = synchronizeSelectedAIConnectionIfNeeded(with: profile)
+    if let previousProfile,
+      previousProfile.aiConnectionProfileID != synchronizedProfile.aiConnectionProfileID
+    {
+      aiStore.cancelArticleStreamingAuthorization(profileID: profile.id)
+    }
     publishingStore.activeProfile = synchronizedProfile
     if previousProfile.map(DraftRepositoryIdentity.init(profile:))
       != DraftRepositoryIdentity(profile: synchronizedProfile)
@@ -69,6 +74,7 @@ extension WorkbenchStore {
       rejectedProfile.aiProviderConfig = existingProfile.aiProviderConfig
       return rejectedProfile
     }
+    aiStore.cancelStreamingAuthorization(connectionID: connectionID)
     aiConnectionProfiles[connectionIndex].config = profile.aiProviderConfig
     for siteIndex in publishingStore.profiles.indices
     where publishingStore.profiles[siteIndex].aiConnectionProfileID == connectionID {

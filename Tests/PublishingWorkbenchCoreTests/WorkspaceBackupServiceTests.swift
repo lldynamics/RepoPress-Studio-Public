@@ -473,6 +473,272 @@ final class WorkspaceBackupServiceTests: XCTestCase {
     XCTAssertEqual(inspected, preview)
   }
 
+  func testBackupRoundTripsRetiredFeatureArchivesAndMergesExistingArchives() throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "WorkspaceBackupRetiredArchives")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceRootURL = rootURL.appendingPathComponent("Source", isDirectory: true)
+    let targetRootURL = rootURL.appendingPathComponent("Target", isDirectory: true)
+    let sourceArchivesURL = sourceRootURL.appendingPathComponent(
+      "RetiredFeatureArchives", isDirectory: true)
+    let targetPersistenceURL = targetRootURL.appendingPathComponent("workbench.json")
+    let targetArchivesURL = targetRootURL.appendingPathComponent(
+      "RetiredFeatureArchives", isDirectory: true)
+    try FileManager.default.createDirectory(
+      at: sourceArchivesURL, withIntermediateDirectories: true)
+    try Data("archived-source".utf8).write(
+      to: sourceArchivesURL.appendingPathComponent("source.json"))
+    try FileManager.default.createDirectory(
+      at: targetArchivesURL, withIntermediateDirectories: true)
+    try Data("archived-existing".utf8).write(
+      to: targetArchivesURL.appendingPathComponent("existing.json"))
+
+    let profile = SiteProfile.defaultProfile
+    let archiveURL = sourceRootURL.appendingPathComponent("workspace.psworkspacebackup")
+    let service = WorkspaceBackupService()
+    _ = try service.createBackup(
+      at: archiveURL,
+      snapshot: WorkbenchSnapshot(
+        profiles: [profile], activeProfileID: profile.id, drafts: [], releaseRecords: []),
+      retiredFeatureArchiveDirectoryURL: sourceArchivesURL,
+      knowledgeRootURL: sourceRootURL.appendingPathComponent("KnowledgeLibrary"),
+      applicationVersion: "test"
+    )
+
+    let manifest = try decodedWorkspaceBackupManifest(at: archiveURL)
+    XCTAssertEqual(manifest.formatVersion, WorkspaceBackupManifest.currentFormatVersion)
+    XCTAssertTrue(
+      manifest.files.contains {
+        $0.relativePath == WorkspaceBackupService.retiredFeatureArchivesRelativePrefix
+          + "/source.json"
+          && $0.component == .workbenchState
+      })
+    _ = try service.stageRestore(from: archiveURL, persistenceFileURL: targetPersistenceURL)
+    _ = try service.applyPendingRestore(
+      persistenceFileURL: targetPersistenceURL,
+      knowledgeRootURL: targetRootURL.appendingPathComponent("KnowledgeLibrary"),
+      rssDatabaseURL: targetRootURL.appendingPathComponent("RSSReader/reader.sqlite"),
+      attachmentRootURL: targetRootURL.appendingPathComponent("ManagedAttachments"),
+      currentApplicationVersion: "test"
+    )
+
+    XCTAssertEqual(
+      try Data(contentsOf: targetArchivesURL.appendingPathComponent("source.json")),
+      Data("archived-source".utf8)
+    )
+    XCTAssertEqual(
+      try Data(contentsOf: targetArchivesURL.appendingPathComponent("existing.json")),
+      Data("archived-existing".utf8)
+    )
+  }
+
+  func testLegacyBackupDoesNotReplaceExistingRetiredFeatureArchives() throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "WorkspaceBackupLegacyRetiredArchives")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceRootURL = rootURL.appendingPathComponent("Source", isDirectory: true)
+    let targetRootURL = rootURL.appendingPathComponent("Target", isDirectory: true)
+    let targetPersistenceURL = targetRootURL.appendingPathComponent("workbench.json")
+    let targetArchivesURL = targetRootURL.appendingPathComponent(
+      "RetiredFeatureArchives", isDirectory: true)
+    try FileManager.default.createDirectory(
+      at: targetArchivesURL, withIntermediateDirectories: true)
+    try Data("keep legacy archive".utf8).write(
+      to: targetArchivesURL.appendingPathComponent("legacy.json"))
+
+    let profile = SiteProfile.defaultProfile
+    let archiveURL = sourceRootURL.appendingPathComponent("legacy.psworkspacebackup")
+    let service = WorkspaceBackupService()
+    _ = try service.createBackup(
+      at: archiveURL,
+      snapshot: WorkbenchSnapshot(
+        profiles: [profile], activeProfileID: profile.id, drafts: [], releaseRecords: []),
+      knowledgeRootURL: sourceRootURL.appendingPathComponent("KnowledgeLibrary"),
+      applicationVersion: "test"
+    )
+    _ = try service.stageRestore(from: archiveURL, persistenceFileURL: targetPersistenceURL)
+    _ = try service.applyPendingRestore(
+      persistenceFileURL: targetPersistenceURL,
+      knowledgeRootURL: targetRootURL.appendingPathComponent("KnowledgeLibrary"),
+      rssDatabaseURL: targetRootURL.appendingPathComponent("RSSReader/reader.sqlite"),
+      attachmentRootURL: targetRootURL.appendingPathComponent("ManagedAttachments"),
+      currentApplicationVersion: "test"
+    )
+    XCTAssertEqual(
+      try Data(contentsOf: targetArchivesURL.appendingPathComponent("legacy.json")),
+      Data("keep legacy archive".utf8)
+    )
+  }
+
+  func testRetiredFeatureArchiveConflictFailsBeforeReplacingLiveWorkspace() throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "WorkspaceBackupRetiredArchiveConflict")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceRootURL = rootURL.appendingPathComponent("Source", isDirectory: true)
+    let targetRootURL = rootURL.appendingPathComponent("Target", isDirectory: true)
+    let sourceArchivesURL = sourceRootURL.appendingPathComponent(
+      "RetiredFeatureArchives", isDirectory: true)
+    let targetPersistenceURL = targetRootURL.appendingPathComponent("workbench.json")
+    let targetArchivesURL = targetRootURL.appendingPathComponent(
+      "RetiredFeatureArchives", isDirectory: true)
+    try FileManager.default.createDirectory(
+      at: sourceArchivesURL, withIntermediateDirectories: true)
+    try Data("backup bytes".utf8).write(
+      to: sourceArchivesURL.appendingPathComponent("conflict.json"))
+    try FileManager.default.createDirectory(
+      at: targetArchivesURL, withIntermediateDirectories: true)
+    try Data("live bytes".utf8).write(to: targetArchivesURL.appendingPathComponent("conflict.json"))
+
+    let profile = SiteProfile.defaultProfile
+    var originalDraft = ArticleDraft.empty(profile: profile)
+    originalDraft.title = "original"
+    _ = try WorkbenchPersistence(fileURL: targetPersistenceURL).save(
+      WorkbenchSnapshot(
+        profiles: [profile], activeProfileID: profile.id, drafts: [originalDraft],
+        releaseRecords: [])
+    )
+    let archiveURL = sourceRootURL.appendingPathComponent("conflict.psworkspacebackup")
+    let service = WorkspaceBackupService()
+    _ = try service.createBackup(
+      at: archiveURL,
+      snapshot: WorkbenchSnapshot(
+        profiles: [profile], activeProfileID: profile.id, drafts: [], releaseRecords: []),
+      retiredFeatureArchiveDirectoryURL: sourceArchivesURL,
+      knowledgeRootURL: sourceRootURL.appendingPathComponent("KnowledgeLibrary"),
+      applicationVersion: "test"
+    )
+    _ = try service.stageRestore(from: archiveURL, persistenceFileURL: targetPersistenceURL)
+    XCTAssertThrowsError(
+      try service.applyPendingRestore(
+        persistenceFileURL: targetPersistenceURL,
+        knowledgeRootURL: targetRootURL.appendingPathComponent("KnowledgeLibrary"),
+        rssDatabaseURL: targetRootURL.appendingPathComponent("RSSReader/reader.sqlite"),
+        attachmentRootURL: targetRootURL.appendingPathComponent("ManagedAttachments"),
+        currentApplicationVersion: "test"
+      )
+    ) { error in
+      guard case WorkspaceBackupError.restoreFailed = error else {
+        return XCTFail("unexpected error: \(error)")
+      }
+    }
+    XCTAssertEqual(
+      try Data(contentsOf: targetArchivesURL.appendingPathComponent("conflict.json")),
+      Data("live bytes".utf8)
+    )
+    XCTAssertEqual(
+      try WorkbenchPersistence(fileURL: targetPersistenceURL).load()?.drafts.first?.title,
+      "original"
+    )
+  }
+
+  func testTamperedRetiredFeatureArchiveIsRejectedBeforeRestore() throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "WorkspaceBackupRetiredArchiveTamper")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceArchivesURL = rootURL.appendingPathComponent(
+      "RetiredFeatureArchives", isDirectory: true)
+    try FileManager.default.createDirectory(
+      at: sourceArchivesURL, withIntermediateDirectories: true)
+    try Data("original archive".utf8).write(
+      to: sourceArchivesURL.appendingPathComponent("retired.json"))
+    let profile = SiteProfile.defaultProfile
+    let archiveURL = rootURL.appendingPathComponent("tampered.psworkspacebackup")
+    let service = WorkspaceBackupService()
+    _ = try service.createBackup(
+      at: archiveURL,
+      snapshot: WorkbenchSnapshot(
+        profiles: [profile], activeProfileID: profile.id, drafts: [], releaseRecords: []),
+      retiredFeatureArchiveDirectoryURL: sourceArchivesURL,
+      knowledgeRootURL: rootURL.appendingPathComponent("KnowledgeLibrary"),
+      applicationVersion: "test"
+    )
+    let archivedURL = archiveURL.appendingPathComponent(
+      WorkspaceBackupService.retiredFeatureArchivesRelativePrefix + "/retired.json"
+    )
+    try Data("tampered archive".utf8).write(to: archivedURL, options: .atomic)
+    XCTAssertThrowsError(try service.inspectBackup(at: archiveURL)) { error in
+      guard case WorkspaceBackupError.checksumMismatch = error else {
+        return XCTFail("unexpected error: \(error)")
+      }
+    }
+  }
+
+  func testRetiredFeatureArchivePathRequiresExactPrefix() {
+    let service = WorkspaceBackupService()
+    XCTAssertEqual(
+      service.component(
+        for: WorkspaceBackupService.retiredFeatureArchivesRelativePrefix + "/archive.json"),
+      .workbenchState
+    )
+    XCTAssertNil(
+      service.component(for: WorkspaceBackupService.retiredFeatureArchivesRelativePrefix))
+    XCTAssertNil(
+      service.component(
+        for: WorkspaceBackupService.retiredFeatureArchivesRelativePrefix + "-copy/archive.json"
+      ))
+  }
+
+  func testInterruptedRetiredFeatureArchiveRestoreRollsBackMergedDirectory() throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "WorkspaceBackupRetiredArchiveRollback")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceRootURL = rootURL.appendingPathComponent("Source", isDirectory: true)
+    let targetRootURL = rootURL.appendingPathComponent("Target", isDirectory: true)
+    let sourceArchivesURL = sourceRootURL.appendingPathComponent(
+      "RetiredFeatureArchives", isDirectory: true)
+    let targetPersistenceURL = targetRootURL.appendingPathComponent("workbench.json")
+    let targetArchivesURL = targetRootURL.appendingPathComponent(
+      "RetiredFeatureArchives", isDirectory: true)
+    try FileManager.default.createDirectory(
+      at: sourceArchivesURL, withIntermediateDirectories: true)
+    try Data("backup archive".utf8).write(
+      to: sourceArchivesURL.appendingPathComponent("backup.json"))
+    try FileManager.default.createDirectory(
+      at: targetArchivesURL, withIntermediateDirectories: true)
+    try Data("original archive".utf8).write(
+      to: targetArchivesURL.appendingPathComponent("original.json"))
+    let profile = SiteProfile.defaultProfile
+    let archiveURL = sourceRootURL.appendingPathComponent("rollback.psworkspacebackup")
+    _ = try WorkspaceBackupService().createBackup(
+      at: archiveURL,
+      snapshot: WorkbenchSnapshot(
+        profiles: [profile], activeProfileID: profile.id, drafts: [], releaseRecords: []),
+      retiredFeatureArchiveDirectoryURL: sourceArchivesURL,
+      knowledgeRootURL: sourceRootURL.appendingPathComponent("KnowledgeLibrary"),
+      applicationVersion: "test"
+    )
+    _ = try WorkspaceBackupService().stageRestore(
+      from: archiveURL, persistenceFileURL: targetPersistenceURL)
+    let interrupted = WorkspaceBackupService { checkpoint in
+      guard checkpoint == .newDataInstalled else { return }
+      throw WorkspaceRestoreProcessInterruption()
+    }
+    XCTAssertThrowsError(
+      try interrupted.applyPendingRestore(
+        persistenceFileURL: targetPersistenceURL,
+        knowledgeRootURL: targetRootURL.appendingPathComponent("KnowledgeLibrary"),
+        rssDatabaseURL: targetRootURL.appendingPathComponent("RSSReader/reader.sqlite"),
+        attachmentRootURL: targetRootURL.appendingPathComponent("ManagedAttachments"),
+        currentApplicationVersion: "test"
+      ))
+    XCTAssertEqual(
+      WorkspaceBackupService.recoverInterruptedRestoreIfNeeded(
+        persistenceFileURL: targetPersistenceURL,
+        knowledgeRootURL: targetRootURL.appendingPathComponent("KnowledgeLibrary"),
+        rssDatabaseURL: targetRootURL.appendingPathComponent("RSSReader/reader.sqlite"),
+        attachmentRootURL: targetRootURL.appendingPathComponent("ManagedAttachments")
+      ),
+      .rolledBack
+    )
+    XCTAssertEqual(
+      try Data(contentsOf: targetArchivesURL.appendingPathComponent("original.json")),
+      Data("original archive".utf8)
+    )
+    XCTAssertFalse(
+      FileManager.default.fileExists(
+        atPath: targetArchivesURL.appendingPathComponent("backup.json").path))
+  }
+
   func testTamperedWorkspaceBackupIsRejectedByChecksumValidation() throws {
     let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: "WorkspaceBackupTamper")
     defer { try? FileManager.default.removeItem(at: rootURL) }

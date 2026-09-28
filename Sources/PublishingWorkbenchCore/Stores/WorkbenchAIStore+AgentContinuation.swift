@@ -1,22 +1,18 @@
 import Foundation
+import os
 
 /// The agent loop converts a model-transport error into a result termination.
 /// This side channel preserves the dedicated cancellation semantics when a
 /// frozen knowledge binding is revoked while a continuation is resuming.
-private final class AgentContinuationKnowledgeAuthorizationState: @unchecked Sendable {
-  private let lock = NSLock()
-  private var changed = false
+private final class AgentContinuationKnowledgeAuthorizationState: Sendable {
+  private let state = OSAllocatedUnfairLock(initialState: false)
 
   func markChanged() {
-    lock.lock()
-    changed = true
-    lock.unlock()
+    state.withLock { $0 = true }
   }
 
   var didChange: Bool {
-    lock.lock()
-    defer { lock.unlock() }
-    return changed
+    state.withLock { $0 }
   }
 }
 

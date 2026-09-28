@@ -64,6 +64,7 @@ public struct URLSessionAIChatTransport: AIChatTransport, AIChatStreamingTranspo
     AsyncThrowingStream<String, Error>, URLResponse
   ) {
     defer { withExtendedLifetime(sessionOwner) {} }
+    try Task.checkCancellation()
     let (bytes, response) = try await session.bytes(for: request)
     try BoundedHTTPResponseLoader.validateExpectedLength(
       response,

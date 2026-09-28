@@ -197,9 +197,7 @@ struct SettingsConfigurationHealthCard: View {
       detail = Text("未保存，线上发布会受限")
       state = .info
     case .accessFailed:
-      detail = Text(
-        "操作失败：\(credentialAccessFailureMessage(repositoryTokenAvailability))"
-      )
+      detail = Text(verbatim: credentialAccessFailureMessage(repositoryTokenAvailability))
       state = .warning
     }
     return SettingsConfigurationHealthItem(
@@ -227,17 +225,17 @@ struct SettingsConfigurationHealthCard: View {
     let requiresKey = aiProviderConfig.requiresAPIKey
     let isReady = !requiresKey || aiTokenAvailability.hasToken
     let hasAccessFailure = requiresKey && aiTokenAvailability.accessState == .accessFailed
+    let detail: Text
+    if hasAccessFailure {
+      detail = Text(verbatim: credentialAccessFailureMessage(aiTokenAvailability))
+    } else if isReady {
+      detail = requiresKey ? Text("已保存，可生成建议") : Text("当前配置无需 API Key")
+    } else {
+      detail = Text("未保存，AI 功能会受限")
+    }
     return SettingsConfigurationHealthItem(
       title: "AI 连接凭据",
-      detail: hasAccessFailure
-        ? Text(
-          "操作失败：\(credentialAccessFailureMessage(aiTokenAvailability))"
-        )
-        : (
-          isReady
-            ? (requiresKey ? Text("已保存，可生成建议") : Text("当前配置无需 API Key"))
-            : Text("未保存，AI 功能会受限")
-        ),
+      detail: detail,
       systemImage: "sparkles",
       state: hasAccessFailure ? .warning : (isReady ? .ready : .info),
       destination: .aiKey,

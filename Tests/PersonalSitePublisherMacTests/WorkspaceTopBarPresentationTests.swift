@@ -1,10 +1,10 @@
 import AppKit
 import Foundation
-import PublishingWorkbenchCore
 import SwiftUI
 import XCTest
 
 @testable import PersonalSitePublisherMac
+@testable import PublishingWorkbenchCore
 
 final class WorkspaceTopBarPresentationTests: XCTestCase {
   func testDensityUsesTheThreeToolbarWidthBands() {
@@ -139,6 +139,43 @@ final class WorkspaceTopBarPresentationTests: XCTestCase {
 
 @MainActor
 final class LocalSitePreviewPanelRenderingTests: XCTestCase {
+  func testGeneralDraftStatusIgnoresSitePublishingBlockersAndWindowSelection() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: directory.appendingPathComponent("workspace.json")),
+      safeMode: true
+    )
+    let general = ArticleDraft(
+      siteProfileID: store.activeProfileID, scope: .general, title: "General draft"
+    )
+    let siteDraft = ArticleDraft(siteProfileID: store.activeProfileID, title: "Site draft")
+    store.setDrafts([general, siteDraft])
+    store.selectDraft(siteDraft.id)
+    store.setPreflightIssues([
+      PreflightIssue(
+        severity: .error, title: "Site required", message: "Publishing requires a site")
+    ])
+    let control = PublishingStatusToolbarControl(
+      store: store,
+      selectedDraftID: general.id,
+      selectedSection: .writing,
+      isCompact: true,
+      openPublishFlow: {},
+      openRepositoryOverview: {},
+      openContentHealthOverview: {},
+      openReleaseHistory: {}
+    )
+    XCTAssertEqual(control.draftStatus.severity, .information)
+    XCTAssertEqual(control.draftStatus.value, String(localized: "通用草稿，未绑定站点"))
+    XCTAssertNil(control.draftStatus.count)
+    store.selectDraft(general.id)
+    XCTAssertEqual(control.draftStatus.severity, .information)
+    XCTAssertNil(control.draftStatus.count)
+  }
+
   func testPreviewPanelRendersWithoutAnEnvironmentObject() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
       UUID().uuidString, isDirectory: true

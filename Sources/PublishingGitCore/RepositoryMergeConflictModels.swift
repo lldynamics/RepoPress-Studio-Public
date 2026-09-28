@@ -313,33 +313,33 @@ public enum RepositoryMergeConflictError: Error, LocalizedError, Hashable, Senda
   public var errorDescription: String? {
     switch self {
     case .repositoryUnavailable:
-      return "未找到可用的本地 Git 仓库。"
+      return CoreL10n.text("未找到可用的本地 Git 仓库。")
     case .invalidRepositoryPath:
-      return "仓库路径无效。"
+      return CoreL10n.text("仓库路径无效。")
     case .conflictNotFound:
-      return "该文件已经不在 Git 未解决冲突索引中，请重新扫描。"
+      return CoreL10n.text("该文件已经不在 Git 未解决冲突索引中，请重新扫描。")
     case .unsafeRepositoryPath:
-      return "拒绝写入仓库根目录之外的路径。"
+      return CoreL10n.text("拒绝写入仓库根目录之外的路径。")
     case .finalContentTooLarge:
-      return "最终合并内容超过安全大小限制。"
+      return CoreL10n.text("最终合并内容超过安全大小限制。")
     case .unsupportedBinaryContent:
-      return "二进制或无法解码的冲突不能通过文本合并覆盖。"
+      return CoreL10n.text("二进制或无法解码的冲突不能通过文本合并覆盖。")
     case .unresolvedConflictMarkers:
-      return "最终版本仍包含 Git 冲突标记，请先明确选择或手工编辑。"
+      return CoreL10n.text("最终版本仍包含 Git 冲突标记，请先明确选择或手工编辑。")
     case .deleteNotAllowed:
-      return "仅“修改/删除”冲突可明确选择删除此文件。"
+      return CoreL10n.text("仅“修改/删除”冲突可明确选择删除此文件。")
     case .operationInProgress:
-      return "另一个仓库操作正在进行，请完成后再处理冲突。"
+      return CoreL10n.text("另一个仓库操作正在进行，请完成后再处理冲突。")
     case .writeFailed(let message):
-      return "写入最终合并版本失败：\(message)"
+      return CoreL10n.format("写入最终合并版本失败：%@", message)
     case .stageFailed(let terminated, let output):
-      let detail = output.trimmedForPublishing.nilIfEmpty ?? "请检查 Git 工作区状态。"
-      return "暂存最终合并版本失败（退出码：\(terminated)）：\(detail)"
+      let detail = output.trimmedForPublishing.nilIfEmpty ?? CoreL10n.text("请检查 Git 工作区状态。")
+      return CoreL10n.format("暂存最终合并版本失败（退出码：%d）：%@", terminated, detail)
     case .deleteFailed(let terminated, let output):
-      let detail = output.trimmedForPublishing.nilIfEmpty ?? "请检查 Git 工作区状态。"
-      return "删除并暂存冲突文件失败（退出码：\(terminated)）：\(detail)"
+      let detail = output.trimmedForPublishing.nilIfEmpty ?? CoreL10n.text("请检查 Git 工作区状态。")
+      return CoreL10n.format("删除并暂存冲突文件失败（退出码：%d）：%@", terminated, detail)
     case .repositoryChanged:
-      return "仓库在合并操作期间发生变化，请重新扫描后再处理。"
+      return CoreL10n.text("仓库在合并操作期间发生变化，请重新扫描后再处理。")
     }
   }
 }

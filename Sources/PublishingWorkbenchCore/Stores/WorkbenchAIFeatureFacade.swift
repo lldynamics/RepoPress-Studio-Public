@@ -229,7 +229,7 @@ public final class WorkbenchRSSListTitleTranslationFeatureFacade: ObservableObje
 
 @MainActor
 public final class WorkbenchAIFeatureFacade: ObservableObject {
-  private unowned let store: WorkbenchStore
+  unowned let store: WorkbenchStore
   private var cancellables = Set<AnyCancellable>()
   public let inlineStructuredEditReviewState = AIInlineStructuredEditReviewState()
 
@@ -498,10 +498,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
       policy,
       conversationID: conversationID
     )
-  }
-
-  public func availableGeneralChatContextReferences() -> [AIContextReference] {
-    store.aiStore.availableGeneralAIChatContextReferences()
   }
 
   @discardableResult
@@ -783,75 +779,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.selectAIConnectionProfile(connectionID)
   }
 
-  /// Applies a fenced code/Markdown block through the same revisioned body
-  /// buffer used by the live editor. The editor is focused only after the
-  /// staged write succeeds, so a stale concurrent edit cannot be overwritten.
-  @discardableResult
-  public func applyChatMarkdown(
-    _ markdown: String,
-    to draft: ArticleDraft,
-    mode: AIChatMarkdownInsertionMode
-  ) -> Bool {
-    store.flushDraftBodyEditorBuffer(for: draft.id)
-    guard let currentDraft = store.drafts.first(where: { $0.id == draft.id }) else {
-      store.setPublishActionMessage(
-        CoreL10n.text("当前文章已变化，请重新选择后再应用。"),
-        status: .warning
-      )
-      return false
-    }
-
-    let insertion = AIChatMarkdownInsertionService.inserting(
-      markdown,
-      into: currentDraft.bodyMarkdown,
-      selection: store.activeEditorSelectionRange(for: currentDraft),
-      mode: mode
-    )
-    guard let insertion else {
-      store.setPublishActionMessage(
-        CoreL10n.text("代码块内容为空或当前编辑位置已失效。"),
-        status: .warning
-      )
-      return false
-    }
-
-    let buffer = store.draftBodyEditorBuffer(for: currentDraft.id)
-    guard
-      let staged = store.replaceDraftBody(
-        insertion.updatedBodyMarkdown,
-        for: currentDraft.id,
-        expectedRevision: buffer.revision
-      ), staged.wasAccepted
-    else {
-      store.setPublishActionMessage(
-        CoreL10n.text("当前文章在应用前已被其他窗口修改，请重新尝试。"),
-        status: .warning
-      )
-      return false
-    }
-
-    store.save()
-    store.selectSection(.writing)
-    store.requestEditorFocus(
-      draftID: currentDraft.id,
-      field: "body",
-      selectedRange: insertion.insertedRange
-    )
-    switch mode {
-    case .applyToCurrentEditor:
-      store.setPublishActionMessage(
-        CoreL10n.text("已将代码块应用到当前编辑器。"),
-        status: .success
-      )
-    case .insertAtCursor:
-      store.setPublishActionMessage(
-        CoreL10n.text("已将代码块插入到光标处。"),
-        status: .success
-      )
-    }
-    return true
-  }
-
   public func relatedChatArticleSuggestions(
     for draft: ArticleDraft,
     limit: Int = 5
@@ -1072,12 +999,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
       for: draft,
       attachmentIDs: attachmentIDs
     )
-  }
-
-  public func availableChatContextReferences(
-    for draft: ArticleDraft
-  ) -> [AIContextReference] {
-    store.aiStore.availableAIChatContextReferences(for: draft)
   }
 
   /// Begins a review in the editor rather than materializing an intermediate

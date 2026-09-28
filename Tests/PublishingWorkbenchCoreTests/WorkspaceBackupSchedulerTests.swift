@@ -153,6 +153,37 @@ final class WorkspaceBackupSchedulerTests: XCTestCase {
     )
   }
 
+  func testRetiredFeatureArchiveChangeProducesNewAutomaticBackupFingerprint() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let scheduler = WorkspaceBackupScheduler(
+      store: harness.store, defaults: harness.defaults,
+      defaultDestinationFolderURL: harness.injectedBackupURL
+    )
+    let retiredArchivesURL = harness.store.persistenceStore.persistence
+      .retiredFeatureArchiveDirectoryURL
+    try FileManager.default.createDirectory(
+      at: retiredArchivesURL, withIntermediateDirectories: true)
+    let archiveFileURL = retiredArchivesURL.appendingPathComponent("retired.json")
+    try Data("first archived payload".utf8).write(to: archiveFileURL)
+    let firstURL = harness.rootURL.appendingPathComponent("retired-first.psworkspacebackup")
+    let secondURL = harness.rootURL.appendingPathComponent("retired-second.psworkspacebackup")
+    let firstPreview = await harness.store.createWorkspaceBackup(
+      at: firstURL, applicationVersion: "test", actor: .background, selectedCategories: [.workbench]
+    )
+    XCTAssertNotNil(firstPreview)
+    try Data("changed archived payload".utf8).write(to: archiveFileURL, options: .atomic)
+    let secondPreview = await harness.store.createWorkspaceBackup(
+      at: secondURL, applicationVersion: "test", actor: .background,
+      selectedCategories: [.workbench]
+    )
+    XCTAssertNotNil(secondPreview)
+    XCTAssertNotEqual(
+      scheduler.manifestContentFingerprint(at: firstURL),
+      scheduler.manifestContentFingerprint(at: secondURL)
+    )
+  }
+
   private func manifestRecordDiagnostics(at packageURL: URL) -> String {
     let manifestURL = packageURL.appendingPathComponent(WorkspaceBackupService.manifestFileName)
     guard let data = try? Data(contentsOf: manifestURL) else { return "<manifest unavailable>" }

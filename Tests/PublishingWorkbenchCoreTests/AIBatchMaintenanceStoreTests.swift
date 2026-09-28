@@ -1,3 +1,4 @@
+import Observation
 import XCTest
 
 @testable import PublishingWorkbenchCore
@@ -32,6 +33,26 @@ final class AIBatchMaintenanceStoreTests: XCTestCase {
       try await Task.sleep(for: .milliseconds(5))
     }
     XCTAssertNil(batch.runningSiteID)
+  }
+
+  func testObservationTracksQueueAndMessageChanges() throws {
+    let store = try makeStore()
+    let drafts = makeDrafts(store: store, count: 1)
+    let batch = AIBatchMaintenanceStore(store: store)
+    let didChange = expectation(description: "maintenance state invalidates its observer")
+
+    withObservationTracking {
+      _ = batch.queues
+      _ = batch.message
+    } onChange: {
+      didChange.fulfill()
+    }
+
+    XCTAssertTrue(
+      batch.create(
+        draftIDs: [drafts[0].id], operation: .summary, siteProfileID: store.activeProfileID))
+    wait(for: [didChange], timeout: 1)
+    XCTAssertNotNil(batch.message)
   }
 
   func testPauseFinishesCurrentAndResumePreservesCompletedResults() async throws {

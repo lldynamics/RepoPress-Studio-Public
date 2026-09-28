@@ -107,6 +107,9 @@ extension WorkbenchStore {
         connectionProfileID: normalized.id
       )
     else { return false }
+    if aiConnectionProfiles[index].config != normalized.config {
+      aiStore.cancelStreamingAuthorization(connectionID: normalized.id)
+    }
     aiConnectionProfiles[index] = normalized
 
     var updatedSites = profiles

@@ -181,6 +181,14 @@ struct KnowledgeNoteEditorView: View {
     }
     .frame(minWidth: 680, idealWidth: 820, minHeight: 560, idealHeight: 720)
     .accessibilityIdentifier("knowledge-note-editor")
+    .focusedSceneValue(
+      \.contentSaveCommandAction,
+      ContentSaveCommandAction(
+        title: String(localized: "保存笔记"),
+        isEnabled: !isSaving,
+        save: save
+      )
+    )
     .alert("无法添加附件", isPresented: Binding(
       get: { attachmentErrorMessage != nil },
       set: { if !$0 { attachmentErrorMessage = nil } }

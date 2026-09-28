@@ -82,12 +82,56 @@ article content or search ranking:
   cache and commit behavior; only a manual `markdown-typing` trace with an
   observed input source can establish native IME latency and caret stability.
 
+Current and whole-document replacement plans run off the main actor in a cancellable task. Installation checks the draft, body revision and text, query, replacement, options, and selection scope again. A stale plan cannot replace newer text. The current replacement remains undoable; replace-all retains its preview. This changes where planning runs, without asserting a measured latency improvement.
+
 Repository content events still perform an authoritative scan. Skipping it would
 leave the visible Git change list stale, so path-only import is not a substitute
 for repository-state refresh.
 
 These are workload and correctness contracts, not a measured speedup claim.
 Collect comparable Release traces before assigning a latency or frame-rate gain.
+
+For the `@Observable` migration, a child view that receives an already owned
+reference stores it as `let`; `@State` is reserved for an observable reference
+created and owned by that view. `AIBatchMaintenancePanel` uses the store-owned
+maintenance instance. The opt-in
+[`ObservationOwnershipPerformanceTests`](../Tests/PersonalSitePublisherMacTests/ObservationOwnershipPerformanceTests.swift)
+mounts equivalent `@State` and `let` probes against externally owned
+observable models, changes each model 200 times, verifies all 201 body evaluations, and prints
+wall times in alternating order. Run with
+`RUN_OBSERVATION_OWNERSHIP_BENCHMARK=1 swift test --disable-sandbox --filter ObservationOwnershipPerformanceTests`.
+Those timings compare the ownership pattern; an app latency claim still needs
+matching Release traces of the panel.
+
+On 2026-09-27, the opt-in SwiftPM Debug test used the actual `@Observable`
+macro with an offscreen `NSHostingView`. Six samples per variant in ABBA order
+gave medians of 10.68 ms for `@State` and 10.58 ms for `let`, with every sample
+rendering 201 bodies. A repeat gave 11.20 ms and 11.50 ms respectively. This
+small view probe did not show a meaningful speed difference and does not
+measure the full panel.
+
+On 2026-09-27, a local `swiftc -O` SwiftUI/AppKit probe using an equivalent
+`ObservationRegistrar` model ran six samples per variant in ABBA order. Each
+sample rendered all 200 updates (201 body evaluations including the first
+render). Median elapsed time was 21.70 ms with `@State` and 21.81 ms with
+`let`. This separate Release proxy also showed no meaningful speed difference;
+the change establishes correct ownership of the store reference.
+
+## Deterministic scheduling tests
+
+The interaction debounce windows used by the editor and search coordinators are
+named in [`DebounceIntervals`](../Sources/PublishingCoreSupport/DebounceIntervals.swift).
+Production scheduling defaults to `ContinuousClock`; tests inject
+[`ManualClock`](../Tests/PublishingTestSupport/ManualClock.swift), wait until a
+sleep is registered, and advance across its deadline. This checks that work
+does not run early, cancelled work does not publish, and the latest edit wins
+without relying on a longer wall-clock sleep in the test. The preview page
+readiness check uses the same injected clock for retry pauses and its wait
+deadline; each call starts its own deadline.
+
+These tests establish ordering and cancellation. The mounted editor still
+requires AppKit layout assertions, and a virtual clock alone does not measure
+typing latency or native input behavior.
 
 ## Markdown scenarios
 

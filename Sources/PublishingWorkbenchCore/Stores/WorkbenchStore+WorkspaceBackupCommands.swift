@@ -132,6 +132,8 @@ extension WorkbenchStore {
     }
 
     let snapshot = persistenceStore.persistence.snapshot(from: self)
+    let retiredFeatureArchiveDirectoryURL =
+      persistenceStore.persistence.retiredFeatureArchiveDirectoryURL
     let knowledgeRootURL = knowledge.rootURL
     let rssDatabaseURL = rssReaderFileURL
     let rssMediaDirectoryURL = rssDatabaseURL.map {
@@ -148,6 +150,7 @@ extension WorkbenchStore {
           at: destinationURL,
           snapshot: snapshot,
           operationHistoryDocument: operationHistoryDocument,
+          retiredFeatureArchiveDirectoryURL: retiredFeatureArchiveDirectoryURL,
           knowledgeRootURL: knowledgeRootURL,
           rssDatabaseURL: rssDatabaseURL,
           rssMediaDirectoryURL: rssMediaDirectoryURL,

@@ -123,11 +123,21 @@ struct TokenRepositoryTokenSection: View {
 
         Spacer()
 
-        Button("刷新状态") {
+        Button(tokenAvailability.accessState == .accessFailed ? "重试" : "刷新状态") {
           onRefreshTokenState()
         }
         .buttonStyle(.borderless)
-        .accessibilityLabel("刷新访问令牌状态")
+        .accessibilityLabel(
+          tokenAvailability.accessState == .accessFailed ? "重试读取仓库令牌状态" : "刷新访问令牌状态"
+        )
+
+        if tokenAvailability.accessState == .accessFailed {
+          Button("重新授权") {
+            isRepositoryTokenFocused = true
+          }
+          .buttonStyle(.borderless)
+          .help("重新输入并保存令牌，以重新触发系统授权提示。")
+        }
 
         Button("删除", role: .destructive) {
           isDeleteConfirmationPresented = true
@@ -138,7 +148,7 @@ struct TokenRepositoryTokenSection: View {
       }
 
       if let accessFailureMessage = tokenAvailability.accessFailureMessage {
-        Text("操作失败：\(accessFailureMessage)")
+        Text(accessFailureMessage)
           .font(.caption)
           .foregroundStyle(WorkbenchTheme.warning)
           .textSelection(.enabled)

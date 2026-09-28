@@ -45,22 +45,17 @@ public struct ImageBatchProcessingResult: Sendable {
 
 /// A thread-safe cancellation signal that can be observed while a synchronous
 /// image encoder or external `cwebp` process is running.
-public final class ImageProcessingCancellationToken: @unchecked Sendable {
-  private let lock = NSLock()
-  private var cancelled = false
+public final class ImageProcessingCancellationToken: Sendable {
+  private let state = OSAllocatedUnfairLock(initialState: false)
 
   public init() {}
 
   public func cancel() {
-    lock.lock()
-    cancelled = true
-    lock.unlock()
+    state.withLock { $0 = true }
   }
 
   public var isCancelled: Bool {
-    lock.lock()
-    defer { lock.unlock() }
-    return cancelled
+    state.withLock { $0 }
   }
 
   public func throwIfCancelled() throws {

@@ -63,7 +63,7 @@ extension ArticleDraft {
     }
   }
 
-  public static let currentSoftwareGuideSeedVersion = 7
+  public static let currentSoftwareGuideSeedVersion = 9
 
   public struct SoftwareGuideSynchronizationResult: Sendable {
     public let drafts: [ArticleDraft]
@@ -273,23 +273,23 @@ extension ArticleDraft {
       bodyMarkdown: """
         # 开始使用：认识发布工作台
 
-        欢迎使用 RepoPress Studio。你正在阅读的“使用指南”默认位于通用草稿（Drafts），不会自动发布，也没有仓库写入路径。可以直接阅读、复制，或移到回收站；如果准备改写成自己的操作手册，建议先复制一份。
+        欢迎使用 RepoPress Studio。你正在阅读的“使用指南”默认位于通用草稿（General Drafts），不会自动发布，也没有仓库写入路径。可以直接阅读、复制，或移到回收站；如果准备改写成自己的操作手册，建议先复制一份。
 
         ## 顶部：先看站点、状态和入口
 
         - **站点切换与本地预览**：确认正在编辑哪个网站，并打开本地预览。
         - **发布状态**：汇总仓库、当前文章和部署状态；点击后可进入对应页面或打开发布流程。
-        - **全局搜索（⌘P）**：搜索草稿、标签和应用指令。
+        - **全局搜索（⇧⌘K）**：搜索草稿、标签和应用指令。
         - **直接操作按钮**：常用功能直接显示；在“写作”中可打开 AI 助手或右侧检查器。
 
         ## 左侧：按任务切换工作区
 
-        工作区提供“RSS、资料库、站点、检查、写作”五个入口，图片、维护和发布记录可从相应工作区进入。中央区域随工作区显示编辑器、资料阅读、仓库差异或检查结果；右侧检查器显示当前任务的元数据与操作。窗口较窄或进入专注模式时，侧栏和检查器可能自动收起。
+        工作区提供“写作、资料库、阅读（RSS）、图片、站点”五个一级入口。站点工作区包含站点检查、维护和发布记录。中央区域随工作区显示编辑器、资料阅读、仓库差异或检查结果；右侧检查器显示当前任务的元数据与操作。窗口较窄或进入专注模式时，侧栏和检查器可能自动收起。
 
         写作列表上方有两个范围：
 
         - **当前站点（Current Site）**：属于当前网站，可进入检查和发布。
-        - **草稿（Drafts）**：跨站点复用的通用草稿，不直接绑定仓库；需要时再转到某个站点。
+        - **通用草稿（General Drafts）**：跨站点复用的草稿，不直接绑定仓库；需要时再转到某个站点。
 
         ## 推荐的第一次使用顺序
 
@@ -300,7 +300,7 @@ extension ArticleDraft {
         5. 在“准备发布”面板审阅检查与差异，选择“保存到本地”或“发布所有变更”。
         6. 发布后到“发布记录”核对提交、PR/MR、自动化任务和部署结果。
 
-        > 安全练习：修改本段文字，切换“编辑 / 预览 / 分屏”，再打开检查器。只要不执行保存或发布动作，仓库不会发生变化。
+        > 安全练习：修改本段文字，再打开右侧检查器查看文章信息。只要不执行保存或发布动作，仓库不会发生变化。
         """
     ),
     SampleTemplate(
@@ -316,16 +316,13 @@ extension ArticleDraft {
 
         ## 1. 先选文章范围
 
-        在“当前站点”中新建的文章属于当前网站，可以进入发布流程；在“草稿”中新建的是通用草稿，适合跨网站积累提纲和素材。确认范围后，点击文章列表上方的 **＋**。
+        在“当前站点”中新建的文章属于当前网站，可以进入发布流程；在“通用草稿”中新建的是通用草稿，适合跨网站积累提纲和素材。确认范围后，点击文章列表上方的 **＋**。
 
         先填写清晰标题，再检查自动生成的 slug。slug 会成为文章路径的一部分，发布后尽量不要频繁修改。
 
         ## 2. 编辑与预览
 
-        中央编辑器支持 Markdown、查找替换、常用格式、表格、链接和图片。显示模式包括：
-
-        - **编辑**：集中输入，并使用单行快捷操作和格式化工具。
-        - **预览**：按需检查标题层级、链接、代码块、表格和图片的最终效果。
+        中央编辑器支持 Markdown、查找替换、常用格式、表格、链接和图片。需要检查最终效果时，使用顶部的本地预览入口。
 
         ## 3. 补全发布信息
 
@@ -337,7 +334,7 @@ extension ArticleDraft {
 
         RepoPress Studio 会自动保存工作台。重要改动可在版本历史中比较和恢复；误删文章先到回收站查找。
 
-        > 小练习：复制这一段，插入一个二级标题、一条链接和一个代码块，然后在分屏模式确认预览结果。
+        > 小练习：复制这一段，插入一个二级标题、一条链接和一个代码块，然后打开本地预览确认结果。
         """
     ),
     SampleTemplate(
@@ -509,23 +506,23 @@ extension ArticleDraft {
       bodyMarkdown: """
         # Getting Started: Meet Your Publishing Workbench
 
-        Welcome to RepoPress Studio. These Guide articles live in general Drafts by default. They are never published automatically and have no repository write path. Read, duplicate, or move them to the recycle bin. If you want to turn one into your own runbook, duplicate it first.
+        Welcome to RepoPress Studio. These Guide articles live in General Drafts by default. They are never published automatically and have no repository write path. Read, duplicate, or move them to the recycle bin. If you want to turn one into your own runbook, duplicate it first.
 
         ## Top bar: site, status, and entry points
 
         - **Site switcher and local preview** confirm which site you are editing and open its local preview.
         - **Publishing status** summarizes the repository, current article, and deployment. Click it to open the relevant area or publishing flow.
-        - **Global search (⌘P)** finds drafts, tags, and app commands.
+        - **Global search (⇧⌘K)** finds drafts, tags, and app commands.
         - **Direct action buttons** expose frequent tools. In Writing, open the AI Assistant or the inspector from the top bar.
 
         ## Left side: switch by task
 
-        The five workspace entries are RSS, Library, Site, Checks, and Writing. Images, maintenance, and release history are available within their corresponding workspaces. The center shows the editor, source reader, repository differences, or checks; the right inspector follows the current task. Sidebars may collapse in a narrow window or Focus Mode.
+        The five primary workspace entries are Writing, Library, Reading (RSS), Images, and Site. Site Checks, maintenance, and release history are available from the Site workspace. The center shows the editor, source reader, repository differences, or checks; the right inspector follows the current task. Sidebars may collapse in a narrow window or Focus Mode.
 
         Writing has two content scopes:
 
         - **Current Site** contains site-owned articles that can enter the publishing flow.
-        - **Drafts** contains reusable general drafts that are not directly bound to a repository.
+        - **General Drafts** contains reusable drafts that are not directly bound to a repository.
 
         ## A good first-use sequence
 
@@ -536,7 +533,7 @@ extension ArticleDraft {
         5. Review checks and file differences, then choose Save Locally or Publish All Changes.
         6. Verify commits, pull or merge requests, automation, and deployment in Release History.
 
-        > Safe exercise: edit this paragraph, switch among Edit, Preview, and Split, then open the inspector. The repository stays unchanged until you explicitly save or publish.
+        > Safe exercise: edit this paragraph, then open the inspector to review the article details. The repository stays unchanged until you explicitly save or publish.
         """
     ),
     SampleTemplate(
@@ -553,17 +550,13 @@ extension ArticleDraft {
 
         ## 1. Choose the draft scope
 
-        Articles created under Current Site belong to the active site and can enter publishing. Drafts are reusable general drafts for outlines and material shared across sites. Choose the scope, then click **＋** above the article list.
+        Articles created under Current Site belong to the active site and can enter publishing. General Drafts are reusable drafts for outlines and material shared across sites. Choose the scope, then click **＋** above the article list.
 
         Start with a clear title, then review the generated slug. The slug becomes part of the article path, so avoid changing it frequently after publication.
 
-        ## 2. Edit, preview, and split
+        ## 2. Edit and preview
 
-        The editor supports Markdown, find and replace, common formatting, tables, links, and images. Display modes include:
-
-        - **Edit** for focused typing with one-row quick and formatting actions.
-        - **Preview** to check headings, links, code blocks, tables, and images.
-        - **Split** to edit beside the rendered result; long documents keep the two panes synchronized where possible.
+        The editor supports Markdown, find and replace, common formatting, tables, links, and images. Use the local preview entry in the top bar when you want to check the rendered result.
 
         ## 3. Complete publishing metadata
 
@@ -575,7 +568,7 @@ extension ArticleDraft {
 
         RepoPress Studio autosaves the workbench. Compare and restore important revisions in version history, and check the recycle bin before treating an accidental deletion as permanent.
 
-        > Exercise: duplicate this paragraph, add a level-two heading, a link, and a code block, then confirm the result in Split mode.
+        > Exercise: duplicate this paragraph, add a level-two heading, a link, and a code block, then confirm the result in local preview.
         """
     ),
     SampleTemplate(

@@ -1,5 +1,6 @@
 import Foundation
-import PublishingWorkbenchCore
+import PublishingCoreSupport
+import PublishingKnowledgeCore
 import SwiftUI
 
 struct KnowledgeSourceHistoryPresentation: Identifiable {

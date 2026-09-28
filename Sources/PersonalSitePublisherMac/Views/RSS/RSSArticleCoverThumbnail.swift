@@ -2,7 +2,6 @@ import AppKit
 import Foundation
 import ImageIO
 import PublishingKnowledgeCore
-import PublishingWorkbenchCore
 import SwiftUI
 
 enum RSSArticleCoverThumbnailPresentation {

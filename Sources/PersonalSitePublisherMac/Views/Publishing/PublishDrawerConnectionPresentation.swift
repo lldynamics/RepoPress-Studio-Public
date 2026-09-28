@@ -13,10 +13,7 @@ struct PublishDrawerConnectionPresentation {
   let remedy: Remedy?
 
   static func isDeferredRemoteIssue(_ issue: PreflightIssue) -> Bool {
-    issue.field == "remoteBaseline"
-      || (issue.field == "repository"
-        && (issue.title == String(localized: "远端同路径变更")
-          || issue.title == String(localized: "远端状态待确认")))
+    issue.isDeferredRemoteIssue
   }
 
   static func make(
@@ -41,7 +38,7 @@ struct PublishDrawerConnectionPresentation {
         canStart: false, message: String(localized: "尚未配置发布凭据，请先连接 GitHub 或 GitLab 账户。"),
         remedy: .account)
     }
-    if let issue = preview.blockingIssues.first(where: { !isDeferredRemoteIssue($0) }) {
+    if let issue = preview.blockingIssues.first(where: { !$0.isDeferredRemoteIssue }) {
       return Self(
         canStart: false, message: issue.title + "：" + issue.message, remedy: .issue(issue))
     }
@@ -63,6 +60,7 @@ enum PublishReadinessIssueGrouping {
   /// remain separate even when their titles happen to match.
   static func coalesced(_ issues: [PreflightIssue]) -> [PreflightIssue] {
     struct Key: Hashable {
+      let code: PreflightIssueCode?
       let title: String
       let field: String?
       let relatedValue: String?
@@ -73,7 +71,7 @@ enum PublishReadinessIssueGrouping {
     var messages: [Key: [String]] = [:]
     for issue in issues {
       let key = Key(
-        title: issue.title, field: issue.field, relatedValue: issue.relatedValue,
+        code: issue.code, title: issue.title, field: issue.field, relatedValue: issue.relatedValue,
         unclassifiedMessage: issue.field == nil ? issue.message : nil)
       if let index = indices[key] {
         if !(messages[key] ?? []).contains(issue.message) {

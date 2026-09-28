@@ -76,7 +76,10 @@ EXPECTED_PRODUCTION_TARGET_TYPES = {
     "PersonalSitePublisherMac": "executable",
 }
 TEST_TARGET_DEPENDENCIES: dict[str, set[str]] = {
-    "PublishingMarkdownCoreTests": {"PublishingCoreSupport", "PublishingMarkdownCore"},
+    "PublishingTestSupport": set(),
+    "PublishingMarkdownCoreTests": {
+        "PublishingCoreSupport", "PublishingMarkdownCore", "PublishingTestSupport"
+    },
     "PublishingGitCoreTests": {"PublishingDomainContracts", "PublishingGitCore"},
     "PublishingDomainContractsTests": {"PublishingDomainContracts"},
     "PublishingAICoreTests": {"PublishingAICore", "PublishingCoreSupport"},
@@ -98,6 +101,7 @@ TEST_TARGET_DEPENDENCIES: dict[str, set[str]] = {
         "PublishingPreviewCore",
         "PublishingBackupCore",
         "PublishingSyncCore",
+        "PublishingTestSupport",
     },
     "PersonalSitePublisherMacTests": {
         "PersonalSitePublisherMac",
@@ -111,6 +115,7 @@ TEST_TARGET_DEPENDENCIES: dict[str, set[str]] = {
         "PublishingPreviewCore",
         "PublishingBackupCore",
         "PublishingSyncCore",
+        "PublishingTestSupport",
     },
 }
 EXPECTED_PRODUCTS = {

@@ -51,6 +51,46 @@ def _warning_map(value: Any, field: str, *, allow_empty: bool = False) -> dict[s
     return result
 
 
+def source_file_line_maximums(
+    payload: dict[str, Any],
+    field: str = "sourceFileLineMaximums",
+    *,
+    required: bool = True,
+) -> dict[str, Any] | None:
+    """Validate the repository-wide Swift source-file line limit contract."""
+    value = payload.get(field)
+    if value is None and not required:
+        return None
+    if not isinstance(value, dict) or set(value) != {"defaultMaximum", "existingFileMaximums"}:
+        raise QualityGateError(
+            f"{field} must define exactly defaultMaximum and existingFileMaximums"
+        )
+    default_maximum = value.get("defaultMaximum")
+    if default_maximum != 600:
+        raise QualityGateError(f"{field}.defaultMaximum must be exactly 600")
+    existing = value.get("existingFileMaximums")
+    if not isinstance(existing, dict):
+        raise QualityGateError(f"{field}.existingFileMaximums must be an object")
+    result: dict[str, int] = {}
+    for path, maximum in existing.items():
+        if (
+            not isinstance(path, str)
+            or not path.startswith("Sources/")
+            or not path.endswith(".swift")
+            or path.startswith("/")
+            or any(component in {"", ".", ".."} for component in path.split("/"))
+        ):
+            raise QualityGateError(
+                f"{field}.existingFileMaximums keys must be normalized Sources/*.swift paths"
+            )
+        if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum <= default_maximum:
+            raise QualityGateError(
+                f"{field}.existingFileMaximums.{path} must be an integer greater than {default_maximum}"
+            )
+        result[path] = maximum
+    return {"defaultMaximum": default_maximum, "existingFileMaximums": result}
+
+
 def load_quality_baseline(path: Path) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -93,6 +133,7 @@ def load_quality_baseline(path: Path) -> dict[str, Any]:
         value = format_maximums.get(field)
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             raise QualityGateError(f"swiftFormatWarningMaximums.{field} must be a non-negative integer")
+    source_file_line_maximums(payload)
     return payload
 
 

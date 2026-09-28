@@ -245,11 +245,11 @@ final class CoreLocalizationTests: XCTestCase {
     )
     XCTAssertEqual(
       CoreL10n.format(
-        "Keychain 操作失败：%@（错误码 %@）",
+        "无法访问系统钥匙串（错误码 %@）：%@",
         locale: english,
-        arguments: ["Denied", "-50"]
+        arguments: ["-50", "Denied"]
       ),
-      "Keychain operation failed: Denied (error code -50)"
+      "Couldn't access Keychain (code -50): Denied"
     )
   }
 

@@ -16,6 +16,26 @@ SPEC.loader.exec_module(SYNC)
 
 
 class SwiftLocalizationExtractionTests(unittest.TestCase):
+    def test_app_core_l10n_literals_join_core_resource_scope(self) -> None:
+        previous_source_root = SYNC.SOURCE_ROOT
+        previous_core_roots = SYNC.PUBLISHING_CORE_SOURCE_ROOTS
+        with tempfile.TemporaryDirectory() as directory:
+            app_root = Path(directory) / "App"
+            core_root = Path(directory) / "Core"
+            app_root.mkdir()
+            core_root.mkdir()
+            (app_root / "View.swift").write_text(
+                'let label = CoreL10n.text("本次探测")', encoding="utf-8"
+            )
+            SYNC.SOURCE_ROOT = app_root
+            SYNC.PUBLISHING_CORE_SOURCE_ROOTS = (core_root,)
+            try:
+                keys = SYNC.extract_core_localization_keys()
+            finally:
+                SYNC.SOURCE_ROOT = previous_source_root
+                SYNC.PUBLISHING_CORE_SOURCE_ROOTS = previous_core_roots
+        self.assertIn("本次探测", keys)
+
     def test_workspace_areas_do_not_become_atomic_section_keys(self) -> None:
         source = '''public enum WorkspaceSection {
   case writing
@@ -242,6 +262,188 @@ public enum WorkspaceCenterSurface {
         }
         self.assertEqual(SYNC.validate(catalog, {key: key}, set()), [])
 
+    def test_validation_requires_english_plural_variations_for_count_nouns(self) -> None:
+        key = "%lld 篇文章"
+        catalog = {"strings": {key: SYNC.catalog_entry(key, "%lld articles")}}
+        self.assertIn(
+            f"{key}: en count noun requires one/other plural variations",
+            SYNC.validate(catalog, {key: key}, set()),
+        )
+
+    def test_validation_accepts_reviewed_english_plural_variations(self) -> None:
+        key = "%lld 篇文章"
+        catalog = {
+            "strings": {
+                key: SYNC.catalog_entry(
+                    key,
+                    {"one": "%lld article", "other": "%lld articles"},
+                )
+            }
+        }
+        self.assertEqual(SYNC.validate(catalog, {key: key}, set()), [])
+
+    def test_validation_accepts_explicit_plural_substitution_for_multiple_counts(self) -> None:
+        key = "%lld 篇文章，%lld 处引用"
+        catalog = {
+            "strings": {
+                key: {
+                    "localizations": {
+                        "zh-Hans": {
+                            "stringUnit": {"state": "translated", "value": key}
+                        },
+                        "en": {
+                            "stringUnit": {
+                                "state": "translated",
+                                "value": "%#@articles@, %lld references",
+                            },
+                            "substitutions": {
+                                "articles": {
+                                    "argNum": 1,
+                                    "formatSpecifier": "%lld",
+                                    "variations": {
+                                        "plural": {
+                                            "one": {
+                                                "stringUnit": {
+                                                    "state": "translated",
+                                                    "value": "%lld article",
+                                                }
+                                            },
+                                            "other": {
+                                                "stringUnit": {
+                                                    "state": "translated",
+                                                    "value": "%lld articles",
+                                                }
+                                            },
+                                        }
+                                    },
+                                }
+                            },
+                        },
+                    }
+                }
+            }
+        }
+        self.assertEqual(
+            SYNC.localized_value(catalog["strings"][key], "en"),
+            "%lld articles, %lld references",
+        )
+        self.assertEqual(SYNC.validate(catalog, {key: key}, set()), [])
+
+    def test_synchronize_writes_reviewed_english_plural_variations(self) -> None:
+        key = "%lld 篇文章"
+        original_loader = SYNC.load_reviewed_translations
+        try:
+            SYNC.load_reviewed_translations = lambda: {
+                key: {
+                    "zh-Hans": key,
+                    "en": {"one": "%lld article", "other": "%lld articles"},
+                }
+            }
+            synchronized = SYNC.synchronize({"strings": {}}, {key: key})
+        finally:
+            SYNC.load_reviewed_translations = original_loader
+
+        self.assertEqual(
+            SYNC.localized_plural_values(synchronized["strings"][key], "en"),
+            {"one": "%lld article", "other": "%lld articles"},
+        )
+
+    def test_synchronize_updates_existing_valid_value_from_master(self) -> None:
+        key = "Mark as Handled"
+        original_loader = SYNC.load_reviewed_translations
+        try:
+            SYNC.load_reviewed_translations = lambda: {key: "已处理"}
+            catalog = {
+                "strings": {
+                    key: SYNC.catalog_entry("旧译文", "Record Processing")
+                }
+            }
+            synchronized = SYNC.synchronize(catalog, {key: key})
+        finally:
+            SYNC.load_reviewed_translations = original_loader
+        entry = synchronized["strings"][key]
+        self.assertEqual(SYNC.localized_value(entry, "zh-Hans"), "已处理")
+        self.assertEqual(SYNC.localized_value(entry, "en"), key)
+
+    def test_check_reports_master_drift_while_ignoring_position_numbers(self) -> None:
+        key = "定位到标题：%@"
+        translations = {key: {"zh-Hans": key, "en": "Jump to Heading: %@"}}
+        catalog = {
+            "strings": {
+                key: {
+                    "localizations": {
+                        "zh-Hans": {"stringUnit": {"state": "translated", "value": key}},
+                        "en": {"stringUnit": {"state": "translated", "value": "Jump to Heading: %1$@"}},
+                    }
+                }
+            }
+        }
+        self.assertEqual(
+            SYNC.reviewed_translation_drift(catalog, {key: key}, translations), []
+        )
+        catalog["strings"][key]["localizations"]["en"]["stringUnit"]["value"] = "Other"
+        self.assertEqual(
+            SYNC.reviewed_translation_drift(catalog, {key: key}, translations),
+            [f"{key}: en differs from reviewed translation"],
+        )
+
+    def test_synchronize_preserves_plural_substitution_metadata(self) -> None:
+        key = "%lld 篇文章，%lld 处引用"
+        original_loader = SYNC.load_reviewed_translations
+        try:
+            SYNC.load_reviewed_translations = lambda: {
+                key: {"zh-Hans": key, "en": {"one": "%lld article, %lld reference", "other": "%lld articles, %lld references"}}
+            }
+            entry = {
+                "comment": "keep this comment",
+                "localizations": {
+                    "zh-Hans": {"stringUnit": {"state": "translated", "value": key}},
+                    "en": {
+                        "stringUnit": {"state": "translated", "value": "%#@articles@, %#@references@"},
+                        "substitutions": {
+                            "articles": {
+                                "argNum": 1,
+                                "formatSpecifier": "%lld",
+                                "variations": {"plural": {
+                                    "one": {"stringUnit": {"state": "translated", "value": "old one"}},
+                                    "other": {"stringUnit": {"state": "translated", "value": "old other"}},
+                                }},
+                            }
+                            ,
+                            "references": {
+                                "argNum": 2,
+                                "formatSpecifier": "%lld",
+                                "variations": {"plural": {
+                                    "one": {"stringUnit": {"state": "translated", "value": "old reference"}},
+                                    "other": {"stringUnit": {"state": "translated", "value": "old references"}},
+                                }},
+                            }
+                        },
+                    },
+                },
+            }
+            synchronized = SYNC.synchronize({"strings": {key: entry}}, {key: key})
+        finally:
+            SYNC.load_reviewed_translations = original_loader
+        result = synchronized["strings"][key]
+        self.assertEqual(result["comment"], "keep this comment")
+        self.assertIn("substitutions", result["localizations"]["en"])
+        self.assertEqual(
+            SYNC.localized_plural_substitutions(result, "en")["articles"],
+            {"one": "%lld article", "other": "%lld articles"},
+        )
+
+    def test_unmanaged_existing_translation_remains_compatible(self) -> None:
+        key = "Unmanaged English key"
+        catalog = {"strings": {key: SYNC.catalog_entry("自定义", "保留")}}
+        original_loader = SYNC.load_reviewed_translations
+        try:
+            SYNC.load_reviewed_translations = lambda: {}
+            synchronized = SYNC.synchronize(catalog, {key: key})
+        finally:
+            SYNC.load_reviewed_translations = original_loader
+        self.assertEqual(SYNC.localized_value(synchronized["strings"][key], "en"), "保留")
+
     def test_validation_allows_parenthesized_product_acronyms(self) -> None:
         keys = [
             "API Key 使用 macOS 系统 Keychain (AES-256) 本地安全加密保存",
@@ -401,6 +603,69 @@ public enum WorkspaceCenterSurface {
             SYNC.placeholders("%2$@ then %1$lld"),
             ["%@", "%lld"],
         )
+
+    def test_translation_comparison_preserves_explicit_argument_identity(self) -> None:
+        self.assertNotEqual(
+            SYNC.canonical_translation_value("%2$@ then %1$@"),
+            SYNC.canonical_translation_value("%1$@ then %2$@"),
+        )
+        self.assertEqual(
+            SYNC.canonical_translation_value("%@ then %@"),
+            SYNC.canonical_translation_value("%1$@ then %2$@"),
+        )
+
+    def test_format_only_percent_lld_key_is_not_treated_as_translatable_text(self) -> None:
+        self.assertIsNone(
+            SYNC.reviewed_translation_expectation("%lld", "%lld", "translated")
+        )
+
+    def test_synchronize_repairs_missing_plural_category_and_stale_state(self) -> None:
+        key = "%lld 篇文章"
+        original_loader = SYNC.load_reviewed_translations
+        try:
+            SYNC.load_reviewed_translations = lambda: {
+                key: {"zh-Hans": key, "en": {"one": "%lld article", "other": "%lld articles"}}
+            }
+            catalog = {
+                "strings": {
+                    key: {
+                        "localizations": {
+                            "zh-Hans": {"stringUnit": {"state": "needs-review", "value": "旧"}},
+                            "en": {"variations": {"plural": {
+                                "other": {"stringUnit": {"state": "needs-review", "value": "old"}}
+                            }}},
+                        }
+                    }
+                }
+            }
+            result = SYNC.synchronize(catalog, {key: key})["strings"][key]
+        finally:
+            SYNC.load_reviewed_translations = original_loader
+        self.assertEqual(SYNC.localized_value(result, "zh-Hans"), key)
+        self.assertEqual(SYNC.localized_state(result, "zh-Hans"), "translated")
+        self.assertEqual(
+            SYNC.localized_plural_values(result, "en"),
+            {"one": "%lld article", "other": "%lld articles"},
+        )
+        self.assertEqual(SYNC.localized_plural_states(result, "en"), {"one": "translated", "other": "translated"})
+
+    def test_synchronize_rejects_unmatched_plural_substitution_template(self) -> None:
+        key = "%lld 篇文章"
+        original_loader = SYNC.load_reviewed_translations
+        try:
+            SYNC.load_reviewed_translations = lambda: {
+                key: {"zh-Hans": key, "en": {"one": "%lld article", "other": "%lld articles"}}
+            }
+            catalog = {"strings": {key: {"localizations": {"en": {
+                "stringUnit": {"state": "translated", "value": "%#@count@ suffix"},
+                "substitutions": {"count": {"variations": {"plural": {
+                    "other": {"stringUnit": {"state": "translated", "value": "old"}}
+                }}}},
+            }}}}}
+            with self.assertRaisesRegex(RuntimeError, "reviewed plural template mismatch"):
+                SYNC.synchronize(catalog, {key: key})
+        finally:
+            SYNC.load_reviewed_translations = original_loader
 
 
 if __name__ == "__main__":

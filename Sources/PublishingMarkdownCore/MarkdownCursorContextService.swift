@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 public struct MarkdownLineLocation: Equatable, Sendable {
   public var lineNumber: Int
@@ -906,86 +907,82 @@ private struct MarkdownCursorDocumentIndex: Sendable {
   let fences: [MarkdownFenceMatch]
 }
 
-private final class MarkdownCursorDocumentIndexCache: @unchecked Sendable {
-  private let lock = NSLock()
-  private var cachedRevision: UInt64?
-  private var cachedBaseRevision: UInt64?
-  private var cachedSource: String?
-  private var cachedSelection: NSRange?
-  private var cachedIndex: MarkdownCursorDocumentIndex?
-  private var buildCount = 0
-  private var incrementalUpdateCount = 0
+private final class MarkdownCursorDocumentIndexCache: Sendable {
+  private struct State: Sendable {
+    var cachedRevision: UInt64?
+    var cachedBaseRevision: UInt64?
+    var cachedSource: String?
+    var cachedSelection: NSRange?
+    var cachedIndex: MarkdownCursorDocumentIndex?
+    var buildCount = 0
+    var incrementalUpdateCount = 0
+  }
+
+  private let state = OSAllocatedUnfairLock(initialState: State())
 
   var currentBuildCount: Int {
-    lock.lock()
-    defer { lock.unlock() }
-    return buildCount
+    state.withLock { $0.buildCount }
   }
 
   var currentIncrementalUpdateCount: Int {
-    lock.lock()
-    defer { lock.unlock() }
-    return incrementalUpdateCount
+    state.withLock { $0.incrementalUpdateCount }
   }
 
   func index(
     for revision: UInt64,
     markdown: String,
     selectedRange: NSRange,
-    build: () -> MarkdownCursorDocumentIndex,
-    incremental: (
-      _ previousSource: String,
-      _ previousIndex: MarkdownCursorDocumentIndex,
-      _ previousRevision: UInt64?,
-      _ previousSelection: NSRange?
-    ) -> MarkdownCursorDocumentIndex?
+    build: @Sendable () -> MarkdownCursorDocumentIndex,
+    incremental:
+      @Sendable (
+        _ previousSource: String,
+        _ previousIndex: MarkdownCursorDocumentIndex,
+        _ previousRevision: UInt64?,
+        _ previousSelection: NSRange?
+      ) -> MarkdownCursorDocumentIndex?
   ) -> MarkdownCursorDocumentIndex {
-    lock.lock()
-    defer { lock.unlock() }
+    state.withLock { state in
+      if state.cachedRevision == revision, let cachedIndex = state.cachedIndex {
+        state.cachedSelection = selectedRange
+        return cachedIndex
+      }
 
-    if cachedRevision == revision, let cachedIndex {
-      cachedSelection = selectedRange
-      return cachedIndex
+      let index: MarkdownCursorDocumentIndex
+      if let cachedSource = state.cachedSource,
+        let cachedIndex = state.cachedIndex,
+        let incrementalIndex = incremental(
+          cachedSource,
+          cachedIndex,
+          state.cachedBaseRevision,
+          state.cachedSelection
+        )
+      {
+        index = incrementalIndex
+        state.incrementalUpdateCount += 1
+      } else {
+        index = build()
+        state.buildCount += 1
+      }
+      state.cachedRevision = revision
+      state.cachedBaseRevision = revision
+      state.cachedSource = markdown
+      state.cachedSelection = selectedRange
+      state.cachedIndex = index
+      return index
     }
-
-    let index: MarkdownCursorDocumentIndex
-    if
-      let cachedSource,
-      let cachedIndex,
-      let incrementalIndex = incremental(
-        cachedSource,
-        cachedIndex,
-        cachedBaseRevision,
-        cachedSelection
-      )
-    {
-      index = incrementalIndex
-      incrementalUpdateCount += 1
-    } else {
-      index = build()
-      buildCount += 1
-    }
-    cachedRevision = revision
-    cachedBaseRevision = revision
-    cachedSource = markdown
-    cachedSelection = selectedRange
-    cachedIndex = index
-    return index
   }
 
   func invalidate() {
-    lock.lock()
-    cachedRevision = nil
-    cachedBaseRevision = nil
-    cachedSource = nil
-    cachedSelection = nil
-    cachedIndex = nil
-    lock.unlock()
+    state.withLock { state in
+      state.cachedRevision = nil
+      state.cachedBaseRevision = nil
+      state.cachedSource = nil
+      state.cachedSelection = nil
+      state.cachedIndex = nil
+    }
   }
 
   func prepareForBodyChange() {
-    lock.lock()
-    cachedRevision = nil
-    lock.unlock()
+    state.withLock { $0.cachedRevision = nil }
   }
 }

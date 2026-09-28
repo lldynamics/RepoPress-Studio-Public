@@ -5,9 +5,18 @@ import XCTest
 
 final class RepositoryImageBrowserPresentationTests: XCTestCase {
   func testPresentationStateDistinguishesPreparingInventoryEmptyAndFilteredEmpty() {
-    XCTAssertEqual(.preparing, RepositoryImageBrowserPresentationState.resolve(isLoading: true, inventoryCount: 0, projectedCount: 0))
-    XCTAssertEqual(.inventoryEmpty, RepositoryImageBrowserPresentationState.resolve(isLoading: false, inventoryCount: 0, projectedCount: 0))
-    XCTAssertEqual(.filteredEmpty, RepositoryImageBrowserPresentationState.resolve(isLoading: false, inventoryCount: 3, projectedCount: 0))
+    XCTAssertEqual(
+      .preparing,
+      RepositoryImageBrowserPresentationState.resolve(
+        isLoading: true, inventoryCount: 0, projectedCount: 0))
+    XCTAssertEqual(
+      .inventoryEmpty,
+      RepositoryImageBrowserPresentationState.resolve(
+        isLoading: false, inventoryCount: 0, projectedCount: 0))
+    XCTAssertEqual(
+      .filteredEmpty,
+      RepositoryImageBrowserPresentationState.resolve(
+        isLoading: false, inventoryCount: 3, projectedCount: 0))
   }
 
   func testProjectionCanDistinguishInventoryFromFilterEmpty() {
@@ -16,11 +25,15 @@ final class RepositoryImageBrowserPresentationTests: XCTestCase {
       fileExtension: "png", byteSize: 12, modifiedAt: nil, references: []
     )
     XCTAssertEqual(
-      RepositoryImageBrowserView.project([asset], query: "", filter: .unregistered, sortOrder: .nameAsc).count,
+      RepositoryImageBrowserView.project(
+        [asset], query: "", filter: .unregistered, sortOrder: .nameAsc
+      ).count,
       1
     )
     XCTAssertTrue(
-      RepositoryImageBrowserView.project([asset], query: "missing", filter: .all, sortOrder: .nameAsc).isEmpty
+      RepositoryImageBrowserView.project(
+        [asset], query: "missing", filter: .all, sortOrder: .nameAsc
+      ).isEmpty
     )
   }
 }

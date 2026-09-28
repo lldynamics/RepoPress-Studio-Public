@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 /// A pure plan for creating a linked translation as a new draft.
 ///
@@ -38,19 +39,19 @@ public enum AITranslationDraftPlanningError: LocalizedError, Equatable, Sendable
   public var errorDescription: String? {
     switch self {
     case .sourceBodyIsEmpty:
-      return "原文章正文为空，无法创建全文翻译草稿。"
+      return CoreL10n.text("原文章正文为空，无法创建全文翻译草稿。")
     case .targetLanguageIsEmpty:
-      return "请选择有效的目标语言代码。"
+      return CoreL10n.text("请选择有效的目标语言代码。")
     case .translatedTitleIsEmpty:
-      return "翻译后的标题为空。"
+      return CoreL10n.text("翻译后的标题为空。")
     case .translatedBodyIsEmpty:
-      return "翻译后的正文为空。"
+      return CoreL10n.text("翻译后的正文为空。")
     case .sourceDraftChanged:
-      return "原文章已变化，请重新生成翻译。"
+      return CoreL10n.text("原文章已变化，请重新生成翻译。")
     case .destinationReusesSourceIdentity:
-      return "翻译草稿不能复用原文章标识。"
+      return CoreL10n.text("翻译草稿不能复用原文章标识。")
     case .invalidTranslationLink:
-      return "翻译计划中的文章关联不一致，请重新生成翻译。"
+      return CoreL10n.text("翻译计划中的文章关联不一致，请重新生成翻译。")
     }
   }
 }
@@ -102,7 +103,8 @@ public enum AITranslationDraftPlanningService {
       sourceContentFingerprint: fingerprint,
       createdAt: plannedAt,
       sourceMarkdownPath: profile?.markdownPath(for: source)
-        ?? source.repositoryPath?.normalizedRelativePath().nilIfEmpty
+        ?? source.repositoryPath?.normalizedRelativePath().nilIfEmpty,
+      sourceTranslationFingerprint: source.translationContentFingerprint
     )
     let translatedDraft = ArticleDraft(
       id: destinationDraftID,

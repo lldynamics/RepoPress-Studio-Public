@@ -5,6 +5,26 @@ import XCTest
 @testable import PublishingAICore
 
 final class CodexAppServerClientTests: XCTestCase {
+  func testCancellationDuringStartupDoesNotStartAThreadOrSendPrompt() async throws {
+    let transport = ScriptedCodexTransport(mode: .heldInitialization)
+    let client = CodexAppServerClient(transport: transport)
+    let task = Task { try await client.complete(prompt: "Must not be sent") }
+    let initialized = await transport.waitUntilSent(method: "initialize")
+    XCTAssertTrue(initialized)
+    task.cancel()
+    await transport.completeHeldInitialization()
+    do {
+      _ = try await task.value
+      XCTFail("Cancelled completion must terminate")
+    } catch {
+      XCTAssertTrue(error is CancellationError || error as? CodexAppServerError == .cancelled)
+    }
+    let threadCount = await transport.sentMessageCount(method: "thread/start")
+    let turnCount = await transport.sentMessageCount(method: "turn/start")
+    XCTAssertEqual(threadCount, 0)
+    XCTAssertEqual(turnCount, 0)
+    await client.shutdown()
+  }
 
   func testRuntimeUpdateWaitsForStandaloneStartup() async throws {
     let transport = ScriptedCodexTransport(mode: .heldInitialization)

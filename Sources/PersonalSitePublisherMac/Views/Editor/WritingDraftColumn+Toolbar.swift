@@ -58,6 +58,9 @@ extension WritingDraftColumn {
       } label: {
         Label("新建文章", systemImage: "doc.badge.plus")
           .labelStyle(.titleAndIcon)
+          .lineLimit(1)
+          .allowsTightening(true)
+          .minimumScaleFactor(0.8)
           .font(.workbenchButtonLabel.weight(.bold))
           .foregroundStyle(WorkbenchTheme.primaryActionForeground)
           .padding(.horizontal, 10)
@@ -66,6 +69,7 @@ extension WritingDraftColumn {
             WorkbenchTheme.primaryActionFill,
             in: RoundedRectangle(cornerRadius: 7, style: .continuous)
           )
+          .fixedSize(horizontal: true, vertical: false)
       }
       .buttonStyle(.plain)
       .help("新建站点文章")

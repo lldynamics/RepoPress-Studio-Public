@@ -398,12 +398,35 @@ extension WorkbenchStore {
 
   /// Safe termination waits for pending writeback instead of claiming the
   /// external source is saved when a conflict or unavailable folder remains.
-  func flushPendingExternalDraftWrites(retryKnownFailures: Bool = true) -> Bool {
-    for task in externalDraftWriteTasks.values { task.cancel() }
-    externalDraftWriteTasks.removeAll()
-    guard externalDraftWritesInProgress.isEmpty else { return false }
+  func flushPendingExternalDraftWrites(
+    retryKnownFailures: Bool = true,
+    targetDraftID: UUID? = nil
+  ) -> Bool {
+    if let targetDraftID {
+      // Do not erase an active writer's marker: a second synchronous writer
+      // would otherwise race its compare-and-swap protection.
+      guard drafts.contains(where: { $0.id == targetDraftID }),
+        !externalDraftWritesInProgress.contains(targetDraftID)
+      else { return false }
+      externalDraftWriteGenerations[targetDraftID, default: 0] &+= 1
+      externalDraftWriteTasks[targetDraftID]?.cancel()
+      externalDraftWriteTasks[targetDraftID] = nil
+      if !externalDraftConflicts.contains(targetDraftID) {
+        externalDraftWriteFailures.removeValue(forKey: targetDraftID)
+      }
+    } else {
+      for task in externalDraftWriteTasks.values { task.cancel() }
+      externalDraftWriteTasks.removeAll()
+      guard externalDraftWritesInProgress.isEmpty else { return false }
+    }
     var succeeded = true
-    for draft in drafts where draft.externalDraftSource != nil {
+    let candidates: [ArticleDraft]
+    if let targetDraftID {
+      candidates = drafts.filter { $0.id == targetDraftID }
+    } else {
+      candidates = drafts.filter { $0.externalDraftSource != nil }
+    }
+    for draft in candidates where draft.externalDraftSource != nil {
       guard let source = draft.externalDraftSource,
         Self.externalDraftFingerprint(draft.bodyMarkdown) != source.importedFingerprint
       else { continue }
@@ -412,6 +435,9 @@ extension WorkbenchStore {
         continue
       }
       guard let mapping = externalDraftMapping(for: source) else {
+        if targetDraftID != nil, !source.isDetached {
+          succeeded = false
+        }
         continue
       }
       if !retryKnownFailures, externalDraftWriteFailures[draft.id] != nil {

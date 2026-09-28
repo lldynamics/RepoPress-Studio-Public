@@ -73,6 +73,73 @@ final class WorkbenchFocusedObservationFacadeTests: XCTestCase {
     withExtendedLifetime(cancellable) {}
   }
 
+  func testWindowScopedSelectionRejectsAnotherWindowAndCannotBeClearedByIt() throws {
+    let store = makeStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let ownerWindowID = UUID()
+    let otherWindowID = UUID()
+    let source = draft.bodyMarkdown as NSString
+    let range = NSRange(location: 0, length: min(1, source.length))
+    store.updateActiveEditorSelection(
+      draftID: draft.id,
+      windowID: ownerWindowID,
+      selectedRange: range,
+      selectedText: source.substring(with: range),
+      bodyUTF16Count: source.length
+    )
+
+    XCTAssertEqual(store.activeEditorSelectionRange(for: draft, windowID: ownerWindowID), range)
+    XCTAssertNil(store.activeEditorSelectionRange(for: draft, windowID: otherWindowID))
+    store.clearActiveEditorSelection(for: draft.id, windowID: otherWindowID)
+    XCTAssertEqual(store.activeEditorSelection?.windowID, ownerWindowID)
+  }
+
+  func testLegacySelectionCannotAuthorizeOrBeClearedByANewWindow() throws {
+    let store = makeStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let source = draft.bodyMarkdown as NSString
+    let range = NSRange(location: 0, length: min(1, source.length))
+    store.updateActiveEditorSelection(
+      draftID: draft.id,
+      selectedRange: range,
+      selectedText: source.substring(with: range),
+      bodyUTF16Count: source.length
+    )
+
+    let newWindowID = UUID()
+    XCTAssertNil(store.activeEditorSelectionRange(for: draft, windowID: newWindowID))
+    store.clearActiveEditorSelection(for: draft.id, windowID: newWindowID)
+    XCTAssertNil(store.activeEditorSelection?.windowID)
+  }
+
+  func testAISelectionReferenceUsesOnlyTheRequestingWindowsRange() throws {
+    let store = makeStore()
+    var draft = try XCTUnwrap(store.selectedDraft)
+    draft.bodyMarkdown = "first window text / second window text"
+    store.setDrafts([draft])
+    let firstWindowID = UUID()
+    let secondWindowID = UUID()
+    let source = draft.bodyMarkdown as NSString
+    let firstRange = source.range(of: "first")
+    store.updateActiveEditorSelection(
+      draftID: draft.id,
+      windowID: firstWindowID,
+      selectedRange: firstRange,
+      selectedText: source.substring(with: firstRange),
+      bodyUTF16Count: source.length
+    )
+    let firstReference = try XCTUnwrap(
+      store.ai.availableChatContextReferences(for: draft, windowID: firstWindowID)
+        .first(where: { $0.kind == .currentSelection })
+    )
+    XCTAssertEqual(firstReference.sourceRange?.nsRange, firstRange)
+    XCTAssertEqual(firstReference.originatingWindowID, firstWindowID)
+    XCTAssertNil(
+      store.ai.availableChatContextReferences(for: draft, windowID: secondWindowID)
+        .first(where: { $0.kind == .currentSelection })
+    )
+  }
+
   func testDocumentStoresAreTheSingleOwnersOfDraftAndLiveEditorState() throws {
     let store = makeStore()
     let publishing = store.publishingStore

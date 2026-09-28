@@ -254,7 +254,7 @@ extension WorkbenchAIStore {
       switch attempt.transport.preparedRequest.mode {
       case .streaming:
         return try await generateStreamingAIChatReply(
-          transport: attempt.transport,
+          attempt: attempt,
           conversationIdentity: conversationIdentity,
           operationID: operationID,
           apiKey: token
@@ -273,6 +273,9 @@ extension WorkbenchAIStore {
         .messages.last { $0.role == .assistant }
     } catch let error as AIChatCompletionClientError {
       configureManualRetry(for: error, conversationIdentity: conversationIdentity)
+      if error == .requestAuthorizationChanged {
+        discardUnsentAIChatUserMessage(for: conversationIdentity)
+      }
       store.setAIChatFailureMessage(CoreL10n.format("AI 讨论失败：%@", error.localizedDescription))
       if error.didReceivePartialContent {
         return aiChatSessionState(for: conversationIdentity)?
@@ -322,15 +325,33 @@ extension WorkbenchAIStore {
   }
 
   private func generateStreamingAIChatReply(
-    transport: AIPreparedPublishingChatTransport,
+    attempt: AIAuthorizedPublishingChatAttempt,
     conversationIdentity: AIChatConversationIdentity,
     operationID: UUID,
     apiKey: String?
   ) async throws -> AIPublishingChatMessage {
+    let transport = attempt.transport
     guard let request = transport.publishingRequest else {
       throw AIOutboundPayloadConfirmationError.drifted
     }
-    let replyStream = try await aiPublishingAssistantService.streamPrepared(
+    let providerConfig = attempt.providerConfig
+    let connectionID = attempt.connectionProfileID
+    let assistant = streamingAssistant(
+      operationID: operationID,
+      config: providerConfig,
+      connectionID: connectionID,
+      knowledgeBindings: attempt.knowledgeAuthorizationBindings,
+      knowledgePolicy: attempt.knowledgePolicy,
+      apiKey: apiKey
+    ) { [weak self] in
+      guard let self else { throw CancellationError() }
+      return try self.aiChatAvailableAPIKey(
+        for: request.profile,
+        matching: providerConfig,
+        connectionProfileID: connectionID
+      )
+    }
+    let replyStream = try await assistant.streamPrepared(
       transport,
       apiKey: apiKey
     )
