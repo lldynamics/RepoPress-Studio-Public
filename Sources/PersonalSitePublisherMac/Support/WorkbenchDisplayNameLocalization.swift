@@ -80,7 +80,6 @@ extension ReleaseLedgerActionPriority: WorkbenchDisplayNameLocalizable {}
 extension ReleaseLedgerActionKind: WorkbenchDisplayNameLocalizable {}
 
 extension AIPublishingPromptLibraryScope: WorkbenchDisplayNameLocalizable {}
-extension AIPublishingCapabilityCenterMode: WorkbenchDisplayNameLocalizable {}
 extension AIPublishingDefaultCapability: WorkbenchDisplayNameLocalizable {}
 extension AIPublishingChatQuickAction: WorkbenchDisplayNameLocalizable {}
 extension AIPublishingQuickPromptGroup: WorkbenchDisplayNameLocalizable {}
@@ -105,7 +104,6 @@ extension ContentMigrationSourceKind: WorkbenchDisplayNameLocalizable {}
 extension DeploymentPollingStatus: WorkbenchDisplayNameLocalizable {}
 extension GeneralDraftReuseRiskLevel: WorkbenchDisplayNameLocalizable {}
 extension ImageCoverPublishState: WorkbenchDisplayNameLocalizable {}
-extension LocalGitPublishMode: WorkbenchDisplayNameLocalizable {}
 extension PrivacyProtectionEventKind: WorkbenchDisplayNameLocalizable {}
 extension RemoteRepositoryPublishProgressStage: WorkbenchDisplayNameLocalizable {}
 extension RemoteRepositoryPublishReadiness: WorkbenchDisplayNameLocalizable {}

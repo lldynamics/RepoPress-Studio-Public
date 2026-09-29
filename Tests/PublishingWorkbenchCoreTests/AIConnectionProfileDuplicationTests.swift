@@ -47,9 +47,9 @@ final class AIConnectionProfileDuplicationTests: XCTestCase {
     XCTAssertFalse(reloaded.activeAIConnectionProfile.canUseLegacyCredentials)
     reloaded.refreshAIKeyAvailability()
     XCTAssertFalse(reloaded.aiTokenAvailability.hasToken)
-    XCTAssertTrue(reloaded.saveAIAPIKey("copy-test-key"))
+    XCTAssertTrue(reloaded.aiStore.saveAIAPIKey("copy-test-key"))
     XCTAssertEqual(try tokens.aiToken(for: legacySite), "original-legacy-test-key")
-    reloaded.deleteAIAPIKey()
+    reloaded.aiStore.deleteAIAPIKey()
     XCTAssertEqual(try tokens.aiToken(for: legacySite), "original-legacy-test-key")
 
     var changedCopy = copy

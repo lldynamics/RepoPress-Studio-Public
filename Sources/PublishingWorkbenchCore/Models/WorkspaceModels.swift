@@ -702,43 +702,6 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     )
   }
 
-  public static func gitPublish(
-    package: PublishPackage,
-    profile: SiteProfile,
-    result: LocalGitPublishResult,
-    reviewDraft: RemoteReviewDraft,
-    createdAt: Date = Date()
-  ) -> ReleaseRecord {
-    let kind: ReleaseRecordKind = result.mode == .reviewBranch ? .reviewBranch : .directCommit
-    return ReleaseRecord(
-      kind: kind,
-      title: "\(kind.displayName)：\(package.title)",
-      summary:
-        "\(result.branchName) · \(result.committedPaths.count) 个文件 · \(String(result.commitSHA.prefix(8)))",
-      siteProfileID: profile.id,
-      siteName: profile.name,
-      draftID: package.draftID,
-      draftTitle: package.title,
-      draftSummary: package.draftSummary,
-      draftCoverAltText: package.draftCoverAltText,
-      publicPath: package.publicPath,
-      publicURLText: package.publicURLText,
-      sourceDocumentDigest: package.sourceDocumentDigest,
-      markdownPath: package.markdownPath,
-      changedPaths: result.committedPaths,
-      repositoryProvider: profile.repositoryProvider,
-      repositoryBaseURL: profile.repositoryBaseURL,
-      repoOwner: profile.repoOwner,
-      repoName: profile.repoName,
-      branchName: result.branchName,
-      targetBranch: reviewDraft.targetBranch,
-      commitSHA: result.commitSHA,
-      reviewURL: kind == .reviewBranch ? reviewDraft.webURL?.absoluteString : nil,
-      reviewTitle: kind == .reviewBranch ? reviewDraft.title : nil,
-      createdAt: createdAt
-    )
-  }
-
   public static func remotePublish(
     package: PublishPackage,
     profile: SiteProfile,

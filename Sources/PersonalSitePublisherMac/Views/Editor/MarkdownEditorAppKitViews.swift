@@ -18,6 +18,10 @@ final class MarkdownEditorScrollView: NSScrollView {
   }
   private var cachedFoldGeometry: (prefix: String, width: CGFloat, height: CGFloat)?
 
+  static func canMeasureFrontMatterFold(viewportSize: NSSize) -> Bool {
+    viewportSize.width > 1 && viewportSize.height > 1
+  }
+
   func invalidateFrontMatterFoldGeometry() {
     cachedFoldGeometry = nil
     needsLayout = true
@@ -395,7 +399,18 @@ final class MarkdownEditorScrollView: NSScrollView {
       } ?? contentHeight
 
     let foldedPrefixHeight: CGFloat
+    let previousFoldPrefixHeight =
+      (contentView as? MarkdownFrontMatterClipView)?.hiddenPrefixHeight ?? 0
     if foldedFrontMatterBodyOffset > 0,
+      foldedFrontMatterBodyOffset <= (textView.string as NSString).length,
+      !Self.canMeasureFrontMatterFold(viewportSize: contentView.bounds.size)
+    {
+      // The first pass can run before the clip view has a size. Measuring then
+      // yields a prefix taller than the document, and scrolling to it leaves
+      // TextKit 2 anchoring the front matter at the top once the real layout
+      // arrives. Keep the previous fold until the viewport is measurable.
+      foldedPrefixHeight = previousFoldPrefixHeight
+    } else if foldedFrontMatterBodyOffset > 0,
       foldedFrontMatterBodyOffset <= (textView.string as NSString).length
     {
       let prefix = (textView.string as NSString).substring(to: foldedFrontMatterBodyOffset)
@@ -1595,24 +1610,5 @@ final class DroppableMarkdownTextView: NSTextView {
 
   private func knowledgeMarkdown(from pasteboard: NSPasteboard) -> String? {
     knowledgeMarkdownProvider(pasteboard)
-  }
-}
-
-enum MarkdownFormattingResponderBridge {
-  @MainActor
-  static func perform(_ command: MarkdownFormattingCommand) -> Bool {
-    let selectorName: String
-    switch command {
-    case .bold:
-      selectorName = "applyMarkdownBold:"
-    case .italic:
-      selectorName = "applyMarkdownItalic:"
-    case .link:
-      selectorName = "applyMarkdownLink:"
-    case .heading(let level):
-      guard (1...3).contains(level) else { return false }
-      selectorName = "applyMarkdownHeading\(level):"
-    }
-    return NSApp.sendAction(NSSelectorFromString(selectorName), to: nil, from: nil)
   }
 }

@@ -9,7 +9,7 @@ final class ArticleDraftScopeTests: XCTestCase {
         .first { $0.softwareGuideID == "getting-started" }
     )
 
-    XCTAssertEqual(ArticleDraft.currentSoftwareGuideSeedVersion, 9)
+    XCTAssertEqual(ArticleDraft.currentSoftwareGuideSeedVersion, 10)
     XCTAssertTrue(guide.bodyMarkdown.contains("全局搜索（⇧⌘K）"))
     XCTAssertTrue(guide.bodyMarkdown.contains("五个一级入口"))
     XCTAssertTrue(guide.bodyMarkdown.contains("站点检查"))

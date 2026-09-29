@@ -163,44 +163,12 @@ extension WorkbenchAIStore {
     // await that can change request state after authorization is prepared.
     await store.refreshSiteMaintenanceSnapshot()
 
-    // Native tool-calling is selected from the same resolved task config that
-    // the exact privacy transport will bind. Unknown and unsupported pairs
-    // intentionally stay on the ordinary text path, which never declares
-    // tools and never parses marker/JSON automation syntax.
-    let agentCandidate = await assembledAIChatRequest(
+    // Writing chat uses the text transport; protected editing remains a fixed postprocessor.
+    let writingRequest = await assembledAIChatRequest(
       for: chatDraft,
       conversationIdentity: conversationIdentity,
       privacyService: AIOutboundPayloadPrivacyService()
     )
-    let agentSettings = config.resolvedAdvancedSettings
-    let conversationAllowsTools =
-      aiConversationAgentMode(
-        for: conversationIdentity.conversationID
-      )?.effectiveAllowsTools(
-        connectionAllowsTools: agentSettings.resolvedAllowsApplicationTools
-      ) ?? false
-    var allowedAgentCommands = WorkbenchAutomationRegistry.agentCommands(
-      allowedBy: agentSettings.resolvedAgentPermissionPolicy,
-      masterEnabled: conversationAllowsTools
-    )
-    if agentCandidate.knowledgePolicy != .automatic {
-      allowedAgentCommands.subtract([.knowledgeSearch, .knowledgeRead])
-    }
-    if !allowedAgentCommands.isEmpty,
-      let agentTaskConfig = try? aiPublishingAssistantService.resolvedChatTaskConfig(
-        for: agentCandidate,
-        config: config
-      ), agentTaskConfig.capabilitySupport(for: .toolCalling) == .supported
-    {
-      return await generateAgentAIChatReply(
-        for: chatDraft,
-        conversationIdentity: conversationIdentity,
-        operationID: operationID,
-        initialRequest: agentCandidate,
-        initialProviderConfig: config,
-        initialTaskConfig: agentTaskConfig
-      )
-    }
 
     let attempt: AIAuthorizedPublishingChatAttempt
     do {
@@ -208,7 +176,7 @@ extension WorkbenchAIStore {
         for: chatDraft,
         conversationIdentity: conversationIdentity,
         transportConfig: config,
-        initialRequest: agentCandidate
+        initialRequest: writingRequest
       )
     } catch is CancellationError {
       store.setAIChatMessage("AI 回复已停止。")
@@ -571,20 +539,8 @@ extension WorkbenchAIStore {
     return prompt
   }
 
-  public func focusedAIChatParagraph(for draft: ArticleDraft) -> AIPublishingChatDraftParagraph? {
-    guard let focusedID = aiChatFocusedParagraphID?.nilIfEmpty else { return nil }
-    return AIPublishingChatDraftParagraphParser.extract(from: draft.bodyMarkdown).first {
-      $0.id == focusedID
-    }
-  }
-
-  public func showAIPublishingAssistant(for draftID: UUID? = nil) {
-    _ = openAIChatWorkspace(for: draftID)
-  }
-
   public func hideAIPublishingAssistant() {
     guard isAIPublishingAssistantPresented else { return }
     isAIPublishingAssistantPresented = false
   }
-
 }

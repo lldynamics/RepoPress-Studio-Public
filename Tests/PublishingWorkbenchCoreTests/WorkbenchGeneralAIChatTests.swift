@@ -651,7 +651,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     XCTAssertFalse(serializedMessages.contains("当前 Mac 工作台上下文"))
   }
 
-  func testGeneralToolCallingOnlyCreatesDraftThenReturnsReplyInGeneralConversation() async throws {
+  func testLegacyGeneralAgentCannotCreateDraftAndOffersWritingEntry() async throws {
     let transport = SequencedGeneralAIChatTransport(responses: [
       functionResponse(
         name: "createDraft",
@@ -704,37 +704,12 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       conversationID: conversation.id
     )
 
-    XCTAssertEqual(reply?.content, "已在本地新建空白文章。")
-    XCTAssertEqual(
-      reply?.toolRuns.map(\.toolID),
-      [WorkbenchAutomationAgentToolRegistry.toolID(for: .createDraft)]
-    )
-    XCTAssertEqual(reply?.toolRuns.map(\.status), [.succeeded])
-    XCTAssertEqual(store.drafts.count, originalDraftCount + 1)
-    let createdDraft = try XCTUnwrap(store.selectedDraft)
-    XCTAssertEqual(createdDraft.title, "通用新建文章")
-    XCTAssertEqual(
-      store.aiStore.activeGeneralAIChatConversation?.messages.map(\.content),
-      ["请直接新建一篇通用新建文章", "已在本地新建空白文章。"]
-    )
-    let record = try XCTUnwrap(store.automationRunRecords.first)
-    XCTAssertEqual(record.steps.first?.command, .createDraft)
-    XCTAssertEqual(record.steps.first?.targetDraftID, createdDraft.id)
+    XCTAssertNil(reply)
+    XCTAssertEqual(store.drafts.count, originalDraftCount)
+    XCTAssertTrue(store.automationRunRecords.isEmpty)
+    XCTAssertTrue(store.aiChatMessage?.contains("新建文章") == true)
     let bodies = await transport.capturedBodies()
-    XCTAssertEqual(bodies.count, 2)
-    let first = try jsonBody(bodies[0])
-    let tools = try XCTUnwrap(first["tools"] as? [[String: Any]])
-    XCTAssertEqual(
-      tools.compactMap { ($0["function"] as? [String: Any])?["name"] as? String },
-      ["createDraft"]
-    )
-    let second = try jsonBody(bodies[1])
-    let messages = try XCTUnwrap(second["messages"] as? [[String: Any]])
-    XCTAssertTrue(
-      messages.contains { message in
-        (message["role"] as? String) == "tool"
-          && (message["content"] as? String)?.contains(createdDraft.id.uuidString) == true
-      })
+    XCTAssertTrue(bodies.isEmpty)
   }
 
   func testGeneralExplicitDraftCreationFailsClosedWhenConnectionToolsAreDisabled()
@@ -770,7 +745,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
 
     XCTAssertNil(reply)
     XCTAssertEqual(store.drafts.count, initialDraftCount)
-    XCTAssertTrue(store.aiChatMessage?.contains("关闭应用工具") == true)
+    XCTAssertTrue(store.aiChatMessage?.contains("新建文章") == true)
     let bodies = await transport.capturedBodies()
     XCTAssertEqual(bodies.count, 0)
   }
@@ -779,7 +754,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     async throws
   {
     let transport = SequencedGeneralAIChatTransport(responses: [
-      textResponse("可以；请先在 AI 设置中启用 Agent。")
+      textResponse("请先新建文章，再使用写作助手。")
     ])
     let baseConfig = AIProviderConfig(
       preset: .custom,
@@ -805,10 +780,37 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       conversationID: conversation.id
     )
 
-    XCTAssertEqual(reply?.content, "可以；请先在 AI 设置中启用 Agent。")
+    XCTAssertEqual(reply?.content, "请先新建文章，再使用写作助手。")
     let bodies = await transport.capturedBodies()
     XCTAssertEqual(bodies.count, 1)
     XCTAssertNil(try jsonBody(try XCTUnwrap(bodies.first))["tools"])
+  }
+
+  func testArticleOutlineRequestsRemainTextOnlyWritingTasks() async throws {
+    for prompt in ["帮我创建一篇文章的提纲", "create an article outline"] {
+      let transport = SequencedGeneralAIChatTransport(responses: [textResponse("Outline")])
+      let config = AIProviderConfig(
+        preset: .custom, baseURL: "https://writing.example/v1", model: "writing",
+        requiresAPIKey: false
+      )
+      let (store, consent, directory) = try makeGeneralToolingStore(
+        transport: transport, config: config, prefix: "GeneralOutline"
+      )
+      defer {
+        consent.revoke(for: config)
+        try? FileManager.default.removeItem(at: directory)
+      }
+      let conversation = try XCTUnwrap(store.aiStore.startNewGeneralAIChatConversation())
+      let draftIDs = store.drafts.map(\.id)
+      let reply = await store.aiStore.sendGeneralAIChatMessage(
+        prompt, conversationID: conversation.id
+      )
+      XCTAssertEqual(reply?.content, "Outline")
+      XCTAssertEqual(store.drafts.map(\.id), draftIDs)
+      let bodies = await transport.capturedBodies()
+      XCTAssertEqual(bodies.count, 1)
+      XCTAssertNil(try jsonBody(try XCTUnwrap(bodies.first))["tools"])
+    }
   }
 
   func testGeneralNewsArticleQuestionIsNotMisclassifiedAsDraftCreation() async throws {
@@ -878,7 +880,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     )
 
     XCTAssertNil(reply)
-    XCTAssertTrue(store.aiChatMessage?.contains("新建文章草稿") == true)
+    XCTAssertTrue(store.aiChatMessage?.contains("新建文章") == true)
     let bodies = await transport.capturedBodies()
     XCTAssertEqual(bodies.count, 0)
   }
@@ -913,7 +915,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     )
 
     XCTAssertNil(reply)
-    XCTAssertTrue(store.aiChatMessage?.contains("尚未证明支持工具调用") == true)
+    XCTAssertTrue(store.aiChatMessage?.contains("新建文章") == true)
     let bodies = await transport.capturedBodies()
     XCTAssertEqual(bodies.count, 0)
   }
@@ -949,18 +951,14 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     )
 
     XCTAssertNil(reply)
-    XCTAssertTrue(store.aiChatMessage?.contains("不支持工具调用") == true)
+    XCTAssertTrue(store.aiChatMessage?.contains("新建文章") == true)
     let bodies = await transport.capturedBodies()
     XCTAssertEqual(bodies.count, 0)
   }
 
-  func testGeneralToolCallingSearchesOnlyRemoteAllowedKnowledgeThenReturnsReply() async throws {
+  func testLegacyGeneralAgentUsesAuthorizedKnowledgeWithoutTools() async throws {
     let transport = SequencedGeneralAIChatTransport(responses: [
-      functionResponse(
-        name: "knowledgeSearch",
-        arguments: ["query": "Agent 资料边界"]
-      ),
-      textResponse("已根据允许使用的资料回答。"),
+      textResponse("已根据允许使用的资料回答。")
     ])
     let baseConfig = AIProviderConfig(
       preset: .custom,
@@ -980,13 +978,13 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     let knowledgeLibrary = KnowledgeLibraryService(
       rootURL: directory.appendingPathComponent("knowledge", isDirectory: true)
     )
-    let allowedID = try await commitKnowledgeTestDocument(
+    _ = try await commitKnowledgeTestDocument(
       title: "允许的 Agent 资料",
       text: "Agent 资料边界：这段内容允许远程 AI 使用。",
       allowsRemoteAIUse: true,
       library: knowledgeLibrary
     )
-    let deniedID = try await commitKnowledgeTestDocument(
+    _ = try await commitKnowledgeTestDocument(
       title: "私有 Agent 资料",
       text: "Agent 资料边界：这段私有内容不能发送。",
       allowsRemoteAIUse: false,
@@ -1019,21 +1017,16 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     )
 
     XCTAssertEqual(reply?.content, "已根据允许使用的资料回答。")
-    XCTAssertEqual(
-      reply?.toolRuns.map(\.toolID),
-      [WorkbenchAutomationAgentToolRegistry.toolID(for: .knowledgeSearch)]
-    )
-    XCTAssertEqual(reply?.toolRuns.map(\.status), [.succeeded])
+    XCTAssertTrue(reply?.toolRuns.isEmpty == true)
     XCTAssertTrue(store.automationRunRecords.isEmpty)
     let bodies = await transport.capturedBodies()
-    XCTAssertEqual(bodies.count, 2)
-    let second = try jsonBody(bodies[1])
-    let messages = try XCTUnwrap(second["messages"] as? [[String: Any]])
-    let toolContent = try XCTUnwrap(
-      messages.first(where: { ($0["role"] as? String) == "tool" })?["content"] as? String
-    )
-    XCTAssertTrue(toolContent.contains(allowedID.uuidString))
-    XCTAssertFalse(toolContent.contains(deniedID.uuidString))
+    XCTAssertEqual(bodies.count, 1)
+    let request = try jsonBody(try XCTUnwrap(bodies.first))
+    XCTAssertNil(request["tools"])
+    let messages = try XCTUnwrap(request["messages"] as? [[String: Any]])
+    XCTAssertFalse(messages.contains { ($0["role"] as? String) == "tool" })
+    let content = messages.compactMap { $0["content"] as? String }.joined(separator: "\n")
+    XCTAssertFalse(content.contains("这段私有内容不能发送"))
   }
 
   func testGeneralExplicitKnowledgeRevocationDuringAuthorizationPerformsZeroTransport()
@@ -1157,9 +1150,11 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     let conversation = try XCTUnwrap(
       store.aiStore.startNewGeneralAIChatConversation()
     )
-    XCTAssertTrue(
-      store.aiStore.setAIConversationAgentMode(.textOnly, for: conversation.id)
+    // Restore the historical mode directly: new conversations no longer expose this setting.
+    let conversationIndex = try XCTUnwrap(
+      store.aiStore.aiConversations.firstIndex(where: { $0.id == conversation.id })
     )
+    store.aiStore.aiConversations[conversationIndex].agentMode = .textOnly
 
     let reply = await store.aiStore.sendGeneralAIChatMessage(
       "不要使用工具。",
@@ -1194,7 +1189,11 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       try? FileManager.default.removeItem(at: directory)
     }
     let conversation = try XCTUnwrap(store.aiStore.startNewGeneralAIChatConversation())
-    XCTAssertTrue(store.aiStore.setAIConversationAgentMode(.textOnly, for: conversation.id))
+    // Restore the historical mode directly: new conversations no longer expose this setting.
+    let conversationIndex = try XCTUnwrap(
+      store.aiStore.aiConversations.firstIndex(where: { $0.id == conversation.id })
+    )
+    store.aiStore.aiConversations[conversationIndex].agentMode = .textOnly
 
     let reply = await store.aiStore.sendGeneralAIChatMessage(
       "请直接新建一篇仅文字模式的文章。",
@@ -1202,7 +1201,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     )
 
     XCTAssertNil(reply)
-    XCTAssertTrue(store.aiChatMessage?.contains("仅文字模式") == true)
+    XCTAssertTrue(store.aiChatMessage?.contains("新建文章") == true)
     let bodies = await transport.capturedBodies()
     XCTAssertEqual(bodies.count, 0)
   }
@@ -1245,14 +1244,15 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     )
     configureActiveAIConnection(in: store, config: config)
 
+    let ownerToken = UUID()
     let canceledSubmission = Task {
-      await store.aiStore.sendGeneralAIChatMessage("请取消这次通用请求")
+      await store.aiStore.sendGeneralAIChatMessage("请取消这次通用请求", ownerToken: ownerToken)
     }
     for _ in 0..<100 {
       if await transport.capturedRequestCount() > 0 { break }
       try await Task.sleep(for: .milliseconds(5))
     }
-    store.cancelAIChatReply()
+    store.aiStore.cancelAIChatReply(expectedOwnerToken: ownerToken)
     let canceledReply = await canceledSubmission.value
 
     XCTAssertNil(canceledReply)

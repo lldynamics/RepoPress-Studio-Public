@@ -588,9 +588,9 @@
         .appendingPathComponent(persistenceFilename)
     }
 
+    /// Keep the demo library under each run's configured persistence root.
     public static var defaultKnowledgeLibraryRootURL: URL {
-      FileManager.default.temporaryDirectory
-        .appendingPathComponent("PersonalSitePublisherMac", isDirectory: true)
+      defaultPersistenceURL.deletingLastPathComponent()
         .appendingPathComponent("screenshot-demo-knowledge-library-review-v2", isDirectory: true)
     }
 

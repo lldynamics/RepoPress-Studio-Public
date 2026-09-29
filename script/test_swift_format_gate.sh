@@ -14,7 +14,7 @@ git -C "$FIXTURE" init -q
 git -C "$FIXTURE" add Sources Tests Package.swift
 git -C "$FIXTURE" -c user.name=gate -c user.email=gate@example.invalid commit -qm baseline
 printf 'let retained = 1\nlet changed = 2\n' >"$FIXTURE/Sources/TargetA/Feature.swift"
-printf '%s\n' '{"schemaVersion":2,"sourceLineCoveragePercentMinimum":1,"sourceLineCoveragePercentMinimumByTarget":{"TargetA":1},"changedExecutableSourceLineCoveragePercentMinimum":1,"swiftFormatWarningMaximums":{"sourcesByTarget":{"TargetA":1},"testsByTarget":{"TargetATests":1},"packageSwift":0,"changedLines":0}}' >"$TMP_DIR/baseline.json"
+printf '%s\n' '{"schemaVersion":2,"sourceLineCoveragePercentMinimum":1,"sourceLineCoveragePercentMinimumByTarget":{"TargetA":1},"changedExecutableSourceLineCoveragePercentMinimum":1,"sourceFileLineMaximums":{"defaultMaximum":600,"existingFileMaximums":{}},"swiftFormatWarningMaximums":{"sourcesByTarget":{"TargetA":1},"testsByTarget":{"TargetATests":1},"packageSwift":0,"changedLines":0}}' >"$TMP_DIR/baseline.json"
 stub() { printf '#!/usr/bin/env bash\nset -euo pipefail\n%s\n' "$1" >"$TMP_DIR/swift-format"; chmod +x "$TMP_DIR/swift-format"; }
 run_gate() { env QUALITY_GATE_ROOT="$FIXTURE" QUALITY_BASELINES_PATH="$TMP_DIR/baseline.json" SWIFT_FORMAT_BIN="$TMP_DIR/swift-format" SWIFT_FORMAT_LOG_PATH="$1" SWIFT_FORMAT_RESULT_JSON="$TMP_DIR/result.json" bash "$ROOT_DIR/script/check_swift_format.sh"; }
 stub "echo '$FIXTURE/Tests/TargetATests/FeatureTests.swift:1:1: warning: [Fixture] old'"

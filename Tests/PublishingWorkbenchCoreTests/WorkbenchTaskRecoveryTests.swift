@@ -47,7 +47,6 @@ final class WorkbenchTaskRecoveryTests: WorkbenchStoreRemotePublishingTestCase {
     await store.activityStatus.retryTask(task)
     XCTAssertEqual(try git(["rev-parse", "HEAD"], rootURL: root), head)
     XCTAssertEqual(try git(["status", "--porcelain"], rootURL: root), status)
-    XCTAssertNil(store.localGitPublishResult)
   }
 
   func testLocalSuccessDoesNotReusePreviousRemoteFailure() throws {

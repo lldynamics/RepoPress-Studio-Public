@@ -16,46 +16,144 @@ enum RSSArticleCoverThumbnailPresentation {
 actor RSSArticleCoverThumbnailCache {
   static let shared = RSSArticleCoverThumbnailCache()
 
-  private let loader = RSSArticleCoverImageLoader(
-    maximumByteCount: RSSArticleCoverImageLoader.defaultMaximumByteCount
-  )
+  private struct Request {
+    let id: UUID
+    var consumers: [UUID: CheckedContinuation<Data?, Never>]
+    var task: Task<Void, Never>?
+  }
+
+  private let loader: RSSArticleCoverImageLoader
+  private let maximumConcurrentRequests: Int
+  private let maximumQueuedRequests: Int
   private let maximumCacheEntryCount = 96
   private var cachedData: [URL: Data] = [:]
   private var cacheOrder: [URL] = []
-  private var inFlight: [URL: Task<Data?, Never>] = [:]
+  private var requests: [URL: Request] = [:]
+  private var queue: [(url: URL, requestID: UUID)] = []
+  private var activeRequestCount = 0
+
+  init(
+    loader: RSSArticleCoverImageLoader = RSSArticleCoverImageLoader(
+      maximumByteCount: RSSArticleCoverImageLoader.defaultMaximumByteCount
+    ),
+    maximumConcurrentRequests: Int = 4,
+    maximumQueuedRequests: Int = 128
+  ) {
+    self.loader = loader
+    self.maximumConcurrentRequests = max(1, maximumConcurrentRequests)
+    self.maximumQueuedRequests = max(1, maximumQueuedRequests)
+  }
 
   func data(for imageURL: URL) async -> Data? {
     let key = imageURL.absoluteURL
     if let cached = cachedData[key] {
       return cached
     }
-    if let task = inFlight[key] {
-      return await task.value
+    let consumerID = UUID()
+    return await withTaskCancellationHandler {
+      await withCheckedContinuation { continuation in
+        if Task.isCancelled {
+          continuation.resume(returning: nil)
+        } else {
+          addConsumer(consumerID, for: key, continuation: continuation)
+        }
+      }
+    } onCancel: {
+      Task { await self.removeConsumer(consumerID, for: key) }
     }
+  }
 
-    let loader = loader
-    let task = Task<Data?, Never> {
-      do {
-        let sourceData = try await loader.load(from: key)
-        return Self.downsampledPNGData(
-          from: sourceData,
-          maximumPixelSize: RSSArticleCoverThumbnailPresentation.maximumPixelSize
-        )
-      } catch {
-        return nil
+  private func addConsumer(
+    _ consumerID: UUID,
+    for key: URL,
+    continuation: CheckedContinuation<Data?, Never>
+  ) {
+    if var request = requests[key] {
+      request.consumers[consumerID] = continuation
+      requests[key] = request
+      return
+    }
+    let requestID = UUID()
+    requests[key] = Request(
+      id: requestID,
+      consumers: [consumerID: continuation],
+      task: nil
+    )
+    if queue.count >= maximumQueuedRequests {
+      let oldest = queue.removeFirst()
+      if let evicted = requests[oldest.url], evicted.id == oldest.requestID {
+        requests[oldest.url] = nil
+        for consumer in evicted.consumers.values {
+          consumer.resume(returning: nil)
+        }
       }
     }
-    inFlight[key] = task
+    queue.append((key, requestID))
+    startQueuedRequests()
+  }
 
-    let result = await task.value
-    inFlight[key] = nil
-    if let result {
-      cachedData[key] = result
-      cacheOrder.removeAll { $0 == key }
-      cacheOrder.append(key)
-      trimCacheIfNeeded()
+  private func removeConsumer(_ consumerID: UUID, for key: URL) {
+    guard var request = requests[key],
+      let continuation = request.consumers.removeValue(forKey: consumerID)
+    else { return }
+    continuation.resume(returning: nil)
+    if request.consumers.isEmpty {
+      // Remove immediately so a new subscriber gets a fresh request. The old
+      // task still occupies its concurrency slot until cancellation finishes.
+      requests[key] = nil
+      request.task?.cancel()
+      if request.task == nil {
+        queue.removeAll { $0.url == key && $0.requestID == request.id }
+      }
+    } else {
+      requests[key] = request
     }
-    return result
+    startQueuedRequests()
+  }
+
+  private func startQueuedRequests() {
+    while activeRequestCount < maximumConcurrentRequests, !queue.isEmpty {
+      let next = queue.removeFirst()
+      guard var request = requests[next.url], request.id == next.requestID else { continue }
+      let loader = loader
+      activeRequestCount += 1
+      request.task = Task {
+        let result: Data?
+        do {
+          let sourceData = try await loader.load(from: next.url)
+          try Task.checkCancellation()
+          result = Self.downsampledPNGData(
+            from: sourceData,
+            maximumPixelSize: RSSArticleCoverThumbnailPresentation.maximumPixelSize
+          )
+        } catch {
+          result = nil
+        }
+        finishRequest(for: next.url, requestID: next.requestID, result: result)
+      }
+      requests[next.url] = request
+    }
+  }
+
+  private func finishRequest(for key: URL, requestID: UUID, result: Data?) {
+    activeRequestCount -= 1
+    if let request = requests[key], request.id == requestID {
+      requests[key] = nil
+      if let result {
+        cachedData[key] = result
+        cacheOrder.removeAll { $0 == key }
+        cacheOrder.append(key)
+        trimCacheIfNeeded()
+      }
+      for continuation in request.consumers.values {
+        continuation.resume(returning: result)
+      }
+    }
+    startQueuedRequests()
+  }
+
+  func pendingConsumerCount(for imageURL: URL) -> Int {
+    requests[imageURL.absoluteURL]?.consumers.count ?? 0
   }
 
   private func trimCacheIfNeeded() {

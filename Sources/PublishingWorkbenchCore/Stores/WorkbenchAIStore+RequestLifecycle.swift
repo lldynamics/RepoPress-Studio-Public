@@ -4,12 +4,89 @@ import PublishingKnowledgeCore
 enum AIGenerationLane: Hashable, Sendable {
   case action
   case metadata(UUID)
-  case imageText(UUID)
   case writingStyle
   case connectionTest
 }
 
+struct AINonStreamingAuthorizationBinding: Sendable {
+  let profileID: UUID
+  let connectionID: UUID?
+  let config: AIProviderConfig
+}
+
 extension WorkbenchAIStore {
+  /// Capture the selected connection before any baseline or knowledge await.
+  /// A later revoke can then cancel even a request still preparing its payload.
+  func bindNonStreamingAuthorization(
+    _ lane: AIGenerationLane, profile: SiteProfile
+  ) -> AINonStreamingAuthorizationBinding {
+    let binding = AINonStreamingAuthorizationBinding(
+      profileID: profile.id,
+      connectionID: profile.aiConnectionProfileID,
+      config: store.aiProviderConfig(for: profile)
+    )
+    aiRequestAuthorizationBindings[lane] = binding
+    return binding
+  }
+
+  /// Called by the client before every actual POST, including a retry. This
+  /// synchronous check follows the async knowledge check so no suspension can
+  /// turn a revoked grant or rotated key into a valid send.
+  func checkNonStreamingAuthorization(
+    _ binding: AINonStreamingAuthorizationBinding,
+    apiKey: String?,
+    lane: AIGenerationLane,
+    generation: UInt64
+  ) throws {
+    try checkAIRequest(lane, generation: generation)
+    guard aiRequestAuthorizationBindings[lane]?.profileID == binding.profileID,
+      aiRequestAuthorizationBindings[lane]?.connectionID == binding.connectionID,
+      aiRequestAuthorizationBindings[lane]?.config == binding.config,
+      let liveProfile = store.profiles.first(where: { $0.id == binding.profileID }),
+      liveProfile.aiConnectionProfileID == binding.connectionID
+    else { throw AIOutboundPayloadConfirmationError.drifted }
+    if let connectionID = binding.connectionID {
+      guard let connection = store.aiConnectionProfile(for: connectionID),
+        connection.config == binding.config
+      else { throw AIOutboundPayloadConfirmationError.drifted }
+    } else {
+      guard liveProfile.aiProviderConfig == binding.config
+      else { throw AIOutboundPayloadConfirmationError.drifted }
+    }
+    let consent = aiDataSharingConsentStore.presentation(for: binding.config)
+    guard consent.isGranted else {
+      throw AIPublishingAssistantError.dataSharingConsentRequired(
+        providerName: consent.providerName,
+        destination: consent.destination
+      )
+    }
+    guard try aiChatAvailableAPIKey(for: liveProfile) == apiKey else {
+      throw AIOutboundPayloadConfirmationError.drifted
+    }
+    try checkAIRequest(lane, generation: generation)
+  }
+
+  func cancelNonStreamingAuthorization(
+    connectionID: UUID? = nil,
+    profileID: UUID? = nil,
+    revokedConfig: AIProviderConfig? = nil,
+    remoteOnly: Bool = false,
+    requiresAPIKeyOnly: Bool = false
+  ) {
+    for (lane, binding) in Array(aiRequestAuthorizationBindings) {
+      guard connectionID == nil || binding.connectionID == connectionID,
+        profileID == nil || binding.profileID == profileID,
+        revokedConfig == nil
+          || binding.config.dataSharingConsentIdentifier
+            == revokedConfig?.dataSharingConsentIdentifier,
+        !remoteOnly || !binding.config.isLocalEndpoint,
+        !requiresAPIKeyOnly || binding.config.requiresAPIKey,
+        let generation = currentAIRequestGeneration(lane)
+      else { continue }
+      cancelAIRequest(lane, generation: generation)
+    }
+  }
+
   func beginPublishingAIRequest(_ lane: AIGenerationLane) -> UInt64 {
     if let previous = aiPublishingActionRequest {
       cancelAIRequest(previous.lane, generation: previous.generation)
@@ -28,7 +105,6 @@ extension WorkbenchAIStore {
   func currentAIRequestGeneration(_ lane: AIGenerationLane) -> UInt64? {
     switch lane {
     case .metadata(let id): return aiMetadataSuggestionGenerationsByDraftID[id]
-    case .imageText(let id): return aiImageTextSuggestionGenerationsByDraftID[id]
     default: return aiRequestGenerations[lane]
     }
   }
@@ -40,7 +116,6 @@ extension WorkbenchAIStore {
     let generation: UInt64
     switch lane {
     case .metadata(let id): generation = beginAIMetadataSuggestionOperation(for: id)
-    case .imageText(let id): generation = beginAIImageTextSuggestionOperation(for: id)
     default:
       generation = nextAIRequestGeneration()
       aiRequestGenerations[lane] = generation
@@ -117,6 +192,7 @@ extension WorkbenchAIStore {
     aiRequestBaselines.removeValue(forKey: lane)
     aiRequestProfiles.removeValue(forKey: lane)
     aiRequestContextChecks.removeValue(forKey: lane)
+    aiRequestAuthorizationBindings.removeValue(forKey: lane)
     if aiPublishingActionRequest?.generation == generation {
       aiPublishingActionRequest = nil
     }
@@ -125,7 +201,6 @@ extension WorkbenchAIStore {
     }
     switch lane {
     case .metadata(let id): finishAIMetadataSuggestionOperation(for: id, generation: generation)
-    case .imageText(let id): finishAIImageTextSuggestionOperation(for: id, generation: generation)
     case .writingStyle: isAIWritingStyleExtractionRunning = false
     default: break
     }
@@ -137,7 +212,6 @@ extension WorkbenchAIStore {
     finishAIRequest(lane, generation: generation)
     switch lane {
     case .metadata(let id): aiMetadataSuggestionGenerationsByDraftID.removeValue(forKey: id)
-    case .imageText(let id): aiImageTextSuggestionGenerationsByDraftID.removeValue(forKey: id)
     default: aiRequestGenerations.removeValue(forKey: lane)
     }
   }
@@ -145,7 +219,6 @@ extension WorkbenchAIStore {
   func cancelAIGenerationRequests() {
     let lanes = Set(aiRequestGenerations.keys)
       .union(aiMetadataSuggestionGenerationsByDraftID.keys.map(AIGenerationLane.metadata))
-      .union(aiImageTextSuggestionGenerationsByDraftID.keys.map(AIGenerationLane.imageText))
     for lane in lanes {
       if let generation = currentAIRequestGeneration(lane) {
         cancelAIRequest(lane, generation: generation)
@@ -171,9 +244,6 @@ extension WorkbenchAIStore {
     switch lane {
     case .metadata(let id):
       registerAIMetadataSuggestionCancellationHandler(
-        for: id, generation: generation, handler: cancel)
-    case .imageText(let id):
-      registerAIImageTextSuggestionCancellationHandler(
         for: id, generation: generation, handler: cancel)
     default: break
     }

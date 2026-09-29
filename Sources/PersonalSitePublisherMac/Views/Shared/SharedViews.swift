@@ -281,38 +281,6 @@ extension WorkbenchInformationRow where Accessory == EmptyView {
   }
 }
 
-/// Keeps the three primary status metrics aligned on normal windows, then reflows only when space is tight.
-struct PrimaryStatusMetricGrid<Content: View>: View {
-  private let spacing: CGFloat
-  private let content: () -> Content
-
-  init(spacing: CGFloat = 12, @ViewBuilder content: @escaping () -> Content) {
-    self.spacing = spacing
-    self.content = content
-  }
-
-  var body: some View {
-    ViewThatFits(in: .horizontal) {
-      LazyVGrid(
-        columns: Array(
-          repeating: GridItem(.flexible(minimum: 160), spacing: spacing),
-          count: 3
-        ),
-        spacing: spacing
-      ) {
-        content()
-      }
-
-      LazyVGrid(
-        columns: [GridItem(.adaptive(minimum: 160, maximum: 240), spacing: spacing)],
-        spacing: spacing
-      ) {
-        content()
-      }
-    }
-  }
-}
-
 enum MetricTileSemantic {
   case blocking
   case warning

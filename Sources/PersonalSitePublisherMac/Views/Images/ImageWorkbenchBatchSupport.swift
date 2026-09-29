@@ -205,6 +205,7 @@ struct ImageBatchOperationPreviewView: View {
         if preview.excludedFileCount > 0 {
           Text("另有 \(preview.excludedFileCount) 个所选文件未登记或不符合此操作，已排除。")
             .font(.callout).foregroundStyle(.secondary)
+            .accessibilityIdentifier("image-batch-preview-excluded")
         }
       }
 
@@ -235,10 +236,12 @@ struct ImageBatchOperationPreviewView: View {
           selectedItemIDs = Set(preview.affectedItems.map(\.id))
         }
         .disabled(selectedItemIDs.count == preview.affectedItems.count)
+        .accessibilityIdentifier("image-batch-preview-select-all")
         Button("全部排除") {
           selectedItemIDs.removeAll()
         }
         .disabled(selectedItemIDs.isEmpty)
+        .accessibilityIdentifier("image-batch-preview-exclude-all")
       }
 
       List(preview.affectedItems) { affected in
@@ -264,6 +267,8 @@ struct ImageBatchOperationPreviewView: View {
           }
         }
         .toggleStyle(.checkbox)
+        .accessibilityIdentifier(
+          "image-batch-preview-item-\(affected.draftID)-\(affected.item.attachmentID)")
       }
       .frame(minHeight: 230, idealHeight: 300)
 
@@ -280,6 +285,7 @@ struct ImageBatchOperationPreviewView: View {
       HStack {
         Button("取消", action: cancel)
           .keyboardShortcut(.cancelAction)
+          .accessibilityIdentifier("image-batch-preview-cancel")
         Spacer()
         Button {
           confirm(selectionByDraft)
@@ -292,12 +298,14 @@ struct ImageBatchOperationPreviewView: View {
         .workbenchProminentActionStyle()
         .keyboardShortcut(.defaultAction)
         .disabled(selectedItemIDs.isEmpty)
+        .accessibilityIdentifier("image-batch-preview-confirm")
       }
     }
     .padding(22)
     .frame(minWidth: 640, idealWidth: 720, minHeight: 620, idealHeight: 720)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("图片批处理影响预览")
+    .accessibilityIdentifier("image-batch-preview")
   }
 
   private var selectedItems: [ImageBatchAffectedItem] {

@@ -37,9 +37,162 @@ final class RepositorySafeSyncServiceTests: XCTestCase {
         atPath: result.recoveryArchiveURL!.appendingPathComponent("manifest.json").path
       ))
     XCTAssertEqual(
+      try content(result.recoveryArchiveURL!, path: "files/incoming.md"), "same\n")
+    XCTAssertEqual(
       try git(["rev-parse", "HEAD"], at: fixture.worktree).trimmedForPublishing,
       try git(["rev-parse", "refs/heads/main"], at: fixture.remote).trimmedForPublishing
     )
+  }
+
+  func testEditAfterRecoveryCopyIsPreservedAndStopsFastForward() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try advanceRemote(fixture, path: "incoming.md", contents: "same\n")
+    try write("same\n", to: fixture.worktree, path: "incoming.md")
+    let wrapper = fixture.base.appendingPathComponent("late-edit.sh")
+    try """
+    #!/bin/sh
+    root="$2"
+    shift 2
+    marker="$root/../injected"
+    if [ "$1" = "hash-object" ] && [ ! -f "$marker" ]; then
+      case "$4" in
+        .repopress-safe-sync-verify-*)
+          /usr/bin/git -C "$root" "$@" || exit $?
+          printf 'late edit after backup\n' > "$root/incoming.md"
+          : > "$marker"
+          exit 0
+          ;;
+      esac
+    fi
+    exec /usr/bin/git -C "$root" "$@"
+    """.write(to: wrapper, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wrapper.path)
+    let service = RepositorySafeSyncService(
+      gitCommandRunner: GitCommandRunner(executableURL: wrapper))
+    let review = try confirmation(from: service.prepare(profile: fixture.profile))
+    let oldHead = try git(["rev-parse", "HEAD"], at: fixture.worktree)
+    var heldURL: URL?
+    XCTAssertThrowsError(
+      try service.apply(
+        profile: fixture.profile, confirmation: review,
+        recoveryRootURL: fixture.base.appendingPathComponent("recovery"))
+    ) { error in
+      guard case .recoveryRequired(let path, _) = error as? RepositorySafeSyncError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      heldURL = URL(fileURLWithPath: path, isDirectory: true)
+    }
+    XCTAssertTrue(
+      FileManager.default.fileExists(atPath: fixture.base.appendingPathComponent("injected").path))
+    XCTAssertEqual(try content(fixture.worktree, path: "incoming.md"), "late edit after backup\n")
+    XCTAssertEqual(
+      try content(try XCTUnwrap(heldURL), path: "files/incoming.md"), "late edit after backup\n")
+    XCTAssertEqual(try git(["rev-parse", "HEAD"], at: fixture.worktree), oldHead)
+  }
+
+  func testNewFileAtOriginalPathDuringMergeIsNotOverwrittenOnRecovery() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try advanceRemote(fixture, path: "incoming.md", contents: "same\n")
+    try write("same\n", to: fixture.worktree, path: "incoming.md")
+    let wrapper = fixture.base.appendingPathComponent("recreate-at-merge.sh")
+    try """
+    #!/bin/sh
+    root="$2"
+    shift 2
+    if [ "$1" = "merge" ]; then
+      printf 'new file after isolation\n' > "$root/incoming.md"
+      echo 'forced merge failure' >&2
+      exit 85
+    fi
+    exec /usr/bin/git -C "$root" "$@"
+    """.write(to: wrapper, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wrapper.path)
+    let service = RepositorySafeSyncService(
+      gitCommandRunner: GitCommandRunner(executableURL: wrapper))
+    let review = try confirmation(from: service.prepare(profile: fixture.profile))
+    let oldHead = try git(["rev-parse", "HEAD"], at: fixture.worktree)
+    var heldURL: URL?
+    XCTAssertThrowsError(
+      try service.apply(
+        profile: fixture.profile, confirmation: review,
+        recoveryRootURL: fixture.base.appendingPathComponent("recovery"))
+    ) { error in
+      guard case .partial(let path, let message) = error as? RepositorySafeSyncError else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertTrue(message.contains("incoming.md"))
+      heldURL = URL(fileURLWithPath: path, isDirectory: true)
+    }
+    XCTAssertEqual(try content(fixture.worktree, path: "incoming.md"), "new file after isolation\n")
+    XCTAssertEqual(try content(try XCTUnwrap(heldURL), path: "files/incoming.md"), "same\n")
+    XCTAssertEqual(try git(["rev-parse", "HEAD"], at: fixture.worktree), oldHead)
+  }
+
+  func testOpenFileHandleWritingAfterIsolationRemainsInReturnedHold() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try advanceRemote(fixture, path: "incoming.md", contents: "same\n")
+    try write("same\n", to: fixture.worktree, path: "incoming.md")
+    let ready = fixture.base.appendingPathComponent("writer-ready")
+    let trigger = fixture.base.appendingPathComponent("writer-trigger")
+    let done = fixture.base.appendingPathComponent("writer-done")
+    let writer = fixture.base.appendingPathComponent("open-writer.py")
+    try """
+    import os, sys, time
+    path, ready, trigger, done = sys.argv[1:]
+    with open(path, 'r+b', buffering=0) as handle:
+        open(ready, 'w').close()
+        limit = time.monotonic() + 10
+        while not os.path.exists(trigger):
+            if time.monotonic() > limit: sys.exit(85)
+            time.sleep(0.01)
+        handle.seek(0)
+        handle.write(b'late open-handle edit\\n')
+        handle.truncate()
+        open(done, 'w').close()
+    """.write(to: writer, atomically: true, encoding: .utf8)
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+    process.arguments = [
+      writer.path, fixture.worktree.appendingPathComponent("incoming.md").path,
+      ready.path, trigger.path, done.path,
+    ]
+    try process.run()
+    defer {
+      if process.isRunning { process.terminate() }
+      process.waitUntilExit()
+    }
+    try waitForFile(ready)
+    let wrapper = fixture.base.appendingPathComponent("wait-for-open-writer.sh")
+    try """
+    #!/bin/sh
+    root="$2"
+    shift 2
+    if [ "$1" = "merge" ]; then
+      : > "$root/../writer-trigger"
+      count=0
+      while [ ! -f "$root/../writer-done" ]; do
+        count=$((count + 1))
+        if [ "$count" -gt 1000 ]; then exit 86; fi
+        sleep 0.01
+      done
+    fi
+    exec /usr/bin/git -C "$root" "$@"
+    """.write(to: wrapper, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wrapper.path)
+    let service = RepositorySafeSyncService(
+      gitCommandRunner: GitCommandRunner(executableURL: wrapper))
+    let review = try confirmation(from: service.prepare(profile: fixture.profile))
+    let result = try service.apply(
+      profile: fixture.profile, confirmation: review,
+      recoveryRootURL: fixture.base.appendingPathComponent("recovery"))
+    try waitForFile(done)
+    XCTAssertEqual(try content(fixture.worktree, path: "incoming.md"), "same\n")
+    XCTAssertEqual(
+      try content(try XCTUnwrap(result.recoveryArchiveURL), path: "files/incoming.md"),
+      "late open-handle edit\n")
   }
 
   func testRejectsDifferentUntrackedCollisionBeforeApply() throws {
@@ -306,6 +459,18 @@ final class RepositorySafeSyncServiceTests: XCTestCase {
 
   private func content(_ root: URL, path: String) throws -> String {
     try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
+  }
+
+  private func waitForFile(_ url: URL) throws {
+    let deadline = Date().addingTimeInterval(10)
+    while !FileManager.default.fileExists(atPath: url.path) {
+      guard Date() < deadline else {
+        throw NSError(
+          domain: "RepositorySafeSyncServiceTests", code: 2,
+          userInfo: [NSLocalizedDescriptionKey: "Timed out waiting for \(url.lastPathComponent)"])
+      }
+      Thread.sleep(forTimeInterval: 0.01)
+    }
   }
 
   private func makeRestoreVerificationFailingGitWrapper(in root: URL) throws -> URL {

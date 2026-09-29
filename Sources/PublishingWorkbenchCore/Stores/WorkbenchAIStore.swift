@@ -46,7 +46,7 @@ struct AIChatConversationIdentity: Equatable, Sendable {
 }
 
 @MainActor
-  public final class WorkbenchAIStore: ObservableObject {
+public final class WorkbenchAIStore: ObservableObject {
   private let context: WorkbenchAIContext
   /// Extensions retain their existing `store` spelling while the compiler
   /// limits every call to the AI capability contract above.
@@ -54,7 +54,7 @@ struct AIChatConversationIdentity: Equatable, Sendable {
   let workspace: AIWorkspaceStore
   let aiPublishingAssistantService: AIPublishingAssistantService
   let aiCredentialStore: AICredentialStore
-  private let aiConnectionTestService: AIConnectionTestService
+  let aiConnectionTestService: AIConnectionTestService
   let aiDataSharingConsentStore: AIDataSharingConsentStore
   let imageWorkbenchService: SiteImageWorkbenchService
   let seoAuditService: SEOAuditService
@@ -83,26 +83,17 @@ struct AIChatConversationIdentity: Equatable, Sendable {
   /// for another article. The workspace fields below remain the compatibility
   /// projection for the currently selected article.
   @Published public internal(set) var aiMetadataSuggestionRunningDraftIDs: Set<UUID> = []
-  @Published public internal(set) var aiImageTextSuggestionRunningDraftIDs: Set<UUID> = []
   @Published public internal(set) var aiDraftSuggestionStateRevision: UInt64 = 0
 
   var aiMetadataSuggestionsByDraftID: [UUID: AIPublishingMetadataSuggestion] = [:]
-  var aiImageTextSuggestionsByDraftID: [UUID: [AIPublishingImageTextSuggestion]] = [:]
   var aiMetadataSuggestionBaselinesByDraftID: [UUID: DraftOperationBaseline] = [:]
   var aiMetadataSuggestionProfilesByDraftID: [UUID: SiteProfile] = [:]
-  var aiImageTextSuggestionBaselinesByDraftID: [UUID: DraftOperationBaseline] = [:]
-  var aiImageTextSuggestionProfilesByDraftID: [UUID: SiteProfile] = [:]
-  var aiImageTextSuggestionSignaturesByDraftID:
-    [UUID: ImageWorkbenchReportInputSignature] = [:]
   var aiMetadataSuggestionGenerationsByDraftID: [UUID: UInt64] = [:]
-  var aiImageTextSuggestionGenerationsByDraftID: [UUID: UInt64] = [:]
-  /// Type-erased cancellation hooks keep the three suggestion request
-  /// shapes (publishing action, metadata helper, and image-text helper) on
-  /// one draft-scoped lane without storing incompatible Task result types.
+  /// Type-erased cancellation hooks keep the suggestion request shapes
+  /// (publishing action and metadata helper) on one draft-scoped lane without storing incompatible Task result types.
   /// The hooks are installed only while the matching generation is awaiting
   /// the network child task.
   var aiMetadataSuggestionCancellationHandlersByDraftID: [UUID: () -> Void] = [:]
-  var aiImageTextSuggestionCancellationHandlersByDraftID: [UUID: () -> Void] = [:]
   var aiActionOperationIDs: Set<UUID> = []
   var aiRequestGeneration: UInt64 = 0
   var aiRequestPresentationGeneration: UInt64?
@@ -112,6 +103,7 @@ struct AIChatConversationIdentity: Equatable, Sendable {
   var aiRequestBaselines: [AIGenerationLane: DraftOperationBaseline] = [:]
   var aiRequestProfiles: [AIGenerationLane: SiteProfile] = [:]
   var aiRequestContextChecks: [AIGenerationLane: () -> Bool] = [:]
+  var aiRequestAuthorizationBindings: [AIGenerationLane: AINonStreamingAuthorizationBinding] = [:]
   var aiPublishingActionRequest: (lane: AIGenerationLane, generation: UInt64)?
 
   init(
@@ -156,16 +148,6 @@ struct AIChatConversationIdentity: Equatable, Sendable {
       aiMetadataSuggestionsByDraftID[draftID] = suggestion
       aiMetadataSuggestionBaselinesByDraftID[draftID] = baseline
       aiMetadataSuggestionProfilesByDraftID[draftID] = context.profile(for: baseline.draft)
-    }
-    if let draftID = workspace.aiImageTextSuggestionDraftID,
-      let baseline = context.draftOperationBaseline(for: draftID)
-    {
-      let profile = context.profile(for: baseline.draft)
-      aiImageTextSuggestionsByDraftID[draftID] = workspace.aiImageTextSuggestions
-      aiImageTextSuggestionBaselinesByDraftID[draftID] = baseline
-      aiImageTextSuggestionProfilesByDraftID[draftID] = profile
-      aiImageTextSuggestionSignaturesByDraftID[draftID] =
-        ImageWorkbenchReportInputSignature(draft: baseline.draft, profile: profile)
     }
   }
 
@@ -330,21 +312,6 @@ struct AIChatConversationIdentity: Equatable, Sendable {
     set { workspace.isAIChatRunning = newValue }
   }
 
-  public var aiImageTextSuggestionDraftID: UUID? {
-    get { workspace.aiImageTextSuggestionDraftID }
-    set { workspace.aiImageTextSuggestionDraftID = newValue }
-  }
-
-  public var aiImageTextSuggestions: [AIPublishingImageTextSuggestion] {
-    get { workspace.aiImageTextSuggestions }
-    set { workspace.aiImageTextSuggestions = newValue }
-  }
-
-  public var isAIImageTextRunning: Bool {
-    get { !aiImageTextSuggestionRunningDraftIDs.isEmpty || workspace.isAIImageTextRunning }
-    set { workspace.isAIImageTextRunning = newValue }
-  }
-
   public var seoSocialPreviewSnapshots: [UUID: SEOSocialPreviewSnapshot] {
     get { workspace.seoSocialPreviewSnapshots }
     set { workspace.seoSocialPreviewSnapshots = newValue }
@@ -402,290 +369,8 @@ struct AIChatConversationIdentity: Equatable, Sendable {
     seoSocialPreviewSnapshots[draft.id]
   }
 
-  public func seoSocialPreviewCachePresentation(for draft: ArticleDraft)
-    -> SEOSocialPreviewCachePresentation
-  {
-    SEOSocialPreviewCachePresentation(
-      snapshot: seoSocialPreviewSnapshot(for: draft),
-      isStale: isSEOSocialPreviewStale(for: draft)
-    )
-  }
-
   public func seoReport(for draft: ArticleDraft) -> SEOAuditReport {
     seoAuditService.report(draft: draft, profile: store.profile(for: draft))
-  }
-
-  public func seoSitemapPreview(for draft: ArticleDraft) -> SEOSitemapPreview {
-    seoSocialPreviewService.sitemapPreview(
-      drafts: store.drafts,
-      selectedDraft: draft,
-      profile: store.profile(for: draft)
-    )
-  }
-
-  public func seoSocialPublishPackageMarkdown(for draft: ArticleDraft) -> String? {
-    if store.privateContentDisplay(for: draft).isMasked {
-      return """
-        # SEO / Social 发布包已遮挡
-
-        - 文章：私密文章
-        - 状态：私密内容遮挡已开启
-        - 提示：打开文章或关闭私密遮挡后再生成发布包。
-        """
-    }
-    let snapshot =
-      seoSocialPreviewSnapshots[draft.id]
-      ?? seoSocialPreviewService.snapshot(draft: draft, profile: store.profile(for: draft))
-    return snapshot.publishPackageMarkdown(
-      relatedSuggestions: store.relatedArticleSuggestions(for: draft)
-    )
-  }
-
-  public func refreshAIKeyAvailability() {
-    refreshAIKeyAvailability(for: store.activeProfile)
-  }
-
-  public func aiKeyAvailability(
-    forConnectionProfileID connectionProfileID: UUID
-  ) -> KeychainTokenAvailability {
-    guard let connection = store.aiConnectionProfile(for: connectionProfileID),
-      connection.config.requiresAPIKey,
-      !connection.config.normalizedBaseURL.isEmpty
-    else {
-      return KeychainTokenAvailability(hasToken: false)
-    }
-    do {
-      return try aiCredentialStore.availability(
-        forConnectionProfileID: connectionProfileID
-      )
-    } catch {
-      return KeychainTokenAvailability(accessFailure: error)
-    }
-  }
-
-  func refreshAIKeyAvailability(for profile: SiteProfile) {
-    let connection = store.aiConnectionProfile(for: profile)
-    guard connection.config.requiresAPIKey else {
-      aiTokenAvailability = KeychainTokenAvailability(hasToken: false)
-      return
-    }
-    guard !connection.config.normalizedBaseURL.isEmpty else {
-      aiTokenAvailability = KeychainTokenAvailability(hasToken: false)
-      return
-    }
-    do {
-      aiTokenAvailability = try aiCredentialStore.availability(
-        forConnectionProfileID: connection.id,
-        legacyProfile: connection.canUseLegacyCredentials ? profile : nil
-      )
-    } catch {
-      aiTokenAvailability = KeychainTokenAvailability(accessFailure: error)
-    }
-  }
-
-  @discardableResult
-  public func saveAIAPIKey(_ token: String) -> Bool {
-    let connection = store.activeAIConnectionProfile
-    guard !connection.config.normalizedBaseURL.isEmpty else {
-      aiActionMessage = CoreL10n.text("API Base URL 尚未配置。")
-      return false
-    }
-    do {
-      try aiCredentialStore.saveToken(
-        token.trimmedForPublishing,
-        forConnectionProfileID: connection.id,
-        legacyProfile: connection.canUseLegacyCredentials ? store.activeProfile : nil
-      )
-      cancelStreamingAuthorization(connectionID: connection.id)
-      refreshAIKeyAvailability()
-      aiActionMessage = CoreL10n.format(
-        "AI API Key 已保存到 %@。",
-        credentialStorageModeName(aiCredentialStore.storageMode)
-      )
-      aiChatMessage = "AI API Key 已就绪，可以发送消息。"
-      return true
-    } catch {
-      aiActionMessage = aiCredentialFailureMessage(action: "保存", error: error)
-      return false
-    }
-  }
-
-  public func deleteAIAPIKey() {
-    do {
-      let connection = store.activeAIConnectionProfile
-      try aiCredentialStore.deleteToken(
-        forConnectionProfileID: connection.id,
-        legacyProfiles: connection.canUseLegacyCredentials ? [store.activeProfile] : []
-      )
-      refreshAIKeyAvailability()
-      cancelStreamingAuthorization(connectionID: connection.id)
-      aiActionMessage = "AI API Key 已删除。"
-      aiChatMessage = "AI API Key 已删除，请重新配置后再发送消息。"
-    } catch {
-      aiActionMessage = aiCredentialFailureMessage(action: "删除", error: error)
-    }
-  }
-
-  private func aiCredentialFailureMessage(action: String, error: Error) -> String {
-    var message = "AI API Key \(action)失败：\(error.localizedDescription)"
-    if let keychainError = error as? KeychainTokenStoreError,
-      let recoveryHint = keychainError.recoveryHint
-    {
-      message += " \(recoveryHint)"
-    }
-    return message
-  }
-
-  public func testAIConnection(
-    probeCapabilities: Set<AIProviderCapabilityProbeKind> = []
-  ) async -> AIConnectionTestReport? {
-    guard !Task.isCancelled else { return nil }
-    let lane = AIGenerationLane.connectionTest
-    let generation = beginAIRequest(lane, showsActionLoading: true)
-    defer { finishAIRequest(lane, generation: generation) }
-    let connection = store.activeAIConnectionProfile
-    let config = connection.config
-    aiRequestContextChecks[lane] = { [weak self] in
-      guard let self else { return false }
-      return self.store.activeAIConnectionProfile.id == connection.id
-        && self.store.activeAIConnectionProfile.config == config
-    }
-    let configKey = AIProviderCapabilityCacheKey(config: config)
-    let consent = aiDataSharingConsentStore.presentation(for: config)
-    if config.usesCodexAppServer {
-      do {
-        try await awaitAIRequest(lane, generation: generation) { [self] in
-          try await CodexAppServerRequestAuthorizer(
-            consentStore: aiDataSharingConsentStore,
-            accountStatusProvider: CodexAppServerClient.shared
-          ).authorize(config: config)
-        }
-      } catch {
-        guard !(error is CancellationError), canPresentAIRequest(lane, generation: generation)
-        else { return nil }
-        aiActionMessage = error.localizedDescription
-        return nil
-      }
-    } else if !consent.isGranted {
-      aiActionMessage = "请先明确同意向 \(consent.destination) 发送 AI 连接测试数据。"
-      return nil
-    }
-    do {
-      let token = try aiChatAvailableAPIKey(for: store.activeProfile)
-      let report: AIConnectionTestReport
-      if config.usesCodexAppServer {
-        // WorkbenchStore's connection-test service is constructed before the
-        // Workbench consent store is available and therefore owns a default
-        // client. Route Codex's test through the already-bound publishing
-        // client so this prompt uses the same account authorization dependency
-        // as every other AI request.
-        report = try await awaitAIRequest(lane, generation: generation) { [self] in
-          try await testCodexConnection(
-            config: config,
-            probeCapabilities: probeCapabilities
-          )
-        }
-      } else {
-        report = try await awaitAIRequest(lane, generation: generation) { [self] in
-          try await aiConnectionTestService.testConnection(
-            config: config,
-            apiKey: token,
-            probeCapabilities: probeCapabilities
-          )
-        }
-      }
-      try checkAIRequest(lane, generation: generation)
-      guard store.activeAIConnectionProfile.id == connection.id,
-        store.activeAIConnectionProfile.config == config
-      else { return nil }
-      let presentsReport = canPresentAIRequest(lane, generation: generation)
-
-      if let capabilityProbeReport = report.capabilityProbeReport {
-        let currentConnection = store.activeAIConnectionProfile
-        let hasNotDrifted =
-          currentConnection.id == connection.id
-          && currentConnection.config == config
-          && AIProviderCapabilityCacheKey(config: currentConnection.config) == configKey
-          && capabilityProbeReport.key == configKey
-        if hasNotDrifted {
-          let updatedConfig = capabilityProbeReport.applying(
-            to: currentConnection.config,
-            at: Date()
-          )
-          if updatedConfig != currentConnection.config {
-            var updatedConnection = currentConnection
-            updatedConnection.config = updatedConfig
-            // Keep persistence and the legacy site-owned mirror on the
-            // existing connection-profile update path. If identity drifted,
-            // this branch is never reached and no evidence is written.
-            _ = store.updateAIConnectionProfile(updatedConnection)
-          }
-        }
-      }
-      refreshAIKeyAvailability()
-      if presentsReport {
-        aiActionMessage = report.headline
-        aiChatMessage = "AI 连接正常，可以发送消息。"
-      }
-      return report
-    } catch {
-      guard !(error is CancellationError), canPresentAIRequest(lane, generation: generation) else {
-        return nil
-      }
-      store.setAIActionFailureMessage(
-        CoreL10n.format("AI 连接测试失败：%@", error.localizedDescription)
-      )
-      return nil
-    }
-  }
-
-  private func testCodexConnection(
-    config: AIProviderConfig,
-    probeCapabilities: Set<AIProviderCapabilityProbeKind>
-  ) async throws -> AIConnectionTestReport {
-    guard let endpoint = config.chatCompletionsURL else {
-      throw AIConnectionTestError.invalidBaseURL(config.normalizedBaseURL)
-    }
-    let result = try await aiPublishingAssistantService.client.complete(
-      request: AIChatCompletionRequest(
-        model: config.normalizedModel,
-        messages: [
-          AIChatMessage(role: "system", content: "Return only OK."),
-          AIChatMessage(role: "user", content: "ping"),
-        ],
-        temperature: 0,
-        maximumOutputTokens: 8
-      ),
-      config: config,
-      apiKey: nil,
-      purpose: .connectionTest
-    )
-    let capabilityProbeReport: AIProviderCapabilityProbeReport?
-    if probeCapabilities.isEmpty {
-      capabilityProbeReport = nil
-    } else {
-      capabilityProbeReport = try await AIProviderCapabilityProbeService(
-        client: aiPublishingAssistantService.client
-      ).probe(
-        config: config,
-        apiKey: nil,
-        capabilities: probeCapabilities,
-        forceRefresh: false,
-        existingChatProof: probeCapabilities.contains(.chat)
-          ? AIProviderCapabilityChatProbeProof(
-            key: AIProviderCapabilityCacheKey(config: config),
-            result: result
-          )
-          : nil
-      )
-    }
-    return AIConnectionTestReport(
-      providerName: config.normalizedDisplayName,
-      model: config.normalizedModel,
-      endpoint: endpoint,
-      responsePreview: result.content,
-      capabilityProbeReport: capabilityProbeReport
-    )
   }
 
   public var aiDataSharingConsentPresentation: AIDataSharingConsentPresentation {

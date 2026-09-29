@@ -1,5 +1,6 @@
 import PublishingDomainContracts
 import XCTest
+import os
 
 @testable import PublishingPreviewCore
 @testable import PublishingWorkbenchCore
@@ -998,15 +999,11 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     store.refreshPublishPreview(for: draft)
 
     XCTAssertEqual(store.localPublishReadiness?.commitReadiness, .blocked)
-    XCTAssertNil(store.localCommitCommandForSelectedDraft())
-    XCTAssertTrue(store.reviewBranchCommandsForSelectedDraft().isEmpty)
 
     try git(["init", "-b", "main"], rootURL: rootURL)
     await store.scanRepositoryAsync()
 
     XCTAssertEqual(store.localPublishReadiness?.canCommit, true)
-    XCTAssertTrue(store.localCommitCommandForSelectedDraft()?.contains("git add 'content/posts/command-ready.md'") == true)
-    XCTAssertFalse(store.reviewBranchCommandsForSelectedDraft().isEmpty)
 
     let package = try XCTUnwrap(store.publishPackage)
     let markdownContent = try XCTUnwrap(package.markdownFile?.content)
@@ -1016,8 +1013,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
       encoding: .utf8
     )
 
-    XCTAssertNil(store.localCommitCommandForSelectedDraft())
-    XCTAssertTrue(store.reviewBranchCommandsForSelectedDraft().isEmpty)
+    store.refreshPublishPreview(for: draft)
     XCTAssertEqual(store.localPublishReadiness?.commitReadiness, .unchanged)
   }
 
@@ -1093,91 +1089,6 @@ final class WorkbenchStoreProfileTests: XCTestCase {
 
     XCTAssertEqual(store.localPublishReadiness?.commitReadiness, .ready)
     XCTAssertFalse(store.localPublishReadiness?.commitBlockingIssues.contains { $0.title == "内容目录不存在" } == true)
-  }
-
-  func testPreferredPublishStrategyReportsMissingPackageAsWarning() async throws {
-    let store = try TestWorkbenchFactory.makeStore()
-    store.setDrafts([])
-    store.setSelectedDraftID(nil)
-
-    await store.commitSelectedDraftUsingPreferredStrategy()
-
-    XCTAssertEqual(store.publishActionMessage, "没有可提交的发布包。")
-    XCTAssertEqual(store.publishActionFeedback?.status, .warning)
-  }
-
-  func testPreferredPublishStrategyDirectCommitsOnCurrentBranch() async throws {
-    let store = try TestWorkbenchFactory.makeStore()
-    let rootURL = try preparedGitRepositoryRoot()
-    defer {
-      try? FileManager.default.removeItem(at: rootURL)
-    }
-
-    var profile = store.activeProfile
-    profile.rememberLocalRepositoryRoot(rootURL)
-    profile.markdownPathPattern = "content/posts/{slug}.md"
-    profile.repositoryPublishStrategy = .direct
-    store.updateActiveProfile(profile)
-
-    let draft = ArticleDraft(
-      siteProfileID: profile.id,
-      title: "Preferred Direct",
-      date: fixedDate(),
-      slug: "preferred-direct",
-      draft: false,
-      bodyMarkdown: "This body is intentionally long enough for preferred direct publishing."
-    )
-    store.setDrafts([draft])
-    store.setSelectedDraftID(draft.id)
-    await store.scanRepositoryAsync()
-    store.refreshPublishPreview(for: draft)
-
-    await store.commitSelectedDraftUsingPreferredStrategy()
-
-    XCTAssertEqual(store.localGitPublishResult?.mode, .directCommit)
-    XCTAssertEqual(store.localGitPublishResult?.branchName, "main")
-    XCTAssertEqual(store.releaseRecords.first?.kind, .directCommit)
-    XCTAssertEqual(store.drafts.first?.repositoryPath, "content/posts/preferred-direct.md")
-    XCTAssertEqual(try git(["rev-parse", "--abbrev-ref", "HEAD"], rootURL: rootURL), "main")
-  }
-
-  func testPreferredPublishStrategyCreatesReviewBranch() async throws {
-    let store = try TestWorkbenchFactory.makeStore()
-    let rootURL = try preparedGitRepositoryRoot()
-    defer {
-      try? FileManager.default.removeItem(at: rootURL)
-    }
-
-    var profile = store.activeProfile
-    profile.rememberLocalRepositoryRoot(rootURL)
-    profile.markdownPathPattern = "content/posts/{slug}.md"
-    profile.repositoryPublishStrategy = .reviewRequest
-    store.updateActiveProfile(profile)
-
-    let draft = ArticleDraft(
-      siteProfileID: profile.id,
-      title: "Preferred Review",
-      date: fixedDate(),
-      slug: "preferred-review",
-      draft: false,
-      bodyMarkdown: "This body is intentionally long enough for preferred review branch publishing."
-    )
-    store.setDrafts([draft])
-    store.setSelectedDraftID(draft.id)
-    await store.scanRepositoryAsync()
-    store.refreshPublishPreview(for: draft)
-
-    await store.commitSelectedDraftUsingPreferredStrategy()
-
-    let result = try XCTUnwrap(
-      store.localGitPublishResult,
-      store.publishActionMessage ?? "本地 Review 提交未返回结果"
-    )
-    XCTAssertEqual(result.mode, .reviewBranch)
-    XCTAssertEqual(result.branchName, "publish/preferred-review-20260829")
-    XCTAssertEqual(store.releaseRecords.first?.kind, .reviewBranch)
-    XCTAssertNil(store.drafts.first?.repositoryPath)
-    XCTAssertEqual(try git(["rev-parse", "--abbrev-ref", "HEAD"], rootURL: rootURL), result.branchName)
   }
 
   func testWritingPackageBlocksPreflightErrorsBeforeRepositoryWrite() async throws {
@@ -1486,6 +1397,116 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(store.localSitePreviewPlan?.executionIdentity, planA.executionIdentity)
     XCTAssertNil(try processService.authorizationRequest(for: planA))
     XCTAssertNil(try processService.authorizationRequest(for: planB))
+  }
+
+  func testRepeatedLocalPreviewRefreshPreservesDynamicPlanAndPendingConfirmation() throws {
+    let stateRootURL = try temporaryDirectoryURL(prefix: "PreviewStableRefresh")
+    let siteRootURL = try temporaryDirectoryURL(prefix: "PreviewStableRefreshSite")
+    defer {
+      try? FileManager.default.removeItem(at: stateRootURL)
+      try? FileManager.default.removeItem(at: siteRootURL)
+    }
+    let nextDynamicPort = OSAllocatedUnfairLock(initialState: 23_455)
+    let processService = LocalSitePreviewProcessService(
+      trustStore: LocalSitePreviewTrustStore(
+        fileURL: stateRootURL.appendingPathComponent("trust.json")
+      )
+    )
+    let planner = LocalSitePreviewService(
+      executableResolver: { _ in "/bin/sleep" },
+      portAllocator: LocalSitePreviewPortAllocator(
+        isPortAvailable: { $0 != 1_111 },
+        dynamicPort: {
+          nextDynamicPort.withLock { port in
+            port += 1
+            return port
+          }
+        }
+      )
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: stateRootURL.appendingPathComponent("workbench.json")
+      ),
+      localSitePreviewService: planner,
+      localSitePreviewProcessService: processService
+    )
+    store.updateActiveProfile { profile in
+      profile.siteKind = .zola
+      profile.localRepositoryRootPath = siteRootURL.path
+    }
+
+    store.publishingStore.refreshLocalSitePreviewPlan(for: store.activeProfile)
+    let originalPlan = try XCTUnwrap(store.localSitePreviewPlan)
+    let pendingRequest = try XCTUnwrap(processService.authorizationRequest(for: originalPlan))
+    let originalGeneration = store.publishingStore.localSitePreviewGeneration
+
+    store.publishingStore.refreshLocalSitePreviewPlan(for: store.activeProfile)
+    let refreshedPlan = try XCTUnwrap(store.localSitePreviewPlan)
+
+    XCTAssertEqual(originalPlan.port, 23_456)
+    XCTAssertEqual(refreshedPlan.port, originalPlan.port)
+    XCTAssertEqual(refreshedPlan, originalPlan)
+    XCTAssertEqual(
+      refreshedPlan.executionIdentity?.fingerprint,
+      originalPlan.executionIdentity?.fingerprint
+    )
+    XCTAssertEqual(store.publishingStore.localSitePreviewGeneration, originalGeneration)
+    try processService.authorize(plan: refreshedPlan, matching: pendingRequest)
+    XCTAssertNil(try processService.authorizationRequest(for: refreshedPlan))
+  }
+
+  func testManifestChangeRefreshesLocalPreviewFingerprintAndRejectsOldConfirmation() throws {
+    let stateRootURL = try temporaryDirectoryURL(prefix: "PreviewManifestRefresh")
+    let siteRootURL = try temporaryDirectoryURL(prefix: "PreviewManifestRefreshSite")
+    defer {
+      try? FileManager.default.removeItem(at: stateRootURL)
+      try? FileManager.default.removeItem(at: siteRootURL)
+    }
+    let packageURL = siteRootURL.appendingPathComponent("package.json")
+    try Data("{\"scripts\":{\"dev\":\"astro dev\"}}".utf8).write(to: packageURL)
+    let processService = LocalSitePreviewProcessService(
+      trustStore: LocalSitePreviewTrustStore(
+        fileURL: stateRootURL.appendingPathComponent("trust.json")
+      )
+    )
+    let planner = LocalSitePreviewService(
+      executableResolver: { _ in "/bin/sleep" },
+      portAllocator: LocalSitePreviewPortAllocator(
+        isPortAvailable: { _ in true },
+        dynamicPort: { nil }
+      )
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: stateRootURL.appendingPathComponent("workbench.json")
+      ),
+      localSitePreviewService: planner,
+      localSitePreviewProcessService: processService
+    )
+    store.updateActiveProfile { profile in
+      profile.siteKind = .astro
+      profile.localRepositoryRootPath = siteRootURL.path
+    }
+
+    store.publishingStore.refreshLocalSitePreviewPlan(for: store.activeProfile)
+    let originalPlan = try XCTUnwrap(store.localSitePreviewPlan)
+    let oldRequest = try XCTUnwrap(processService.authorizationRequest(for: originalPlan))
+    try Data("{\"scripts\":{\"dev\":\"astro dev --host\"}}".utf8).write(to: packageURL)
+
+    store.publishingStore.refreshLocalSitePreviewPlan(for: store.activeProfile)
+    let refreshedPlan = try XCTUnwrap(store.localSitePreviewPlan)
+
+    XCTAssertNotEqual(
+      refreshedPlan.executionIdentity?.fingerprint,
+      originalPlan.executionIdentity?.fingerprint
+    )
+    XCTAssertThrowsError(try processService.authorize(plan: refreshedPlan, matching: oldRequest)) {
+      error in
+      guard case LocalSitePreviewError.executionPlanChanged = error else {
+        return XCTFail("Expected executionPlanChanged, got \(error)")
+      }
+    }
   }
 
   func testDelayedLocalPreviewStartCannotReviveAfterActiveProfileChanges() async throws {

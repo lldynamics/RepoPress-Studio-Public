@@ -348,6 +348,7 @@ struct SettingsView: View {
       healthNavigationRequestID: navigationSession.healthNavigationRequestID,
       navigationDestination: navigationSession.navigationDestination,
       navigationRequestID: navigationSession.navigationRequestID,
+      selectedSubsection: selectedSubsection,
       selectConfigurationHealthDestination: openConfigurationHealthDestination,
       selectSettingsDestination: openSettingsDestination
     )
@@ -361,9 +362,8 @@ struct SettingsView: View {
     navigationSession.selectedRoute.subsection
   }
 
-  /// Each top-level page owns exactly one native vertical scroll container:
-  /// Form-backed pages use their Form, while the site overview and data
-  /// management each own a ScrollView.
+  /// Each top-level page owns one native scroll container: its Form, or a
+  /// ScrollView for site overview and data management.
   @ViewBuilder
   private var settingsPageContent: some View {
     ScrollViewReader { proxy in

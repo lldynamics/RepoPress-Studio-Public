@@ -1,0 +1,86 @@
+{
+  "高级 AI 设置": {
+    "en": "Advanced AI Settings",
+    "zh-Hans": "高级 AI 设置"
+  },
+  "此代理仅对当前连接的 AI 网络请求生效。": {
+    "en": "This proxy applies only to AI network requests for the current connection.",
+    "zh-Hans": "此代理仅对当前连接的 AI 网络请求生效。"
+  },
+  "以下设置仅对当前连接的聊天生成生效。": {
+    "en": "These settings apply only to chat generation for the current connection.",
+    "zh-Hans": "以下设置仅对当前连接的聊天生成生效。"
+  },
+  "修改前": {
+    "en": "Before",
+    "zh-Hans": "修改前"
+  },
+  "建议修改": {
+    "en": "Suggested change",
+    "zh-Hans": "建议修改"
+  },
+  "选择应用": {
+    "en": "Select to apply",
+    "zh-Hans": "选择应用"
+  },
+  "选择全部修改": {
+    "en": "Select all changes",
+    "zh-Hans": "选择全部修改"
+  },
+  "取消全部选择": {
+    "en": "Clear all selections",
+    "zh-Hans": "取消全部选择"
+  },
+  "在此管理全部连接，不会切换站点正在使用的连接。站点的连接选择和写作规则在站点设置中维护。": {
+    "en": "Manage all connections here without changing the connection used by a site. Choose a site’s connection and writing rules in Site Settings.",
+    "zh-Hans": "在此管理全部连接，不会切换站点正在使用的连接。站点的连接选择和写作规则在站点设置中维护。"
+  },
+  "编辑连接": {
+    "en": "Edit connection",
+    "zh-Hans": "编辑连接"
+  },
+  "正在编辑的共享 AI 连接": {
+    "en": "Shared AI connection being edited",
+    "zh-Hans": "正在编辑的共享 AI 连接"
+  },
+  "新增连接": {
+    "en": "New connection",
+    "zh-Hans": "新增连接"
+  },
+  "复制配置": {
+    "en": "Copy configuration",
+    "zh-Hans": "复制配置"
+  },
+  "只复制配置，不复制 API Key，也不改变站点的连接选择。": {
+    "en": "Copy settings only. The API key and site connection selection are unchanged.",
+    "zh-Hans": "只复制配置，不复制 API Key，也不改变站点的连接选择。"
+  },
+  "%@ 副本": {
+    "en": "%@ Copy",
+    "zh-Hans": "%@ 副本"
+  },
+  "旧版 Agent 已退役。这条记录仅供查看；请从写作工具重新发起任务。": {
+    "en": "The legacy Agent has been retired. This record is read-only. Start a new task from the writing tools.",
+    "zh-Hans": "旧版 Agent 已退役。这条记录仅供查看；请从写作工具重新发起任务。"
+  },
+  "请使用“新建文章”创建草稿，再让写作助手生成或修改内容。": {
+    "en": "Use New Article to create a draft, then ask the writing assistant to generate or revise its content.",
+    "zh-Hans": "请使用“新建文章”创建草稿，再让写作助手生成或修改内容。"
+  },
+  "历史操作记录": {
+    "en": "Historical operation record",
+    "zh-Hans": "历史操作记录"
+  },
+  "连接能力与诊断": {
+    "en": "Connection capabilities and diagnostics",
+    "zh-Hans": "连接能力与诊断"
+  },
+  "预览所选修改": {
+    "en": "Preview selected changes",
+    "zh-Hans": "预览所选修改"
+  },
+  "应用所选修改": {
+    "en": "Apply selected changes",
+    "zh-Hans": "应用所选修改"
+  }
+}

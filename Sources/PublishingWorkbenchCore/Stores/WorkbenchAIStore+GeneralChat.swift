@@ -9,19 +9,6 @@ struct AIAuthorizedGeneralChatAttempt {
   let connectionProfileID: UUID
 }
 
-private actor AIKnowledgeAuthorizationFailureBox {
-  private var error: AIOutboundPayloadConfirmationError?
-
-  func record(_ error: AIOutboundPayloadConfirmationError) {
-    self.error = error
-  }
-
-  func take() -> AIOutboundPayloadConfirmationError? {
-    defer { error = nil }
-    return error
-  }
-}
-
 extension WorkbenchAIStore {
   private var generalConversationScopeKey: String {
     AIConversationScope.general.storageKey
@@ -643,109 +630,17 @@ extension WorkbenchAIStore {
       return nil
     }
 
-    // General chat may opt into the same native agent loop as article chat,
-    // but its allowlist is deliberately limited to creating a blank local
-    // draft and reading the remote-AI-allowed portion of the knowledge
-    // library. Ordinary questions may use the text transport when tool calling
-    // is unavailable; an explicit draft-creation request is stopped locally
-    // instead of being sent to a model that was not given createDraft.
-    let agentSettings = minimizedConfig.resolvedAdvancedSettings
-    let conversationAllowsTools = conversation.agentMode.effectiveAllowsTools(
-      connectionAllowsTools: agentSettings.resolvedAllowsApplicationTools
-    )
-    let explicitlyRequestsDraftCreation = generalAIChatRequestsDraftCreation(
+    if generalAIChatRequestsDraftCreation(
       conversation.messages.last(where: { $0.role == .user })?.content ?? ""
-    )
-    if explicitlyRequestsDraftCreation {
-      guard conversationAllowsTools else {
-        if conversation.agentMode == .textOnly {
-          store.setAIChatMessage(
-            CoreL10n.text(
-              "当前通用对话处于仅文字模式，未创建文章。请切换为继承连接设置并开启应用工具后重试。"
-            )
-          )
-        } else {
-          store.setAIChatMessage(
-            CoreL10n.text(
-              "当前 AI 连接已关闭应用工具，未创建文章。请在连接设置中开启应用工具后重试。"
-            )
-          )
-        }
-        return nil
-      }
-      guard agentSettings.resolvedAgentPermissionPolicy.allows(.draftCreation) else {
-        store.setAIChatMessage(
-          CoreL10n.text(
-            "当前 AI 连接未授予“新建文章草稿”权限，未创建文章。请在 Agent 权限中开启后重试。"
-          )
-        )
-        return nil
-      }
+    ) {
+      store.setAIChatMessage(CoreL10n.text("请使用“新建文章”创建草稿，再让写作助手生成或修改内容。"))
+      return nil
     }
     let initialRequest = await assembledGeneralAIChatRequest(
       for: conversation,
       privacyService: AIOutboundPayloadPrivacyService(),
       knowledgeContextAssembly: .derive
     )
-    let generalAgentScope: Set<WorkbenchAutomationCommandID> =
-      conversation.knowledgePolicy == .automatic
-      ? [.createDraft, .knowledgeSearch, .knowledgeRead]
-      : [.createDraft]
-    let allowedGeneralAgentCommands = WorkbenchAutomationRegistry.agentCommands(
-      allowedBy: agentSettings.resolvedAgentPermissionPolicy,
-      masterEnabled: conversationAllowsTools
-    ).intersection(generalAgentScope)
-    guard
-      !explicitlyRequestsDraftCreation
-        || allowedGeneralAgentCommands.contains(.createDraft)
-    else {
-      store.setAIChatMessage(
-        CoreL10n.text(
-          "当前 AI 连接未授予“新建文章草稿”权限，未创建文章。请在 Agent 权限中开启后重试。"
-        )
-      )
-      return nil
-    }
-    if !allowedGeneralAgentCommands.isEmpty {
-      let agentTaskConfig = try? aiPublishingAssistantService.resolvedChatTaskConfig(
-        for: initialRequest,
-        config: minimizedConfig
-      )
-      if let agentTaskConfig,
-        agentTaskConfig.capabilitySupport(for: .toolCalling) == .supported
-      {
-        return await generateGeneralAgentAIChatReply(
-          conversationID: conversationID,
-          operationID: operationID,
-          initialConversation: conversation,
-          initialRequest: initialRequest,
-          initialProviderConfig: minimizedConfig,
-          initialTaskConfig: agentTaskConfig
-        )
-      }
-      if explicitlyRequestsDraftCreation {
-        let support = agentTaskConfig?.capabilitySupport(for: .toolCalling) ?? .unknown
-        switch support {
-        case .unknown:
-          store.setAIChatMessage(
-            CoreL10n.text(
-              "当前 AI 连接尚未证明支持工具调用，未创建文章。请先探测工具调用能力后重试。"
-            )
-          )
-        case .unsupported:
-          store.setAIChatMessage(
-            CoreL10n.text(
-              "当前 AI 连接不支持工具调用，未创建文章。请切换支持工具调用的模型或连接。"
-            )
-          )
-        case .supported:
-          // The supported case returns through the Agent branch above. Keep
-          // this guard defensive if task-config resolution changes later.
-          store.setAIChatMessage(CoreL10n.text("AI 工具调用配置未完成，未创建文章，请重试。"))
-        }
-        return nil
-      }
-    }
 
     let attempt: AIAuthorizedGeneralChatAttempt
     do {
@@ -837,10 +732,8 @@ extension WorkbenchAIStore {
     }
   }
 
-  /// Detects only direct article-creation instructions. General questions
-  /// about how to create an article must continue through the ordinary text
-  /// path, while an explicit create request must never be handed to a model
-  /// that was not given `createDraft`.
+  /// Redirect explicit local creation requests to the editor. Content requests
+  /// (including an article outline) remain ordinary text-only writing tasks.
   private func generalAIChatRequestsDraftCreation(_ text: String) -> Bool {
     let normalized = text.lowercased()
     let compact = normalized.filter { !$0.isWhitespace && !$0.isNewline }
@@ -855,6 +748,18 @@ extension WorkbenchAIStore {
       "howto", "howdo", "canrepopress", "doesrepopress", "isitpossible",
     ]
     guard !informationalMarkers.contains(where: compact.contains) else {
+      return false
+    }
+
+    let writingDeliverables = [
+      "提纲", "大纲", "标题", "正文", "内容", "文案", "示例", "模板", "摘要",
+    ]
+    if writingDeliverables.contains(where: compact.contains)
+      || normalized.range(
+        of: #"\b(outline|title|content|copy|example|template|summary|text)\b"#,
+        options: .regularExpression
+      ) != nil
+    {
       return false
     }
 
@@ -876,318 +781,6 @@ extension WorkbenchAIStore {
     let englishInstruction =
       #"\b(create|make|start)\s+(me\s+)?(a\s+|an\s+)?(new\s+)?(article|draft|blog\s+post|post)\b"#
     return normalized.range(of: englishInstruction, options: .regularExpression) != nil
-  }
-
-  private func generateGeneralAgentAIChatReply(
-    conversationID: UUID,
-    operationID: UUID,
-    initialConversation: AIConversation,
-    initialRequest: AIChatRequest,
-    initialProviderConfig: AIProviderConfig,
-    initialTaskConfig: AIProviderConfig
-  ) async -> AIPublishingChatMessage? {
-    let privacyService = AIOutboundPayloadPrivacyService()
-    let agentSettings = initialTaskConfig.resolvedAdvancedSettings
-    let conversationAllowsTools = initialConversation.agentMode.effectiveAllowsTools(
-      connectionAllowsTools: agentSettings.resolvedAllowsApplicationTools
-    )
-    let generalAgentScope: Set<WorkbenchAutomationCommandID> =
-      initialConversation.knowledgePolicy == .automatic
-      ? [.createDraft, .knowledgeSearch, .knowledgeRead]
-      : [.createDraft]
-    let allowedCommands = WorkbenchAutomationRegistry.agentCommands(
-      allowedBy: agentSettings.resolvedAgentPermissionPolicy,
-      masterEnabled: conversationAllowsTools
-    ).intersection(generalAgentScope)
-    let toolRegistry = WorkbenchAutomationAgentToolRegistry(
-      allowedToolIDs: Set(
-        allowedCommands.map(WorkbenchAutomationAgentToolRegistry.toolID(for:))
-      )
-    )
-    let baseRequest = aiPublishingAssistantService.chatCompletionRequest(
-      for: initialRequest,
-      taskConfig: initialTaskConfig
-    )
-    let authorizationFailureBox = AIKnowledgeAuthorizationFailureBox()
-    let loop = WorkbenchAIAgentLoopService(
-      modelTransport: { [weak self] roundRequest in
-        guard let self else { throw CancellationError() }
-        do {
-          return try await self.authorizedGeneralAgentModelCompletion(
-            roundRequest,
-            conversationID: conversationID,
-            operationID: operationID,
-            initialConversation: initialConversation,
-            initialRequest: initialRequest,
-            initialProviderConfig: initialProviderConfig,
-            initialTaskConfig: initialTaskConfig,
-            privacyService: privacyService
-          )
-        } catch let error as AIOutboundPayloadConfirmationError
-          where error == .knowledgeAuthorizationChanged
-        {
-          await authorizationFailureBox.record(error)
-          self.requestAIChatCancellation()
-          throw CancellationError()
-        }
-      },
-      toolRegistry: toolRegistry,
-      grantedScopes: Set(
-        allowedCommands.map(WorkbenchAutomationRegistry.requiredPermission(for:))
-      ),
-      automaticExecutor: { [weak self] invocation in
-        guard let self else { throw CancellationError() }
-        guard
-          self.isGeneralAgentContextCurrent(
-            conversationID: conversationID,
-            initialConversation: initialConversation,
-            initialRequest: initialRequest,
-            initialProviderConfig: initialProviderConfig,
-            privacyService: privacyService
-          )
-        else {
-          throw AIOutboundPayloadConfirmationError.drifted
-        }
-        do {
-          try await self.requireValidAIKnowledgeAuthorization(
-            initialRequest.context.knowledgeContext?.authorizationBindings ?? [],
-            policy: initialRequest.context.knowledgePolicy
-          )
-        } catch let error as AIOutboundPayloadConfirmationError
-          where error == .knowledgeAuthorizationChanged
-        {
-          await authorizationFailureBox.record(error)
-          self.requestAIChatCancellation()
-          throw CancellationError()
-        }
-        return try await self.executeAgentAutomaticInvocation(
-          invocation,
-          operationID: operationID,
-          conversationID: conversationID
-        )
-      }
-    )
-
-    do {
-      let result = await loop.run(
-        request: baseRequest,
-        context: WorkbenchAIAgentContext(
-          goal: initialRequest.messages.last(where: { $0.role == .user })?.content ?? ""
-        ),
-        toolCallingSupport: initialTaskConfig.capabilitySupport(for: .toolCalling)
-      )
-      if let authorizationError = await authorizationFailureBox.take() {
-        throw authorizationError
-      }
-      try checkAIChatOperation(operationID)
-
-      switch result.termination {
-      case .completed:
-        let rawContent = result.assistantText
-          .joined(separator: "\n\n")
-          .trimmedForPublishing
-        guard !rawContent.isEmpty else {
-          store.setAIChatFailureMessage(CoreL10n.text("AI 通用对话失败：AI 没有返回可显示的内容。"))
-          return nil
-        }
-        let extraction = AIChatFollowUpSuggestionService.extractOrInferSuggestions(
-          content: rawContent,
-          draft: nil,
-          hasAutomationPlan: false
-        )
-        let assistantMessage = AIPublishingChatMessage(
-          role: .assistant,
-          content: extraction.displayContent,
-          model: initialTaskConfig.normalizedModel,
-          contextMode: .general,
-          knowledgeCitations: initialRequest.context.knowledgeContext?.citations ?? [],
-          toolRuns: result.toolRuns,
-          followUpSuggestions: extraction.suggestions
-        )
-        guard
-          isGeneralAgentContextCurrent(
-            conversationID: conversationID,
-            initialConversation: initialConversation,
-            initialRequest: initialRequest,
-            initialProviderConfig: initialProviderConfig,
-            privacyService: privacyService
-          )
-        else {
-          throw AIOutboundPayloadConfirmationError.drifted
-        }
-        try await requireValidAIKnowledgeAuthorization(
-          initialRequest.context.knowledgeContext?.authorizationBindings ?? [],
-          policy: initialRequest.context.knowledgePolicy
-        )
-        updateGeneralConversationMessages(conversationID) { messages in
-          messages.append(assistantMessage)
-        }
-        store.setAIChatMessage("AI 已回复。")
-        return assistantMessage
-
-      case .cancelled:
-        store.setAIChatMessage("AI 回复已停止。")
-        return nil
-
-      case .capabilityUnavailable, .rejected, .limitReached, .awaitingReview,
-        .modelTransportFailed:
-        store.setAIChatFailureMessage(CoreL10n.text("AI 通用对话失败：AI 操作回合未完成。"))
-        return nil
-      }
-    } catch is CancellationError {
-      store.setAIChatMessage("AI 回复已停止。")
-      return nil
-    } catch let error as AIChatCompletionClientError {
-      store.setAIChatFailureMessage(CoreL10n.format("AI 通用对话失败：%@", error.localizedDescription))
-      return nil
-    } catch {
-      store.setAIChatFailureMessage(CoreL10n.format("AI 通用对话失败：%@", error.localizedDescription))
-      return nil
-    }
-  }
-
-  private func authorizedGeneralAgentModelCompletion(
-    _ roundRequest: AIChatCompletionRequest,
-    conversationID: UUID,
-    operationID: UUID,
-    initialConversation: AIConversation,
-    initialRequest: AIChatRequest,
-    initialProviderConfig: AIProviderConfig,
-    initialTaskConfig: AIProviderConfig,
-    privacyService: AIOutboundPayloadPrivacyService
-  ) async throws -> AIChatCompletionResult {
-    try checkAIChatOperation(operationID)
-    guard
-      isGeneralAgentContextCurrent(
-        conversationID: conversationID,
-        initialConversation: initialConversation,
-        initialRequest: initialRequest,
-        initialProviderConfig: initialProviderConfig,
-        privacyService: privacyService
-      )
-    else {
-      throw AIOutboundPayloadConfirmationError.drifted
-    }
-
-    try await requireValidAIKnowledgeAuthorization(
-      initialRequest.context.knowledgeContext?.authorizationBindings ?? [],
-      policy: initialRequest.context.knowledgePolicy
-    )
-
-    let initialTransport = try aiPublishingAssistantService.prepareTransport(
-      completion: roundRequest,
-      taskConfig: initialTaskConfig,
-      privacyService: privacyService,
-      contextBindingValues: ["general-agent-round"]
-    )
-    let outcome = await AIOutboundPayloadApprovalBroker.shared.requestApproval(
-      for: initialTransport.payload.preview,
-      scopeID: conversationID
-    )
-    guard case .confirmed(let confirmation) = outcome else {
-      throw AIOutboundPayloadConfirmationError.cancelled
-    }
-    try checkAIChatOperation(operationID)
-    guard
-      isGeneralAgentContextCurrent(
-        conversationID: conversationID,
-        initialConversation: initialConversation,
-        initialRequest: initialRequest,
-        initialProviderConfig: initialProviderConfig,
-        privacyService: privacyService
-      )
-    else {
-      throw AIOutboundPayloadConfirmationError.drifted
-    }
-    try await requireValidAIKnowledgeAuthorization(
-      initialRequest.context.knowledgeContext?.authorizationBindings ?? [],
-      policy: initialRequest.context.knowledgePolicy
-    )
-    guard let connectionProfileID = initialConversation.connectionProfileID,
-      let refreshedConnection = store.aiConnectionProfile(for: connectionProfileID)
-    else {
-      throw AIOutboundPayloadConfirmationError.drifted
-    }
-    let refreshedConfig = privacyService.sanitizedProviderConfig(refreshedConnection.config)
-    guard refreshedConfig == initialProviderConfig else {
-      throw AIOutboundPayloadConfirmationError.drifted
-    }
-    let refreshedTaskConfig = try aiPublishingAssistantService.resolvedChatTaskConfig(
-      for: initialRequest,
-      config: refreshedConfig
-    )
-    guard refreshedTaskConfig == initialTaskConfig else {
-      throw AIOutboundPayloadConfirmationError.drifted
-    }
-    let refreshedTransport = try aiPublishingAssistantService.prepareTransport(
-      completion: roundRequest,
-      taskConfig: refreshedTaskConfig,
-      privacyService: privacyService,
-      contextBindingValues: ["general-agent-round"],
-      now: initialTransport.payload.preview.createdAt,
-      nonce: initialTransport.payload.preview.nonce
-    )
-    try privacyService.validate(
-      confirmation: confirmation,
-      prepared: refreshedTransport.payload
-    )
-    let authorizedTransport = refreshedTransport.bindingAuthorizationDeadline(
-      refreshedTransport.payload.preview.expiresAt
-    )
-    let authorization = AIOutboundPayloadTransportAuthorization(
-      confirmation: confirmation,
-      prepared: authorizedTransport.payload,
-      privacyService: privacyService
-    )
-    try await requireValidAIKnowledgeAuthorization(
-      initialRequest.context.knowledgeContext?.authorizationBindings ?? [],
-      policy: initialRequest.context.knowledgePolicy
-    )
-    try checkAIChatOperation(operationID)
-    let token = try currentGeneralAIChatAPIKey(
-      conversationID: conversationID,
-      matching: refreshedConfig,
-      connectionProfileID: connectionProfileID
-    )
-    try checkAIChatOperation(operationID)
-    try authorization.consume()
-    try checkAIChatOperation(operationID)
-    return try await aiPublishingAssistantService.completePreparedResult(
-      authorizedTransport,
-      apiKey: token
-    )
-  }
-
-  private func isGeneralAgentContextCurrent(
-    conversationID: UUID,
-    initialConversation: AIConversation,
-    initialRequest: AIChatRequest,
-    initialProviderConfig: AIProviderConfig,
-    privacyService: AIOutboundPayloadPrivacyService
-  ) -> Bool {
-    guard
-      let currentConversation = aiConversations.first(where: {
-        $0.id == conversationID && $0.scope == .general && !$0.isArchived
-      }),
-      currentConversation.connectionProfileID == initialConversation.connectionProfileID,
-      currentConversation.agentMode == initialConversation.agentMode,
-      currentConversation.messages == initialConversation.messages,
-      currentConversation.contextMode == initialConversation.contextMode,
-      currentConversation.knowledgePolicy == initialConversation.knowledgePolicy,
-      currentConversation.modelGrade == initialConversation.modelGrade,
-      currentConversation.reasoningLevel == initialConversation.reasoningLevel,
-      currentConversation.selectedModel == initialConversation.selectedModel,
-      currentConversation.focusedParagraphID == initialConversation.focusedParagraphID,
-      privacyService.sanitizedChatMessages(currentConversation.messages)
-        == initialRequest.messages,
-      currentConversation.contextMode == .general,
-      let profileID = currentConversation.connectionProfileID,
-      let connection = store.aiConnectionProfile(for: profileID),
-      privacyService.sanitizedProviderConfig(connection.config) == initialProviderConfig
-    else {
-      return false
-    }
-    return true
   }
 
   func currentGeneralAIChatAPIKey(

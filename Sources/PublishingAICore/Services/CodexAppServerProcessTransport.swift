@@ -6,9 +6,10 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
   public static let defaultArguments = ["app-server", "--listen", "stdio://"]
   public static let maximumReadChunkByteCount = 32 * 1_024
   public static let maximumStderrChunkByteCount = 16 * 1_024
-  static let defaultRuntimeVersionProbeTimeout: Duration = .seconds(2)
+  package static let defaultRuntimeVersionProbeTimeout: Duration = .seconds(2)
 
   private let configuredExecutableURL: URL?
+  private let processEnvironment: [String: String]
   private let arguments: [String]
   private let validatesRuntimeVersion: Bool
   private let lock = NSLock()
@@ -28,9 +29,12 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
 
   public init(
     executableURL: URL? = nil,
-    arguments: [String] = CodexAppServerProcessTransport.defaultArguments
+    arguments: [String] = CodexAppServerProcessTransport.defaultArguments,
+    environment: [String: String]? = nil
   ) {
     self.configuredExecutableURL = executableURL
+    self.processEnvironment = CodexRuntimeProcessEnvironment.sanitized(
+      from: environment ?? ProcessInfo.processInfo.environment)
     self.arguments = arguments
     self.validatesRuntimeVersion = true
   }
@@ -42,6 +46,7 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
     arguments: [String]
   ) {
     self.configuredExecutableURL = testExecutableURL
+    self.processEnvironment = CodexRuntimeProcessEnvironment.sanitized()
     self.arguments = arguments
     self.validatesRuntimeVersion = false
   }
@@ -64,6 +69,7 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
 
   static func discoverRuntimeLocation(
     environment: [String: String] = ProcessInfo.processInfo.environment,
+    managedDirectory: URL? = nil,
     fallbackCandidates: [(path: String, source: CodexAppServerRuntimeSource)] = [
       ("/opt/homebrew/bin/codex", .homebrew),
       ("/usr/local/bin/codex", .homebrew),
@@ -74,6 +80,11 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
   )
     -> (url: URL, source: CodexAppServerRuntimeSource)?
   {
+    let managed = CodexManagedRuntime(
+      directory: managedDirectory ?? CodexManagedRuntime.defaultDirectory(environment: environment))
+    if let executable = managed.preferredExecutableURL() {
+      return (executable, .managed)
+    }
     let pathCandidates =
       environment["PATH"]?
       .split(separator: ":", omittingEmptySubsequences: true)
@@ -106,9 +117,10 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
     return nil
   }
 
-  static func readVersion(
+  package static func readVersion(
     executableURL: URL,
     expectedExecutableIdentity: CodexExecutableIdentity? = nil,
+    environment: [String: String]? = nil,
     timeout: Duration = defaultRuntimeVersionProbeTimeout
   ) async -> String? {
     guard let executable = CodexExecutableIdentity.capture(executableURL: executableURL),
@@ -116,7 +128,8 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
     else { return nil }
     let probe = CodexRuntimeVersionProbe(
       executableURL: executable.url,
-      expectedExecutableIdentity: executable.identity
+      expectedExecutableIdentity: executable.identity,
+      environment: environment ?? CodexRuntimeProcessEnvironment.sanitized()
     )
     return await probe.run(timeout: timeout)
   }
@@ -165,7 +178,8 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
       guard
         let versionOutput = await Self.readVersion(
           executableURL: executable.url,
-          expectedExecutableIdentity: executable.identity
+          expectedExecutableIdentity: executable.identity,
+          environment: processEnvironment
         ),
         CodexAppServerRuntimeVersion.parse(versionOutput)?.isSupported == true,
         CodexExecutableIdentity.capture(executableURL: executable.url)?.identity
@@ -191,7 +205,7 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
         processIdentifier = try Self.spawn(
           executableURL: executable.url,
           arguments: arguments,
-          environment: CodexRuntimeProcessEnvironment.sanitized(),
+          environment: processEnvironment,
           inputPipe: inputPipe,
           outputPipe: outputPipe,
           errorPipe: errorPipe

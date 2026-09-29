@@ -9,7 +9,10 @@ extension WorkbenchAIStore {
     let changed = aiDataSharingConsentStore.isRemoteAIEnabled != enabled
     aiDataSharingConsentStore.setRemoteAIEnabled(enabled)
     guard changed else { return }
-    if !enabled { cancelStreamingAuthorization(remoteOnly: true) }
+    if !enabled {
+      cancelStreamingAuthorization(remoteOnly: true)
+      cancelNonStreamingAuthorization(remoteOnly: true)
+    }
     objectWillChange.send()
     let message =
       enabled
@@ -68,10 +71,17 @@ extension WorkbenchAIStore {
     )
   }
 
-  public func revokeAIDataSharingConsent() {
-    let config = store.aiProviderConfig(for: store.activeProfile)
+  public func revokeAIDataSharingConsent(connectionProfileID: UUID? = nil) {
+    let config: AIProviderConfig
+    if let connectionProfileID {
+      guard let connection = store.aiConnectionProfile(for: connectionProfileID) else { return }
+      config = connection.config
+    } else {
+      config = store.aiProviderConfig(for: store.activeProfile)
+    }
     aiDataSharingConsentStore.revoke(for: config)
     cancelStreamingAuthorization(destination: config.dataSharingDestination)
+    cancelNonStreamingAuthorization(revokedConfig: config)
     aiActionMessage = "已撤销 \(config.normalizedDisplayName) 的内容发送授权。"
   }
 }

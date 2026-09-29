@@ -17,59 +17,6 @@ public struct ImageDimensions: Codable, Hashable, Sendable {
   }
 }
 
-public struct AIImageTextGenerationAvailabilityPresentation: Equatable, Sendable {
-  public var isEnabled: Bool
-  public var unavailableReason: String?
-
-  public init(isEnabled: Bool, unavailableReason: String? = nil) {
-    self.isEnabled = isEnabled
-    self.unavailableReason = unavailableReason
-  }
-}
-
-public enum AIImageTextGenerationAvailabilityService {
-  public static func presentation(
-    targetCount: Int,
-    isGenerating: Bool,
-    aiProviderConfig: AIProviderConfig,
-    aiTokenAvailability: KeychainTokenAvailability
-  ) -> AIImageTextGenerationAvailabilityPresentation {
-    if isGenerating {
-      return AIImageTextGenerationAvailabilityPresentation(
-        isEnabled: false,
-        unavailableReason: "AI 正在生成图片文案"
-      )
-    }
-
-    if targetCount <= 0 {
-      return AIImageTextGenerationAvailabilityPresentation(
-        isEnabled: false,
-        unavailableReason: "当前文章没有缺少 alt/caption 的图片"
-      )
-    }
-
-    if aiProviderConfig.requiresAPIKey,
-       let accessFailureMessage = aiTokenAvailability.accessFailureMessage {
-      return AIImageTextGenerationAvailabilityPresentation(
-        isEnabled: false,
-        unavailableReason: CoreL10n.format(
-          "AI 凭据读取失败：%@",
-          accessFailureMessage
-        )
-      )
-    }
-
-    if aiProviderConfig.requiresAPIKey && !aiTokenAvailability.hasToken {
-      return AIImageTextGenerationAvailabilityPresentation(
-        isEnabled: false,
-        unavailableReason: "需要先启用 AI"
-      )
-    }
-
-    return AIImageTextGenerationAvailabilityPresentation(isEnabled: true)
-  }
-}
-
 public enum ImageWorkbenchIssueKind: String, Codable, Hashable, Sendable {
   case missingAltText
   case missingCaption
@@ -568,29 +515,6 @@ public struct ImageOptimizationResult: Sendable {
     self.skippedCount = skippedCount
     self.savedBytes = savedBytes
     self.messages = messages
-  }
-}
-
-public struct ImageTextSuggestionApplyResult: Sendable {
-  public var draft: ArticleDraft
-  public var appliedAltTextCount: Int
-  public var appliedCaptionCount: Int
-  public var updatedMarkdownReferenceCount: Int
-
-  public init(
-    draft: ArticleDraft,
-    appliedAltTextCount: Int,
-    appliedCaptionCount: Int,
-    updatedMarkdownReferenceCount: Int
-  ) {
-    self.draft = draft
-    self.appliedAltTextCount = appliedAltTextCount
-    self.appliedCaptionCount = appliedCaptionCount
-    self.updatedMarkdownReferenceCount = updatedMarkdownReferenceCount
-  }
-
-  public var changedCount: Int {
-    appliedAltTextCount + appliedCaptionCount + updatedMarkdownReferenceCount
   }
 }
 

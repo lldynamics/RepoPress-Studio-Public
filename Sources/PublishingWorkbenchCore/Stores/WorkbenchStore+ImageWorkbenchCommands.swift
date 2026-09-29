@@ -79,10 +79,6 @@ extension WorkbenchStore {
     invalidateDraftTaskQueueStateCache()
   }
 
-  public func imageTextTargetCount(for draft: ArticleDraft, report: ImageWorkbenchReport?) -> Int {
-    imageStore.imageTextTargetCount(for: draft, report: report)
-  }
-
   public func fillMissingImageMetadataForSelectedDraft() {
     imageStore.fillMissingImageMetadataForSelectedDraft()
   }
@@ -218,5 +214,4 @@ extension WorkbenchStore {
     publishingStore.isInspectorPresented = true
     return true
   }
-
 }

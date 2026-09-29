@@ -249,10 +249,15 @@ public struct LocalSitePreviewPortAllocator: Sendable {
     if !forceDynamicPort, isPortAvailableHandler(preferredPort) {
       return LocalSitePreviewPortAllocation(port: preferredPort, usesDynamicPort: false)
     }
-    guard let dynamicPort = dynamicPortHandler(), isPortAvailableHandler(dynamicPort) else {
-      return nil
+    // Closing the allocation socket releases its port. Try another candidate if
+    // the immediate recheck detects a competing listener; this is not a lease.
+    for _ in 0..<3 {
+      guard let dynamicPort = dynamicPortHandler() else { return nil }
+      if isPortAvailableHandler(dynamicPort) {
+        return LocalSitePreviewPortAllocation(port: dynamicPort, usesDynamicPort: true)
+      }
     }
-    return LocalSitePreviewPortAllocation(port: dynamicPort, usesDynamicPort: true)
+    return nil
   }
 
   public static func isPortAvailable(_ port: Int) -> Bool {

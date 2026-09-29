@@ -140,7 +140,18 @@ struct AIConnectionProfilesSection: View {
 
   @ViewBuilder
   private var sharedEditorContent: some View {
-    LabeledContent("来源站点", value: currentSiteName)
+    Picker("编辑连接", selection: selectedProfileID) {
+      ForEach(profiles) { profile in
+        Text(profile.name).tag(profile.id)
+      }
+    }
+    .accessibilityLabel("正在编辑的共享 AI 连接")
+    .accessibilityIdentifier("settings-ai-managed-connection-picker")
+
+    ViewThatFits(in: .horizontal) {
+      HStack { managementActions }
+      VStack(alignment: .leading) { managementActions }
+    }
     if let selectedProfile {
       TextField("档案名称", text: profileNameBinding(for: selectedProfile))
         .accessibilityLabel("AI 连接档案名称")
@@ -187,6 +198,32 @@ struct AIConnectionProfilesSection: View {
         ? String(localized: "至少保留一个档案，且已被站点使用的档案不能删除")
         : String(localized: "删除未被任何站点使用的连接档案")
     )
+  }
+
+  @ViewBuilder
+  private var managementActions: some View {
+    Menu {
+      ForEach(AIConnectionProfile.templates) { template in
+        Button(template.name) {
+          let created = createProfile(template.name, template.config.preset)
+          selectedProfileID.wrappedValue = created.id
+        }
+      }
+    } label: {
+      Label("新增连接", systemImage: "plus")
+    }
+    .accessibilityIdentifier("settings-ai-create-connection")
+    Button {
+      guard let selectedProfile,
+        let copy = duplicateProfileForCurrentSite(selectedProfile.id)
+      else { return }
+      selectedProfileID.wrappedValue = copy.id
+    } label: {
+      Label("复制配置", systemImage: "doc.on.doc")
+    }
+    .disabled(selectedProfile == nil)
+    .help("只复制配置，不复制 API Key，也不改变站点的连接选择。")
+    .accessibilityIdentifier("settings-ai-duplicate-connection")
   }
 
   @ViewBuilder

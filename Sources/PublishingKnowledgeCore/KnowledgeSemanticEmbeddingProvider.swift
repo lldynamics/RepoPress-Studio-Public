@@ -88,24 +88,6 @@ package struct KnowledgeSemanticEmbeddingDescriptor: Sendable, Hashable {
     ].joined(separator: ";")
   }
 
-  package func replacingAvailability(
-    _ availability: KnowledgeSemanticProviderAvailability
-  ) -> KnowledgeSemanticEmbeddingDescriptor {
-    KnowledgeSemanticEmbeddingDescriptor(
-      modelIdentifier: modelIdentifier,
-      dimension: dimension,
-      minimumSimilarity: minimumSimilarity,
-      maximumTokenCount: maximumTokenCount,
-      weightsVersion: weightsVersion,
-      artifactDigest: artifactDigest,
-      preprocessingVersion: preprocessingVersion,
-      poolingVersion: poolingVersion,
-      normalizationVersion: normalizationVersion,
-      precisionVersion: precisionVersion,
-      availability: availability,
-      queryInstruction: queryInstruction
-    )
-  }
 }
 
 /// A narrow local-only boundary.  Providers return nil for an unavailable

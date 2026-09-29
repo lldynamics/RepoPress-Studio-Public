@@ -7,6 +7,7 @@ struct AISettingsView: View {
   let connectionProfiles: [AIConnectionProfile]
   let referencingSiteProfiles: [SiteProfile]
   let activeConnectionProfileID: UUID
+  let selectedConnectionProfileID: Binding<UUID>
   let updateConnectionProfile: (AIConnectionProfile) -> Bool
   let createConnectionProfile: (String, AIProviderPreset) -> AIConnectionProfile
   let duplicateConnectionProfile: (UUID) -> AIConnectionProfile?
@@ -22,6 +23,7 @@ struct AISettingsView: View {
   let healthNavigationRequestID: UUID
   let navigationDestination: SettingsDestination?
   let navigationRequestID: UUID
+  let selectedSubsection: SettingsSubsection
   let saveAPIKey: (String) -> Bool
   let deleteAPIKey: () -> Void
   let refreshKeyAvailability: () -> Void
@@ -35,6 +37,7 @@ struct AISettingsView: View {
   let grantCodexDataSharingConsent: (CodexAppServerAccountStatus) -> Void
   let openSiteAISettings: () -> Void
 
+  @State private var isAdvancedExpanded = false
   @State private var aiAPIKeyInput = ""
   @State private var aiConnectionReport: AIConnectionTestReport?
   @State private var isConnectionReportStale = false
@@ -53,7 +56,7 @@ struct AISettingsView: View {
         AIConnectionProfilesSection(
           profiles: connectionProfiles,
           referencingSiteProfiles: referencingSiteProfiles,
-          selectedProfileID: .constant(activeConnectionProfileID),
+          selectedProfileID: selectedConnectionProfileID,
           updateProfile: { profile in
             _ = commitConnectionUpdate(profile)
           },
@@ -72,7 +75,7 @@ struct AISettingsView: View {
           Button("选择当前站点的连接", action: openSiteAISettings)
             .accessibilityIdentifier("settings-ai-open-site-connection")
         } footer: {
-          Text("此页只编辑当前站点正在使用的共享连接。请在站点 AI 设置中选择、新建或复制连接。")
+          Text("在此管理全部连接，不会切换站点正在使用的连接。站点的连接选择和写作规则在站点设置中维护。")
         }
 
         AIConnectionSetupSection(
@@ -109,6 +112,24 @@ struct AISettingsView: View {
           .textSelection(.enabled)
           .accessibilityIdentifier("settings-ai-connection-update-error")
         }
+
+        AIDataSharingConsentSection(
+          presentation: dataSharingConsent,
+          isCodexAppServer: activeConnection.config.usesCodexAppServer,
+          setRemoteAIEnabled: { enabled in
+            setRemoteAIEnabled(enabled)
+            invalidateConnectionReport()
+          },
+          grantConsent: {
+            grantDataSharingConsent()
+            invalidateConnectionReport()
+          },
+          revokeConsent: {
+            revokeDataSharingConsent()
+            invalidateConnectionReport()
+          }
+        )
+        .id("ai-setup-consent")
 
         if activeConnection.config.usesCodexAppServer {
           codexAccountSection.id("ai-setup-codex")
@@ -172,32 +193,10 @@ struct AISettingsView: View {
           settings: aiAdvancedSettingsBinding,
           reasoningSupport: activeConnection.config.capabilitySupport(for: .reasoningControl),
           usesCodexAppServer: activeConnection.config.usesCodexAppServer,
-          subsectionAnchor: .aiAdvanced
+          subsectionAnchor: .aiAdvanced,
+          isExpanded: $isAdvancedExpanded
         )
         AIProviderCapabilitiesSection(config: activeConnection.config)
-        AIDataSharingConsentSection(
-          presentation: dataSharingConsent,
-          isCodexAppServer: activeConnection.config.usesCodexAppServer,
-          setRemoteAIEnabled: { enabled in
-            setRemoteAIEnabled(enabled)
-            invalidateConnectionReport()
-          },
-          grantConsent: {
-            grantDataSharingConsent()
-            invalidateConnectionReport()
-          },
-          revokeConsent: {
-            revokeDataSharingConsent()
-            invalidateConnectionReport()
-          }
-        )
-        .id("ai-setup-consent")
-        if activeConnection.config.preset != .local && !activeConnection.config.usesCodexAppServer {
-          LocalAIEngineDiscoverySection { baseURL, model in
-            applyLocalAIConfiguration(baseURL: baseURL, model: model)
-          }
-        }
-
       }
       .formStyle(.grouped)
       .padding(WorkbenchSpacing.content)
@@ -225,6 +224,11 @@ struct AISettingsView: View {
       .onChange(of: dataSharingConsent) { _, _ in
         invalidateConnectionReport()
         if modelDiscoveryAuthorizationMessage == nil { modelDiscoveryTrigger = UUID() }
+      }
+      .task(id: selectedSubsection) {
+        if selectedSubsection == .aiAdvanced {
+          isAdvancedExpanded = true
+        }
       }
       .onDisappear {
         connectionTestTask?.cancel()

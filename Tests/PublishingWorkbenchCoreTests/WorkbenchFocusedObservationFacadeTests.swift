@@ -260,6 +260,34 @@ final class WorkbenchFocusedObservationFacadeTests: XCTestCase {
     withExtendedLifetime(cancellable) {}
   }
 
+  func testPreviewObservationTracksSelectionWithoutObservingDraftEdits() {
+    let store = makeStore()
+    let first = ArticleDraft(siteProfileID: store.activeProfileID, title: "First")
+    let second = ArticleDraft(siteProfileID: store.activeProfileID, title: "Second")
+    store.setDrafts([first, second])
+    store.publishingStore.selectedDraftID = first.id
+    let facade = WorkbenchLocalSitePreviewFeatureFacade(store: store)
+    var changes = 0
+    let cancellable = facade.objectWillChange.sink { changes += 1 }
+
+    store.publishingStore.selectedDraftID = second.id
+    XCTAssertEqual(facade.selectedDraftID, second.id)
+    XCTAssertEqual(changes, 1)
+    store.publishingStore.selectedDraftID = second.id
+    XCTAssertEqual(changes, 1)
+
+    var edited = second
+    edited.bodyMarkdown = "Continue writing while preview is open"
+    store.setDrafts([first, edited])
+    store.setAIChatMessage("Unrelated streaming state")
+    XCTAssertEqual(changes, 1)
+
+    store.publishingStore.selectedDraftID = nil
+    XCTAssertNil(facade.selectedDraftID)
+    XCTAssertEqual(changes, 2)
+    withExtendedLifetime(cancellable) {}
+  }
+
   func testRepositoryWorkspaceObservationIgnoresUnrelatedFeatures() {
     let store = makeStore()
     let facade = WorkbenchRepositoryWorkspaceObservationFacade(store: store)

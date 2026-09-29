@@ -37,82 +37,42 @@ final class WorkbenchAutomationExecutionConfirmationTests: XCTestCase {
     )
   }
 
-  func testAgentMixedPlanStopsAtConfirmationBarrierAndResumesExplicitly() async throws {
-    let store = try TestWorkbenchFactory.makeStore(prefix: "AgentConfirmationMixed")
+  func testRetiredAgentMixedPlanStaysReadOnlyEvenWhenConfirmed() async throws {
+    let store = try TestWorkbenchFactory.makeStore(prefix: "RetiredAgentConfirmation")
     let originalDraftCount = store.drafts.count
-    let readOnlyStep = WorkbenchAutomationStep(command: .showInspector)
-    let reversibleStep = WorkbenchAutomationStep(command: .saveWorkbench)
     let plan = WorkbenchAutomationPlan(
       goal: "save then inspect",
-      steps: [reversibleStep, readOnlyStep],
+      steps: [
+        WorkbenchAutomationStep(command: .saveWorkbench),
+        WorkbenchAutomationStep(command: .showInspector),
+      ],
       source: .agentLoop
     )
-
-    let safeResult = await WorkbenchAutomationExecutor.execute(plan: plan, in: store)
-
-    XCTAssertEqual(safeResult.plan.steps[0].status, .awaitingConfirmation)
-    XCTAssertEqual(safeResult.plan.steps[1].status, .proposed)
-    XCTAssertEqual(safeResult.record.steps.map(\.status), [.awaitingConfirmation])
-    XCTAssertEqual(store.drafts.count, originalDraftCount)
-
-    let stillUnconfirmed = await WorkbenchAutomationExecutor.execute(
-      plan: safeResult.plan,
-      in: store,
-      onlyStepID: reversibleStep.id
-    )
-    XCTAssertEqual(stillUnconfirmed.plan.steps[0].status, .awaitingConfirmation)
-    XCTAssertEqual(stillUnconfirmed.record.steps.map(\.status), [.awaitingConfirmation])
-    XCTAssertEqual(store.drafts.count, originalDraftCount)
-
-    let confirmed = await WorkbenchAutomationExecutor.execute(
-      plan: stillUnconfirmed.plan,
-      in: store,
-      onlyStepID: reversibleStep.id,
-      confirmedStepIDs: [reversibleStep.id]
-    )
-    XCTAssertEqual(confirmed.plan.steps[0].status, .succeeded)
-    XCTAssertEqual(confirmed.record.steps.map(\.status), [.succeeded])
-    XCTAssertEqual(store.drafts.count, originalDraftCount)
-
-    let resumedReadOnly = await WorkbenchAutomationExecutor.execute(
-      plan: confirmed.plan,
-      in: store,
-      onlyStepID: readOnlyStep.id
-    )
-    XCTAssertEqual(resumedReadOnly.plan.steps[1].status, .succeeded)
-    XCTAssertEqual(resumedReadOnly.record.steps.map(\.status), [.succeeded])
+    for stepID in [nil] + plan.steps.map({ Optional($0.id) }) {
+      let result = await WorkbenchAutomationExecutor.execute(
+        plan: plan, in: store, onlyStepID: stepID,
+        confirmedStepIDs: Set(plan.steps.map(\.id))
+      )
+      XCTAssertEqual(result.plan, plan)
+      XCTAssertTrue(result.record.steps.allSatisfy { $0.status == .cancelled })
+      XCTAssertFalse(result.record.hasRollback)
+      XCTAssertEqual(store.drafts.count, originalDraftCount)
+    }
   }
 
-  func testAgentCreateDraftRunsWithoutConfirmationAndRemainsRollbackEligible() async throws {
-    let store = try TestWorkbenchFactory.makeStore(prefix: "AgentAutomaticCreate")
-    let originalDraftCount = store.drafts.count
+  func testRetiredAgentCreateDraftCannotRunOrCreateRollbackRecord() async throws {
+    let store = try TestWorkbenchFactory.makeStore(prefix: "RetiredAgentCreate")
+    let originalDraftIDs = store.drafts.map(\.id)
     let step = WorkbenchAutomationStep(
       command: .createDraft,
-      arguments: WorkbenchAutomationArguments(value: "Automatic Agent Draft")
+      arguments: WorkbenchAutomationArguments(value: "Retired Agent Draft")
     )
     let plan = WorkbenchAutomationPlan(goal: "create", steps: [step], source: .agentLoop)
-
     let result = await WorkbenchAutomationExecutor.execute(plan: plan, in: store)
-
-    XCTAssertEqual(result.plan.steps.first?.status, .succeeded)
-    XCTAssertEqual(store.drafts.count, originalDraftCount + 1)
-    XCTAssertEqual(store.selectedDraft?.title, "Automatic Agent Draft")
-    XCTAssertEqual(result.record.steps.first?.targetDraftID, store.selectedDraft?.id)
-    XCTAssertTrue(result.record.hasRollback)
-    let createdDraftID = try XCTUnwrap(result.record.steps.first?.targetDraftID)
-    let createdDraft = try XCTUnwrap(store.drafts.first { $0.id == createdDraftID })
-    XCTAssertTrue(createdDraft.isGeneralDraft)
-    XCTAssertNil(createdDraft.repositoryPath)
-    XCTAssertNil(store.siteDraftFileSaveStates[createdDraftID])
-
-    let rollback = WorkbenchAutomationExecutor.rollbackDetailed(
-      record: result.record,
-      in: store
-    )
-
-    XCTAssertEqual(rollback.restoredCount, 1)
-    XCTAssertEqual(store.drafts.count, originalDraftCount)
-    XCTAssertTrue(store.recycledDrafts.contains { $0.id == createdDraftID })
+    XCTAssertEqual(result.plan, plan)
+    XCTAssertEqual(result.record.steps.map(\.status), [.cancelled])
+    XCTAssertEqual(store.drafts.map(\.id), originalDraftIDs)
+    XCTAssertFalse(result.record.hasRollback)
   }
 
   func testLegacyReversiblePlanStillExecutesWithoutNewPerStepConfirmation() async throws {

@@ -51,15 +51,6 @@ final class RemoteRepositoryPublishServiceGitHubReviewTests: RemoteRepositoryPub
     XCTAssertEqual(result.targetBranch, "main")
     XCTAssertEqual(result.commitSHA, "commit-sha-1")
     XCTAssertEqual(result.reviewURL, "https://github.com/owner/site/pull/12")
-    XCTAssertTrue(
-      result.remoteVerificationMarkdown.contains(
-        "https://api.github.com/repos/owner/site/commits/commit-sha-1"))
-    XCTAssertTrue(
-      result.remoteVerificationMarkdown.contains("https://api.github.com/repos/owner/site/pulls/12")
-    )
-    XCTAssertTrue(
-      result.remoteVerificationMarkdown.contains(
-        "contents/content/posts/github-review.md?ref=publish%2Fgithub-review-20260829"))
 
     let requests = await transport.capturedRequests()
     XCTAssertEqual(requests.map(\.httpMethod), ["GET", "POST", "GET", "PUT", "POST"])

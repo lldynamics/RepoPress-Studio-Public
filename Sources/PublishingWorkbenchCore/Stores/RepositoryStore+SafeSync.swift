@@ -234,12 +234,16 @@ extension RepositoryStore {
 
         await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
         guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
+        let recoveryMessage =
+          result.recoveryArchiveURL.map {
+            CoreL10n.format(" 原文件已保留在：%@", $0.path)
+          } ?? ""
         if result.remoteAdvancedAgain {
           store.setPublishActionMessage(
             CoreL10n.format(
               "已安全同步 %@ 到审阅版本，但远端又有新提交；请重新审阅同步。",
               result.branch
-            ),
+            ) + recoveryMessage,
             status: .warning
           )
         } else {
@@ -247,7 +251,7 @@ extension RepositoryStore {
             CoreL10n.format(
               "已安全同步 %@，本地工作区已重新扫描；文章变化请在文件变更中审阅导入。",
               result.branch
-            ),
+            ) + recoveryMessage,
             status: .success
           )
         }

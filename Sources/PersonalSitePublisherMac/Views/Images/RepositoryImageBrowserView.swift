@@ -191,6 +191,7 @@ struct RepositoryImageBrowserView: View {
         } label: {
           Label(action.title, systemImage: action.systemImage)
         }
+        .accessibilityIdentifier(action.accessibilityIdentifier)
       }
       Divider()
       Button("在 Finder 中显示") {
@@ -323,6 +324,7 @@ struct RepositoryImageBrowserView: View {
       if session.isLoading || session.isProjecting { ProgressView().controlSize(.small) }
       Text("\(session.visibleAssets.count) 张图片 · 已选择 \(session.selectedPaths.count) 张")
         .font(.workbenchSupporting).foregroundStyle(.secondary)
+        .accessibilityIdentifier("repository-image-selection-status")
       Spacer(minLength: 8)
       if session.displayMode == .grid {
         Image(systemName: "square.grid.3x3").foregroundStyle(.secondary)

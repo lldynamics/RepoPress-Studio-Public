@@ -81,6 +81,26 @@ article content or search ranking:
   continues to receive each edit. The simulated input-client regression checks
   cache and commit behavior; only a manual `markdown-typing` trace with an
   observed input source can establish native IME latency and caret stability.
+- Incremental editor statistics have a total UTF-16 processing budget covering
+  word-boundary probes, old/new word contexts and edit-fragment scans. Long
+  unbroken tokens that exceed it retain the last exact displayed statistics
+  and schedule the existing delayed background full scan. Subsequent edits
+  cannot reuse that stale incremental base; generation and document mapping
+  checks still reject an obsolete full result.
+- Knowledge navigation shares one document snapshot for folder, unfiled and
+  smart-collection counts. Document mutations invalidate it; selection and
+  hover changes reuse it. Saved-collection counts retain only the current rule
+  set, and rule changes refresh those counts without retaining prior sets.
+  Time-sensitive smart collections also refresh when the calendar day changes.
+- External draft scans use cumulative content, directory-depth and visited-entry
+  budgets in addition to the existing per-file and file-count limits. They
+  enumerate lazily and reject the whole result on a budget failure. Cancellation
+  propagates to the background scanner and is checked between entries and file
+  reads. Individual descriptor-based reads are bounded by the remaining budget.
+- Repository image filtering propagates cancellation to its background task.
+  Scope filtering, text filtering and bounded groups of sort comparisons check
+  for cancellation; the existing inventory revision and task identity checks
+  still protect installation of the result.
 
 Current and whole-document replacement plans run off the main actor in a cancellable task. Installation checks the draft, body revision and text, query, replacement, options, and selection scope again. A stale plan cannot replace newer text. The current replacement remains undoable; replace-all retains its preview. This changes where planning runs, without asserting a measured latency improvement.
 
@@ -90,6 +110,14 @@ for repository-state refresh.
 
 These are workload and correctness contracts, not a measured speedup claim.
 Collect comparable Release traces before assigning a latency or frame-rate gain.
+
+On 2026-09-29, an isolated `swiftc -O` probe of the unchanged complete syntax
+range planner measured ordinary insertions at the start, middle and end of
+synthetic documents with 1, 1,000 and 10,000 fenced blocks. For 10,000 blocks,
+the medians of seven 100-call batch averages ranged from 0.040 to 0.046 ms per
+plan. This does not measure parsing, TextKit or UI latency. It did not justify
+replacing the current interval representation as part of the bounded-work
+changes; the linear interval update remains a candidate for future traces.
 
 For the `@Observable` migration, a child view that receives an already owned
 reference stores it as `let`; `@State` is reserved for an observable reference

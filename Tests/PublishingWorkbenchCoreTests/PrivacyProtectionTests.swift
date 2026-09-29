@@ -315,37 +315,6 @@ final class PrivacyProtectionTests: XCTestCase {
     XCTAssertTrue(summary.markdownPath.contains("secret-launch-plan"))
   }
 
-  func testSEOSocialPublishPackageMasksPrivateDraftWhenProtectionEnabled() async throws {
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
-    store.updatePrivacySettings(
-      PrivacyProtectionSettings(
-        masksPrivateContent: true
-      )
-    )
-    let privateDraft = ArticleDraft(
-      siteProfileID: store.activeProfileID,
-      title: "Secret Launch Plan",
-      slug: "secret-launch-plan",
-      visibility: .private,
-      summary: "Hidden launch notes",
-      bodyMarkdown: "Private body"
-    )
-    store.setDrafts([privateDraft])
-    store.prepareSEOSocialPreview(for: privateDraft)
-
-    let generatedMarkdown = await store.seoSocialPublishPackageMarkdown(for: privateDraft)
-    let markdown = try XCTUnwrap(generatedMarkdown)
-
-    XCTAssertTrue(markdown.contains("# SEO / Social 发布包已遮挡"))
-    XCTAssertTrue(markdown.contains("- 文章：私密文章"))
-    XCTAssertTrue(markdown.contains("私密内容遮挡已开启"))
-    XCTAssertFalse(markdown.contains("Secret Launch Plan"))
-    XCTAssertFalse(markdown.contains("secret-launch-plan"))
-    XCTAssertFalse(markdown.contains("Hidden launch notes"))
-    XCTAssertFalse(markdown.contains("Private body"))
-  }
-
   private func temporaryPersistenceURL() throws -> URL {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent("PrivacyProtectionTests-\(UUID().uuidString)", isDirectory: true)

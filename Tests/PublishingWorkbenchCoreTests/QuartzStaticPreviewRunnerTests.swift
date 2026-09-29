@@ -9,7 +9,115 @@ import XCTest
 #endif
 
 final class QuartzStaticPreviewRunnerTests: XCTestCase {
-  func testBuildLogLimitStopsNoisyBuilder() throws {
+  private enum ProcessExitError: Error, CustomStringConvertible {
+    case timedOut(String)
+
+    var description: String {
+      switch self {
+      case .timedOut(let context): "Timed out waiting for \(context)"
+      }
+    }
+  }
+
+  private func waitForExit(_ process: Process, within timeout: Duration, context: String)
+    async throws
+  {
+    let deadline = ContinuousClock.now.advanced(by: timeout)
+    while process.isRunning {
+      guard ContinuousClock.now < deadline else { throw ProcessExitError.timedOut(context) }
+      try await Task.sleep(for: .milliseconds(50))
+    }
+  }
+
+  private static func pauseForCleanup() async {
+    await withCheckedContinuation { continuation in
+      DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + .milliseconds(50)) {
+        continuation.resume()
+      }
+    }
+  }
+
+  private static func waitForCleanupExit(_ process: Process, within timeout: Duration) async -> Bool
+  {
+    let deadline = ContinuousClock.now.advanced(by: timeout)
+    while process.isRunning, ContinuousClock.now < deadline {
+      await Self.pauseForCleanup()
+    }
+    return !process.isRunning
+  }
+
+  private static func cleanupOwnedProcess(_ process: Process) async {
+    guard process.isRunning else { return }
+    #if canImport(Darwin)
+      _ = Darwin.kill(process.processIdentifier, SIGTERM)
+    #else
+      process.terminate()
+    #endif
+    if !(await Self.waitForCleanupExit(process, within: .seconds(2))) {
+      #if canImport(Darwin)
+        _ = Darwin.kill(process.processIdentifier, SIGKILL)
+      #else
+        process.terminate()
+      #endif
+      if !(await Self.waitForCleanupExit(process, within: .seconds(2))) {
+        XCTFail("Owned Quartz test process remained alive after cleanup")
+      }
+    }
+  }
+
+  #if canImport(Darwin)
+    private static func cleanupOwnedDetachedRunner(_ runnerPID: Int32) async {
+      guard runnerPID > 0, Darwin.kill(runnerPID, 0) == 0 else { return }
+      _ = Darwin.kill(runnerPID, SIGTERM)
+      let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+      while Darwin.kill(runnerPID, 0) == 0, ContinuousClock.now < deadline {
+        await Self.pauseForCleanup()
+      }
+      if Darwin.kill(runnerPID, 0) == 0 {
+        _ = Darwin.kill(runnerPID, SIGKILL)
+        let forcedDeadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while Darwin.kill(runnerPID, 0) == 0, ContinuousClock.now < forcedDeadline {
+          await Self.pauseForCleanup()
+        }
+        if Darwin.kill(runnerPID, 0) == 0 {
+          XCTFail("Owned detached Quartz runner remained alive after cleanup")
+        }
+      }
+    }
+
+    private static func cleanupOwnedBuildGroup(buildPIDFile: URL, childPIDFile: URL) async {
+      guard
+        let buildPIDText = try? String(contentsOf: buildPIDFile, encoding: .utf8),
+        let buildPID = Int32(buildPIDText.trimmingCharacters(in: .whitespacesAndNewlines)),
+        buildPID > 0
+      else { return }
+      let childPID = (try? String(contentsOf: childPIDFile, encoding: .utf8)).flatMap {
+        Int32($0.trimmingCharacters(in: .whitespacesAndNewlines))
+      }
+      func groupIsOwned() -> Bool {
+        Darwin.getpgid(buildPID) == buildPID
+          || (childPID.map { Darwin.getpgid($0) == buildPID } ?? false)
+      }
+      guard groupIsOwned() else { return }
+      _ = Darwin.kill(-buildPID, SIGTERM)
+      let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+      while groupIsOwned(), ContinuousClock.now < deadline {
+        await Self.pauseForCleanup()
+      }
+      if groupIsOwned() {
+        _ = Darwin.kill(-buildPID, SIGKILL)
+        let forcedDeadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while groupIsOwned(), ContinuousClock.now < forcedDeadline {
+          await Self.pauseForCleanup()
+        }
+        if groupIsOwned() {
+          XCTFail("Owned Quartz build process group remained alive after cleanup")
+        }
+      }
+    }
+  #endif
+
+  func testBuildLogLimitStopsNoisyBuilder() async throws {
     let base = FileManager.default.temporaryDirectory.appendingPathComponent(
       "quartz-log-limit-test-\(UUID().uuidString)", isDirectory: true
     )
@@ -41,29 +149,15 @@ final class QuartzStaticPreviewRunnerTests: XCTestCase {
     process.standardOutput = FileHandle.nullDevice
     process.standardError = output
     try process.run()
-    defer {
-      if process.isRunning { process.terminate() }
-      process.waitUntilExit()
+    do {
+      try await waitForExit(process, within: .seconds(5), context: "noisy builder log limit")
+      let log = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+      XCTAssertTrue(log.contains("exceeded its log limit"))
+      XCTAssertLessThan(log.utf8.count, 80_000)
+    } catch {
+      await Self.cleanupOwnedProcess(process)
+      throw error
     }
-    let deadline = Date().addingTimeInterval(5)
-    while process.isRunning, Date() < deadline {
-      Thread.sleep(forTimeInterval: 0.05)
-    }
-    if process.isRunning {
-      process.terminate()
-      let stopDeadline = Date().addingTimeInterval(2)
-      while process.isRunning, Date() < stopDeadline {
-        Thread.sleep(forTimeInterval: 0.05)
-      }
-      #if canImport(Darwin)
-        if process.isRunning { _ = Darwin.kill(process.processIdentifier, SIGKILL) }
-      #endif
-      XCTFail("Noisy builder outlived its log limit")
-    }
-    process.waitUntilExit()
-    let log = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-    XCTAssertTrue(log.contains("exceeded its log limit"))
-    XCTAssertLessThan(log.utf8.count, 80_000)
   }
 
   func testRunnerExitsWhenLaunchingParentImmediatelyExits() async throws {
@@ -110,29 +204,44 @@ final class QuartzStaticPreviewRunnerTests: XCTestCase {
         "TMPDIR": base.path, "REPOPRESS_QUARTZ_PREVIEW_TOKEN": "parent-test-token",
       ]) { _, override in override }
       try wrapper.run()
-      wrapper.waitUntilExit()
+      do {
+        try await waitForExit(wrapper, within: .seconds(5), context: "launching parent")
+      } catch {
+        await Self.cleanupOwnedProcess(wrapper)
+        if let recordedPID = try? String(contentsOf: pidFile, encoding: .utf8),
+          let runnerPID = Int32(recordedPID.trimmingCharacters(in: .whitespacesAndNewlines))
+        {
+          await Self.cleanupOwnedDetachedRunner(runnerPID)
+        }
+        throw error
+      }
       XCTAssertEqual(wrapper.terminationStatus, 0)
       let runnerPID = try XCTUnwrap(Int32(String(contentsOf: pidFile, encoding: .utf8)))
-      defer { _ = Darwin.kill(runnerPID, SIGKILL) }
-      var runnerExited = false
-      for _ in 0..<100 {
-        if Darwin.kill(runnerPID, 0) == -1, errno == ESRCH {
-          runnerExited = true
-          break
+      do {
+        var runnerExited = false
+        for _ in 0..<100 {
+          if Darwin.kill(runnerPID, 0) == -1, errno == ESRCH {
+            runnerExited = true
+            break
+          }
+          try await Task.sleep(for: .milliseconds(50))
         }
-        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertTrue(runnerExited, "Quartz runner survived its launching parent")
+        if !runnerExited { await Self.cleanupOwnedDetachedRunner(runnerPID) }
+        let retained = try FileManager.default.contentsOfDirectory(atPath: base.path).filter {
+          $0.hasPrefix("RepoPress-Quartz-Preview-\(runnerPID)-")
+        }
+        XCTAssertTrue(retained.isEmpty)
+      } catch {
+        await Self.cleanupOwnedDetachedRunner(runnerPID)
+        throw error
       }
-      XCTAssertTrue(runnerExited, "Quartz runner survived its launching parent")
-      let retained = try FileManager.default.contentsOfDirectory(atPath: base.path).filter {
-        $0.hasPrefix("RepoPress-Quartz-Preview-\(runnerPID)-")
-      }
-      XCTAssertTrue(retained.isEmpty)
     #else
       throw XCTSkip("Requires Darwin process inspection")
     #endif
   }
 
-  func testTemporaryDirectoryInsideRepositoryFailsBeforeCopy() throws {
+  func testTemporaryDirectoryInsideRepositoryFailsBeforeCopy() async throws {
     let base = FileManager.default.temporaryDirectory.appendingPathComponent(
       "quartz-nested-temp-test-\(UUID().uuidString)", isDirectory: true
     )
@@ -151,11 +260,17 @@ final class QuartzStaticPreviewRunnerTests: XCTestCase {
     process.standardOutput = output
     process.standardError = output
     try process.run()
-    process.waitUntilExit()
-    XCTAssertNotEqual(process.terminationStatus, 0)
-    let log = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-    XCTAssertTrue(log.contains("temporary directory is inside the repository"))
-    XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: site.path), [])
+    do {
+      try await waitForExit(
+        process, within: .seconds(5), context: "nested temporary directory rejection")
+      XCTAssertNotEqual(process.terminationStatus, 0)
+      let log = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+      XCTAssertTrue(log.contains("temporary directory is inside the repository"))
+      XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: site.path), [])
+    } catch {
+      await Self.cleanupOwnedProcess(process)
+      throw error
+    }
   }
 
   func testStoppingBuildTerminatesItsChildProcess() async throws {
@@ -176,11 +291,13 @@ final class QuartzStaticPreviewRunnerTests: XCTestCase {
       from pathlib import Path
       import subprocess
       import time
+      Path(os.environ['BUILD_PID_FILE']).write_text(str(os.getpid()))
       child = subprocess.Popen(['/bin/sleep', '30'])
       Path(os.environ['CHILD_PID_FILE']).write_text(str(child.pid))
       time.sleep(30)
       """.utf8
     ).write(to: quartz.appendingPathComponent("bootstrap-cli.mjs"))
+    let buildPIDFile = base.appendingPathComponent("build.pid")
     let childPIDFile = base.appendingPathComponent("child.pid")
     let port = try XCTUnwrap(LocalSitePreviewPortAllocator.allocateDynamicPort())
     let process = Process()
@@ -189,41 +306,51 @@ final class QuartzStaticPreviewRunnerTests: XCTestCase {
       rootPath: site.path, nodePath: python.path, port: port
     )
     process.environment = ProcessInfo.processInfo.environment.merging([
-      "TMPDIR": base.path, "CHILD_PID_FILE": childPIDFile.path,
+      "TMPDIR": base.path, "BUILD_PID_FILE": buildPIDFile.path,
+      "CHILD_PID_FILE": childPIDFile.path,
       "REPOPRESS_QUARTZ_PREVIEW_TOKEN": "child-test-token",
     ]) { _, override in override }
     let output = Pipe()
     process.standardOutput = output
     process.standardError = output
     try process.run()
-    defer {
-      if process.isRunning { process.terminate() }
-      process.waitUntilExit()
-    }
-
-    for _ in 0..<100 where !FileManager.default.fileExists(atPath: childPIDFile.path) {
-      try await Task.sleep(for: .milliseconds(50))
-    }
-    let childPID = try XCTUnwrap(Int32(String(contentsOf: childPIDFile, encoding: .utf8)))
-    process.terminate()
-    for _ in 0..<100 where process.isRunning {
-      try await Task.sleep(for: .milliseconds(50))
-    }
-    XCTAssertFalse(process.isRunning)
-    #if canImport(Darwin)
-      var childStillRunning = true
-      for _ in 0..<100 {
-        if Darwin.kill(childPID, 0) == -1, errno == ESRCH {
-          childStillRunning = false
-          break
-        }
+    do {
+      for _ in 0..<100 where !FileManager.default.fileExists(atPath: childPIDFile.path) {
         try await Task.sleep(for: .milliseconds(50))
       }
-      XCTAssertFalse(childStillRunning, "Quartz build child remained alive after stop")
+      let childPID = try XCTUnwrap(Int32(String(contentsOf: childPIDFile, encoding: .utf8)))
+      #if canImport(Darwin)
+        if process.isRunning { _ = Darwin.kill(process.processIdentifier, SIGTERM) }
+      #else
+        if process.isRunning { process.terminate() }
+      #endif
+      try await waitForExit(process, within: .seconds(5), context: "stopped Quartz runner")
+      XCTAssertFalse(process.isRunning)
+      #if canImport(Darwin)
+        var childStillRunning = true
+        for _ in 0..<100 {
+          if Darwin.kill(childPID, 0) == -1, errno == ESRCH {
+            childStillRunning = false
+            break
+          }
+          try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertFalse(childStillRunning, "Quartz build child remained alive after stop")
+      #endif
+    } catch {
+      #if canImport(Darwin)
+        await Self.cleanupOwnedBuildGroup(buildPIDFile: buildPIDFile, childPIDFile: childPIDFile)
+      #endif
+      await Self.cleanupOwnedProcess(process)
+      throw error
+    }
+    #if canImport(Darwin)
+      await Self.cleanupOwnedBuildGroup(buildPIDFile: buildPIDFile, childPIDFile: childPIDFile)
     #endif
+    await Self.cleanupOwnedProcess(process)
   }
 
-  func testEscapingRepositoryLinkStopsBeforeQuartzBuild() throws {
+  func testEscapingRepositoryLinkStopsBeforeQuartzBuild() async throws {
     let base = FileManager.default.temporaryDirectory.appendingPathComponent(
       "quartz-link-preview-test-\(UUID().uuidString)", isDirectory: true
     )
@@ -252,18 +379,16 @@ final class QuartzStaticPreviewRunnerTests: XCTestCase {
     let output = Pipe()
     process.standardOutput = output
     process.standardError = output
-    let finished = DispatchSemaphore(value: 0)
-    process.terminationHandler = { _ in finished.signal() }
     try process.run()
-    if finished.wait(timeout: .now() + 10) == .timedOut {
-      process.terminate()
-      XCTFail("Quartz preview did not reject the escaping link")
+    do {
+      try await waitForExit(process, within: .seconds(10), context: "escaping link rejection")
+      XCTAssertNotEqual(process.terminationStatus, 0)
+      let log = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+      XCTAssertTrue(log.contains("escaping symbolic link"))
+    } catch {
+      await Self.cleanupOwnedProcess(process)
+      throw error
     }
-    process.waitUntilExit()
-
-    XCTAssertNotEqual(process.terminationStatus, 0)
-    let log = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-    XCTAssertTrue(log.contains("escaping symbolic link"))
   }
 
   func testStaticSnapshotServesLoopbackAndRemovesTemporaryCopy() async throws {
@@ -307,39 +432,95 @@ final class QuartzStaticPreviewRunnerTests: XCTestCase {
     process.standardOutput = output
     process.standardError = output
     try process.run()
-    defer {
-      if process.isRunning { process.terminate() }
-      process.waitUntilExit()
-    }
-
-    var responseText: String?
-    for _ in 0..<100 {
-      if !process.isRunning { break }
-      var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/")!)
-      request.timeoutInterval = 0.2
-      if let (data, _) = try? await URLSession.shared.data(for: request) {
-        responseText = String(decoding: data, as: UTF8.self)
-        break
+    do {
+      var responseText: String?
+      for _ in 0..<100 {
+        if !process.isRunning { break }
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/")!)
+        request.timeoutInterval = 0.2
+        if let (data, _) = try? await URLSession.shared.data(for: request) {
+          responseText = String(decoding: data, as: UTF8.self)
+          break
+        }
+        try await Task.sleep(for: .milliseconds(50))
       }
-      try await Task.sleep(for: .milliseconds(50))
-    }
-    XCTAssertEqual(responseText, "<h1>Quartz fixture</h1>")
-    let probeURL = URL(string: "http://127.0.0.1:\(port)/.__repopress_quartz_probe")!
-    let (_, probeResponse) = try await URLSession.shared.data(from: probeURL)
-    XCTAssertEqual(
-      (probeResponse as? HTTPURLResponse)?.value(forHTTPHeaderField: "X-RepoPress-Quartz-Preview"),
-      "ready-test-token"
-    )
-    XCTAssertFalse(
-      FileManager.default.fileExists(atPath: site.appendingPathComponent("public").path))
+      XCTAssertEqual(responseText, "<h1>Quartz fixture</h1>")
+      let probeURL = URL(string: "http://127.0.0.1:\(port)/.__repopress_quartz_probe")!
+      var probeRequest = URLRequest(url: probeURL)
+      probeRequest.timeoutInterval = 2.0
+      let (_, probeResponse) = try await URLSession.shared.data(for: probeRequest)
+      XCTAssertEqual(
+        (probeResponse as? HTTPURLResponse)?.value(
+          forHTTPHeaderField: "X-RepoPress-Quartz-Preview"),
+        "ready-test-token"
+      )
+      XCTAssertFalse(
+        FileManager.default.fileExists(atPath: site.appendingPathComponent("public").path))
 
-    if process.isRunning { process.terminate() }
-    process.waitUntilExit()
-    let log = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-    XCTAssertTrue(log.contains("content/note.md:4: fixture diagnostic"))
-    let retained = try FileManager.default.contentsOfDirectory(atPath: base.path).filter {
-      $0.hasPrefix("RepoPress-Quartz-Preview-\(process.processIdentifier)-")
+      #if canImport(Darwin)
+        if process.isRunning { _ = Darwin.kill(process.processIdentifier, SIGTERM) }
+      #else
+        if process.isRunning { process.terminate() }
+      #endif
+      try await waitForExit(process, within: .seconds(5), context: "static Quartz preview shutdown")
+      let log = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+      XCTAssertTrue(log.contains("content/note.md:4: fixture diagnostic"))
+      let retained = try FileManager.default.contentsOfDirectory(atPath: base.path).filter {
+        $0.hasPrefix("RepoPress-Quartz-Preview-\(process.processIdentifier)-")
+      }
+      XCTAssertTrue(retained.isEmpty)
+    } catch {
+      await Self.cleanupOwnedProcess(process)
+      throw error
     }
-    XCTAssertTrue(retained.isEmpty)
+  }
+
+  func testCancelledCleanupReapsTermIgnoringFixtureAfterTimeout() async throws {
+    let base = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "quartz-cleanup-test-\(UUID().uuidString)", isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: base) }
+    let readyFile = base.appendingPathComponent("ready")
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+    process.arguments = [
+      "-c",
+      """
+      import signal
+      import sys
+      import time
+      from pathlib import Path
+      signal.signal(signal.SIGTERM, signal.SIG_IGN)
+      Path(sys.argv[1]).write_text('ready')
+      time.sleep(30)
+      """,
+      readyFile.path,
+    ]
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
+    try process.run()
+    do {
+      for _ in 0..<100 where !FileManager.default.fileExists(atPath: readyFile.path) {
+        try await Task.sleep(for: .milliseconds(50))
+      }
+      guard FileManager.default.fileExists(atPath: readyFile.path) else {
+        throw ProcessExitError.timedOut("TERM-ignoring fixture startup")
+      }
+      var timedOut = false
+      do {
+        try await waitForExit(process, within: .milliseconds(200), context: "TERM-ignoring fixture")
+      } catch ProcessExitError.timedOut {
+        timedOut = true
+      }
+      XCTAssertTrue(timedOut, "The live fixture must report a timeout before cleanup")
+
+      withUnsafeCurrentTask { $0?.cancel() }
+      await Self.cleanupOwnedProcess(process)
+      XCTAssertFalse(process.isRunning, "Cancelled cleanup left the owned fixture alive")
+    } catch {
+      await Self.cleanupOwnedProcess(process)
+      throw error
+    }
   }
 }

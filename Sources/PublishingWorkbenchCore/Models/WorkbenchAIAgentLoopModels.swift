@@ -36,61 +36,6 @@ public struct WorkbenchAIAgentLoopLimits: Codable, Hashable, Sendable {
   public static let `default` = WorkbenchAIAgentLoopLimits()
 }
 
-public struct WorkbenchAIAgentContext: Hashable, Sendable {
-  public var goal: String
-  public var draftVersions: [UUID: Date]
-
-  public init(
-    goal: String,
-    currentDraft: ArticleDraft? = nil,
-    draftVersions: [UUID: Date] = [:]
-  ) {
-    self.goal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
-    self.draftVersions = draftVersions
-    if let currentDraft {
-      self.draftVersions[currentDraft.id] = currentDraft.updatedAt
-    }
-  }
-}
-
-public enum WorkbenchAIAgentLoopLimit: Hashable, Sendable {
-  case modelRounds(maximum: Int)
-  case toolCallsPerRound(maximum: Int, received: Int)
-  case totalToolCalls(maximum: Int, received: Int)
-  case argumentBytesPerCall(toolCallID: String, maximum: Int, received: Int)
-  case totalArgumentBytes(maximum: Int, received: Int)
-  case toolResultBytesPerCall(toolCallID: String, maximum: Int, received: Int)
-  case totalToolResultBytes(maximum: Int, received: Int)
-  case totalAssistantBytes(maximum: Int, received: Int)
-  case totalTranscriptBytes(maximum: Int, received: Int)
-}
-
-public enum WorkbenchAIAgentLoopRejection: Hashable, Sendable {
-  case emptyModelResponse
-  case malformedToolCall(toolCallID: String)
-  case duplicateToolCallID(String)
-  case unknownTool(String)
-  case toolNotAllowed(String)
-  case invalidJSON(toolCallID: String)
-  case argumentMismatch(toolCallID: String, toolName: String)
-  /// The persisted transcript or reviewed-call envelope failed validation.
-  /// No model transport or application executor is entered for this result.
-  case invalidContinuation
-  /// The checkpoint still has unresolved calls, so a partial reviewed round
-  /// cannot be appended to the model transcript.
-  case incompleteReviewedRound
-}
-
-public enum WorkbenchAIAgentLoopTermination: Hashable, Sendable {
-  case completed
-  case awaitingReview
-  case capabilityUnavailable(AIProviderCapabilitySupport)
-  case rejected(WorkbenchAIAgentLoopRejection)
-  case limitReached(WorkbenchAIAgentLoopLimit)
-  case cancelled
-  case modelTransportFailed
-}
-
 /// A provider-neutral tool call which may, but does not have to, be backed by
 /// a Workbench automation step. `toolID` is the authority-bearing identity;
 /// the model-visible name is retained only for transcript correlation.
@@ -188,18 +133,6 @@ extension AIAgentToolID {
   public static let replaceBody = AIAgentToolID("workbench/replaceBody")
   public static let knowledgeSearch = AIAgentToolID("workbench/knowledgeSearch")
   public static let knowledgeRead = AIAgentToolID("workbench/knowledgeRead")
-}
-
-public struct WorkbenchAIAgentToolResult: Hashable, Sendable {
-  public var content: String
-  public var isError: Bool
-  public var targetDraftID: UUID?
-
-  public init(content: String, isError: Bool = false, targetDraftID: UUID? = nil) {
-    self.content = content
-    self.isError = isError
-    self.targetDraftID = targetDraftID
-  }
 }
 
 /// The externally visible outcome of one tool call accepted by the agent
@@ -864,64 +797,3 @@ public struct WorkbenchAIAgentLoopCheckpoint: Codable, Hashable, Sendable {
     try container.encode(totalTranscriptByteCount, forKey: .totalTranscriptByteCount)
   }
 }
-
-public struct WorkbenchAIAgentLoopResult: Hashable, Sendable {
-  public var termination: WorkbenchAIAgentLoopTermination
-  public var transcript: [AIChatMessage]
-  public var assistantText: [String]
-  public var pendingPlan: WorkbenchAutomationPlan?
-  public var pendingInvocations: [WorkbenchAIAgentToolInvocation]
-  public var checkpoint: WorkbenchAIAgentLoopCheckpoint?
-  public var toolRuns: [WorkbenchAIAgentToolRunRecord]
-  public var modelRoundCount: Int
-  public var toolCallCount: Int
-  public var totalArgumentByteCount: Int
-  public var totalToolResultByteCount: Int
-  public var totalAssistantByteCount: Int
-  public var totalTranscriptByteCount: Int
-
-  public init(
-    termination: WorkbenchAIAgentLoopTermination,
-    transcript: [AIChatMessage],
-    assistantText: [String],
-    pendingPlan: WorkbenchAutomationPlan? = nil,
-    pendingInvocations: [WorkbenchAIAgentToolInvocation] = [],
-    checkpoint: WorkbenchAIAgentLoopCheckpoint? = nil,
-    toolRuns: [WorkbenchAIAgentToolRunRecord] = [],
-    modelRoundCount: Int,
-    toolCallCount: Int,
-    totalArgumentByteCount: Int,
-    totalToolResultByteCount: Int,
-    totalAssistantByteCount: Int,
-    totalTranscriptByteCount: Int
-  ) {
-    self.termination = termination
-    self.transcript = transcript
-    self.assistantText = assistantText
-    self.pendingPlan = pendingPlan
-    self.pendingInvocations = pendingInvocations
-    self.checkpoint = checkpoint
-    self.toolRuns = toolRuns
-    self.modelRoundCount = modelRoundCount
-    self.toolCallCount = toolCallCount
-    self.totalArgumentByteCount = totalArgumentByteCount
-    self.totalToolResultByteCount = totalToolResultByteCount
-    self.totalAssistantByteCount = totalAssistantByteCount
-    self.totalTranscriptByteCount = totalTranscriptByteCount
-  }
-}
-
-public typealias WorkbenchAIAgentModelTransport =
-  @MainActor @Sendable (
-    AIChatCompletionRequest
-  ) async throws -> AIChatCompletionResult
-
-public typealias WorkbenchAIAgentDateProvider = @Sendable () -> Date
-
-public typealias WorkbenchAIAgentAutomaticExecutor =
-  @MainActor @Sendable (
-    WorkbenchAIAgentToolInvocation
-  ) async throws -> WorkbenchAIAgentToolResult
-
-@available(*, deprecated, renamed: "WorkbenchAIAgentAutomaticExecutor")
-public typealias WorkbenchAIAgentReadOnlyExecutor = WorkbenchAIAgentAutomaticExecutor

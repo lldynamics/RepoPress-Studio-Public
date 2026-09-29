@@ -234,13 +234,11 @@ public final class WorkbenchStore: ObservableObject {
     localPublishPreviewService: LocalPublishPreviewService = LocalPublishPreviewService(),
     remotePublishRiskService: RemotePublishRiskService = RemotePublishRiskService(),
     batchPublishPlanService: BatchPublishPlanService = BatchPublishPlanService(),
-    batchPublishCommandBuilder: BatchPublishCommandBuilder = BatchPublishCommandBuilder(),
     repositorySyncCommandBuilder: RepositorySyncCommandBuilder = RepositorySyncCommandBuilder(),
     localSitePreviewService: LocalSitePreviewService = LocalSitePreviewService(),
     localSitePreviewProcessService: LocalSitePreviewProcessService =
       LocalSitePreviewProcessService(),
     remoteReviewDraftBuilder: RemoteReviewDraftBuilder = RemoteReviewDraftBuilder(),
-    localGitPublishService: LocalGitPublishService = LocalGitPublishService(),
     remoteRepositoryPublishService: RemoteRepositoryPublishService =
       RemoteRepositoryPublishService(),
     deploymentStatusService: DeploymentStatusService = DeploymentStatusService(),
@@ -589,9 +587,7 @@ public final class WorkbenchStore: ObservableObject {
       batchPublishPlanService: batchPublishPlanService,
       remoteRepositoryPublishService: remoteRepositoryPublishService,
       repositoryTokenStore: repositoryTokenStore,
-      localGitPublishService: localGitPublishService,
       remoteReviewDraftBuilder: remoteReviewDraftBuilder,
-      batchPublishCommandBuilder: batchPublishCommandBuilder,
       remotePublishRiskService: remotePublishRiskService,
       localContentImportService: localContentImportService,
       generalDraftLibraryService: generalDraftLibraryService,

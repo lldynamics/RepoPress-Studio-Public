@@ -83,7 +83,20 @@ enum RepositoryImageBrowserProjection {
     includesSubfolders: Bool, query: String, filter: RepositoryImageFilter,
     sortOrder: RepositoryImageSortOrder, now: Date = Date()
   ) -> [RepositoryImageAsset] {
-    let scoped = assets.filter { asset in
+    project(
+      assets, scope: scope, includesSubfolders: includesSubfolders,
+      query: query, filter: filter, sortOrder: sortOrder, now: now, checkCancellation: {})
+  }
+
+  static func project(
+    _ assets: [RepositoryImageAsset], scope: RepositoryImageBrowserScope,
+    includesSubfolders: Bool, query: String, filter: RepositoryImageFilter,
+    sortOrder: RepositoryImageSortOrder, now: Date = Date(),
+    checkCancellation: () throws -> Void
+  ) rethrows -> [RepositoryImageAsset] {
+    try checkCancellation()
+    let scoped = try assets.filter { asset in
+      try checkCancellation()
       switch scope {
       case .all: return true
       case .recent:
@@ -94,24 +107,38 @@ enum RepositoryImageBrowserProjection {
         return (asset.repositoryPath as NSString).deletingLastPathComponent == path
       }
     }
-    return project(
+    return try project(
       scoped, query: query, filter: filter,
-      sortOrder: scope == .recent ? .dateNewest : sortOrder
+      sortOrder: scope == .recent ? .dateNewest : sortOrder,
+      checkCancellation: checkCancellation
     )
+  }
+
+  nonisolated static func project(
+    _ assets: [RepositoryImageAsset], query: String,
+    filter: RepositoryImageFilter, sortOrder: RepositoryImageSortOrder
+  ) -> [RepositoryImageAsset] {
+    project(assets, query: query, filter: filter, sortOrder: sortOrder, checkCancellation: {})
   }
 
   nonisolated static func project(
     _ assets: [RepositoryImageAsset],
     query: String,
     filter: RepositoryImageFilter,
-    sortOrder: RepositoryImageSortOrder
-  ) -> [RepositoryImageAsset] {
-    let base = assets.filter { asset in
-      filter.includes(asset)
+    sortOrder: RepositoryImageSortOrder,
+    checkCancellation: () throws -> Void
+  ) rethrows -> [RepositoryImageAsset] {
+    try checkCancellation()
+    let base = try assets.filter { asset in
+      try checkCancellation()
+      return filter.includes(asset)
         && (query.isEmpty || asset.filename.localizedStandardContains(query)
           || asset.repositoryPath.localizedStandardContains(query))
     }
-    return base.sorted { lhs, rhs in
+    var comparisons = 0
+    let sorted = try base.sorted { lhs, rhs in
+      if comparisons.isMultiple(of: 64) { try checkCancellation() }
+      comparisons += 1
       switch sortOrder {
       case .nameAsc: return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
       case .nameDesc:
@@ -144,6 +171,8 @@ enum RepositoryImageBrowserProjection {
           : lhs.isRegisteredToArticle
       }
     }
+    try checkCancellation()
+    return sorted
   }
 
 }

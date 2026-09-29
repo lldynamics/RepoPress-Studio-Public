@@ -150,8 +150,4 @@ extension WorkbenchStore {
   public func releaseLedgerEntry(for record: ReleaseRecord) -> ReleaseLedgerEntry {
     deploymentStore.releaseLedgerEntry(for: record)
   }
-
-  public var releaseRecoveryVerificationDraftMarkdown: String {
-    deploymentStore.releaseRecoveryVerificationDraftMarkdown(store: self)
-  }
 }

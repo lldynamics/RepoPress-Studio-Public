@@ -23,7 +23,6 @@ struct LocalSitePreviewPanelView: View {
       Divider()
       content
     }
-    .workbenchSheetSize(.full)
     .localSitePreviewTrustConfirmation(
       request: $pendingAuthorizationRequest,
       entryPoint: .panel,
@@ -32,11 +31,15 @@ struct LocalSitePreviewPanelView: View {
       }
     )
     .onChange(of: state.activeProfileID) {
+      navigationError = nil
       pendingAuthorizationRequest = nil
       externalBrowserPreviewCoordinator.cancelPendingOpen()
     }
-    .onChange(of: store.selectedDraftID) { _, draftID in
+    .onChange(of: state.selectedDraftID) { _, draftID in
       externalBrowserPreviewCoordinator.cancelPendingOpen(ifDraftIsNoLongerCurrent: draftID)
+    }
+    .onChange(of: state.runtimeStatus.isRunning) {
+      navigationError = nil
     }
     .onDisappear {
       externalBrowserPreviewCoordinator.cancelPendingOpen()
@@ -77,14 +80,14 @@ struct LocalSitePreviewPanelView: View {
         .disabled(!state.runtimeStatus.isRunning)
 
         Button {
-          guard let draftID = store.selectedDraftID else { return }
+          guard let draftID = state.selectedDraftID else { return }
           externalBrowserPreviewCoordinator.openSiteHome(for: draftID)
         } label: {
           Label("浏览器打开", systemImage: "safari")
         }
         .buttonStyle(.bordered)
         .disabled(
-          store.selectedDraftID == nil || externalBrowserPreviewCoordinator.isBusy
+          state.selectedDraftID == nil || externalBrowserPreviewCoordinator.isBusy
         )
       }
 
@@ -126,6 +129,7 @@ struct LocalSitePreviewPanelView: View {
         LocalSitePreviewWebView(
           url: state.runtimeStatus.previewURL ?? plan.previewURL,
           reloadToken: state.refreshToken,
+          isServerReachable: state.runtimeStatus.isReachable,
           onNavigationError: { message in
             navigationError = message
           }

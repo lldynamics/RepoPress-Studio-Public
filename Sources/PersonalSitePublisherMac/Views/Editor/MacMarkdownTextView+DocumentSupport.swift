@@ -33,3 +33,14 @@ extension MacMarkdownTextView {
     textView.setAccessibilityIdentifier("markdown-document-editor")
   }
 }
+
+extension MacMarkdownTextView.Coordinator {
+  /// Commits text and selection while SwiftUI dismantles the editor. The
+  /// front-matter selection flag is dropped: writing it back into composer
+  /// state during graph invalidation violated Swift exclusivity, and the flag
+  /// has no meaning once the editor is gone.
+  func flushPendingBindingWritesForDismantle() {
+    pendingFrontMatterBindingValue = nil
+    flushPendingBindingWrites(notifyingDocumentCommit: true)
+  }
+}

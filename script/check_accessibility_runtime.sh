@@ -9,34 +9,65 @@ TEST_DIST_DIR=""
 TEST_BUNDLE_ID=""
 NON_SCREENSHOT_REGRESSION=0
 PR_SMOKE=0
+ONLY_TESTING_SELECTORS=()
 LSREGISTER_TOOL="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
 usage() {
-  echo "usage: check_accessibility_runtime.sh [--non-screenshot-regression|--pr-smoke]" >&2
+  cat >&2 <<'EOF'
+usage: check_accessibility_runtime.sh [--non-screenshot-regression|--pr-smoke]
+       check_accessibility_runtime.sh [--only-testing <Target/Class/Test>]...
+
+Run the complete macOS accessibility UI suite by default. Use --only-testing
+once or more to run selected XCTest cases serially. The selector must contain
+exactly three non-empty, whitespace-free components: Target/Class/Test.
+The fixed regression modes cannot be combined with --only-testing or each other.
+EOF
 }
 
-case "${1:-}" in
-  "")
-    ;;
-  --non-screenshot-regression)
-    NON_SCREENSHOT_REGRESSION=1
-    ;;
-  --pr-smoke)
-    PR_SMOKE=1
-    ;;
-  -h|--help)
-    usage
-    exit 0
-    ;;
-  *)
-    usage
-    echo "runtime accessibility gate: unknown argument: $1" >&2
-    exit 2
-    ;;
-esac
-if [[ "$#" -gt 1 ]]; then
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --only-testing)
+      if [[ "$#" -lt 2 || -z "$2" ]]; then
+        usage
+        echo "runtime accessibility gate: --only-testing requires a non-empty selector" >&2
+        exit 2
+      fi
+      selector="$2"
+      if [[ ! "$selector" =~ ^[^/[:space:]]+/[^/[:space:]]+/[^/[:space:]]+$ ]]; then
+        usage
+        echo "runtime accessibility gate: invalid --only-testing selector: $selector (expected Target/Class/Test)" >&2
+        exit 2
+      fi
+      ONLY_TESTING_SELECTORS+=("$selector")
+      shift 2
+      ;;
+    --non-screenshot-regression)
+      NON_SCREENSHOT_REGRESSION=1
+      shift
+      ;;
+    --pr-smoke)
+      PR_SMOKE=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage
+      echo "runtime accessibility gate: unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+if [[ "$NON_SCREENSHOT_REGRESSION" == "1" && "$PR_SMOKE" == "1" ]]; then
   usage
-  echo "runtime accessibility gate: expected at most one argument" >&2
+  echo "runtime accessibility gate: fixed regression modes cannot be combined" >&2
+  exit 2
+fi
+if [[ "${#ONLY_TESTING_SELECTORS[@]}" -gt 0 && ( "$NON_SCREENSHOT_REGRESSION" == "1" || "$PR_SMOKE" == "1" ) ]]; then
+  usage
+  echo "runtime accessibility gate: --only-testing cannot be combined with a fixed regression mode" >&2
   exit 2
 fi
 if [[ "$NON_SCREENSHOT_REGRESSION" == "1" && -z "$APP_PATH" ]]; then
@@ -119,7 +150,12 @@ xcodebuild_arguments=(
   WORKBENCH_XCUI_APP_PATH="$APP_PATH"
   PERSONAL_SITE_PUBLISHER_RUNTIME_HOME="$RUNTIME_HOME"
 )
-if [[ "$NON_SCREENSHOT_REGRESSION" == "1" ]]; then
+if [[ "${#ONLY_TESTING_SELECTORS[@]}" -gt 0 ]]; then
+  xcodebuild_arguments+=("-parallel-testing-enabled" "NO")
+  for selector in "${ONLY_TESTING_SELECTORS[@]}"; do
+    xcodebuild_arguments+=("-only-testing:$selector")
+  done
+elif [[ "$NON_SCREENSHOT_REGRESSION" == "1" ]]; then
   xcodebuild_arguments+=(
     "-only-testing:WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests/testReleaseBundleLaunchesWithoutScreenshotFixture"
   )
@@ -148,6 +184,8 @@ if [[ "$NON_SCREENSHOT_REGRESSION" == "1" ]]; then
   echo "runtime accessibility gate: non-screenshot Release regression passed"
 elif [[ "$PR_SMOKE" == "1" ]]; then
   echo "runtime accessibility gate: isolated PR window smoke passed"
+elif [[ "${#ONLY_TESTING_SELECTORS[@]}" -gt 0 ]]; then
+  printf 'runtime accessibility gate: targeted regression passed (%s)\n' "$(IFS=', '; echo "${ONLY_TESTING_SELECTORS[*]}")"
 else
   echo "runtime accessibility gate: passed"
 fi

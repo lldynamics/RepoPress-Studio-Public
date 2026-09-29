@@ -17,21 +17,6 @@ public struct RepositorySafeSyncService: Sendable {
     let path: String
   }
 
-  private struct RecoveryManifest: Codable {
-    struct Entry: Codable {
-      let path: String
-      let blobOID: String
-      let mode: String
-      let backupRelativePath: String
-    }
-
-    let version: Int
-    let repositoryRoot: String
-    let previousHeadSHA: String
-    let targetHeadSHA: String
-    let entries: [Entry]
-  }
-
   private let git: GitCommandRunner
 
   public init(gitCommandRunner: GitCommandRunner = GitCommandRunner(timeout: 120)) {
@@ -51,8 +36,8 @@ public struct RepositorySafeSyncService: Sendable {
     return .confirmation(RepositorySafeSyncConfirmation(snapshot: snapshot))
   }
 
-  /// Revalidates the full review, copy-backs only proven identical untracked
-  /// collisions, and fast-forwards to the exact SHA seen during review.
+  /// Revalidates the full review, retains collision inodes in a same-volume hold,
+  /// and fast-forwards to the exact SHA seen during review.
   public func apply(
     profile: any RepositorySyncProfile,
     confirmation: RepositorySafeSyncConfirmation,
@@ -80,16 +65,30 @@ public struct RepositorySafeSyncService: Sendable {
         recoveryRootURL: recoveryRootURL,
         snapshot: confirmation.snapshot
       )
+    let isolation: RepositorySafeSyncIsolation?
+    if let archive {
+      let gitDirectory = URL(
+        fileURLWithPath: try output(["rev-parse", "--absolute-git-dir"], root: root)
+          .trimmedForPublishing, isDirectory: true)
+      isolation = try RepositorySafeSyncIsolation(
+        root: root, gitDirectory: gitDirectory, recoveryCopy: archive,
+        paths: confirmation.snapshot.identicalUntrackedCollisions.map(\.path))
+    } else {
+      isolation = nil
+    }
     var removedPaths: [String] = []
     var didFastForward = false
     do {
       for collision in confirmation.snapshot.identicalUntrackedCollisions {
-        let url = root.appendingPathComponent(collision.path)
-        guard FileManager.default.fileExists(atPath: url.path) else {
+        guard let isolation else { throw RepositorySafeSyncError.snapshotDrift }
+        try isolation.moveOriginal(collision.path, from: root)
+        removedPaths.append(collision.path)
+        let held = isolation.isolatedURL(for: collision.path)
+        let attributes = try regularFileAttributes(held, path: collision.path)
+        let blob = try hashCopiedFileNoFilters(held, root: root)
+        guard attributes.mode == collision.mode, blob == collision.localBlobOID else {
           throw RepositorySafeSyncError.snapshotDrift
         }
-        try FileManager.default.removeItem(at: url)
-        removedPaths.append(collision.path)
       }
       _ = try output(
         ["merge", "--ff-only", "--no-overwrite-ignore", confirmation.snapshot.remoteHeadSHA],
@@ -107,7 +106,7 @@ public struct RepositorySafeSyncService: Sendable {
           .filter { !removedPaths.contains($0) }.sorted(),
         reconciledCollisionPaths: removedPaths.sorted(),
         remoteAdvancedAgain: remoteAdvancedAgain,
-        recoveryArchiveURL: archive
+        recoveryArchiveURL: isolation?.url
       )
     } catch {
       let reachedTarget: Bool
@@ -124,41 +123,42 @@ public struct RepositorySafeSyncService: Sendable {
       }
       if reachedTarget {
         throw RepositorySafeSyncError.partial(
-          recoveryDirectory: archive?.path ?? "",
+          recoveryDirectory: isolation?.url.path ?? "",
           message:
             "已快进到 \(confirmation.snapshot.remoteHeadSHA.prefix(8))，但后置验证失败：\(error.localizedDescription)"
         )
       }
-      guard let archive else { throw error }
+      guard let isolation else { throw error }
       let originalMessage = error.localizedDescription
       let restoration: [String]
       do {
         restoration = try restoreMissingPaths(
-          archive: archive,
+          isolation: isolation,
           root: root,
           expected: confirmation.snapshot.identicalUntrackedCollisions
         )
       } catch let recoveryError as RepositorySafeSyncError {
         throw RepositorySafeSyncError.partial(
-          recoveryDirectory: archive.path,
+          recoveryDirectory: isolation.url.path,
           message: "\(originalMessage)；恢复备份失败：\(recoveryError.localizedDescription)"
         )
       } catch {
         throw RepositorySafeSyncError.partial(
-          recoveryDirectory: archive.path,
+          recoveryDirectory: isolation.url.path,
           message: "\(originalMessage)；恢复备份失败：\(error.localizedDescription)"
         )
       }
       let message = originalMessage
       if restoration.isEmpty {
         throw RepositorySafeSyncError.recoveryRequired(
-          recoveryDirectory: archive.path,
-          message: message
+          recoveryDirectory: isolation.url.path,
+          message: "\(message)；隔离的原文件仍保留，恢复副本位置见 manifest.json。"
         )
       }
       throw RepositorySafeSyncError.partial(
-        recoveryDirectory: archive.path,
-        message: "\(message)；以下路径未自动恢复以免覆盖不同内容：\(restoration.joined(separator: "、"))"
+        recoveryDirectory: isolation.url.path,
+        message:
+          "\(message)；以下路径未自动恢复以免覆盖不同内容：\(restoration.joined(separator: "、"))；隔离原文件位于 files/ 对应路径。"
       )
     }
   }
@@ -535,7 +535,7 @@ public struct RepositorySafeSyncService: Sendable {
       "RepoPress-SafeSync-\(UUID().uuidString)", isDirectory: true
     )
     try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: false)
-    var entries: [RecoveryManifest.Entry] = []
+    var entries: [RepositorySafeSyncRecoveryManifest.Entry] = []
     for collision in snapshot.identicalUntrackedCollisions {
       let source = root.appendingPathComponent(collision.path)
       let sourceAttributes = try regularFileAttributes(source, path: collision.path)
@@ -568,7 +568,7 @@ public struct RepositorySafeSyncService: Sendable {
         )
       )
     }
-    let manifest = RecoveryManifest(
+    let manifest = RepositorySafeSyncRecoveryManifest(
       version: 1,
       repositoryRoot: root.path,
       previousHeadSHA: snapshot.localHeadSHA,
@@ -581,32 +581,24 @@ public struct RepositorySafeSyncService: Sendable {
   }
 
   private func restoreMissingPaths(
-    archive: URL,
+    isolation: RepositorySafeSyncIsolation,
     root: URL,
     expected: [RepositorySafeSyncCollision]
   ) throws -> [String] {
     var unrestored: [String] = []
     for collision in expected {
       let destination = root.appendingPathComponent(collision.path)
-      if FileManager.default.fileExists(atPath: destination.path) {
-        let local = try output(
-          ["hash-object", "--no-filters", "--", collision.path],
-          root: root
-        ).trimmedForPublishing
-        if local != collision.localBlobOID { unrestored.append(collision.path) }
-        continue
-      }
-      let backup = archive.appendingPathComponent("files").appendingPathComponent(collision.path)
-      try FileManager.default.createDirectory(
-        at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-      try FileManager.default.copyItem(at: backup, to: destination)
+      let held = isolation.isolatedURL(for: collision.path)
+      guard FileManager.default.fileExists(atPath: held.path) else { continue }
+      let heldAttributes = try regularFileAttributes(held, path: collision.path)
+      let heldBlob = try hashCopiedFileNoFilters(held, root: root)
+      _ = try isolation.restoreCopyIfMissing(collision.path, to: root)
       let restoredAttributes = try regularFileAttributes(destination, path: collision.path)
       let restoredBlob = try output(
         ["hash-object", "--no-filters", "--", collision.path], root: root
       ).trimmedForPublishing
-      if restoredAttributes.mode != collision.mode || restoredBlob != collision.localBlobOID {
+      if restoredAttributes.mode != heldAttributes.mode || restoredBlob != heldBlob {
         unrestored.append(collision.path)
-        try FileManager.default.removeItem(at: destination)
       }
     }
     return unrestored.sorted()

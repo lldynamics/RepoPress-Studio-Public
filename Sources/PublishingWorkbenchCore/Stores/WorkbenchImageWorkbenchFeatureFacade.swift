@@ -42,10 +42,6 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
     observeValue(store.publishingStore.$imageActionMessage)
     observeValue(store.publishingStore.$imageInspectorFocusRequest)
     observeValue(store.$imageWorkbenchInputRevision)
-    observeValue(store.aiWorkspaceStore.$aiTokenAvailability)
-    observeValue(store.aiWorkspaceStore.$aiImageTextSuggestionDraftID)
-    observeValue(store.aiWorkspaceStore.$aiImageTextSuggestions)
-    observeValue(store.aiStore.$aiImageTextSuggestionRunningDraftIDs)
     observeValue(store.imageStore.$isImageBatchProcessing)
     observeValue(store.imageStore.$imageBatchProgress)
     observeValue(store.imageStore.$isSiteSummaryLoading)
@@ -62,23 +58,6 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
 
   public var imageInspectorFocusRequest: ImageInspectorFocusRequest? {
     store.imageInspectorFocusRequest
-  }
-
-  public var suggestions: [AIPublishingImageTextSuggestion] {
-    store.aiImageTextSuggestions
-  }
-
-  public var suggestionDraftID: UUID? {
-    store.aiImageTextSuggestionDraftID
-  }
-
-  public var isGeneratingSuggestions: Bool {
-    guard let draftID = store.selectedDraftID else { return false }
-    return store.isAIImageTextRunning(for: draftID)
-  }
-
-  public var aiTokenAvailability: KeychainTokenAvailability {
-    store.aiTokenAvailability
   }
 
   public var isProcessingBatch: Bool {
@@ -197,10 +176,6 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
 
   public func report(for draft: ArticleDraft) -> ImageWorkbenchReport {
     store.imageWorkbenchReport(for: draft)
-  }
-
-  public func imageTextTargetCount(for draft: ArticleDraft, report: ImageWorkbenchReport?) -> Int {
-    store.imageTextTargetCount(for: draft, report: report)
   }
 
   public func fillMissingMetadataForVisibleDrafts() {

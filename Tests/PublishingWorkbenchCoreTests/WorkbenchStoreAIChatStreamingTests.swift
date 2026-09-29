@@ -428,11 +428,11 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(capturedRequestCount, 0)
     XCTAssertTrue(store.aiChatMessages.isEmpty)
     XCTAssertTrue(
-      store.aiChatConversations(for: draft.id).allSatisfy(\.messages.isEmpty)
+      store.aiStore.aiChatConversations(for: draft.id).allSatisfy(\.messages.isEmpty)
     )
   }
 
-  func testExpectedArticleConversationClearFailsClosedBeforeTransport() async throws {
+  func testExpectedArticleConversationChangeFailsClosedBeforeTransport() async throws {
     let transport = RecordingAIChatTransport(
       data: Data(),
       statusCode: 200
@@ -463,11 +463,11 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       conversation: frozenConversation
     )
 
-    store.clearAIChat()
+    _ = try XCTUnwrap(store.startNewAIChatConversation(draft: draft))
     XCTAssertTrue(store.aiChatMessages.isEmpty)
 
     let reply = await store.ai.sendChatMessage(
-      "不应重新写入已清空的对话",
+      "不应写入已切换的对话",
       draft: draft,
       expectedContextMode: .site,
       expectedDraftConversation: expectedDraftConversation
@@ -738,7 +738,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     profile.aiProviderConfig = config
     store.updateActiveProfile(profile)
     XCTAssertTrue(consentStore.grant(for: config))
-    XCTAssertTrue(store.saveAIAPIKey("initial-test-credential"))
+    XCTAssertTrue(store.aiStore.saveAIAPIKey("initial-test-credential"))
     let draft = try XCTUnwrap(store.selectedDraft)
     AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = { _ in
       consentStore.revoke(for: config)
@@ -763,7 +763,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     profile.aiProviderConfig = config
     store.updateActiveProfile(profile)
     XCTAssertTrue(consentStore.grant(for: config))
-    XCTAssertTrue(store.saveAIAPIKey("saved-but-blocked-credential"))
+    XCTAssertTrue(store.aiStore.saveAIAPIKey("saved-but-blocked-credential"))
     consentStore.setRemoteAIEnabled(false)
     let draft = try XCTUnwrap(store.selectedDraft)
 
@@ -786,10 +786,10 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     profile.aiProviderConfig = config
     store.updateActiveProfile(profile)
     XCTAssertTrue(consentStore.grant(for: config))
-    XCTAssertTrue(store.saveAIAPIKey("initial-test-credential"))
+    XCTAssertTrue(store.aiStore.saveAIAPIKey("initial-test-credential"))
     let draft = try XCTUnwrap(store.selectedDraft)
     AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = { _ in
-      store.deleteAIAPIKey()
+      store.aiStore.deleteAIAPIKey()
       return .confirm
     }
 
@@ -813,12 +813,12 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertTrue(consentStore.grant(for: config))
     let initialCredential = "initial-test-credential"
     let rotatedCredential = "rotated-test-credential"
-    XCTAssertTrue(store.saveAIAPIKey(initialCredential))
+    XCTAssertTrue(store.aiStore.saveAIAPIKey(initialCredential))
     let draft = try XCTUnwrap(store.selectedDraft)
     var capturedPreview: AIOutboundPayloadPreview?
     AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = { preview in
       capturedPreview = preview
-      XCTAssertTrue(store.saveAIAPIKey(rotatedCredential))
+      XCTAssertTrue(store.aiStore.saveAIAPIKey(rotatedCredential))
       return .confirm
     }
 
@@ -1045,8 +1045,9 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     store.prepareAIChat(for: draft)
     store.setAIChatKnowledgePolicy(.off)
 
+    let ownerToken = UUID()
     let canceledSubmission = Task {
-      await store.sendAIChatMessage("请取消", draft: draft)
+      await store.sendAIChatMessage("请取消", draft: draft, ownerToken: ownerToken)
     }
     for _ in 0..<1_000 {
       if await transport.capturedRequestCount() == 1 { break }
@@ -1054,7 +1055,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     }
     let requestCountBeforeCancellation = await transport.capturedRequestCount()
     XCTAssertEqual(requestCountBeforeCancellation, 1)
-    store.cancelAIChatReply()
+    store.aiStore.cancelAIChatReply(expectedOwnerToken: ownerToken)
 
     let canceledReply = await canceledSubmission.value
 
@@ -1291,68 +1292,6 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(payload["stream"] as? Bool, true)
   }
 
-  func testStoreSendsSEOSocialPreviewIntoAIChatWorkspace() async throws {
-    let transport = RecordingAIChatTransport(
-      data: Data(),
-      statusCode: 200,
-      streamLines: [
-        #"data: {"choices":[{"delta":{"content":"SEO 建议"}}]}"#,
-        "",
-        #"data: {"choices":[{"delta":{"content":"已生成。"},"finish_reason":"stop"}]}"#,
-        "",
-      ]
-    )
-    let persistenceURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-      .appendingPathExtension("json")
-    defer {
-      try? FileManager.default.removeItem(at: persistenceURL)
-    }
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL),
-      keychainTokenStore: aiTokenStoreForTest(),
-      aiPublishingAssistantService: AIPublishingAssistantService(
-        client: AIChatCompletionClient(transport: transport)
-      ),
-      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
-    )
-    var profile = store.activeProfile
-    profile.aiProviderConfig = AIProviderConfig(
-      preset: .custom,
-      baseURL: "https://api.openai.example/v1",
-      model: "gpt-4.1",
-      requiresAPIKey: false
-    )
-    profile.aiProviderConfig = streamingSupportedConfig(profile.aiProviderConfig)
-    store.updateActiveProfile(profile)
-    var draft = try XCTUnwrap(store.selectedDraft)
-    draft.title = "SEO 社交预览"
-    draft.slug = "seo-social-preview"
-    draft.summary = "这篇文章用于验证 SEO 社交预览可以发送到 AI 助手 Inspector。"
-    draft.tags = ["SEO", "Mac"]
-    store.updateDraft(draft)
-    store.prepareAIChat(for: draft)
-    store.setAIChatKnowledgePolicy(.off)
-
-    store.prepareSEOSocialPreview(for: draft)
-    let reply = await store.sendSEOSocialPreviewToAI(for: draft)
-
-    XCTAssertEqual(reply?.content, "SEO 建议已生成。")
-    XCTAssertEqual(store.selectedSection, .writing)
-    XCTAssertTrue(store.isAIPublishingAssistantPresented)
-    XCTAssertEqual(store.aiChatDraftID, draft.id)
-    XCTAssertEqual(store.aiChatMessages.count, 2)
-    XCTAssertTrue(store.aiChatMessages.first?.content.contains("[平台就绪度]") == true)
-    XCTAssertTrue(store.aiChatMessages.first?.content.contains("Open Graph") == true)
-    XCTAssertTrue(store.aiChatMessages.first?.content.contains("Twitter/X") == true)
-    XCTAssertTrue(store.aiChatMessages.first?.content.contains("SEO / Social 修改清单") == true)
-    let requestFromTransport = await transport.capturedRequest()
-    let capturedRequest = try XCTUnwrap(requestFromTransport)
-    let body = try XCTUnwrap(capturedRequest.httpBody)
-    let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
-    XCTAssertEqual(payload["stream"] as? Bool, true)
-  }
-
   func testStorePromotesGranularMetadataActionResultToSuggestionPanel() async throws {
     let responsePayload: [String: Any] = [
       "model": "local-test",
@@ -1531,205 +1470,6 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertNil(store.aiChatManualRetryState)
   }
 
-  func testStoreRegeneratesSelectedAssistantReplyFromMatchingUserTurn() async throws {
-    let transport = RecordingAIChatTransport(
-      data: Data(),
-      statusCode: 200,
-      streamLines: [
-        #"data: {"choices":[{"delta":{"content":"新的第一条回复"},"finish_reason":"stop"}]}"#,
-        "",
-      ]
-    )
-    let persistenceURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-      .appendingPathExtension("json")
-    defer {
-      try? FileManager.default.removeItem(at: persistenceURL)
-    }
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL),
-      keychainTokenStore: aiTokenStoreForTest(),
-      aiPublishingAssistantService: AIPublishingAssistantService(
-        client: AIChatCompletionClient(transport: transport)
-      ),
-      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
-    )
-    var profile = store.activeProfile
-    profile.aiProviderConfig = AIProviderConfig(
-      preset: .custom,
-      baseURL: "https://api.openai.example/v1",
-      model: "gpt-4.1",
-      requiresAPIKey: false
-    )
-    profile.aiProviderConfig = streamingSupportedConfig(profile.aiProviderConfig)
-    store.updateActiveProfile(profile)
-    let draft = try XCTUnwrap(store.selectedDraft)
-    store.prepareAIChat(for: draft)
-    let firstUser = AIPublishingChatMessage(role: .user, content: "第一问题")
-    let firstAssistant = AIPublishingChatMessage(role: .assistant, content: "旧的第一条回复")
-    let secondUser = AIPublishingChatMessage(role: .user, content: "第二问题")
-    let secondAssistant = AIPublishingChatMessage(role: .assistant, content: "第二条回复")
-    store.setAIChatMessages([firstUser, firstAssistant, secondUser, secondAssistant])
-
-    let reply = await store.regenerateAIChatReply(messageID: firstAssistant.id, draft: draft)
-
-    XCTAssertEqual(reply?.content, "新的第一条回复")
-    XCTAssertEqual(store.aiChatMessages.map(\.role), [.user, .assistant])
-    XCTAssertEqual(store.aiChatMessages[0].content, "第一问题")
-    XCTAssertEqual(store.aiChatMessages[1].content, "新的第一条回复")
-    XCTAssertEqual(store.aiChatMessage, "AI 已回复。")
-
-    let requestFromTransport = await transport.capturedRequest()
-    let capturedRequest = try XCTUnwrap(requestFromTransport)
-    let body = try XCTUnwrap(capturedRequest.httpBody)
-    let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
-    let messages = try XCTUnwrap(payload["messages"] as? [[String: Any]])
-    let sentText = messages.compactMap { $0["content"] as? String }.joined(separator: "\n")
-    XCTAssertTrue(sentText.contains("第一问题"))
-    XCTAssertFalse(sentText.contains("第二问题"))
-    XCTAssertFalse(sentText.contains("旧的第一条回复"))
-  }
-
-  func testStoreRestoresConversationWhenSelectedRegenerationFails() async throws {
-    let transport = RecordingAIChatTransport(
-      data: Data(#"{"error":"server"}"#.utf8),
-      statusCode: 500,
-      streamLines: [
-        #"data: {"error":"server"}"#,
-        "",
-      ]
-    )
-    let persistenceURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-      .appendingPathExtension("json")
-    defer {
-      try? FileManager.default.removeItem(at: persistenceURL)
-    }
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL),
-      keychainTokenStore: aiTokenStoreForTest(),
-      aiPublishingAssistantService: AIPublishingAssistantService(
-        client: AIChatCompletionClient(transport: transport)
-      ),
-      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
-    )
-    var profile = store.activeProfile
-    profile.aiProviderConfig = AIProviderConfig(
-      preset: .custom,
-      baseURL: "https://api.openai.example/v1",
-      model: "gpt-4.1",
-      requiresAPIKey: false
-    )
-    store.updateActiveProfile(profile)
-    let draft = try XCTUnwrap(store.selectedDraft)
-    store.prepareAIChat(for: draft)
-    let firstUser = AIPublishingChatMessage(role: .user, content: "第一问题")
-    let firstAssistant = AIPublishingChatMessage(role: .assistant, content: "旧的第一条回复")
-    let secondUser = AIPublishingChatMessage(role: .user, content: "第二问题")
-    let secondAssistant = AIPublishingChatMessage(role: .assistant, content: "第二条回复")
-    let originalMessages = [firstUser, firstAssistant, secondUser, secondAssistant]
-    store.setAIChatMessages(originalMessages)
-
-    let reply = await store.regenerateAIChatReply(messageID: firstAssistant.id, draft: draft)
-
-    XCTAssertNil(reply)
-    XCTAssertEqual(store.aiChatMessages, originalMessages)
-    XCTAssertTrue(store.aiChatMessage?.contains("AI 讨论失败") == true)
-  }
-
-  func testFailedSelectedRegenerationRestoresItsConversationAfterSwitchingDrafts() async throws {
-    let transport = RecordingAIChatTransport(
-      data: Data(#"{"error":"server"}"#.utf8),
-      statusCode: 500,
-      streamLines: [
-        #"data: {"error":"server"}"#,
-        "",
-      ],
-      streamLineDelayNanoseconds: 100_000_000
-    )
-    let persistenceURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-      .appendingPathExtension("json")
-    defer {
-      try? FileManager.default.removeItem(at: persistenceURL)
-    }
-    let client = AIChatCompletionClient(
-      transport: transport,
-      networkRecoveryPolicy: AIChatNetworkRecoveryPolicy(
-        firstByteTimeout: 1,
-        resourceTimeout: 2,
-        maximumAutomaticRetryCount: 0,
-        automaticRetryBaseDelay: 0
-      )
-    )
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL),
-      keychainTokenStore: aiTokenStoreForTest(),
-      aiPublishingAssistantService: AIPublishingAssistantService(client: client),
-      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
-    )
-    var profile = store.activeProfile
-    profile.aiProviderConfig = streamingSupportedConfig(remoteAIConfig)
-    store.updateActiveProfile(profile)
-    let firstDraft = try XCTUnwrap(store.selectedDraft)
-    let secondDraft = ArticleDraft(
-      siteProfileID: firstDraft.siteProfileID,
-      title: "异步期间切换的文章",
-      slug: "regeneration-switch-target"
-    )
-    store.setDrafts([firstDraft, secondDraft])
-    store.setSelectedDraftID(firstDraft.id)
-    store.prepareAIChat(for: firstDraft)
-    let firstUser = AIPublishingChatMessage(role: .user, content: "第一问题")
-    let firstAssistant = AIPublishingChatMessage(role: .assistant, content: "旧的第一条回复")
-    let secondUser = AIPublishingChatMessage(role: .user, content: "第二问题")
-    let secondAssistant = AIPublishingChatMessage(role: .assistant, content: "第二条回复")
-    let originalMessages = [firstUser, firstAssistant, secondUser, secondAssistant]
-    store.setAIChatMessages(originalMessages)
-    store.aiStore.cacheCurrentAIChatSessionForAIStore()
-    let originalConversationID = try XCTUnwrap(
-      store.activeAIChatConversationID(for: firstDraft.id)
-    )
-
-    let regeneration = Task {
-      await store.regenerateAIChatReply(
-        messageID: firstAssistant.id,
-        draft: firstDraft
-      )
-    }
-    for _ in 0..<200 {
-      if await transport.capturedRequestCount() > 0 {
-        break
-      }
-      try await Task.sleep(for: .milliseconds(1))
-    }
-
-    XCTAssertTrue(store.isAIChatRunning)
-    XCTAssertFalse(
-      store.selectAIChatConversation(originalConversationID),
-      "运行期间同一入口会阻止切换对话"
-    )
-    store.ai.selectChatDraft(secondDraft.id)
-    XCTAssertEqual(store.selectedDraftID, secondDraft.id)
-    XCTAssertEqual(store.aiChatDraftID, secondDraft.id)
-    let currentMessages = [
-      AIPublishingChatMessage(role: .user, content: "当前文章不能被旧请求污染")
-    ]
-    store.setAIChatMessages(currentMessages)
-    store.aiStore.cacheCurrentAIChatSessionForAIStore()
-
-    let reply = await regeneration.value
-
-    XCTAssertNil(reply)
-    XCTAssertEqual(store.aiChatDraftID, secondDraft.id)
-    XCTAssertEqual(store.aiChatMessages, currentMessages)
-    let restoredConversation = try XCTUnwrap(
-      store.aiChatConversations(for: firstDraft.id)
-        .first { $0.id == originalConversationID }
-    )
-    XCTAssertEqual(restoredConversation.messages, originalMessages)
-  }
-
   func testStoreRestoresTrailingAssistantsWhenLastRegenerationFails() async throws {
     let transport = RecordingAIChatTransport(
       data: Data(#"{"error":"server"}"#.utf8),
@@ -1768,7 +1508,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     let originalMessages = [user, assistant]
     store.setAIChatMessages(originalMessages)
 
-    let reply = await store.regenerateLastAIChatReply(draft: draft)
+    let reply = await store.aiStore.regenerateLastAIChatReply(draft: draft)
 
     XCTAssertNil(reply)
     XCTAssertEqual(store.aiChatMessages, originalMessages)
@@ -1825,11 +1565,11 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     store.setAIChatMessages(originalMessages)
     store.aiStore.cacheCurrentAIChatSessionForAIStore()
     let originalConversationID = try XCTUnwrap(
-      store.activeAIChatConversationID(for: firstDraft.id)
+      store.aiStore.activeAIChatConversationID(for: firstDraft.id)
     )
 
     let regeneration = Task {
-      await store.regenerateLastAIChatReply(draft: firstDraft)
+      await store.aiStore.regenerateLastAIChatReply(draft: firstDraft)
     }
     for _ in 0..<200 {
       if await transport.capturedRequestCount() > 0 {
@@ -1852,7 +1592,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(store.aiChatDraftID, secondDraft.id)
     XCTAssertEqual(store.aiChatMessages, currentMessages)
     let restoredConversation = try XCTUnwrap(
-      store.aiChatConversations(for: firstDraft.id)
+      store.aiStore.aiChatConversations(for: firstDraft.id)
         .first { $0.id == originalConversationID }
     )
     XCTAssertEqual(restoredConversation.messages, originalMessages)
@@ -1893,64 +1633,6 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     store.prepareAIChat(for: secondDraft)
 
     XCTAssertEqual(store.aiChatMessages.map(\.content), ["第二篇的问题"])
-  }
-
-  func testClearingAIChatClearsOnlyCurrentDraftSession() throws {
-    let persistenceURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-      .appendingPathExtension("json")
-    defer {
-      try? FileManager.default.removeItem(at: persistenceURL)
-    }
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL),
-      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
-    )
-    let firstDraft = try XCTUnwrap(store.selectedDraft)
-    let secondDraft = ArticleDraft(
-      siteProfileID: store.activeProfile.id,
-      title: "第二篇",
-      slug: "second"
-    )
-    let firstMessage = AIPublishingChatMessage(role: .user, content: "保留第一篇")
-    let secondMessage = AIPublishingChatMessage(role: .user, content: "清空第二篇")
-
-    store.prepareAIChat(for: firstDraft)
-    store.setAIChatMessages([firstMessage])
-    store.prepareAIChat(for: secondDraft)
-    store.setAIChatMessages([secondMessage])
-
-    store.clearAIChat()
-    XCTAssertTrue(store.aiChatMessages.isEmpty)
-    XCTAssertEqual(store.aiChatMessage, "AI 讨论已清空。")
-
-    store.prepareAIChat(for: firstDraft)
-    XCTAssertEqual(store.aiChatMessages.map(\.content), ["保留第一篇"])
-
-    store.prepareAIChat(for: secondDraft)
-    XCTAssertTrue(store.aiChatMessages.isEmpty)
-  }
-
-  func testDeletingAIChatMessageRemovesOnlySelectedRuntimeMessage() throws {
-    let fixture = TestWorkbenchFixture()
-    let store = fixture.store
-    let draft = try XCTUnwrap(store.selectedDraft)
-    let firstUser = AIPublishingChatMessage(role: .user, content: "保留的问题")
-    let assistant = AIPublishingChatMessage(role: .assistant, content: "要删除的回答")
-    let secondUser = AIPublishingChatMessage(role: .user, content: "后续问题")
-
-    store.prepareAIChat(for: draft)
-    store.setAIChatMessages([firstUser, assistant, secondUser])
-
-    store.deleteAIChatMessage(assistant.id, draft: draft)
-
-    XCTAssertEqual(store.aiChatMessages.map(\.content), ["保留的问题", "后续问题"])
-    XCTAssertEqual(store.aiChatMessage, "已删除 1 条 AI 消息。")
-
-    store.deleteAIChatMessage(assistant.id, draft: draft)
-
-    XCTAssertEqual(store.aiChatMessage, "找不到要删除的 AI 消息。")
-    XCTAssertEqual(store.aiChatMessages.map(\.content), ["保留的问题", "后续问题"])
   }
 
   func testStoreRestoresAIChatSettingsWhenSwitchingBackToDraft() throws {
@@ -1999,86 +1681,6 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(store.aiChatKnowledgePolicy, .off)
     XCTAssertEqual(store.aiChatModelGrade, .highQuality)
     XCTAssertEqual(store.aiChatSelectedModel, "second-note")
-  }
-
-  func testStoreRestoresFocusedAIChatParagraphWhenSwitchingDrafts() throws {
-    let persistenceURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-      .appendingPathExtension("json")
-    defer {
-      try? FileManager.default.removeItem(at: persistenceURL)
-    }
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL),
-      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
-    )
-    var firstDraft = try XCTUnwrap(store.selectedDraft)
-    firstDraft.bodyMarkdown = """
-      # 第一篇
-
-      第一篇的普通段落。
-
-      第一篇需要持续聚焦的段落，AI 应该围绕这里回答。
-      """
-    let secondDraft = ArticleDraft(
-      siteProfileID: store.activeProfile.id,
-      title: "第二篇",
-      slug: "second",
-      bodyMarkdown: """
-        # 第二篇
-
-        第二篇的上下文不应该继承第一篇的聚焦段落。
-        """
-    )
-    let firstParagraph = try XCTUnwrap(
-      AIPublishingChatDraftParagraphParser.extract(from: firstDraft.bodyMarkdown)
-        .first { $0.text.contains("持续聚焦") }
-    )
-
-    store.updateDraft(firstDraft)
-    store.prepareAIChat(for: firstDraft)
-    store.setAIChatFocusedParagraph(firstParagraph.id, draft: firstDraft)
-
-    store.prepareAIChat(for: secondDraft)
-
-    XCTAssertNil(store.aiChatFocusedParagraphID)
-    XCTAssertNil(store.focusedAIChatParagraph(for: secondDraft))
-
-    store.prepareAIChat(for: firstDraft)
-
-    XCTAssertEqual(store.aiChatFocusedParagraphID, firstParagraph.id)
-    XCTAssertEqual(store.focusedAIChatParagraph(for: firstDraft)?.title, firstParagraph.title)
-  }
-
-  func testClearingAIChatPreservesCurrentDraftSettings() throws {
-    let persistenceURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-      .appendingPathExtension("json")
-    defer {
-      try? FileManager.default.removeItem(at: persistenceURL)
-    }
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL),
-      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
-    )
-    let draft = try XCTUnwrap(store.selectedDraft)
-
-    store.prepareAIChat(for: draft)
-    store.setAIChatMessages([
-      AIPublishingChatMessage(role: .user, content: "准备清空")
-    ])
-    store.setAIChatContextMode(.general)
-    store.setAIChatKnowledgePolicy(.pinnedOnly)
-    store.setAIChatModelGradeState(.custom)
-    store.setAIChatSelectedModelState("kept-model")
-
-    store.clearAIChat()
-
-    XCTAssertTrue(store.aiChatMessages.isEmpty)
-    XCTAssertEqual(store.aiChatContextMode, .general)
-    XCTAssertEqual(store.aiChatKnowledgePolicy, .pinnedOnly)
-    XCTAssertEqual(store.aiChatModelGrade, .custom)
-    XCTAssertEqual(store.aiChatSelectedModel, "kept-model")
   }
 
   func testAIChatSessionStatePreparedTrimsCurrentConversation() {
@@ -2147,10 +1749,6 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       这个段落需要在重启后继续作为 AI 聚焦上下文。
       """
     store.updateDraft(draft)
-    let focusedParagraph = try XCTUnwrap(
-      AIPublishingChatDraftParagraphParser.extract(from: draft.bodyMarkdown)
-        .first { $0.text.contains("重启后继续") }
-    )
     let user = AIPublishingChatMessage(role: .user, content: "请检查这篇文章。")
     let assistant = AIPublishingChatMessage(
       role: .assistant,
@@ -2161,11 +1759,17 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
 
     store.prepareAIChat(for: draft)
     store.setAIChatMessages([user, assistant])
-    store.setAIChatConversationTitle("重启后继续的审稿会话", draft: draft)
+    store.aiStore.cacheCurrentAIChatSessionForAIStore()
+    XCTAssertTrue(
+      store.aiStore.renameAIChatConversation(
+        try XCTUnwrap(store.aiStore.activeAIChatConversationID(for: draft.id)),
+        title: "重启后继续的审稿会话"
+      )
+    )
     store.setAIChatContextMode(.general)
     store.setAIChatModelGradeState(.custom)
     store.setAIChatSelectedModelState("deepseek-v4-pro")
-    store.setAIChatFocusedParagraph(focusedParagraph.id, draft: draft)
+    store.aiStore.cacheCurrentAIChatSessionForAIStore()
     store.save()
     await store.waitForPendingSave()
 
@@ -2176,7 +1780,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     let reloadedDraft = try XCTUnwrap(reloaded.drafts.first { $0.id == draft.id })
     reloaded.prepareAIChat(for: reloadedDraft)
 
-    let conversation = try XCTUnwrap(reloaded.activeAIChatConversation)
+    let conversation = try XCTUnwrap(reloaded.aiStore.activeAIChatConversation())
     XCTAssertEqual(conversation.draftID, draft.id)
     XCTAssertEqual(reloaded.aiChatConversationTitle, "重启后继续的审稿会话")
     XCTAssertEqual(reloaded.aiChatMessages.map(\.id), [user.id, assistant.id])
@@ -2189,9 +1793,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(reloaded.aiChatContextMode, .general)
     XCTAssertEqual(reloaded.aiChatModelGrade, .custom)
     XCTAssertEqual(reloaded.aiChatSelectedModel, "deepseek-v4-pro")
-    XCTAssertEqual(reloaded.aiChatFocusedParagraphID, focusedParagraph.id)
     XCTAssertEqual(
-      reloaded.activeAIChatConversationID(for: draft.id),
+      reloaded.aiStore.activeAIChatConversationID(for: draft.id),
       conversation.id
     )
   }
@@ -2213,15 +1816,21 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       AIPublishingChatMessage(role: .user, content: "第一轮问题"),
       AIPublishingChatMessage(role: .assistant, content: "第一轮回答"),
     ])
-    store.setAIChatConversationTitle("临时对话", draft: draft)
+    store.aiStore.cacheCurrentAIChatSessionForAIStore()
+    XCTAssertTrue(
+      store.aiStore.renameAIChatConversation(
+        try XCTUnwrap(store.aiStore.activeAIChatConversationID(for: draft.id)),
+        title: "临时对话"
+      )
+    )
 
     let originalConversationID = try XCTUnwrap(
-      store.activeAIChatConversationID(for: draft.id)
+      store.aiStore.activeAIChatConversationID(for: draft.id)
     )
     let newConversation = try XCTUnwrap(
       store.startNewAIChatConversation(draft: draft)
     )
-    let conversations = store.aiChatConversations(for: draft.id)
+    let conversations = store.aiStore.aiChatConversations(for: draft.id)
     let original = try XCTUnwrap(
       conversations.first { $0.id == originalConversationID }
     )
@@ -2234,7 +1843,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(original.title, "临时对话")
     XCTAssertTrue(newConversation.messages.isEmpty)
     XCTAssertEqual(
-      store.activeAIChatConversationID(for: draft.id),
+      store.aiStore.activeAIChatConversationID(for: draft.id),
       newConversation.id
     )
     XCTAssertTrue(store.aiChatMessages.isEmpty)

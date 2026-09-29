@@ -64,7 +64,7 @@ Build the SwiftPM products and run the test suite:
 
 ```bash
 swift build
-swift test
+./script/run_swift_tests.sh
 ```
 
 Package the complete macOS app without launching it, or build and launch it:

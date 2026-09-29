@@ -23,6 +23,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   private let pathStore: WorkbenchDataRootPathStore?
   private let explicitRuntimePaths: WorkbenchRuntimePaths?
   private let sessionRecovery: WorkbenchSessionRecovery
+  private var applyWorkspaceRestore = WorkbenchLaunchPreparation.applyWorkspaceRestore
   private var dataRootSession: WorkbenchDataRootSession?
   private var didStart = false
   private var didStartReadyServices = false
@@ -44,7 +45,10 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     rssReaderFileURL: URL,
     managedAttachmentFileStore: ManagedAttachmentFileStore,
     workspaceBackupDirectoryURL: URL,
-    sessionRecovery: WorkbenchSessionRecovery? = nil
+    sessionRecovery: WorkbenchSessionRecovery? = nil,
+    applyWorkspaceRestore:
+      @escaping @Sendable (WorkbenchRuntimePaths) -> WorkspaceBackupRestoreStartupOutcome =
+      WorkbenchLaunchPreparation.applyWorkspaceRestore
   ) {
     self.init(
       pathStore: nil,
@@ -57,6 +61,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
       ),
       sessionRecovery: sessionRecovery
     )
+    self.applyWorkspaceRestore = applyWorkspaceRestore
   }
 
   private init(
@@ -496,49 +501,21 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   private func prepareRuntime(using paths: WorkbenchRuntimePaths) async {
     phase = .preparing(String(localized: "正在准备工作台…"))
     let safeMode = isSafeMode
+    let applyWorkspaceRestore = applyWorkspaceRestore
     let preparation = await Task.detached(priority: .utility) {
-      let workspaceRestoreOutcome: WorkspaceBackupRestoreStartupOutcome
-      let restoreOutcome: KnowledgeLibraryRestoreStartupOutcome
-      if safeMode {
-        // Safe mode must never install a pending restore. The package remains
-        // untouched for the next normal launch.
-        workspaceRestoreOutcome = .none
-        restoreOutcome = .none
-      } else {
-        workspaceRestoreOutcome = WorkspaceBackupService.applyPendingRestoreIfNeeded(
-          persistenceFileURL: paths.persistence.fileURL,
-          knowledgeRootURL: paths.knowledgeLibraryService.rootURL,
-          rssDatabaseURL: paths.rssReaderFileURL,
-          attachmentRootURL: paths.managedAttachmentFileStore.rootDirectoryURL
-        )
-        switch workspaceRestoreOutcome {
-        case .restored, .failed:
-          // A complete package already installed its validated knowledge copy,
-          // while a failed package restore must remain the only recovery path
-          // attempted during this launch.
-          restoreOutcome = .none
-        case .none:
-          restoreOutcome = KnowledgeLibraryService.applyPendingRestoreIfNeeded(
-            rootURL: paths.knowledgeLibraryService.rootURL
-          )
-        }
-      }
-
-      let snapshotSource: WorkbenchInitialSnapshotSource
-      do {
-        snapshotSource = .preloaded(try paths.persistence.loadWithRecovery())
-      } catch {
-        snapshotSource = .loadFailure(error.localizedDescription)
-      }
-      return WorkbenchLaunchPreparation(
-        workspaceRestoreOutcome: workspaceRestoreOutcome,
-        restoreOutcome: restoreOutcome,
-        snapshotSource: snapshotSource
+      WorkbenchLaunchPreparation.prepare(
+        paths: paths, safeMode: safeMode, applyWorkspaceRestore: applyWorkspaceRestore
       )
     }.value
 
     guard !Task.isCancelled else {
       didStart = false
+      return
+    }
+    guard case .ready(let preparation) = preparation else {
+      if case .blocked(let reason) = preparation {
+        showDataRootSetup(message: reason, severity: .error)
+      }
       return
     }
     // Pending restores may atomically replace the RSSReader directory. Open
@@ -785,49 +762,6 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
       FileManager.default.fileExists(atPath: layout.componentURL(for: component).path)
     }
   }
-}
-
-private struct WorkbenchRuntimePaths: Sendable {
-  let persistence: WorkbenchPersistence
-  let knowledgeLibraryService: KnowledgeLibraryService
-  let rssReaderFileURL: URL
-  let managedAttachmentFileStore: ManagedAttachmentFileStore
-  let workspaceBackupDirectoryURL: URL
-
-  init(
-    persistence: WorkbenchPersistence,
-    knowledgeLibraryService: KnowledgeLibraryService,
-    rssReaderFileURL: URL,
-    managedAttachmentFileStore: ManagedAttachmentFileStore,
-    workspaceBackupDirectoryURL: URL
-  ) {
-    self.persistence = persistence
-    self.knowledgeLibraryService = knowledgeLibraryService
-    self.rssReaderFileURL = rssReaderFileURL
-    self.managedAttachmentFileStore = managedAttachmentFileStore
-    self.workspaceBackupDirectoryURL = workspaceBackupDirectoryURL
-  }
-
-  init(layout: WorkbenchDataRootLayout) {
-    self.init(
-      persistence: WorkbenchPersistence(fileURL: layout.workbenchFileURL),
-      knowledgeLibraryService: KnowledgeLibraryService(rootURL: layout.knowledgeLibraryURL),
-      rssReaderFileURL: layout.rssReaderDatabaseURL,
-      managedAttachmentFileStore: ManagedAttachmentFileStore(
-        rootDirectoryURL: layout.managedAttachmentsURL
-      ),
-      workspaceBackupDirectoryURL: layout.rootURL.appendingPathComponent(
-        WorkspaceBackupService.automaticBackupDirectoryName,
-        isDirectory: true
-      )
-    )
-  }
-}
-
-private struct WorkbenchLaunchPreparation: Sendable {
-  let workspaceRestoreOutcome: WorkspaceBackupRestoreStartupOutcome
-  let restoreOutcome: KnowledgeLibraryRestoreStartupOutcome
-  let snapshotSource: WorkbenchInitialSnapshotSource
 }
 
 struct WorkbenchLaunchRootView: View {

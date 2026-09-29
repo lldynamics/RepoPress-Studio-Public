@@ -2,21 +2,26 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class SettingsSearchAndSavePresentationTests: XCTestCase {
-  func testSearchMatchesPageTitlesAndDetailedKeywords() {
-    XCTAssertTrue(SettingsTab.defaultRules.matchesSearch("Front Matter"))
-    XCTAssertTrue(SettingsTab.token.matchesSearch("GitHub"))
-    XCTAssertTrue(SettingsTab.ai.matchesSearch("授权"))
-    XCTAssertTrue(SettingsTab.editor.matchesSearch("拼写"))
-    XCTAssertTrue(SettingsTab.editor.matchesSearch("正文分析"))
-    XCTAssertTrue(SettingsTab.rss.matchesSearch("OPML"))
-    XCTAssertTrue(SettingsTab.rss.matchesSearch("远程图片"))
-    XCTAssertTrue(SettingsTab.rss.matchesSearch("自动翻译"))
-    XCTAssertTrue(SettingsTab.dataManagement.matchesSearch("迁移"))
-    XCTAssertFalse(SettingsTab.appearance.matchesSearch("仓库权限"))
+  func testSearchIndexMatchesDetailedKeywordsInTheirOwningTab() {
+    let expectations: [(String, SettingsTab)] = [
+      ("Front Matter", .defaultRules),
+      ("GitHub", .token),
+      ("拼写", .editor),
+      ("OPML", .rss),
+      ("远程图片", .rss),
+      ("自动翻译", .rss),
+      ("迁移", .dataManagement),
+    ]
+    for (query, tab) in expectations {
+      XCTAssertTrue(
+        SettingsSearchIndex.search(query: query).contains { $0.tab == tab },
+        "\(query) should reach \(tab)"
+      )
+    }
   }
 
-  func testBlankSearchKeepsEverySettingsTabVisible() {
-    XCTAssertTrue(SettingsTab.allCases.allSatisfy { $0.matchesSearch("  ") })
+  func testBlankSearchReturnsNoIndexedResults() {
+    XCTAssertTrue(SettingsSearchIndex.search(query: "  ").isEmpty)
   }
 
   @MainActor

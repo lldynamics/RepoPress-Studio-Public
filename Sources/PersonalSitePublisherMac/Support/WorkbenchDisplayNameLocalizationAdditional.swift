@@ -179,17 +179,6 @@ extension ImageCoverPublishState {
   var fallbackDisplayName: String { displayName }
 }
 
-extension LocalGitPublishMode {
-  var workbenchDisplayNameSemanticKey: String {
-    switch self {
-    case .directCommit: "display.local-git-publish-mode.direct-commit"
-    case .reviewBranch: "display.local-git-publish-mode.review-branch"
-    }
-  }
-
-  var fallbackDisplayName: String { displayName }
-}
-
 extension PrivacyProtectionEventKind {
   var workbenchDisplayNameSemanticKey: String {
     switch self {

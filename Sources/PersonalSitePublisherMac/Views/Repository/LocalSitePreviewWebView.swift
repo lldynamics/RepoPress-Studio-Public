@@ -13,13 +13,14 @@ enum LocalSitePreviewNavigationPolicy {
 
   static func isAllowedLoopbackURL(_ url: URL, matching previewURL: URL) -> Bool {
     guard let candidate = URLComponents(url: url, resolvingAgainstBaseURL: false),
-          candidate.scheme == "http",
-          candidate.user == nil,
-          candidate.password == nil,
-          let host = candidate.host?.lowercased(),
-          ["127.0.0.1", "localhost", "::1"].contains(host),
-          let expectedPort = previewURL.port,
-          (candidate.port ?? 80) == expectedPort else {
+      candidate.scheme == "http",
+      candidate.user == nil,
+      candidate.password == nil,
+      let host = candidate.host?.lowercased(),
+      ["127.0.0.1", "localhost", "::1"].contains(host),
+      let expectedPort = previewURL.port,
+      (candidate.port ?? 80) == expectedPort
+    else {
       return false
     }
     return true
@@ -29,7 +30,8 @@ enum LocalSitePreviewNavigationPolicy {
 struct LocalSitePreviewWebView: NSViewRepresentable {
   let url: URL
   let reloadToken: UInt64
-  let onNavigationError: (String) -> Void
+  let isServerReachable: Bool
+  let onNavigationError: (String?) -> Void
 
   struct TeardownState: Equatable, Sendable {
     fileprivate(set) var didStopLoading = false
@@ -106,12 +108,45 @@ struct LocalSitePreviewWebView: NSViewRepresentable {
     var lastLoadedURL: URL?
     var lastReloadToken: UInt64?
     var previewURL: URL?
-    let onNavigationError: (String) -> Void
+    private var wasServerReachable = false
+    let onNavigationError: (String?) -> Void
 
-    init(previewURL: URL, onNavigationError: @escaping (String) -> Void) {
+    init(previewURL: URL, onNavigationError: @escaping (String?) -> Void) {
       self.previewURL = previewURL
       self.onNavigationError = onNavigationError
       super.init()
+    }
+
+    func requestURL(
+      for url: URL,
+      currentURL: URL?,
+      reloadToken: UInt64,
+      isServerReachable: Bool
+    ) -> URL? {
+      if previewURL != url {
+        previewURL = url
+        lastLoadedURL = nil
+        lastReloadToken = nil
+        wasServerReachable = false
+      }
+      let reloadRequested = lastReloadToken.map { $0 != reloadToken } ?? false
+      let becameReachable = isServerReachable && !wasServerReachable
+      wasServerReachable = isServerReachable
+      lastReloadToken = reloadToken
+      // A launched process may not be listening yet. Wait for the startup probe,
+      // but allow refresh requests even if that probe has timed out. The first
+      // ready transition must retry any request made before the server listened.
+      guard isServerReachable || reloadRequested else { return nil }
+      let needsInitialLoad = lastLoadedURL != url
+      guard needsInitialLoad || reloadRequested || becameReachable else { return nil }
+      lastLoadedURL = url
+      if !needsInitialLoad, let currentURL,
+        LocalSitePreviewNavigationPolicy.isAllowedLoopbackURL(currentURL, matching: url)
+      {
+        return currentURL
+      }
+      // WKWebView.reload() can do nothing after a failed initial navigation.
+      return url
     }
 
     func webView(
@@ -143,7 +178,7 @@ struct LocalSitePreviewWebView: NSViewRepresentable {
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-      onNavigationError(error.localizedDescription)
+      reportNavigationFailure(error)
     }
 
     func webView(
@@ -151,6 +186,25 @@ struct LocalSitePreviewWebView: NSViewRepresentable {
       didFailProvisionalNavigation navigation: WKNavigation!,
       withError error: Error
     ) {
+      reportNavigationFailure(error)
+    }
+
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+      guard previewURL != nil else { return }
+      onNavigationError(nil)
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+      guard previewURL != nil else { return }
+      onNavigationError(nil)
+    }
+
+    func reportNavigationFailure(_ error: Error) {
+      guard previewURL != nil else { return }
+      let failure = error as NSError
+      guard failure.domain != NSURLErrorDomain || failure.code != NSURLErrorCancelled else {
+        return
+      }
       onNavigationError(error.localizedDescription)
     }
 
@@ -158,6 +212,7 @@ struct LocalSitePreviewWebView: NSViewRepresentable {
       lastLoadedURL = nil
       lastReloadToken = nil
       previewURL = nil
+      wasServerReachable = false
     }
   }
 
@@ -183,15 +238,14 @@ struct LocalSitePreviewWebView: NSViewRepresentable {
   }
 
   func updateNSView(_ nsView: WKWebView, context: Context) {
-    context.coordinator.previewURL = url
-    if context.coordinator.lastLoadedURL != url {
-      context.coordinator.lastLoadedURL = url
-      context.coordinator.lastReloadToken = reloadToken
-      nsView.load(URLRequest(url: url))
-      return
-    }
-    guard context.coordinator.lastReloadToken != reloadToken else { return }
-    context.coordinator.lastReloadToken = reloadToken
-    nsView.reload()
+    guard
+      let requestURL = context.coordinator.requestURL(
+        for: url,
+        currentURL: nsView.url,
+        reloadToken: reloadToken,
+        isServerReachable: isServerReachable
+      )
+    else { return }
+    nsView.load(URLRequest(url: requestURL))
   }
 }

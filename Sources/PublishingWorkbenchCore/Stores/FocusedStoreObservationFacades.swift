@@ -247,7 +247,7 @@ public final class KnowledgeLibraryHealthFeatureFacade: ObservableObject {
   }
 }
 
-/// Observation boundary for the toolbar preview control. Draft edits,
+/// Observation boundary for preview controls and the shared preview window. Draft edits,
 /// repository scans, AI streaming and deployment polling do not redraw it.
 @MainActor
 public final class WorkbenchLocalSitePreviewFeatureFacade: ObservableObject {
@@ -257,6 +257,7 @@ public final class WorkbenchLocalSitePreviewFeatureFacade: ObservableObject {
   public init(store: WorkbenchStore) {
     self.store = store
     observe(store.publishingStore.$activeProfileID)
+    observe(store.publishingStore.$selectedDraftID.removeDuplicates())
     observe(store.publishingStore.publishSession.$localSitePreviewPlan)
     observe(store.publishingStore.publishSession.$localSitePreviewRuntimeStatus)
     observe(store.publishingStore.publishSession.$localSitePreviewRefreshToken)
@@ -268,6 +269,10 @@ public final class WorkbenchLocalSitePreviewFeatureFacade: ObservableObject {
 
   public var plan: LocalSitePreviewPlan? {
     store.localSitePreviewPlan
+  }
+
+  public var selectedDraftID: UUID? {
+    store.selectedDraftID
   }
 
   public var runtimeStatus: LocalSitePreviewRuntimeStatus {

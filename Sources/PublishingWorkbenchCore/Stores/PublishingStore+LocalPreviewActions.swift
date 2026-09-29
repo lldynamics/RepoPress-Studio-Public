@@ -64,9 +64,24 @@ extension PublishingStore {
     {
       return
     }
+    // A background refresh must not replace a pending confirmation merely
+    // because the default port is busy. Revalidate all execution inputs while
+    // retaining this site's previous port if the allocator finds it available.
+    let preferredPort: Int?
+    if let currentPlan = localSitePreviewPlan,
+      currentPlan.executionIdentity?.profileID == profile.id,
+      let profileRootPath,
+      currentPlanRootPath == profileRootPath,
+      currentPlan.siteKind == expectedSiteKind
+    {
+      preferredPort = currentPlan.port
+    } else {
+      preferredPort = nil
+    }
     let updatedPlan = localSitePreviewService.plan(
       profile: profile,
-      repositoryReport: repositoryReport
+      repositoryReport: repositoryReport,
+      preferredPort: preferredPort
     )
     guard updatedPlan != localSitePreviewPlan else { return }
 

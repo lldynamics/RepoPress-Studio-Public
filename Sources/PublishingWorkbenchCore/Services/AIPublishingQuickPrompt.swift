@@ -195,10 +195,6 @@ public enum AIPublishingQuickPrompt: String, CaseIterable, Identifiable, Sendabl
     sections(for: primaryPrompts)
   }
 
-  public static var morePromptSections: [AIPublishingQuickPromptSection] {
-    sections(for: morePrompts)
-  }
-
   public static var capabilitySections: [AIPublishingQuickPromptSection] {
     sections(for: allCases)
   }
@@ -538,30 +534,5 @@ public enum AIPublishingQuickPrompt: String, CaseIterable, Identifiable, Sendabl
     case .commentReply:
       return "请基于当前文章帮我起草读者评论回复。如果我还没有提供评论内容，请先询问要回复哪条评论；如果已提供评论，请保持礼貌、具体、不过度承诺。"
     }
-  }
-}
-
-public struct AIPublishingDashboardPromptSummary: Equatable, Sendable {
-  public var prompts: [AIPublishingQuickPrompt]
-  public var summaryText: String
-
-  public var promptCount: Int {
-    prompts.count
-  }
-
-  public init(prompts: [AIPublishingQuickPrompt], summaryText: String) {
-    self.prompts = prompts
-    self.summaryText = summaryText
-  }
-}
-
-public enum AIPublishingDashboardPromptService {
-  public static func summary(
-    prompts: [AIPublishingQuickPrompt] = AIPublishingQuickPrompt.writingDashboardPrompts
-  ) -> AIPublishingDashboardPromptSummary {
-    AIPublishingDashboardPromptSummary(
-      prompts: prompts,
-      summaryText: prompts.map(\.displayName).joined(separator: " · ")
-    )
   }
 }

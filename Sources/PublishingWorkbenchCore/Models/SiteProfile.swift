@@ -169,7 +169,7 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     var profile = SiteProfile(
       id: defaultProfileID,
       name: "个人网站",
-      defaultAuthor: "Jinfang",
+      defaultAuthor: "",
       defaultTags: ["写作", "工程"],
       defaultCategories: ["Blog"]
     )

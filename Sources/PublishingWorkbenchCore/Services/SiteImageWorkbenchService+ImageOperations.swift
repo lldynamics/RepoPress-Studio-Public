@@ -197,8 +197,6 @@ extension SiteImageWorkbenchService {
     cancellationToken: ImageProcessingCancellationToken? = nil,
     includedAttachmentIDs: Set<UUID>? = nil
   ) throws -> ImageOptimizationResult {
-    try fileManager.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
-
     var updatedDraft = draft
     var optimizedCount = 0
     var skippedCount = 0
@@ -255,6 +253,7 @@ extension SiteImageWorkbenchService {
         continue
       }
 
+      try fileManager.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
       try? fileManager.removeItem(at: optimizedURL)
       try optimizedData.write(to: optimizedURL, options: .atomic)
       if cancellationToken?.isCancelled == true {

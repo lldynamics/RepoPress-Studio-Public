@@ -1,34 +1,6 @@
 import Foundation
 
 extension PublishingStore {
-  @discardableResult
-  public func importRemoteChangedArticleDraftsFromRepository(store: WorkbenchStore)
-    async -> LocalContentImportMergeSummary
-  {
-    await importRemoteChangedArticleDraftsFromRepositoryOperation(store: store).summary
-  }
-
-  func importRemoteChangedArticleDraftsFromRepositoryOperation(
-    store: WorkbenchStore
-  ) async -> LocalContentImportOperationResult {
-    let paths = (store.repositoryReport?.remoteChangedFiles ?? [])
-      .map(\.displayPath)
-    return await importRemoteArticleDraftsFromRepositoryOperation(
-      repositoryPaths: paths,
-      store: store
-    )
-  }
-
-  @discardableResult
-  public func importRemoteArticleDraftsFromRepository(
-    repositoryPaths: [String],
-    store: WorkbenchStore
-  ) async -> LocalContentImportMergeSummary {
-    await importRemoteArticleDraftsFromRepositoryOperation(
-      repositoryPaths: repositoryPaths,
-      store: store
-    ).summary
-  }
 
   func importRemoteArticleDraftsFromRepositoryOperation(
     repositoryPaths: [String],
@@ -96,83 +68,6 @@ extension PublishingStore {
     let outcome: WorkbenchOperationLogOutcome
     if !result.skippedPaths.isEmpty || !result.issues.isEmpty {
       outcome = summary.changedCount == 0 ? .failed : .partial
-    } else {
-      outcome = mergedOperation.outcome
-    }
-    return LocalContentImportOperationResult(summary: summary, outcome: outcome)
-  }
-
-  @discardableResult
-  public func importRemoteDraftFromRepository(
-    repositoryPath: String,
-    store: WorkbenchStore
-  ) async -> LocalContentImportMergeSummary {
-    await importRemoteDraftFromRepositoryOperation(
-      repositoryPath: repositoryPath,
-      store: store
-    ).summary
-  }
-
-  func importRemoteDraftFromRepositoryOperation(
-    repositoryPath: String,
-    store: WorkbenchStore
-  ) async -> LocalContentImportOperationResult {
-    store.flushDraftBodyEditorBuffers()
-    let profile = store.activeProfile
-    let normalizedPath = repositoryPath.normalizedRelativePath()
-    let snapshot = await store.repositoryStore.remoteFileSnapshotAsync(
-      profile: profile,
-      repositoryPath: normalizedPath
-    )
-    guard !Task.isCancelled else {
-      setPublishActionMessage("已取消导入远端文章。", status: .warning)
-      return .empty(outcome: .cancelled)
-    }
-    guard store.activeProfileID == profile.id else {
-      setPublishActionMessage("当前站点已变化，未导入原站点远端文章。", status: .warning)
-      return .empty(outcome: .cancelled)
-    }
-    guard let result = await remoteContentImportResultAsync(
-      paths: [normalizedPath],
-      snapshots: snapshot.map { [$0] } ?? [],
-      profile: profile
-    ) else {
-      setPublishActionMessage("已取消导入远端文章。", status: .warning)
-      return .empty(outcome: .cancelled)
-    }
-    let mergedOperation = mergeImportedDraftsOperation(result, store: store)
-    let mergedSummary = mergedOperation.summary
-    let summary = LocalContentImportMergeSummary(
-      insertedCount: mergedSummary.insertedCount,
-      updatedCount: mergedSummary.updatedCount,
-      skippedCount: mergedSummary.skippedCount + result.skippedPaths.count
-    )
-    if let imported = drafts.first(where: {
-      $0.belongs(toSiteProfileID: profile.id) && $0.repositoryPath == normalizedPath
-    }) {
-      selectedDraftID = imported.id
-      selectedSection = .writing
-    }
-    if let snapshot, summary.changedCount > 0, result.skippedPaths.isEmpty, result.issues.isEmpty {
-      setPublishActionMessage(
-        "已从 \(snapshot.refName) 导入远端文章 \(normalizedPath)。",
-        status: .success
-      )
-    } else if !result.skippedPaths.isEmpty || !result.issues.isEmpty {
-      let detail = result.issues.first?.message ?? "路径或内容未通过导入校验"
-      setPublishActionMessage(
-        "未能导入远端文章：\(normalizedPath)。已跳过候选文件。\(detail)",
-        status: .failure
-      )
-    } else {
-      setPublishActionMessage("未能导入远端文章：\(normalizedPath)。", status: .failure)
-    }
-    store.save()
-    let outcome: WorkbenchOperationLogOutcome
-    if !result.skippedPaths.isEmpty || !result.issues.isEmpty {
-      outcome = summary.changedCount == 0 ? .failed : .partial
-    } else if summary.changedCount == 0 {
-      outcome = .failed
     } else {
       outcome = mergedOperation.outcome
     }

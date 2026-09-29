@@ -5,6 +5,7 @@ import SwiftUI
 struct AIChatConnectionStatusCapsule: View {
   let ai: WorkbenchAIFeatureFacade
   @ObservedObject var chatState: WorkbenchAIChatFeatureFacade
+  @ObservedObject var codexConnection = CodexConnectionController.shared
   let draft: ArticleDraft?
   let open: () -> Void
 
@@ -89,12 +90,17 @@ struct AIChatConnectionStatusCapsule: View {
   }
 
   private var isReady: Bool {
-    AIChatConnectionStatusPresentation.readiness(
+    let apiReadiness = AIChatConnectionStatusPresentation.readiness(
       for: config,
       activeModel: (draft == nil && !isGeneralMode) ? nil : model,
       hasToken: hasToken,
       hasDraft: draft != nil || isGeneralMode
     ).isReady
+    return apiReadiness
+      && (!config.usesCodexAppServer
+        || (codexConnection.phase.isReady
+          && !codexConnection.isChecking
+          && !codexConnection.isPreparing))
   }
 
   private var hasToken: Bool {
@@ -109,7 +115,16 @@ struct AIChatConnectionStatusCapsule: View {
   }
 
   private var statusDetail: String {
-    AIChatConnectionStatusPresentation.readiness(
+    if config.usesCodexAppServer,
+      let presentation = AIChatCodexConnectionPresentation.configuration(
+        phase: codexConnection.phase,
+        progress: codexConnection.progress,
+        failure: codexConnection.failure
+      )
+    {
+      return presentation.detail
+    }
+    return AIChatConnectionStatusPresentation.readiness(
       for: config,
       activeModel: (draft == nil && !isGeneralMode) ? nil : model,
       hasToken: hasToken,

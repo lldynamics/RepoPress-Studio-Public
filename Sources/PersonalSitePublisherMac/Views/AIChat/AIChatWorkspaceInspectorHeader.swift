@@ -4,43 +4,6 @@ import SwiftUI
 
 extension AIChatContextInspectorView {
 
-  var connectionBlockerBanner: some View {
-    HStack(alignment: .center, spacing: 10) {
-      Image(
-        systemName: connectionReadiness == .missingAPIKey
-          ? "key.horizontal" : "exclamationmark.triangle"
-      )
-      .foregroundStyle(WorkbenchTheme.warning)
-
-      Text(connectionReadiness.title)
-        .font(.caption.weight(.semibold))
-
-      if AIChatConnectionBlockerPresentation.shouldShowDetail(
-        title: connectionReadiness.title,
-        detail: connectionReadiness.detail
-      ) {
-        Text(connectionReadiness.detail)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .lineLimit(2)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-
-      Spacer(minLength: 8)
-
-      Button(String(localized: "ai-assistant.configure")) {
-        openAICredentialsSettings()
-      }
-      .controlSize(.small)
-    }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 7)
-    .background(WorkbenchTheme.warning.opacity(WorkbenchOpacity.noticeBackground))
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel(connectionReadiness.title)
-    .accessibilityValue(connectionReadiness.detail)
-  }
-
   var connectionReadiness: AIChatConnectionReadiness {
     let config = currentAIProviderConfig
     let activeModel: String?
@@ -317,7 +280,7 @@ extension AIChatContextInspectorView {
       draftTitle: inspectorDraft?.title,
       explicitReferenceCount: selectedContextReferences.count,
       knowledgeTitle: localizedKnowledgePolicyTitle(knowledgePolicyBinding.wrappedValue),
-      agentTitle: localizedAgentModeTitle(agentModeBinding.wrappedValue)
+      agentTitle: ""
     )
 
     return VStack(alignment: .leading, spacing: 7) {
@@ -421,11 +384,6 @@ extension AIChatContextInspectorView {
 
     let knowledgeTitle = localizedKnowledgePolicyTitle(knowledgePolicyBinding.wrappedValue)
     items.append(("\(String(localized: "资料库")) · \(knowledgeTitle)", "books.vertical"))
-    items.append(
-      (
-        "Agent · \(localizedAgentModeTitle(agentModeBinding.wrappedValue))",
-        agentModeBinding.wrappedValue == .textOnly ? "text.bubble" : "sparkles"
-      ))
     return items
   }
 
@@ -466,14 +424,6 @@ extension AIChatContextInspectorView {
           Text(localizedKnowledgePolicyTitle(policy)).tag(policy)
         }
       }
-
-      Picker(String(localized: "对话能力"), selection: agentModeBinding) {
-        Text(localizedAgentModeTitle(.inheritConnection))
-          .tag(AIConversationAgentMode.inheritConnection)
-        Text(localizedAgentModeTitle(.textOnly))
-          .tag(AIConversationAgentMode.textOnly)
-      }
-      .disabled(isChatBusy || ai.conversationAgentMode(for: inspectorSurfaceConversationID) == nil)
 
       Divider()
 

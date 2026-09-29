@@ -63,7 +63,7 @@ extension ArticleDraft {
     }
   }
 
-  public static let currentSoftwareGuideSeedVersion = 9
+  public static let currentSoftwareGuideSeedVersion = 10
 
   public struct SoftwareGuideSynchronizationResult: Sendable {
     public let drafts: [ArticleDraft]
@@ -296,7 +296,7 @@ extension ArticleDraft {
         1. 已有网站时，在“站点”选择本地仓库，并确认站点类型、分支、文章目录和图片目录。
         2. 还没有网站时，选择“暂不配置站点”；以后准备好仓库后再连接站点。
         3. 回到“写作”，新建或导入文章，补全标题、摘要、slug、标签和分类。
-        4. 在“检查”修复阻断问题，然后打开顶部“发布状态”。
+        4. 在“站点 → 站点检查”修复阻断问题，然后打开顶部“发布状态”。
         5. 在“准备发布”面板审阅检查与差异，选择“保存到本地”或“发布所有变更”。
         6. 发布后到“发布记录”核对提交、PR/MR、自动化任务和部署结果。
 
@@ -330,7 +330,7 @@ extension ArticleDraft {
 
         ## 4. 处理提示再发布
 
-        编辑过程中可查看行内诊断、文章大纲和写作统计。完成后打开“检查”，先修复阻断问题，再决定保留草稿或标记为“待发布”。
+        编辑过程中可查看行内诊断、文章大纲和写作统计。完成后打开“站点 → 站点检查”，先修复阻断问题，再决定保留草稿或标记为“待发布”。
 
         RepoPress Studio 会自动保存工作台。重要改动可在版本历史中比较和恢复；误删文章先到回收站查找。
 
@@ -529,7 +529,7 @@ extension ArticleDraft {
         1. For an existing site, choose its local repository in Repository & Publish, then confirm the site type, branch, content path, and image path.
         2. Without a site, start with local drafts and connect a site after its repository is ready.
         3. Return to Writing, create or import an article, and complete its title, summary, slug, tags, and category.
-        4. Resolve blocking issues in Checks, then open Publishing Status.
+        4. Resolve blocking issues in Site › Site Checks, then open Publishing Status.
         5. Review checks and file differences, then choose Save Locally or Publish All Changes.
         6. Verify commits, pull or merge requests, automation, and deployment in Release History.
 
@@ -564,7 +564,7 @@ extension ArticleDraft {
 
         ## 4. Resolve feedback before release
 
-        Use inline diagnostics, the outline, and writing statistics. When ready, open Checks, fix blocking issues, and then keep the article as a draft or mark it Ready.
+        Use inline diagnostics, the outline, and writing statistics. When ready, open Site › Site Checks, fix blocking issues, and then keep the article as a draft or mark it Ready.
 
         RepoPress Studio autosaves the workbench. Compare and restore important revisions in version history, and check the recycle bin before treating an accidental deletion as permanent.
 

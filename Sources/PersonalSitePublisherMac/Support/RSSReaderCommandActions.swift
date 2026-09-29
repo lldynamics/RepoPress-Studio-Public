@@ -15,14 +15,3 @@ struct RSSReaderCommandActions {
   var addNote: () -> Void
   var editTags: () -> Void
 }
-
-private struct RSSReaderCommandActionsKey: FocusedValueKey {
-  typealias Value = RSSReaderCommandActions
-}
-
-extension FocusedValues {
-  var rssReaderCommandActions: RSSReaderCommandActions? {
-    get { self[RSSReaderCommandActionsKey.self] }
-    set { self[RSSReaderCommandActionsKey.self] = newValue }
-  }
-}

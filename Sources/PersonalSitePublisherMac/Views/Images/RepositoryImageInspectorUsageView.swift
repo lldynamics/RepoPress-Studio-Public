@@ -105,11 +105,14 @@ struct RepositoryImageInspectorUsageView: View {
           .font(.caption)
           .foregroundStyle(.secondary)
 
+        Text(String(localized: "Alt 文本"))
+          .font(.caption)
+          .accessibilityHidden(true)
         TextField(
           String(localized: "Alt 文本"),
           text: Binding(
             get: { selectedUsage.altText },
-            set: onEditAlt
+            set: { onEditAlt($0) }
           )
         )
         .textFieldStyle(.roundedBorder)
@@ -118,11 +121,14 @@ struct RepositoryImageInspectorUsageView: View {
         .accessibilityLabel(String(localized: "图片 Alt 文本"))
         .accessibilityIdentifier("repository-image-alt-text")
 
+        Text(String(localized: "Caption（可选）"))
+          .font(.caption)
+          .accessibilityHidden(true)
         TextField(
           String(localized: "Caption（可选）"),
           text: Binding(
             get: { selectedUsage.caption },
-            set: onEditCaption
+            set: { onEditCaption($0) }
           )
         )
         .textFieldStyle(.roundedBorder)
@@ -135,7 +141,7 @@ struct RepositoryImageInspectorUsageView: View {
           String(localized: "设为文章封面"),
           isOn: Binding(
             get: { selectedUsage.isCover },
-            set: onSetCover
+            set: { onSetCover($0) }
           )
         )
         .toggleStyle(.checkbox)
@@ -187,7 +193,7 @@ struct RepositoryImageInspectorUsageView: View {
           } label: {
             Label(String(localized: "加入当前文章"), systemImage: "plus.circle")
           }
-          .buttonStyle(.borderedProminent)
+          .workbenchProminentActionStyle()
           .disabled(isWorking)
           .help(isWorking ? String(localized: "正在批处理图片，暂时不能加入文章。") : "")
           .accessibilityIdentifier("repository-image-attach-target")

@@ -51,7 +51,7 @@
 | `docs/notes-icloud-sync-v2.md` | 跨 iOS/macOS 的 CloudKit 笔记同步记录格式、附件拆分与验收要求 |
 | `docs/workspace-backups.md` | Mac 工作区按类别备份、iCloud 状态与恢复预览说明 |
 | `docs/workspace-exchange.md` | iOS/macOS 草稿与附件单文件交换格式、导入边界及云盘同步限制 |
-| `docs/ai-chat-evolution-design.md` | 当前架构说明：AI 上下文、工具和授权边界 |
+| `docs/ai-chat-evolution-design.md` | 当前架构说明：写作任务、连接管理、授权边界与 Agent 历史 |
 | `docs/view-directory-structure.md` | 当前维护指南：视图领域与源码目录 |
 | `docs/ai-connection-setup.md` | 当前连接指南；末尾日期测试是历史证据 |
 | `docs/ai-writing-maintenance.md` | 当前使用指南；保留原验收范围 |

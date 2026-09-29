@@ -1,11 +1,13 @@
 import Foundation
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 @MainActor
 final class GeneralDraftLibraryServiceTests: XCTestCase {
   func testStoreCopiesArticleToAnotherPublishingSite() throws {
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     let source = try XCTUnwrap(store.selectedDraft)
     let targetProfile = store.createProfile(named: "项目网站")
 
@@ -133,5 +135,144 @@ final class ExternalDraftFolderSyncTests: XCTestCase {
       store.draft(for: imported.id)?.bodyMarkdown,
       "# Third\n\nConcurrent outside change\n"
     )
+  }
+}
+
+final class ExternalDraftScanBudgetTests: XCTestCase {
+  func testCumulativeBudgetAcceptsExactBoundaryAndRejectsExcess() throws {
+    let root = try temporaryDirectory()
+    try Data("abcd".utf8).write(to: root.appendingPathComponent("a.md"))
+    try Data("efgh".utf8).write(to: root.appendingPathComponent("b.md"))
+    let exact = ExternalDraftFolderService(limits: .init(totalSize: 8))
+    XCTAssertEqual(try exact.scan(rootURL: root).count, 2)
+
+    let smaller = ExternalDraftFolderService(limits: .init(totalSize: 7))
+    XCTAssertThrowsError(try smaller.scan(rootURL: root)) {
+      XCTAssertEqual($0 as? ExternalDraftFolderServiceError, .totalSizeExceeded)
+    }
+  }
+
+  func testDirectoryDepthIsBoundedEvenWithoutMarkdownFiles() throws {
+    let root = try temporaryDirectory()
+    try FileManager.default.createDirectory(
+      at: root.appendingPathComponent("first/second"), withIntermediateDirectories: true)
+    XCTAssertTrue(
+      try ExternalDraftFolderService(limits: .init(directoryDepth: 2))
+        .scan(rootURL: root).isEmpty)
+    XCTAssertThrowsError(
+      try ExternalDraftFolderService(limits: .init(directoryDepth: 1)).scan(rootURL: root)
+    ) {
+      XCTAssertEqual($0 as? ExternalDraftFolderServiceError, .directoryDepthExceeded)
+    }
+  }
+
+  func testEntryBudgetIncludesUnrelatedFiles() throws {
+    let root = try temporaryDirectory()
+    for index in 0..<3 {
+      try Data().write(to: root.appendingPathComponent("\(index).json"))
+    }
+    XCTAssertTrue(
+      try ExternalDraftFolderService(limits: .init(entryCount: 3))
+        .scan(rootURL: root).isEmpty)
+    XCTAssertThrowsError(
+      try ExternalDraftFolderService(limits: .init(entryCount: 2)).scan(rootURL: root)
+    ) {
+      XCTAssertEqual($0 as? ExternalDraftFolderServiceError, .entryCountExceeded)
+    }
+  }
+
+  func testFileAndFileCountLimitsRemainIndependent() throws {
+    let root = try temporaryDirectory()
+    try Data("abcd".utf8).write(to: root.appendingPathComponent("a.md"))
+    XCTAssertThrowsError(
+      try ExternalDraftFolderService(limits: .init(fileSize: 3)).scan(rootURL: root)
+    ) {
+      XCTAssertEqual($0 as? ExternalDraftFolderServiceError, .fileTooLarge(relativePath: "a.md"))
+    }
+    try Data().write(to: root.appendingPathComponent("b.md"))
+    XCTAssertThrowsError(
+      try ExternalDraftFolderService(limits: .init(fileCount: 1)).scan(rootURL: root)
+    ) {
+      XCTAssertEqual($0 as? ExternalDraftFolderServiceError, .fileCountExceeded)
+    }
+  }
+
+  func testFileGrowthAfterMetadataReadCannotExceedRemainingBudget() throws {
+    let root = try temporaryDirectory()
+    let file = root.appendingPathComponent("growing.md")
+    try Data("a".utf8).write(to: file)
+    var checks = 0
+    let scanner = ExternalDraftFolderService(limits: .init(totalSize: 4))
+    XCTAssertThrowsError(
+      try scanner.scan(rootURL: root) {
+        checks += 1
+        // Start, enumeration, then the cancellation boundary immediately before reading.
+        if checks == 3 { try Data("12345".utf8).write(to: file) }
+      }
+    ) {
+      XCTAssertEqual($0 as? ExternalDraftFolderServiceError, .totalSizeExceeded)
+    }
+  }
+
+  func testCancellationAfterAReadRejectsTheEntireScan() throws {
+    let root = try temporaryDirectory()
+    try Data("# Heading\nbody".utf8).write(to: root.appendingPathComponent("a.md"))
+    var checks = 0
+    XCTAssertThrowsError(
+      try ExternalDraftFolderService().scan(rootURL: root) {
+        checks += 1
+        if checks == 4 { throw CancellationError() }
+      }
+    ) {
+      XCTAssertTrue($0 is CancellationError)
+    }
+    XCTAssertEqual(checks, 4)
+  }
+
+  @MainActor
+  func testAsyncScanPropagatesParentCancellation() async throws {
+    let root = try temporaryDirectory()
+    try Data("body".utf8).write(to: root.appendingPathComponent("a.md"))
+    let task = Task {
+      withUnsafeCurrentTask { $0?.cancel() }
+      return try await ExternalDraftFolderService().scanAsync(rootURL: root)
+    }
+    do {
+      _ = try await task.value
+      XCTFail("Cancelled scan must not return a snapshot")
+    } catch {
+      XCTAssertTrue(error is CancellationError)
+    }
+  }
+
+  func testTitleScanPreservesFenceAndMixedLineEndingRules() throws {
+    let root = try temporaryDirectory()
+    let text = "\r\n```swift\r\n# Ignored\r\n```\r\nintro\u{2028}# Actual title ###\nbody"
+    try Data(text.utf8).write(to: root.appendingPathComponent("title.md"))
+    let file = try XCTUnwrap(ExternalDraftFolderService().scan(rootURL: root).first)
+    XCTAssertEqual(file.title, "Actual title")
+    XCTAssertEqual(file.markdown, text)
+  }
+
+  func testCancellationInterruptsLongPhysicalLineDuringTitleSearch() throws {
+    let root = try temporaryDirectory()
+    try Data(String(repeating: "a", count: 100_000).utf8)
+      .write(to: root.appendingPathComponent("long.md"))
+    var checks = 0
+    XCTAssertThrowsError(
+      try ExternalDraftFolderService().scan(rootURL: root) {
+        checks += 1
+        if checks == 8 { throw CancellationError() }
+      }
+    ) { XCTAssertTrue($0 is CancellationError) }
+    XCTAssertEqual(checks, 8)
+  }
+
+  private func temporaryDirectory() throws -> URL {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("external-scan-budget-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    addTeardownBlock { try FileManager.default.removeItem(at: root) }
+    return root
   }
 }

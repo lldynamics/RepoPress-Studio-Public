@@ -110,10 +110,10 @@ final class AIConversationRetentionPolicyTests: XCTestCase {
     }
 
     XCTAssertEqual(
-      store.aiChatConversations(for: draft.id).count,
+      store.aiStore.aiChatConversations(for: draft.id).count,
       AIConversationRetentionPolicy.maximumConversationsPerDraft
     )
-    XCTAssertNotNil(store.activeAIChatConversationID(for: draft.id))
+    XCTAssertNotNil(store.aiStore.activeAIChatConversationID(for: draft.id))
   }
 
   func testGeneralConversationsUseExplicitScopeAndAreNotFilteredByDraftIDs() {

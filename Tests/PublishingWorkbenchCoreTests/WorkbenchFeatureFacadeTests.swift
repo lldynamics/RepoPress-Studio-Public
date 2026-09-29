@@ -800,49 +800,6 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     withExtendedLifetime([rootCancellable, activityCancellable]) {}
   }
 
-  func testImageWorkbenchFacadeObservesOnlyItsSelectedDraftAIImageState() throws {
-    let store = makeIsolatedStore()
-    let imageWorkbench = store.imageWorkbench
-    let draftID = try XCTUnwrap(store.selectedDraft?.id)
-    let attachmentID = UUID()
-    let suggestion = AIPublishingImageTextSuggestion(
-      id: attachmentID.uuidString,
-      draftID: draftID,
-      attachmentID: attachmentID,
-      filename: "hero.png",
-      imagePath: "/images/hero.png",
-      altText: "Hero",
-      caption: "Caption",
-      reason: "Context"
-    )
-    var rootChanges = 0
-    var imageChanges = 0
-    let rootCancellable = store.objectWillChange.sink { rootChanges += 1 }
-    let imageCancellable = imageWorkbench.objectWillChange.sink { imageChanges += 1 }
-
-    store.setAITokenAvailability(KeychainTokenAvailability(hasToken: true))
-    let generation = store.aiStore.beginAIImageTextSuggestionOperation(for: draftID)
-    XCTAssertTrue(
-      store.aiStore.installAIImageTextSuggestions(
-        [suggestion],
-        for: draftID,
-        generation: generation
-      )
-    )
-
-    XCTAssertTrue(imageWorkbench.aiTokenAvailability.hasToken)
-    XCTAssertEqual(imageWorkbench.suggestionDraftID, draftID)
-    XCTAssertEqual(imageWorkbench.suggestions, [suggestion])
-    XCTAssertTrue(imageWorkbench.isGeneratingSuggestions)
-    XCTAssertEqual(rootChanges, 0)
-    XCTAssertGreaterThanOrEqual(imageChanges, 3)
-    store.aiStore.finishAIImageTextSuggestionOperation(
-      for: draftID,
-      generation: generation
-    )
-    withExtendedLifetime([rootCancellable, imageCancellable]) {}
-  }
-
   func testRepeatedBodyBufferTypingOnlyInvalidatesPublishingFacade() async throws {
     let persistenceURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("WorkbenchFeatureFacadeTests-\(UUID().uuidString).json")

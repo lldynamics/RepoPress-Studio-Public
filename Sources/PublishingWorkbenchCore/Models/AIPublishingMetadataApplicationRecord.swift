@@ -90,38 +90,3 @@ public struct AIPublishingMetadataApplicationRecord: Identifiable, Codable, Hash
     return values.joined(separator: ", ")
   }
 }
-
-public struct AIPublishingMetadataApplicationRollbackFailure: Codable, Hashable, Sendable {
-  public var recordID: UUID
-  public var draftTitle: String
-  public var message: String
-
-  public init(recordID: UUID, draftTitle: String, message: String) {
-    self.recordID = recordID
-    self.draftTitle = draftTitle
-    self.message = message
-  }
-}
-
-public struct AIPublishingMetadataApplicationBatchRollbackResult: Codable, Hashable, Sendable {
-  public var requestedCount: Int
-  public var restoredCount: Int
-  public var skippedCount: Int
-  public var failures: [AIPublishingMetadataApplicationRollbackFailure]
-
-  public init(
-    requestedCount: Int,
-    restoredCount: Int,
-    skippedCount: Int,
-    failures: [AIPublishingMetadataApplicationRollbackFailure]
-  ) {
-    self.requestedCount = requestedCount
-    self.restoredCount = restoredCount
-    self.skippedCount = skippedCount
-    self.failures = failures
-  }
-
-  public var failureCount: Int {
-    failures.count
-  }
-}

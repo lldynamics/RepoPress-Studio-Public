@@ -70,20 +70,110 @@ struct MarkdownEditorStatistics: Equatable, Sendable {
     with updatedRange: NSRange,
     in updatedText: String
   ) -> MarkdownEditorStatistics {
+    Self.apply(
+      self,
+      replacing: previousRange,
+      in: previousText,
+      with: updatedRange,
+      in: updatedText,
+      processingBudget: nil
+    ) ?? Self.make(for: updatedText)
+  }
+
+  /// Applies a local edit only when every scan needed to certify the delta fits
+  /// inside `maximumProcessedUTF16Count`. Returning `nil` asks the caller to
+  /// retain the last exact value until it can schedule a full-document scan.
+  ///
+  /// The budget charges both old/new word-boundary probes, the old/new word
+  /// contexts passed to the writing-statistics service, and both passes over
+  /// old/new edit fragments for line and whitespace counts. It is not a limit
+  /// on the edit range alone: one-character edits into a large unbroken token
+  /// must decline this path before scanning that token on the main actor.
+  func applyingBounded(
+    replacing previousRange: NSRange,
+    in previousText: String,
+    with updatedRange: NSRange,
+    in updatedText: String,
+    maximumProcessedUTF16Count: Int = Self.incrementalUTF16ProcessingBudget
+  ) -> MarkdownEditorStatistics? {
+    guard maximumProcessedUTF16Count >= 0 else { return nil }
+    return Self.apply(
+      self,
+      replacing: previousRange,
+      in: previousText,
+      with: updatedRange,
+      in: updatedText,
+      processingBudget: IncrementalProcessingBudget(
+        remainingUTF16Count: maximumProcessedUTF16Count
+      )
+    )
+  }
+
+  static let incrementalUTF16ProcessingBudget = 4_096
+
+  private static func apply(
+    _ statistics: MarkdownEditorStatistics,
+    replacing previousRange: NSRange,
+    in previousText: String,
+    with updatedRange: NSRange,
+    in updatedText: String,
+    processingBudget: IncrementalProcessingBudget?
+  ) -> MarkdownEditorStatistics? {
     let previous = previousText as NSString
     let updated = updatedText as NSString
     guard previousRange.location >= 0,
-          NSMaxRange(previousRange) <= previous.length,
-          updatedRange.location >= 0,
-          NSMaxRange(updatedRange) <= updated.length,
-          characterCount == previous.length else {
-      return Self.make(for: updatedText)
+      previousRange.length >= 0,
+      NSMaxRange(previousRange) <= previous.length,
+      updatedRange.location >= 0,
+      updatedRange.length >= 0,
+      NSMaxRange(updatedRange) <= updated.length,
+      statistics.characterCount == previous.length
+    else {
+      return nil
+    }
+
+    var budget = processingBudget
+    guard
+      let previousWordRange = Self.wordContextRange(
+        around: previousRange,
+        in: previous,
+        budget: &budget
+      ),
+      let updatedWordRange = Self.wordContextRange(
+        around: updatedRange,
+        in: updated,
+        budget: &budget
+      ),
+      Self.consume(
+        previousRange.length,
+        from: &budget
+      ),
+      Self.consume(
+        previousRange.length,
+        from: &budget
+      ),
+      Self.consume(
+        updatedRange.length,
+        from: &budget
+      ),
+      Self.consume(
+        updatedRange.length,
+        from: &budget
+      ),
+      Self.consume(
+        previousWordRange.length,
+        from: &budget
+      ),
+      Self.consume(
+        updatedWordRange.length,
+        from: &budget
+      )
+    else {
+      return nil
     }
 
     let removedText = previous.substring(with: previousRange)
     let insertedText = updated.substring(with: updatedRange)
-    let previousWordRange = Self.wordContextRange(around: previousRange, in: previous)
-    let updatedWordRange = Self.wordContextRange(around: updatedRange, in: updated)
     let previousWritingStatistics = MarkdownWritingStatisticsService.statistics(
       in: previous.substring(with: previousWordRange)
     )
@@ -92,21 +182,22 @@ struct MarkdownEditorStatistics: Equatable, Sendable {
     )
     let updatedHanCharacterCount = max(
       0,
-      hanCharacterCount - previousWritingStatistics.hanCharacterCount
+      statistics.hanCharacterCount - previousWritingStatistics.hanCharacterCount
         + updatedWritingStatistics.hanCharacterCount
     )
     let updatedWordCount = max(
       0,
-      wordCount - previousWritingStatistics.wordCount
+      statistics.wordCount - previousWritingStatistics.wordCount
         + updatedWritingStatistics.wordCount
     )
     let updatedLineBreakCount = max(
       0,
-      lineBreakCount - Self.lineBreakCount(in: removedText) + Self.lineBreakCount(in: insertedText)
+      statistics.lineBreakCount - Self.lineBreakCount(in: removedText)
+        + Self.lineBreakCount(in: insertedText)
     )
     let updatedNonWhitespaceCount = max(
       0,
-      nonWhitespaceCharacterCount
+      statistics.nonWhitespaceCharacterCount
         - Self.nonWhitespaceCharacterCount(in: removedText)
         + Self.nonWhitespaceCharacterCount(in: insertedText)
     )
@@ -125,6 +216,26 @@ struct MarkdownEditorStatistics: Equatable, Sendable {
     .union(.punctuationCharacters)
     .union(.symbols)
 
+  private struct IncrementalProcessingBudget {
+    var remainingUTF16Count: Int
+
+    mutating func consume(_ count: Int) -> Bool {
+      guard count >= 0, count <= remainingUTF16Count else { return false }
+      remainingUTF16Count -= count
+      return true
+    }
+  }
+
+  private static func consume(
+    _ count: Int,
+    from budget: inout IncrementalProcessingBudget?
+  ) -> Bool {
+    guard var currentBudget = budget else { return true }
+    guard currentBudget.consume(count) else { return false }
+    budget = currentBudget
+    return true
+  }
+
   private static func lineBreakCount(in text: String) -> Int {
     text.utf16.reduce(into: 0) { count, value in
       if value == 10 { count += 1 }
@@ -137,13 +248,21 @@ struct MarkdownEditorStatistics: Equatable, Sendable {
     }
   }
 
-  private static func wordContextRange(around range: NSRange, in text: NSString) -> NSRange {
+  private static func wordContextRange(
+    around range: NSRange,
+    in text: NSString,
+    budget: inout IncrementalProcessingBudget?
+  ) -> NSRange? {
     var start = min(max(range.location, 0), text.length)
     var end = min(max(NSMaxRange(range), start), text.length)
-    while start > 0, !isWordSeparator(text.character(at: start - 1)) {
+    while start > 0 {
+      guard consume(1, from: &budget) else { return nil }
+      guard !isWordSeparator(text.character(at: start - 1)) else { break }
       start -= 1
     }
-    while end < text.length, !isWordSeparator(text.character(at: end)) {
+    while end < text.length {
+      guard consume(1, from: &budget) else { return nil }
+      guard !isWordSeparator(text.character(at: end)) else { break }
       end += 1
     }
     return NSRange(location: start, length: end - start)

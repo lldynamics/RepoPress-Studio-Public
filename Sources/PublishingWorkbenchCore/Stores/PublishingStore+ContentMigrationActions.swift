@@ -11,24 +11,6 @@ private struct ContentMigrationCurrentDraftSnapshot: Sendable {
 }
 
 private struct ContentMigrationPlanReviewService: Sendable {
-  func refresh(
-    _ plan: ContentMigrationPlan,
-    currentDrafts: [ContentMigrationCurrentDraftSnapshot]
-  ) -> ContentMigrationPlan {
-    do {
-      return try refresh(
-        plan,
-        currentDrafts: currentDrafts,
-        cancellationCheck: {}
-      )
-    } catch {
-      // The compatibility path supplies an empty cancellation check, so the
-      // throwing implementation has no reachable error source. Preserve the
-      // reviewed plan instead of turning a violated invariant into a crash.
-      assertionFailure("Unexpected content migration review failure: \(error)")
-      return plan
-    }
-  }
 
   func refresh(
     _ plan: ContentMigrationPlan,
@@ -169,16 +151,6 @@ extension PublishingStore {
     return prepared
   }
 
-  public func refreshContentMigrationPlanReview(
-    _ plan: ContentMigrationPlan,
-    store: WorkbenchStore
-  ) -> ContentMigrationPlan {
-    ContentMigrationPlanReviewService().refresh(
-      plan,
-      currentDrafts: contentMigrationCurrentDraftSnapshots(store: store)
-    )
-  }
-
   public func refreshContentMigrationPlanReviewAsync(
     _ plan: ContentMigrationPlan,
     store: WorkbenchStore
@@ -210,45 +182,6 @@ extension PublishingStore {
         isBodyDirty: buffer.isDirty
       )
     }
-  }
-
-  @discardableResult
-  public func applyContentMigration(
-    _ plan: ContentMigrationPlan,
-    store: WorkbenchStore
-  ) throws -> LocalContentImportMergeSummary {
-    let refreshed = refreshContentMigrationPlanReview(plan, store: store)
-    let selectedDraftIDs = Set(
-      refreshed.reviewItems
-        .filter { $0.disposition.isSelectable }
-        .map(\.id)
-    )
-    return try applyReviewedContentMigration(
-      refreshed,
-      selectedDraftIDs: selectedDraftIDs,
-      store: store
-    )
-  }
-
-  @discardableResult
-  public func applyContentMigration(
-    _ plan: ContentMigrationPlan,
-    selectedDraftIDs: Set<UUID>,
-    store: WorkbenchStore
-  ) throws -> LocalContentImportMergeSummary {
-    guard plan.profileID == store.activeProfileID,
-      plan.profileConfiguration
-        == ContentMigrationProfileConfiguration(profile: store.activeProfile)
-    else {
-      throw ContentMigrationError.profileChanged
-    }
-    store.flushDraftBodyEditorBuffers()
-    let refreshed = refreshContentMigrationPlanReview(plan, store: store)
-    return try applyReviewedContentMigration(
-      refreshed,
-      selectedDraftIDs: selectedDraftIDs,
-      store: store
-    )
   }
 
   @discardableResult

@@ -78,23 +78,26 @@ extension SiteImageWorkbenchService {
   }
 
   func optimizedSVGText(_ text: String) -> String {
-    var optimized = text
-    optimized = optimized.replacingOccurrences(
+    guard !containsWhitespaceSensitiveSVGContent(text) else {
+      return text
+    }
+
+    let withoutComments = text.replacingOccurrences(
       of: #"(?s)<!--.*?-->"#,
       with: "",
       options: .regularExpression
     )
-    optimized = optimized.replacingOccurrences(
-      of: #">\s+<"#,
-      with: "><",
+    return withoutComments.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private func containsWhitespaceSensitiveSVGContent(_ text: String) -> Bool {
+    let pattern =
+      #"(?is)<\s*(?:[A-Za-z_][A-Za-z0-9_.-]*:)?"#
+      + #"(?:text|tspan|textPath|style|script|foreignObject)\b|\bxml:space\s*=|<!\[CDATA\["#
+    return text.range(
+      of: pattern,
       options: .regularExpression
-    )
-    optimized =
-      optimized
-      .split(separator: "\n", omittingEmptySubsequences: false)
-      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-      .joined(separator: "\n")
-    return optimized.trimmingCharacters(in: .whitespacesAndNewlines)
+    ) != nil
   }
 
   func humanizedFilename(_ filename: String) -> String {

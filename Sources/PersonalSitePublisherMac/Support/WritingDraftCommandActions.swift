@@ -12,14 +12,3 @@ struct WritingDraftCommandActions {
   var selectPreviousDraft: () -> Void
   var selectNextDraft: () -> Void
 }
-
-private struct WritingDraftCommandActionsKey: FocusedValueKey {
-  typealias Value = WritingDraftCommandActions
-}
-
-extension FocusedValues {
-  var writingDraftCommandActions: WritingDraftCommandActions? {
-    get { self[WritingDraftCommandActionsKey.self] }
-    set { self[WritingDraftCommandActionsKey.self] = newValue }
-  }
-}

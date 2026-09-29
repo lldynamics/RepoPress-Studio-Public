@@ -306,6 +306,7 @@ public struct CodexAppServerDeviceCodeLoginResult: Codable, Equatable, Sendable 
 }
 
 public enum CodexAppServerRuntimeSource: String, Codable, Equatable, Sendable {
+  case managed
   case homebrew
   case path
 }

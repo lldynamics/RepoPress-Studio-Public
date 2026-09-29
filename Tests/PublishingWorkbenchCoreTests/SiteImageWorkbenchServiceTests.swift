@@ -293,232 +293,6 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     XCTAssertTrue(result.draft.bodyMarkdown.contains("![](/images/2026/excluded-image.jpg)"))
   }
 
-  func testImageTextTargetsIncludeImagesMissingAltOrCaption() {
-    let profile = SiteProfile.defaultProfile
-    let missing = DraftAttachment(
-      originalFilename: "workflow.png",
-      relativePublishPath: "/images/2026/workflow.png",
-      repositoryPath: "static/images/2026/workflow.png",
-      altText: "",
-      caption: ""
-    )
-    let complete = DraftAttachment(
-      originalFilename: "complete.png",
-      relativePublishPath: "/images/2026/complete.png",
-      repositoryPath: "static/images/2026/complete.png",
-      altText: "Complete",
-      caption: "Complete"
-    )
-    let draft = ArticleDraft(
-      siteProfileID: profile.id,
-      title: "Image AI",
-      slug: "image-ai",
-      summary: "Use AI to improve image text.",
-      coverAttachmentID: missing.id,
-      bodyMarkdown: """
-        ![](/images/2026/workflow.png)
-        ![Complete](/images/2026/complete.png)
-        """,
-      attachments: [missing, complete]
-    )
-
-    let service = SiteImageWorkbenchService()
-    let targets = service.imageTextTargets(draft: draft, profile: profile)
-
-    XCTAssertEqual(targets.count, 1)
-    XCTAssertEqual(targets[0].attachmentID, missing.id)
-    XCTAssertEqual(targets[0].id, missing.id.uuidString)
-    XCTAssertEqual(targets[0].draftTitle, "Image AI")
-    XCTAssertEqual(targets[0].markdownPath, profile.markdownPath(for: draft))
-    XCTAssertEqual(targets[0].imagePath, "/images/2026/workflow.png")
-    XCTAssertTrue(targets[0].isCover)
-    XCTAssertTrue(targets[0].isReferencedInMarkdown)
-  }
-
-  func testAIImageTextGenerationAvailabilityMatchesMobileWorkbenchStates() {
-    let remoteConfig = AIProviderConfig(requiresAPIKey: true)
-    let localConfig = AIProviderConfig(
-      preset: .local,
-      baseURL: "http://127.0.0.1:11434/v1",
-      model: "local-model",
-      requiresAPIKey: false
-    )
-
-    XCTAssertEqual(
-      AIImageTextGenerationAvailabilityService.presentation(
-        targetCount: 2,
-        isGenerating: false,
-        aiProviderConfig: remoteConfig,
-        aiTokenAvailability: KeychainTokenAvailability(hasToken: true)
-      ),
-      AIImageTextGenerationAvailabilityPresentation(isEnabled: true)
-    )
-    XCTAssertEqual(
-      AIImageTextGenerationAvailabilityService.presentation(
-        targetCount: 0,
-        isGenerating: false,
-        aiProviderConfig: remoteConfig,
-        aiTokenAvailability: KeychainTokenAvailability(hasToken: true)
-      ),
-      AIImageTextGenerationAvailabilityPresentation(
-        isEnabled: false,
-        unavailableReason: "当前文章没有缺少 alt/caption 的图片"
-      )
-    )
-    XCTAssertEqual(
-      AIImageTextGenerationAvailabilityService.presentation(
-        targetCount: 1,
-        isGenerating: true,
-        aiProviderConfig: remoteConfig,
-        aiTokenAvailability: KeychainTokenAvailability(hasToken: true)
-      ),
-      AIImageTextGenerationAvailabilityPresentation(
-        isEnabled: false,
-        unavailableReason: "AI 正在生成图片文案"
-      )
-    )
-    XCTAssertEqual(
-      AIImageTextGenerationAvailabilityService.presentation(
-        targetCount: 1,
-        isGenerating: false,
-        aiProviderConfig: remoteConfig,
-        aiTokenAvailability: KeychainTokenAvailability(hasToken: false)
-      ),
-      AIImageTextGenerationAvailabilityPresentation(
-        isEnabled: false,
-        unavailableReason: "需要先启用 AI"
-      )
-    )
-    XCTAssertEqual(
-      AIImageTextGenerationAvailabilityService.presentation(
-        targetCount: 1,
-        isGenerating: false,
-        aiProviderConfig: localConfig,
-        aiTokenAvailability: KeychainTokenAvailability(hasToken: false)
-      ),
-      AIImageTextGenerationAvailabilityPresentation(isEnabled: true)
-    )
-  }
-
-  func testApplyImageTextSuggestionsFillsMissingFieldsAndMarkdownAlt() {
-    let profile = SiteProfile.defaultProfile
-    let attachment = DraftAttachment(
-      originalFilename: "workflow.png",
-      relativePublishPath: "/images/2026/workflow.png",
-      repositoryPath: "static/images/2026/workflow.png",
-      altText: "",
-      caption: ""
-    )
-    let draft = ArticleDraft(
-      siteProfileID: profile.id,
-      title: "Apply AI Image Text",
-      slug: "apply-ai-image-text",
-      bodyMarkdown: "![](/images/2026/workflow.png)",
-      attachments: [attachment]
-    )
-    let suggestion = AIPublishingImageTextSuggestion(
-      id: attachment.id.uuidString,
-      draftID: draft.id,
-      attachmentID: attachment.id,
-      filename: "workflow.png",
-      imagePath: "/images/2026/workflow.png",
-      altText: "用于说明图片发布工作流的截图",
-      caption: "图片工作台检查发布前图片字段。",
-      reason: "基于文章上下文生成。"
-    )
-
-    let result = SiteImageWorkbenchService().applyImageTextSuggestions([suggestion], to: draft)
-
-    XCTAssertEqual(result.appliedAltTextCount, 1)
-    XCTAssertEqual(result.appliedCaptionCount, 1)
-    XCTAssertEqual(result.updatedMarkdownReferenceCount, 1)
-    XCTAssertEqual(result.changedCount, 3)
-    XCTAssertEqual(result.draft.attachments[0].altText, "用于说明图片发布工作流的截图")
-    XCTAssertEqual(result.draft.attachments[0].caption, "图片工作台检查发布前图片字段。")
-    XCTAssertEqual(result.draft.bodyMarkdown, "![用于说明图片发布工作流的截图](/images/2026/workflow.png)")
-  }
-
-  func testApplyImageTextSuggestionsEscapesAltPreservesTitlesAndOnlyFillsEmptyRefs() {
-    let profile = SiteProfile.defaultProfile
-    let attachment = DraftAttachment(
-      originalFilename: "workflow.png",
-      relativePublishPath: "/images/2026/workflow.png",
-      repositoryPath: "static/images/2026/workflow.png",
-      altText: "",
-      caption: ""
-    )
-    let draft = ArticleDraft(
-      siteProfileID: profile.id,
-      title: "Escaped AI image text",
-      slug: "escaped-ai-image-text",
-      bodyMarkdown: """
-        ![](/images/2026/workflow.png "first")
-        ![Keep this](/images/2026/workflow.png "existing")
-        ![](/images/2026/workflow.png)
-        """,
-      attachments: [attachment]
-    )
-    let suggestion = AIPublishingImageTextSuggestion(
-      id: attachment.id.uuidString,
-      draftID: draft.id,
-      attachmentID: attachment.id,
-      filename: "workflow.png",
-      imagePath: "/images/2026/workflow.png",
-      altText: #"AI \path [wide]"#,
-      caption: "AI caption",
-      reason: ""
-    )
-
-    let result = SiteImageWorkbenchService().applyImageTextSuggestions([suggestion], to: draft)
-
-    XCTAssertEqual(result.appliedAltTextCount, 1)
-    XCTAssertEqual(result.updatedMarkdownReferenceCount, 2)
-    XCTAssertEqual(
-      result.draft.bodyMarkdown,
-      #"""
-      ![AI \\path \[wide\]](/images/2026/workflow.png "first")
-      ![Keep this](/images/2026/workflow.png "existing")
-      ![AI \\path \[wide\]](/images/2026/workflow.png)
-      """#
-    )
-  }
-
-  func testApplyImageTextSuggestionsPreservesExistingAttachmentText() {
-    let attachment = DraftAttachment(
-      originalFilename: "workflow.png",
-      relativePublishPath: "/images/2026/workflow.png",
-      repositoryPath: "static/images/2026/workflow.png",
-      altText: "Existing alt",
-      caption: "Existing caption"
-    )
-    let draft = ArticleDraft(
-      siteProfileID: SiteProfile.defaultProfile.id,
-      title: "Preserve Existing",
-      slug: "preserve-existing",
-      bodyMarkdown: "![](/images/2026/workflow.png)",
-      attachments: [attachment]
-    )
-    let suggestion = AIPublishingImageTextSuggestion(
-      id: attachment.id.uuidString,
-      draftID: draft.id,
-      attachmentID: attachment.id,
-      filename: "workflow.png",
-      imagePath: "/images/2026/workflow.png",
-      altText: "Suggested alt",
-      caption: "Suggested caption",
-      reason: ""
-    )
-
-    let result = SiteImageWorkbenchService().applyImageTextSuggestions([suggestion], to: draft)
-
-    XCTAssertEqual(result.appliedAltTextCount, 0)
-    XCTAssertEqual(result.appliedCaptionCount, 0)
-    XCTAssertEqual(result.updatedMarkdownReferenceCount, 1)
-    XCTAssertEqual(result.draft.attachments[0].altText, "Existing alt")
-    XCTAssertEqual(result.draft.attachments[0].caption, "Existing caption")
-    XCTAssertEqual(result.draft.bodyMarkdown, "![Existing alt](/images/2026/workflow.png)")
-  }
-
   func testOptimizeJPEGCreatesSmallerCopyWithoutOverwritingOriginal() throws {
     let directory = try makeTemporaryDirectory()
     let sourceURL = directory.appendingPathComponent("noisy.jpg")
@@ -738,6 +512,82 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     XCTAssertFalse(remainingFiles.contains { $0.hasPrefix(".image-batch-") })
   }
 
+  func testImageBatchSVGOutputsSeparateSharedAttachmentIDsAcrossConcurrentDrafts() async throws {
+    let directory = try makeTemporaryDirectory()
+    let firstSourceURL = directory.appendingPathComponent("first.svg")
+    let secondSourceURL = directory.appendingPathComponent("second.svg")
+    let svgPrefix = #"<svg xmlns="http://www.w3.org/2000/svg">"#
+    let firstSVG = svgPrefix + ##"<!-- first --><rect fill="#123456"/></svg>"##
+    let secondSVG = svgPrefix + ##"<!-- second --><circle fill="#abcdef"/></svg>"##
+    let firstExpectedSVG = svgPrefix + ##"<rect fill="#123456"/></svg>"##
+    let secondExpectedSVG = svgPrefix + ##"<circle fill="#abcdef"/></svg>"##
+    try firstSVG.write(to: firstSourceURL, atomically: true, encoding: .utf8)
+    try secondSVG.write(to: secondSourceURL, atomically: true, encoding: .utf8)
+
+    let sharedAttachmentID = UUID()
+    let firstDraft = ArticleDraft(
+      siteProfileID: SiteProfile.defaultProfile.id,
+      title: "First SVG",
+      slug: "first-svg",
+      attachments: [
+        DraftAttachment(
+          id: sharedAttachmentID,
+          originalFilename: "shared.svg",
+          relativePublishPath: "/images/2026/shared.svg",
+          repositoryPath: "static/images/2026/shared.svg",
+          byteSize: Int64(Data(firstSVG.utf8).count),
+          sourceFilePath: firstSourceURL.path
+        )
+      ]
+    )
+    let secondDraft = ArticleDraft(
+      siteProfileID: SiteProfile.defaultProfile.id,
+      title: "Second SVG",
+      slug: "second-svg",
+      attachments: [
+        DraftAttachment(
+          id: sharedAttachmentID,
+          originalFilename: "shared.svg",
+          relativePublishPath: "/images/2026/shared.svg",
+          repositoryPath: "static/images/2026/shared.svg",
+          byteSize: Int64(Data(secondSVG.utf8).count),
+          sourceFilePath: secondSourceURL.path
+        )
+      ]
+    )
+    let processor = ImageBatchProcessingActor(
+      memoryBudget: ImageBatchMemoryBudget(
+        cpuLimit: 2,
+        byteBudget: 10_000,
+        decodeMultiplier: 1,
+        unknownAttachmentBytes: 1
+      )
+    )
+
+    let result = try await processor.process(
+      operation: .optimizeSVG,
+      drafts: [firstDraft, secondDraft],
+      destinationRoot: directory,
+      cancellationToken: ImageProcessingCancellationToken(),
+      progress: { _ in }
+    )
+
+    XCTAssertEqual(result.optimizedCount, 2)
+    let updatedFirstDraft = try XCTUnwrap(result.updatedDraftsByID[firstDraft.id])
+    let updatedSecondDraft = try XCTUnwrap(result.updatedDraftsByID[secondDraft.id])
+    let firstOutputPath = try XCTUnwrap(updatedFirstDraft.attachments.first?.sourceFilePath)
+    let secondOutputPath = try XCTUnwrap(updatedSecondDraft.attachments.first?.sourceFilePath)
+    let firstOutputURL = URL(fileURLWithPath: firstOutputPath)
+    let secondOutputURL = URL(fileURLWithPath: secondOutputPath)
+    XCTAssertNotEqual(firstOutputURL, secondOutputURL)
+    XCTAssertEqual(
+      firstOutputURL.deletingLastPathComponent().lastPathComponent, firstDraft.id.uuidString)
+    XCTAssertEqual(
+      secondOutputURL.deletingLastPathComponent().lastPathComponent, secondDraft.id.uuidString)
+    XCTAssertEqual(try Data(contentsOf: firstOutputURL), Data(firstExpectedSVG.utf8))
+    XCTAssertEqual(try Data(contentsOf: secondOutputURL), Data(secondExpectedSVG.utf8))
+  }
+
   func testOptimizeSVGCreatesSmallerCopyWithoutChangingPublishPath() throws {
     let directory = try makeTemporaryDirectory()
     let sourceURL = directory.appendingPathComponent("diagram.svg")
@@ -786,6 +636,56 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     let optimizedText = try String(
       contentsOfFile: result.draft.attachments[0].sourceFilePath ?? "", encoding: .utf8)
     XCTAssertFalse(optimizedText.contains("exported by design tool"))
+  }
+
+  func testOptimizeSVGPreservesXMLSpaceContentWithoutWritingCopy() throws {
+    let directory = try makeTemporaryDirectory()
+    let sourceURL = directory.appendingPathComponent("label.svg")
+    let optimizedDirectory = directory.appendingPathComponent("optimized", isDirectory: true)
+    let sourceSVG =
+      #"<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve">"#
+      + #"<text x="0" y="20"> leading <tspan> spaced </tspan> text </text>"#
+      + #"<!-- preserve whitespace --></svg>"#
+    try sourceSVG.write(to: sourceURL, atomically: true, encoding: .utf8)
+    let attachment = DraftAttachment(
+      originalFilename: "label.svg",
+      relativePublishPath: "/images/2026/label.svg",
+      repositoryPath: "static/images/2026/label.svg",
+      byteSize: Int64(Data(sourceSVG.utf8).count),
+      sourceFilePath: sourceURL.path
+    )
+    let draft = ArticleDraft(
+      siteProfileID: SiteProfile.defaultProfile.id,
+      title: "Preserved SVG text",
+      slug: "preserved-svg-text",
+      attachments: [attachment]
+    )
+
+    let result = try SiteImageWorkbenchService().optimizeSVGAttachments(
+      draft: draft,
+      destinationDirectory: optimizedDirectory
+    )
+
+    XCTAssertEqual(result.optimizedCount, 0)
+    XCTAssertEqual(result.skippedCount, 1)
+    XCTAssertEqual(result.draft.attachments[0].sourceFilePath, sourceURL.path)
+    XCTAssertEqual(try Data(contentsOf: sourceURL), Data(sourceSVG.utf8))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: optimizedDirectory.path))
+  }
+
+  func testSVGOptimizerPreservesOtherWhitespaceSensitiveContent() {
+    let service = SiteImageWorkbenchService()
+    let sources = [
+      ##"<svg><textPath href="#path"> spaced text </textPath><!-- comment --></svg>"##,
+      #"<svg><style>.a { fill: red; }<!-- comment --></style></svg>"#,
+      #"<svg><script>const value = 1;<!-- comment --></script></svg>"#,
+      #"<svg><foreignObject><div> spaced content </div></foreignObject><!-- comment --></svg>"#,
+      #"<svg><![CDATA[<!-- literal comment -->]]></svg>"#,
+    ]
+
+    for source in sources {
+      XCTAssertEqual(service.optimizedSVGText(source), source)
+    }
   }
 
   func testResizeLargeAttachmentsCreatesScaledCopyWithoutChangingPublishPath() throws {

@@ -22,10 +22,6 @@ let package = Package(
       targets: ["PublishingAICore"]
     ),
     .library(
-      name: "PublishingAgentContracts",
-      targets: ["PublishingAgentContracts"]
-    ),
-    .library(
       name: "PublishingKnowledgeCore",
       targets: ["PublishingKnowledgeCore"]
     ),
@@ -119,15 +115,6 @@ let package = Package(
       ]
     ),
     .target(
-      name: "PublishingAgentContracts",
-      dependencies: [
-        "PublishingAICore"
-      ],
-      swiftSettings: [
-        .swiftLanguageMode(.v6)
-      ]
-    ),
-    .target(
       name: "PublishingKnowledgeCore",
       dependencies: [
         "PublishingCoreSupport",
@@ -183,7 +170,6 @@ let package = Package(
         "PublishingMarkdownCore",
         "PublishingGitCore",
         "PublishingAICore",
-        "PublishingAgentContracts",
         "PublishingKnowledgeCore",
         "PublishingPreviewCore",
         "PublishingBackupCore",
@@ -268,16 +254,6 @@ let package = Package(
       ]
     ),
     .testTarget(
-      name: "PublishingAgentContractsTests",
-      dependencies: [
-        "PublishingAICore",
-        "PublishingAgentContracts",
-      ],
-      swiftSettings: [
-        .swiftLanguageMode(.v6)
-      ]
-    ),
-    .testTarget(
       name: "PublishingCoreSupportTests",
       dependencies: [
         "PublishingCoreSupport",
@@ -299,7 +275,6 @@ let package = Package(
       name: "PublishingWorkbenchCoreTests",
       dependencies: [
         "PublishingAICore",
-        "PublishingAgentContracts",
         "PublishingCoreSupport",
         "PublishingDomainContracts",
         "PublishingGitCore",
@@ -327,7 +302,6 @@ let package = Package(
         "PublishingMarkdownCore",
         "PublishingPreviewCore",
         "PublishingBackupCore",
-        "PublishingSyncCore",
         "PublishingWorkbenchCore",
         "PublishingTestSupport",
       ],

@@ -1100,14 +1100,18 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
   func testImageWorkbenchIdentifiersRemainUniqueAndDoNotOverrideChildControls() throws {
     launchApplication(surface: "writing")
-    select(
-      "workspace-sidebar-sync",
-      revealing: "repository-workspace"
-    )
-    select(
-      "repository-action-open-images",
-      revealing: "image-workbench-overview"
-    )
+    select("workspace-sidebar-images", revealing: "repository-image-search")
+
+    // SwiftUI coalesces single-child accessibility containers. Verify the
+    // workbench and its actual controls, rather than intermediate view wrappers.
+    for identifier in [
+      "image-workbench",
+      "repository-image-folder-search", "repository-image-search",
+      "repository-image-display-mode", "repository-image-process-selection",
+    ] {
+      assertUniqueIdentifier(identifier)
+    }
+    select("image-sidebar-stage-overview", revealing: "image-workbench-overview")
 
     for identifier in [
       "workspace-quick-search",
@@ -1135,16 +1139,134 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
     select(
       "image-sidebar-stage-resources",
-      revealing: "repository-image-browser"
+      revealing: "repository-image-search"
     )
     for identifier in [
       "image-workbench",
-      "image-workbench-resources",
-      "image-resource-mode-picker",
-      "repository-image-browser",
+      "repository-image-search",
+      "repository-image-process-selection",
     ] {
       assertUniqueIdentifier(identifier)
     }
+  }
+
+  func testImageBatchPreviewCancelsAndAppliesOnlyCheckedImages() throws {
+    let fixture = try makeImageBatchRepository()
+    application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_PERSISTENCE_ROOT"] =
+      screenshotRuntimeRootURL.appendingPathComponent("workbench", isDirectory: true).path
+    launchApplication(surface: "writing")
+    // Demo seeding points at this repository but does not import new files.
+    // Use the real discovery flow to register the fixture's image references.
+    select("workspace-open-settings", revealing: "settings-content")
+    let settings = currentSettingsWindow()
+    select(
+      "settings-tab-defaultRules", revealing: "repository-draft-discovery-scan-now", in: settings)
+    let scan = settings.buttons
+      .matching(identifier: "repository-draft-discovery-scan-now").firstMatch
+    XCTAssertTrue(scan.isEnabled)
+    scan.click()
+    // Startup discovery may have imported the fixture before this manual scan.
+    let discoveryFinished = settings.staticTexts.matching(
+      NSPredicate(
+        format: "label CONTAINS %@ OR value CONTAINS %@ OR label CONTAINS %@ OR value CONTAINS %@",
+        "已发现并加入工作台", "已发现并加入工作台", "扫描完成，没有发现", "扫描完成，没有发现"
+      )
+    ).firstMatch
+    XCTAssertTrue(discoveryFinished.waitForExistence(timeout: 30))
+    settings.typeKey("w", modifierFlags: [.command])
+    let search = element(identifier: "writing-draft-search")
+    XCTAssertTrue(search.waitForExistence(timeout: 10))
+    search.click()
+    search.typeText("Image batch fixture")
+    let article = application.staticTexts["Image batch fixture"].firstMatch
+    XCTAssertTrue(article.waitForExistence(timeout: 30))
+    article.click()
+    select("workspace-sidebar-images", revealing: "repository-image-grid")
+
+    let selectedImage = application.buttons.matching(
+      NSPredicate(
+        format: "identifier BEGINSWITH %@ AND label == %@",
+        "repository-image-tile-", "selected.png"
+      )
+    ).firstMatch
+    XCTAssertTrue(selectedImage.waitForExistence(timeout: 15))
+    selectedImage.click()
+    application.typeKey("a", modifierFlags: [.command])
+    let originalArticle = try Data(contentsOf: fixture.article)
+
+    func openPreview() {
+      select("repository-image-process-selection", revealing: "image-action-fill-metadata")
+      select("image-action-fill-metadata", revealing: "image-batch-preview")
+    }
+
+    openPreview()
+    let preview = element(identifier: "image-batch-preview")
+    let affectedImages = preview.descendants(matching: .checkBox).matching(
+      NSPredicate(format: "identifier BEGINSWITH %@", "image-batch-preview-item-")
+    )
+    XCTAssertEqual(affectedImages.count, 2)
+    let exclusions = element(identifier: "image-batch-preview-excluded")
+    XCTAssertTrue(exclusions.exists)
+    XCTAssertTrue(((exclusions.value as? String) ?? exclusions.label).contains("1"))
+    let screenshot = XCTAttachment(screenshot: application.windows.firstMatch.screenshot())
+    screenshot.name = "Image batch preview with one unregistered file excluded"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+
+    element(identifier: "image-batch-preview-cancel").click()
+    XCTAssertEqual(
+      XCTWaiter.wait(
+        for: [
+          XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: preview)
+        ],
+        timeout: 10
+      ), .completed
+    )
+    XCTAssertEqual(try Data(contentsOf: fixture.article), originalArticle)
+
+    openPreview()
+    let reopenedPreview = element(identifier: "image-batch-preview")
+    let confirm = element(identifier: "image-batch-preview-confirm")
+    element(identifier: "image-batch-preview-exclude-all").click()
+    XCTAssertFalse(confirm.isEnabled)
+    element(identifier: "image-batch-preview-select-all").click()
+    let untouched = reopenedPreview.descendants(matching: .checkBox).matching(
+      NSPredicate(
+        format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+        "image-batch-preview-item-", "untouched.png"
+      )
+    ).firstMatch
+    XCTAssertTrue(untouched.exists)
+    untouched.click()
+    XCTAssertTrue(confirm.isEnabled)
+    confirm.click()
+
+    let selectedImageWasSaved = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        guard let body = try? String(contentsOf: fixture.article, encoding: .utf8) else {
+          return false
+        }
+        return body.contains("/images/batch-ui/selected.png")
+          && !body.contains("![](/images/batch-ui/selected.png)")
+          && body.contains("![](/images/batch-ui/untouched.png)")
+      }, object: nil
+    )
+    XCTAssertEqual(XCTWaiter.wait(for: [selectedImageWasSaved], timeout: 30), .completed)
+    XCTAssertFalse(preview.exists)
+    selectedImage.click()
+    let caption = element(identifier: "repository-image-caption")
+    XCTAssertTrue(caption.waitForExistence(timeout: 10))
+    let captionText = try XCTUnwrap(caption.value as? String)
+    XCTAssertFalse(captionText.isEmpty)
+    XCTAssertNotEqual(captionText, caption.placeholderValue)
+    for imageURL in fixture.images {
+      XCTAssertEqual(try Data(contentsOf: imageURL), fixture.imageData)
+    }
+    let resultScreenshot = XCTAttachment(screenshot: application.windows.firstMatch.screenshot())
+    resultScreenshot.name = "Image batch result with selected article usage"
+    resultScreenshot.lifetime = .keepAlways
+    add(resultScreenshot)
   }
 
   func testImageWorkbenchReturnsToWritingInThePresentingWindow() throws {
@@ -1166,7 +1288,8 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     let firstEditorValue = try XCTUnwrap(firstEditor.value as? String)
 
     select("workspace-sidebar-sync", revealing: "repository-workspace", in: firstWindow)
-    select("repository-action-open-images", revealing: "image-workbench-overview", in: firstWindow)
+    select("repository-action-open-images", revealing: "repository-image-search", in: firstWindow)
+    select("image-sidebar-stage-overview", revealing: "image-workbench-overview", in: firstWindow)
     let imageWorkbench = firstWindow.descendants(matching: .any)
       .matching(identifier: "image-workbench")
       .firstMatch
@@ -2365,6 +2488,62 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
         ofItemAtPath: yearDirectory.appendingPathComponent("first.md").path)
     }
     return root
+  }
+
+  private func makeImageBatchRepository() throws -> (article: URL, images: [URL], imageData: Data) {
+    let root = knowledgeLibraryRootURL.appendingPathComponent(
+      "repository-fixture", isDirectory: true)
+    let content = root.appendingPathComponent("content/posts/2026", isDirectory: true)
+    let imageDirectory = root.appendingPathComponent("static/images/batch-ui", isDirectory: true)
+    for directory in [content, imageDirectory] {
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+    // /usr/bin/git invokes xcrun, which the sandboxed test runner cannot use.
+    // Xcode supplies the executable from the selected developer toolchain.
+    let gitPath = try XCTUnwrap(
+      Bundle(for: Self.self).object(forInfoDictionaryKey: "WorkbenchXCUIGitPath") as? String)
+    let git = Process()
+    git.executableURL = URL(fileURLWithPath: gitPath)
+    git.arguments = ["init", "--quiet", root.path]
+    git.environment = ProcessInfo.processInfo.environment.merging([
+      "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
+    ]) { _, fixtureValue in fixtureValue }
+    try git.run()
+    git.waitUntilExit()
+    XCTAssertEqual(git.terminationStatus, 0)
+
+    let imageData = try XCTUnwrap(
+      Data(
+        base64Encoded: [
+          "iVBORw0KGgoAAAANSUhEUgAAAGAAAAAwCAYAAADuFn/PAAAAAXNSR0IArs4c6QAAAERlWElm",
+          "TU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAYK",
+          "ADAAQAAAABAAAAMAAAAACRIJCFAAAA6klEQVR4Ae3XwQkCURTF0FHsQ+3MzrQztRIFC3iz",
+          "+gTkuH1ChsQLzuFyf302n8zAMSMD/wwIEP8QBBAgNhDjLUCA2ECMtwABYgMx3gIEiA3E",
+          "eAsQIDYQ4y1AgNhAjLcAAWIDMd4CBIgNxHgLECA2EOMtQIDYQIy3AAFiAzHeAgSIDcR4",
+          "CxAgNhDjLUCA2ECMt4A4wGmP/7yd977iPhi4Pt7DddssYNSz/ijAescjQYBRz/qjAOsd",
+          "jwQBRj3rjwKsdzwSBBj1rD/uvgfs/Y9d/4j/TbCAuK8AAsQGYrwFCBAbiPEWIEBsIMZ/",
+          "ATxuB6TxZQ2xAAAAAElFTkSuQmCC",
+        ].joined()))
+    let images = ["selected.png", "untouched.png", "unregistered.png"].map {
+      imageDirectory.appendingPathComponent($0)
+    }
+    for image in images { try imageData.write(to: image) }
+    let article = content.appendingPathComponent("image-batch-fixture.md")
+    try """
+    +++
+    title = "Image batch fixture"
+    date = 2026-01-01
+    draft = true
+    +++
+
+    # Image batch fixture
+
+    ![](/images/batch-ui/selected.png)
+
+    ![](/images/batch-ui/untouched.png)
+
+    """.write(to: article, atomically: true, encoding: .utf8)
+    return (article, images, imageData)
   }
 
   private func toggleAIInspectorForUITest(

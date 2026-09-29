@@ -364,16 +364,6 @@ extension WorkbenchAIStore {
     aiChatOperationCoordinator.isCancellationRequested
   }
 
-  @discardableResult func requestAIChatCancellation() -> Bool {
-    guard
-      aiChatOperationCoordinator.requestCancellation(
-        whileRunning: isAIChatRunning
-      )
-    else { return false }
-    aiChatMessage = "正在停止 AI 回复..."
-    return true
-  }
-
   @discardableResult func requestAIChatCancellation(expectedOwnerToken: UUID) -> Bool {
     guard
       aiChatOperationCoordinator.requestCancellation(
@@ -735,37 +725,6 @@ extension WorkbenchAIStore {
     setAIChatModelGrade(.standard)
   }
 
-  public func clearAIChat() {
-    guard
-      !blockChatMutationForDeliveryUncertainty(
-        conversationID: aiChatDraftID.flatMap { activeAIChatConversationID(for: $0) }
-      )
-    else {
-      return
-    }
-    aiChatConversationTitle = nil
-    aiChatMessages = []
-    aiChatManualRetryState = nil
-    cacheCurrentAIChatSessionForAIStore()
-    aiChatMessage = "AI 讨论已清空。"
-    store.save()
-  }
-
-  public func setAIChatConversationTitle(_ title: String?, draft: ArticleDraft? = nil) {
-    if let draft {
-      prepareAIChat(for: draft)
-    }
-    guard aiChatDraftID != nil else {
-      aiChatMessage = "请先选择一篇文章。"
-      return
-    }
-
-    aiChatConversationTitle = title?.trimmedForPublishing.nilIfEmpty
-    cacheCurrentAIChatSessionForAIStore()
-    aiChatMessage = aiChatConversationTitle == nil ? "已恢复自动对话标题。" : "已更新 AI 对话标题。"
-    store.save()
-  }
-
   @discardableResult
   public func renameAIChatConversation(
     _ conversationID: UUID,
@@ -952,21 +911,6 @@ extension WorkbenchAIStore {
     return true
   }
 
-  public func setAIChatFocusedParagraph(_ paragraphID: String?, draft: ArticleDraft? = nil) {
-    if let draft {
-      prepareAIChat(for: draft)
-    }
-    guard aiChatDraftID != nil else {
-      aiChatMessage = "请先选择一篇文章。"
-      return
-    }
-
-    aiChatFocusedParagraphID = paragraphID?.nilIfEmpty
-    cacheCurrentAIChatSessionForAIStore()
-    aiChatMessage = aiChatFocusedParagraphID == nil ? "AI 已恢复整篇文章上下文。" : "AI 已聚焦引用段落。"
-    store.save()
-  }
-
   @discardableResult
   public func saveAIChatCustomPrompt(
     title: String,
@@ -1053,63 +997,6 @@ extension WorkbenchAIStore {
     return conversation
   }
 
-  public func deleteAIChatMessage(
-    _ messageID: AIPublishingChatMessage.ID,
-    draft: ArticleDraft? = nil
-  ) {
-    if let draft {
-      prepareAIChat(for: draft)
-    }
-
-    guard let draftID = store.aiChatDraftID else {
-      store.setAIChatMessage("请先选择一篇文章。")
-      return
-    }
-    guard
-      !blockChatMutationForDeliveryUncertainty(
-        conversationID: activeAIChatConversationID(for: draftID)
-      )
-    else {
-      return
-    }
-
-    if store.aiChatDraftID == draftID {
-      let originalCount = store.aiChatMessages.count
-      let updatedMessages = store.aiChatMessages.filter { $0.id != messageID }
-      guard updatedMessages.count < originalCount else {
-        store.setAIChatMessage("找不到要删除的 AI 消息。")
-        return
-      }
-
-      store.setAIChatMessages(updatedMessages)
-      cacheCurrentAIChatSessionForAIStore()
-      store.setAIChatMessage("已删除 1 条 AI 消息。")
-      store.save()
-      return
-    }
-
-    guard var state = aiChatSessionState(for: draftID) else {
-      store.setAIChatMessage("找不到要删除的 AI 消息。")
-      return
-    }
-
-    let originalCount = state.messages.count
-    state.messages = state.messages.filter { $0.id != messageID }
-    guard state.messages.count < originalCount else {
-      store.setAIChatMessage("找不到要删除的 AI 消息。")
-      return
-    }
-
-    if state.shouldCache {
-      setAIChatSessionState(state, for: draftID)
-    } else {
-      removeAIChatSessionState(for: draftID)
-    }
-
-    store.setAIChatMessage("已删除 1 条 AI 消息。")
-    store.save()
-  }
-
   @discardableResult
   public func branchAIChatConversation(
     after messageID: AIPublishingChatMessage.ID,
@@ -1193,10 +1080,6 @@ extension WorkbenchAIStore {
       }
       return copy
     }
-  }
-
-  public func cancelAIChatReply() {
-    _ = requestAIChatCancellation()
   }
 
   public func cancelAIChatReply(expectedOwnerToken: UUID) {
@@ -1322,78 +1205,4 @@ extension WorkbenchAIStore {
     }
     return reply
   }
-
-  @discardableResult
-  public func regenerateAIChatReply(
-    messageID: AIPublishingChatMessage.ID,
-    draft: ArticleDraft? = nil
-  ) async -> AIPublishingChatMessage? {
-
-    guard let chatDraft = draft ?? store.selectedDraft else {
-      store.setAIChatMessage("请先选择一篇文章。")
-      return nil
-    }
-    guard store.aiChatDraftID == chatDraft.id else {
-      prepareAIChat(for: chatDraft)
-      store.setAIChatMessage("当前文章还没有可重新生成的 AI 回复。")
-      return nil
-    }
-    guard
-      let assistantIndex = store.aiChatMessages.firstIndex(where: {
-        $0.id == messageID && $0.role == .assistant
-      })
-    else {
-      store.setAIChatMessage("找不到可重新生成的 AI 回复。")
-      return nil
-    }
-    guard
-      let userIndex = store.aiChatMessages[..<assistantIndex].lastIndex(where: { $0.role == .user })
-    else {
-      store.setAIChatMessage("找不到可重新生成的用户问题。")
-      return nil
-    }
-    cacheCurrentAIChatSessionForAIStore()
-    guard let conversationIdentity = aiChatConversationIdentity(for: chatDraft.id) else {
-      store.setAIChatMessage("找不到可重新生成的 AI 对话。")
-      return nil
-    }
-    guard
-      !blockChatMutationForDeliveryUncertainty(
-        conversationID: conversationIdentity.conversationID
-      )
-    else {
-      return nil
-    }
-    guard
-      let operationID = beginAIChatOperation(
-        statusMessage: "AI 正在重新生成此回复...",
-        target: .articleConversation(
-          draftID: conversationIdentity.draftID,
-          conversationID: conversationIdentity.conversationID
-        )
-      )
-    else {
-      return nil
-    }
-
-    let originalMessages =
-      aiChatSessionState(for: conversationIdentity)?.messages
-      ?? store.aiChatMessages
-    updateAIChatSession(for: conversationIdentity) { messages in
-      messages = Array(messages.prefix(userIndex + 1))
-    }
-    let reply = await generateAIChatReply(
-      for: chatDraft,
-      conversationIdentity: conversationIdentity,
-      operationID: operationID
-    )
-    if reply == nil {
-      updateAIChatSession(for: conversationIdentity) { messages in
-        messages = originalMessages
-      }
-      store.save()
-    }
-    return reply
-  }
-
 }

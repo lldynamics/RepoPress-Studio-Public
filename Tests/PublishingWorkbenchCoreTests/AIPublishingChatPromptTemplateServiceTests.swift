@@ -115,88 +115,6 @@ final class AIPublishingChatPromptTemplateServiceTests: XCTestCase {
     XCTAssertTrue(prompt.contains("可复制的处理清单"))
   }
 
-  func testSEOSocialPreviewPromptBuildsMetadataAndSocialCardContext() {
-    let profile = SiteProfile.defaultProfile
-    let draftID = UUID()
-    let targetID = UUID()
-    let draft = ArticleDraft(
-      id: draftID,
-      siteProfileID: profile.id,
-      title: "SEO 社交预览",
-      slug: "seo-social-preview",
-      tags: ["SEO", "Mac"],
-      categories: ["个人网站"],
-      summary: "这篇文章验证 SEO 社交预览可以交给 AI 继续优化。",
-      bodyMarkdown: "# SEO 社交预览\n\n正文需要补充 Open Graph、Twitter/X 和关联文章建议。"
-    )
-    let snapshot = SEOSocialPreviewSnapshot(
-      draftID: draftID,
-      signature: "seo-signature",
-      markdownPath: "content/posts/seo-social-preview.md",
-      canonicalURLText: "https://example.com/seo-social-preview/",
-      titleCharacterCount: 8,
-      descriptionCharacterCount: 24,
-      imagePath: "/images/seo-social.png",
-      imageAltText: "SEO social card",
-      shareHashtags: ["SEO", "Mac"],
-      cards: [
-        SEOSocialPreviewCard(
-          kind: .openGraph,
-          title: "SEO 社交预览",
-          description: "Open Graph 摘要。",
-          urlText: "https://example.com/seo-social-preview/",
-          imagePath: "/images/seo-social.png",
-          imageAltText: "SEO social card",
-          siteName: profile.name
-        ),
-        SEOSocialPreviewCard(
-          kind: .twitter,
-          title: "SEO 社交预览",
-          description: "Twitter 摘要。",
-          urlText: "https://example.com/seo-social-preview/",
-          imagePath: "/images/seo-social.png",
-          imageAltText: "SEO social card",
-          siteName: profile.name
-        ),
-      ],
-      metaTags: [
-        SEOSocialPreviewMetaTag(scope: .openGraph, property: "og:title", content: "SEO 社交预览"),
-        SEOSocialPreviewMetaTag(scope: .twitter, property: "twitter:card", content: "summary_large_image"),
-      ],
-      findings: [
-        SEOAuditFinding(severity: .warning, title: "描述偏短", message: "摘要可以更具体。", field: "summary"),
-      ]
-    )
-    let suggestion = SiteRelationSuggestion(
-      sourceDraftID: draftID,
-      sourceTitle: "SEO 社交预览",
-      targetDraftID: targetID,
-      targetTitle: "Mac SEO 内链",
-      targetPath: "/mac-seo-links/",
-      sharedLabels: ["SEO"],
-      reason: "共享 SEO 标签，适合补充内链。"
-    )
-
-    let prompt = AIPublishingChatPromptTemplateService.seoSocialPreviewPrompt(
-      snapshot: snapshot,
-      draft: draft,
-      profile: profile,
-      relatedSuggestions: [suggestion],
-      maxBodyLength: 18
-    )
-
-    XCTAssertTrue(prompt.contains("[平台就绪度]"))
-    XCTAssertTrue(prompt.contains("[卡片预览]"))
-    XCTAssertTrue(prompt.contains("Open Graph"))
-    XCTAssertTrue(prompt.contains("Twitter/X"))
-    XCTAssertTrue(prompt.contains("og:title"))
-    XCTAssertTrue(prompt.contains("Hashtags：#SEO #Mac"))
-    XCTAssertTrue(prompt.contains("SEO 社交预览 -> Mac SEO 内链"))
-    XCTAssertTrue(prompt.contains("不要声称已经修改文章"))
-    XCTAssertTrue(prompt.contains("外部调试链接"))
-    XCTAssertTrue(prompt.contains("...（已截断）"))
-  }
-
   func testRelatedArticleSuggestionPromptBuildsInternalLinkInstruction() {
     var profile = SiteProfile.defaultProfile
     profile.markdownPathPattern = "content/posts/{slug}.md"
@@ -420,38 +338,6 @@ final class AIPublishingChatPromptTemplateServiceTests: XCTestCase {
     XCTAssertFalse(searchSnapshot.editorActionSections.flatMap(\.actions).contains(.draftShortVideoScript))
   }
 
-  func testCapabilityCenterSnapshotExposesFeaturedAndAllEditorActions() {
-    let featured = AIPublishingCapabilityCenterService.snapshot(mode: .featured)
-    let all = AIPublishingCapabilityCenterService.snapshot(mode: .all)
-
-    XCTAssertEqual(
-      Set(featured.promptSections.flatMap(\.prompts)),
-      Set(AIPublishingQuickPrompt.primaryPrompts)
-    )
-    XCTAssertEqual(
-      Set(featured.editorActionSections.flatMap(\.actions)),
-      Set(AIPublishingDefaultCapability.defaultActionKinds)
-    )
-    XCTAssertTrue(featured.editorActionSections.flatMap(\.actions).contains(.continueArticle))
-    XCTAssertTrue(featured.editorActionSections.flatMap(\.actions).contains(.rewriteSelection))
-    XCTAssertTrue(featured.editorActionSections.flatMap(\.actions).contains(.publishingReadiness))
-    XCTAssertFalse(featured.editorActionSections.flatMap(\.actions).contains(.draftFullArticle))
-
-    XCTAssertEqual(
-      Set(all.promptSections.flatMap(\.prompts)),
-      Set(AIPublishingQuickPrompt.allCases)
-    )
-    XCTAssertEqual(
-      Set(all.editorActionSections.flatMap(\.actions)),
-      Set(AIPublishingActionKind.promptLibraryActions)
-    )
-    XCTAssertGreaterThan(
-      all.editorActionSections.flatMap(\.actions).count,
-      featured.editorActionSections.flatMap(\.actions).count
-    )
-    XCTAssertEqual(all.editorActionSections.map(\.group), AIPublishingQuickPromptGroup.allCases)
-  }
-
   func testPromptLibrarySpotlightActionsSkipVisibleRecommendations() {
     let draft = ArticleDraft(
       siteProfileID: UUID(),
@@ -492,5 +378,4 @@ final class AIPublishingChatPromptTemplateServiceTests: XCTestCase {
     XCTAssertTrue(snapshot.workflowGuides.isEmpty)
     XCTAssertTrue(snapshot.promptSections.isEmpty)
   }
-
 }

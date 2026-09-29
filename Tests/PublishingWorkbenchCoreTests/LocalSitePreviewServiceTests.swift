@@ -1,4 +1,5 @@
 import XCTest
+import os
 
 @testable import PublishingPreviewCore
 @testable import PublishingWorkbenchCore
@@ -870,6 +871,158 @@ final class LocalSitePreviewServiceTests: XCTestCase {
 
     XCTAssertEqual(allocation?.port, 23_456)
     XCTAssertEqual(allocation?.usesDynamicPort, true)
+  }
+
+  func testPortAllocatorRetriesCandidateClaimedBeforeAvailabilityCheck() {
+    let attempts = OSAllocatedUnfairLock(initialState: 0)
+    let allocator = LocalSitePreviewPortAllocator(
+      isPortAvailable: { $0 == 23_458 },
+      dynamicPort: {
+        attempts.withLock { count in
+          count += 1
+          return 23_455 + count
+        }
+      }
+    )
+
+    let allocation = allocator.allocate(preferredPort: 1_111)
+
+    XCTAssertEqual(allocation?.port, 23_458)
+    XCTAssertEqual(allocation?.usesDynamicPort, true)
+    XCTAssertEqual(attempts.withLock { $0 }, 3)
+  }
+
+  func testPortAllocatorStopsAfterThreeContendedCandidates() {
+    let attempts = OSAllocatedUnfairLock(initialState: 0)
+    let allocator = LocalSitePreviewPortAllocator(
+      isPortAvailable: { _ in false },
+      dynamicPort: {
+        attempts.withLock { count in
+          count += 1
+          return 23_455 + count
+        }
+      }
+    )
+
+    XCTAssertNil(allocator.allocate(preferredPort: 1_111))
+    XCTAssertEqual(attempts.withLock { $0 }, 3)
+  }
+
+  func testPortAllocatorDoesNotRetryWhenSystemCannotAllocateCandidate() {
+    let attempts = OSAllocatedUnfairLock(initialState: 0)
+    let allocator = LocalSitePreviewPortAllocator(
+      isPortAvailable: { _ in false },
+      dynamicPort: {
+        attempts.withLock { $0 += 1 }
+        return nil
+      }
+    )
+
+    XCTAssertNil(allocator.allocate(preferredPort: 1_111))
+    XCTAssertEqual(attempts.withLock { $0 }, 1)
+  }
+
+  func testPortAllocatorKeepsAvailablePreferredPortWithoutAllocatingCandidate() {
+    let attempts = OSAllocatedUnfairLock(initialState: 0)
+    let allocator = LocalSitePreviewPortAllocator(
+      isPortAvailable: { _ in true },
+      dynamicPort: {
+        attempts.withLock { $0 += 1 }
+        return 23_456
+      }
+    )
+
+    let allocation = allocator.allocate(preferredPort: 1_111)
+
+    XCTAssertEqual(allocation?.port, 1_111)
+    XCTAssertEqual(allocation?.usesDynamicPort, false)
+    XCTAssertEqual(attempts.withLock { $0 }, 0)
+  }
+
+  func testPortAllocatorForceDynamicBypassesAvailablePreferredPort() {
+    let attempts = OSAllocatedUnfairLock(initialState: 0)
+    let allocator = LocalSitePreviewPortAllocator(
+      isPortAvailable: { $0 == 1_111 || $0 == 23_457 },
+      dynamicPort: {
+        attempts.withLock { count in
+          count += 1
+          return 23_455 + count
+        }
+      }
+    )
+
+    let allocation = allocator.allocate(preferredPort: 1_111, forceDynamicPort: true)
+
+    XCTAssertEqual(allocation?.port, 23_457)
+    XCTAssertEqual(allocation?.usesDynamicPort, true)
+    XCTAssertEqual(attempts.withLock { $0 }, 2)
+  }
+
+  func testPreferredNonDefaultPortRemainsDynamicAndKeepsExecutionFingerprint() throws {
+    let rootURL = try temporaryDirectory(named: "local-preview-retained-port")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let service = LocalSitePreviewService(
+      executableResolver: { _ in "/bin/sleep" },
+      portAllocator: LocalSitePreviewPortAllocator(
+        isPortAvailable: { $0 == 23_456 },
+        dynamicPort: { 23_456 }
+      )
+    )
+    var profile = SiteProfile.defaultProfile
+    profile.siteKind = .zola
+    profile.localRepositoryRootPath = rootURL.path
+
+    let original = try XCTUnwrap(service.plan(profile: profile))
+    let refreshed = try XCTUnwrap(
+      service.plan(
+        profile: profile,
+        repositoryReport: nil,
+        preferredPort: try XCTUnwrap(original.port)
+      )
+    )
+
+    XCTAssertEqual(original.port, 23_456)
+    XCTAssertTrue(original.usesDynamicPort)
+    XCTAssertEqual(refreshed.port, 23_456)
+    XCTAssertTrue(refreshed.usesDynamicPort)
+    XCTAssertEqual(
+      refreshed.arguments,
+      [
+        "serve", "--drafts", "--interface", "127.0.0.1", "--port", "23456",
+      ])
+    XCTAssertTrue(refreshed.notes.contains { $0.contains("1111") && $0.contains("23456") })
+    XCTAssertEqual(
+      refreshed.executionIdentity?.fingerprint,
+      original.executionIdentity?.fingerprint
+    )
+  }
+
+  func testPreferredPortReallocatesWhenItBecomesUnavailable() throws {
+    let rootURL = try temporaryDirectory(named: "local-preview-reallocated-port")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let service = LocalSitePreviewService(
+      executableResolver: { _ in "/bin/sleep" },
+      portAllocator: LocalSitePreviewPortAllocator(
+        isPortAvailable: { $0 == 34_567 },
+        dynamicPort: { 34_567 }
+      )
+    )
+    var profile = SiteProfile.defaultProfile
+    profile.siteKind = .zola
+    profile.localRepositoryRootPath = rootURL.path
+
+    let plan = try XCTUnwrap(
+      service.plan(profile: profile, repositoryReport: nil, preferredPort: 23_456)
+    )
+
+    XCTAssertEqual(plan.port, 34_567)
+    XCTAssertTrue(plan.usesDynamicPort)
+    XCTAssertEqual(
+      plan.arguments,
+      [
+        "serve", "--drafts", "--interface", "127.0.0.1", "--port", "34567",
+      ])
+    XCTAssertTrue(plan.notes.contains { $0.contains("1111") && $0.contains("34567") })
   }
 
   func testDynamicPreviewPlanAddsFrameworkLoopbackAndPortArguments() throws {

@@ -145,6 +145,7 @@ extension AIChatContextInspectorView {
     clearsComposerOnAccept: Bool
   ) {
     guard
+      isCodexConnectionReadyForSending,
       AIChatSurfaceOperationOwnershipPolicy.canStartLocalOperation(
         localTaskExists: operationSession.hasActiveTask,
         globalOperationRunning: ai.isChatRunning
@@ -432,9 +433,11 @@ extension AIChatContextInspectorView {
   }
 
   func applyDraftDiffPreview(_ preview: AIChatDraftDiffPreview) {
-    guard let current = inspectorDraft,
-      AIChatDraftDiffApplicationPolicy.canApply(
-        currentDraft: current,
+    guard let selected = inspectorDraft,
+      selected.id == preview.originalDraft.id,
+      let applied = AIChatDraftDiffApplicationPolicy.appliedDraft(
+        in: ai,
+        draftID: selected.id,
         preview: preview
       )
     else {
@@ -443,16 +446,16 @@ extension AIChatContextInspectorView {
       )
       return
     }
-    ai.updateChatDraft(preview.updatedDraft)
+    ai.updateChatDraft(applied)
     ai.saveChatDraftChanges()
     let retry = AIChatCitationBacklinkRetry(
-      draftID: preview.updatedDraft.id,
+      draftID: applied.id,
       conversationID: state.conversation?.conversationID,
       citations: preview.citations,
       target: KnowledgeBacklinkTarget(
         kind: .articleDraft,
-        id: preview.updatedDraft.id.uuidString,
-        title: preview.updatedDraft.title,
+        id: applied.id.uuidString,
+        title: applied.title,
         location: String(localized: "正文")
       )
     )

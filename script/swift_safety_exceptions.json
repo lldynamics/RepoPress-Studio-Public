@@ -52,11 +52,6 @@
       "rationale": "The test-only listener readiness port and failure description are read and written only while holding one NSLock as Network state callbacks cross queues."
     },
     {
-      "file": "Sources/PublishingKnowledgeCore/KnowledgeCoreMLEmbeddingProvider.swift",
-      "declaration": "KnowledgeCoreMLEmbeddingProvider",
-      "rationale": "Core ML does not provide Sendable model types; immutable model configuration is set at initialization, prediction is serialized by inferenceLock, and availability state is protected by availabilityLock."
-    },
-    {
       "file": "Sources/PublishingGitCore/GitCommandRunner.swift",
       "declaration": "GitStandardInputWriter",
       "rationale": "Each command transfers one immutable Data value and one pipe write handle to a single background queue; that queue alone writes and closes the handle before reporting completion."
@@ -379,24 +374,6 @@
   ],
   "forcedOperations": [
     {
-      "file": "Tests/PublishingWorkbenchCoreTests/AIPublishingAssistantServiceTests.swift",
-      "kind": "try!",
-      "contains": "JSONSerialization.data(withJSONObject: responsePayload)",
-      "rationale": "The test fixture is a fixed JSON-compatible dictionary and setup failure should abort the test immediately."
-    },
-    {
-      "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchAIStoreAgentLoopIntegrationTests.swift",
-      "kind": "try!",
-      "contains": "let argumentsData = try! JSONSerialization.data(",
-      "rationale": "The integration-test tool-call arguments are deliberately constructed as a JSON-compatible fixture; serialization failure indicates invalid test setup and should abort immediately."
-    },
-    {
-      "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchAIStoreAgentLoopIntegrationTests.swift",
-      "kind": "try!",
-      "contains": "try! JSONSerialization.data(withJSONObject: [",
-      "rationale": "The integration-test response envelopes are fixed JSON-compatible fixtures; serialization failure indicates invalid test setup and should abort immediately."
-    },
-    {
       "file": "Tests/PublishingWorkbenchCoreTests/AIDataSharingConsentStoreTests.swift",
       "kind": "try!",
       "contains": "try! XCTUnwrap(store.codexAccountBindingDigest)",
@@ -407,12 +384,6 @@
       "kind": "try!",
       "contains": "try! JSONSerialization.data(withJSONObject: payload)",
       "rationale": "The pagination response payload is a fixed JSON-compatible test fixture and serialization failure should abort the test."
-    },
-    {
-      "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchAIStoreAgentLoopIntegrationTests.swift",
-      "kind": "try!",
-      "contains": "try! library.setAllowsRemoteAIUse(false, documentID: documentID)",
-      "rationale": "These authorization-revocation callbacks are test setup; a persistence failure prevents the intended race condition and should abort immediately."
     },
     {
       "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchGeneralAIChatTests.swift",
@@ -463,12 +434,6 @@
       "category": "validationFallback",
       "contains": "try? validatedProxyConfiguration(trimmed)",
       "rationale": "The legacy permissive session factory treats an invalid optional proxy as absent; credentialed AI requests use the separate strict throwing factory."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore+GeneralChat.swift",
-      "category": "protocolFallback",
-      "contains": "try? aiPublishingAssistantService.resolvedChatTaskConfig(",
-      "rationale": "If Agent capability resolution fails, general chat falls back to the authorized text-only transport and declares or executes no tools."
     },
     {
       "file": "Sources/PublishingWorkbenchCore/Services/ManagedAttachmentFileStore.swift",
@@ -553,12 +518,6 @@
       "category": "serializationFallback",
       "contains": "try? JSONEncoder.localContentImportIndex.encode(snapshot)",
       "rationale": "The import index is auxiliary metadata; a failed optional snapshot encoding does not alter imported content."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Services/LocalGitPublishService.swift",
-      "category": "probeFallback",
-      "contains": "try? localPublishFileState(at: currentURL",
-      "rationale": "External-modification detection is conservative: an unreadable state is treated as changed and blocks automatic cleanup."
     },
     {
       "file": "Sources/PublishingMarkdownCore/MarkdownFindReplaceService.swift",
@@ -663,12 +622,6 @@
       "rationale": "A header lookup during incomplete database bootstrap is a non-mutating probe; failure returns nil so the article is treated as unavailable until a later refresh."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore+ChatReplies.swift",
-      "category": "protocolFallback",
-      "contains": "try? aiPublishingAssistantService.resolvedChatTaskConfig(",
-      "rationale": "If agent-task capability resolution fails, the caller deliberately continues on the ordinary text-chat protocol without declaring tools or executing a plan."
-    },
-    {
       "file": "Sources/PersonalSitePublisherMac/Views/RSS/RSSReaderPresentationState.swift",
       "category": "probeFallback",
       "contains": "try? store.fullTextRecord(articleID:",
@@ -751,12 +704,6 @@
       "category": "validationFallback",
       "contains": "try? loadRecordSnapshot(existingManifest)",
       "rationale": "Generation reuse requires a fully validated current snapshot. Failure selects a fresh generation, retaining the old database and its independent recovery copy; unsupported versions already fail closed at the locked revision check."
-    },
-    {
-      "file": "Sources/PersonalSitePublisherMac/Support/iCloudWorkspaceBackupStore.swift",
-      "category": "parsing",
-      "contains": "try? decoder.decode(WorkspaceBackupManifest.self, from: data)",
-      "rationale": "An unreadable manifest yields nil payload paths; the upload-state probe then reports the backup as pending upload instead of trusting undeclared files."
     },
     {
       "file": "Sources/PersonalSitePublisherMac/Views/Knowledge/KnowledgeNoteSnapshotBackupSheet.swift",
@@ -865,12 +812,6 @@
       "category": "parsing",
       "contains": "try? decoder.decode(KnowledgeLibraryBackupManifest.self, from: data)",
       "rationale": "The knowledge manifest is only normalized for backup deduplication; if it cannot be decoded the fingerprint falls back to the recorded raw size and hash, which at worst keeps an extra backup."
-    },
-    {
-      "file": "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownTextViewSyntaxCoordinator.swift",
-      "category": "cancellation",
-      "contains": "try? await clock.sleep(for: .seconds(delay))",
-      "rationale": "Both editor statistics debounce sleeps are intentionally cancellable; each following cancellation guard prevents stale work or delivery after a newer edit supersedes the task."
     },
     {
       "file": "Sources/PublishingWorkbenchCore/Services/ThemeTitleH1Detector.swift",

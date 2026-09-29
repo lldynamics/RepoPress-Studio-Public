@@ -1,0 +1,226 @@
+{
+  "安装并继续": {
+    "en": "Install and Continue",
+    "zh-Hans": "安装并继续"
+  },
+  "修复或更新连接组件": {
+    "en": "Repair or Update Components",
+    "zh-Hans": "修复或更新连接组件"
+  },
+  "从 OpenAI 下载经过本应用验证的连接组件，由本应用独立管理。无需打开终端。": {
+    "en": "Download the verified connection components from OpenAI. This app manages them independently; no Terminal is needed.",
+    "zh-Hans": "从 OpenAI 下载经过本应用验证的连接组件，由本应用独立管理。无需打开终端。"
+  },
+  "另一个窗口正在准备连接组件，请稍后重新检测。": {
+    "en": "Another window is preparing the connection components. Check again shortly.",
+    "zh-Hans": "另一个窗口正在准备连接组件，请稍后重新检测。"
+  },
+  "组件下载校验失败，原有版本未改变。请重试。": {
+    "en": "Download verification failed. The previous version is unchanged. Please try again.",
+    "zh-Hans": "组件下载校验失败，原有版本未改变。请重试。"
+  },
+  "新组件未通过启动验证，原有版本未改变。请重试或选择其他连接。": {
+    "en": "The new component failed startup verification. The previous version is unchanged. Retry or choose another connection.",
+    "zh-Hans": "新组件未通过启动验证，原有版本未改变。请重试或选择其他连接。"
+  },
+  "没有可恢复的上一版本。请重新安装连接组件。": {
+    "en": "No previous version is available. Reinstall the connection components.",
+    "zh-Hans": "没有可恢复的上一版本。请重新安装连接组件。"
+  },
+  "组件设置已变化，请重新检测后再试。": {
+    "en": "Component settings changed. Check again before retrying.",
+    "zh-Hans": "组件设置已变化，请重新检测后再试。"
+  },
+  "组件准备失败：%@": {
+    "en": "Component preparation failed: %@",
+    "zh-Hans": "组件准备失败：%@"
+  },
+  "正在下载 ChatGPT 连接组件…": {
+    "en": "Downloading ChatGPT connection components…",
+    "zh-Hans": "正在下载 ChatGPT 连接组件…"
+  },
+  "正在校验下载内容…": {
+    "en": "Verifying the download…",
+    "zh-Hans": "正在校验下载内容…"
+  },
+  "正在安装并验证连接组件…": {
+    "en": "Installing and verifying connection components…",
+    "zh-Hans": "正在安装并验证连接组件…"
+  },
+  "下载或安装超时，请检查网络后重试。": {
+    "en": "Download or installation timed out. Check your network and try again.",
+    "zh-Hans": "下载或安装超时，请检查网络后重试。"
+  },
+  "请检查网络连接、可用磁盘空间和目录写入权限。": {
+    "en": "Check the network connection, available disk space, and folder write permissions.",
+    "zh-Hans": "请检查网络连接、可用磁盘空间和目录写入权限。"
+  },
+  "暂时无法检查 ChatGPT 账户，请重新检测或重新登录。": {
+    "en": "The ChatGPT account could not be checked. Check again or sign in again.",
+    "zh-Hans": "暂时无法检查 ChatGPT 账户，请重新检测或重新登录。"
+  },
+  "正在准备连接组件…": {
+    "en": "Preparing connection components…",
+    "zh-Hans": "正在准备连接组件…"
+  },
+  "组件已准备好，等待当前 AI 操作结束后启用…": {
+    "en": "Components are ready. Waiting for the current AI operation to finish before activating…",
+    "zh-Hans": "组件已准备好，等待当前 AI 操作结束后启用…"
+  },
+  "连接组件已验证。登录并授权后可测试连接。": {
+    "en": "Connection components verified. Sign in and grant permission to test the connection.",
+    "zh-Hans": "连接组件已验证。登录并授权后可测试连接。"
+  },
+  "已停止准备，可重新检测后继续。": {
+    "en": "Preparation stopped. Check the status again to continue.",
+    "zh-Hans": "已停止准备，可重新检测后继续。"
+  },
+  "等待当前 AI 操作结束后切换连接组件…": {
+    "en": "Waiting for the current AI operation to finish before switching components…",
+    "zh-Hans": "等待当前 AI 操作结束后切换连接组件…"
+  },
+  "正在检查 Codex 组件": {
+    "en": "Checking Codex components",
+    "zh-Hans": "正在检查 Codex 组件"
+  },
+  "正在读取本机运行组件和 ChatGPT 账户状态。": {
+    "en": "Reading the local runtime and ChatGPT account status.",
+    "zh-Hans": "正在读取本机运行组件和 ChatGPT 账户状态。"
+  },
+  "需要安装 Codex 组件": {
+    "en": "Codex components need to be installed",
+    "zh-Hans": "需要安装 Codex 组件"
+  },
+  "安装后可使用 ChatGPT 登录；当前输入会保留。": {
+    "en": "After installation, you can sign in with ChatGPT. Your current input is preserved.",
+    "zh-Hans": "安装后可使用 ChatGPT 登录；当前输入会保留。"
+  },
+  "需要更新 Codex 组件": {
+    "en": "Codex components need an update",
+    "zh-Hans": "需要更新 Codex 组件"
+  },
+  "更新到本应用已验证的版本后，再重新检测账户状态。": {
+    "en": "Update to the version verified by this app, then check the account status again.",
+    "zh-Hans": "更新到本应用已验证的版本后，再重新检测账户状态。"
+  },
+  "更新并继续": {
+    "en": "Update and Continue",
+    "zh-Hans": "更新并继续"
+  },
+  "需要登录 ChatGPT": {
+    "en": "Sign in to ChatGPT",
+    "zh-Hans": "需要登录 ChatGPT"
+  },
+  "运行组件已就绪。请在 AI 设置中完成 ChatGPT 登录。": {
+    "en": "The runtime is ready. Finish ChatGPT sign-in in AI Settings.",
+    "zh-Hans": "运行组件已就绪。请在 AI 设置中完成 ChatGPT 登录。"
+  },
+  "打开账户设置": {
+    "en": "Open Account Settings",
+    "zh-Hans": "打开账户设置"
+  },
+  "Codex 组件检查失败": {
+    "en": "Codex component check failed",
+    "zh-Hans": "Codex 组件检查失败"
+  },
+  "请重新检测，或在 AI 设置中修复组件。": {
+    "en": "Check again, or repair the components in AI Settings.",
+    "zh-Hans": "请重新检测，或在 AI 设置中修复组件。"
+  },
+  "修复组件": {
+    "en": "Repair Components",
+    "zh-Hans": "修复组件"
+  },
+  "需要修复 Codex 连接组件": {
+    "en": "Codex connection components need repair",
+    "zh-Hans": "需要修复 Codex 连接组件"
+  },
+  "默认由本应用管理": {
+    "en": "Managed by this app by default",
+    "zh-Hans": "默认由本应用管理"
+  },
+  "本应用会安装或修复已验证的组件版本；完成后会重新检查账户。": {
+    "en": "This app installs or repairs a verified component version, then checks the account again.",
+    "zh-Hans": "本应用会安装或修复已验证的组件版本；完成后会重新检查账户。"
+  },
+  "正在读取组件和账户状态。": {
+    "en": "Reading component and account status.",
+    "zh-Hans": "正在读取组件和账户状态。"
+  },
+  "组件状态由本应用统一管理。": {
+    "en": "This app manages component status centrally.",
+    "zh-Hans": "组件状态由本应用统一管理。"
+  },
+  "回退到上一个已验证版本": {
+    "en": "Roll Back to the Previous Verified Version",
+    "zh-Hans": "回退到上一个已验证版本"
+  },
+  "自动更新已验证的 Codex 组件": {
+    "en": "Automatically Update Verified Codex Components",
+    "zh-Hans": "自动更新已验证的 Codex 组件"
+  },
+  "高级选项": {
+    "en": "Advanced Options",
+    "zh-Hans": "高级选项"
+  },
+  "改用系统 CLI（会切换连接组件）": {
+    "en": "Use System CLI (switches connection components)",
+    "zh-Hans": "改用系统 CLI（会切换连接组件）"
+  },
+  "此操作会停止使用本应用管理的组件，并重新检测系统安装的 Codex CLI。": {
+    "en": "This switches away from app-managed components and checks the system Codex CLI again.",
+    "zh-Hans": "此操作会停止使用本应用管理的组件，并重新检测系统安装的 Codex CLI。"
+  },
+  "本应用管理的运行组件可用": {
+    "en": "App-managed runtime available",
+    "zh-Hans": "本应用管理的运行组件可用"
+  },
+  "当前组件仍可继续使用；你可以稍后重试更新。": {
+    "en": "The current component remains usable. You can retry the update later.",
+    "zh-Hans": "当前组件仍可继续使用；你可以稍后重试更新。"
+  },
+  "Codex 组件准备失败": {
+    "en": "Codex component preparation failed",
+    "zh-Hans": "Codex 组件准备失败"
+  },
+  "重试准备": {
+    "en": "Retry Preparation",
+    "zh-Hans": "重试准备"
+  },
+  "取消准备": {
+    "en": "Cancel Preparation",
+    "zh-Hans": "取消准备"
+  },
+  "选择其他连接": {
+    "en": "Choose Another Connection",
+    "zh-Hans": "选择其他连接"
+  },
+  "当前使用系统 Codex CLI": {
+    "en": "Using the system Codex CLI",
+    "zh-Hans": "当前使用系统 Codex CLI"
+  },
+  "系统 CLI 当前可继续使用；如需由本应用下载并管理已验证版本，可在此切换。": {
+    "en": "The system CLI remains usable. Switch here to let this app download and manage a verified version.",
+    "zh-Hans": "系统 CLI 当前可继续使用；如需由本应用下载并管理已验证版本，可在此切换。"
+  },
+  "当前组件仍可使用；更新到本应用已验证版本是可选操作。": {
+    "en": "The current component remains usable. Updating to the verified version is optional.",
+    "zh-Hans": "当前组件仍可使用；更新到本应用已验证版本是可选操作。"
+  },
+  "改由本应用管理": {
+    "en": "Manage with This App",
+    "zh-Hans": "改由本应用管理"
+  },
+  "更新（当前版本仍可使用）": {
+    "en": "Update (current version remains usable)",
+    "zh-Hans": "更新（当前版本仍可使用）"
+  },
+  "由本应用管理": {
+    "en": "Managed by This App",
+    "zh-Hans": "由本应用管理"
+  },
+  "当前使用系统 CLI": {
+    "en": "Using System CLI",
+    "zh-Hans": "当前使用系统 CLI"
+  }
+}

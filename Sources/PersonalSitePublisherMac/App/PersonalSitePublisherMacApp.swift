@@ -136,6 +136,13 @@ struct PersonalSitePublisherMacApp: App {
       }
     }
 
+    LocalSitePreviewWindowScene(
+      coordinator: launchCoordinator,
+      accentPalette: selectedAccentPalette,
+      appearanceMode: selectedAppearanceMode,
+      interfaceDensity: selectedInterfaceDensity
+    )
+
     MenuBarExtra(
       "RepoPress Studio", systemImage: "square.and.pencil",
       isInserted: Binding(
@@ -248,21 +255,6 @@ struct PersonalSitePublisherMacApp: App {
 
   private var selectedInterfaceDensity: WorkbenchInterfaceDensity {
     WorkbenchInterfaceDensity.resolved(rawValue: interfaceDensityRawValue)
-  }
-}
-
-private struct MainWindowOpenActionRegistration: View {
-  @Environment(\.openWindow) private var openWindow
-  let register: (@escaping () -> Void) -> Void
-
-  var body: some View {
-    Color.clear
-      .frame(width: 0, height: 0)
-      .onAppear {
-        register {
-          openWindow(id: "main-workbench")
-        }
-      }
   }
 }
 

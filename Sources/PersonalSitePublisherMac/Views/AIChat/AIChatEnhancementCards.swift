@@ -77,28 +77,23 @@ struct AIChatStructuredEditReviewCard: View {
               .font(.caption.monospacedDigit())
               .foregroundStyle(.secondary)
           }
-          Text(proposal.originalText)
-            .font(.workbenchSupporting)
-            .strikethrough()
-            .foregroundStyle(.secondary)
-            .textSelection(.enabled)
-          Text(proposal.replacementText)
-            .font(.workbenchSupporting)
-            .foregroundStyle(WorkbenchTheme.primary)
-            .textSelection(.enabled)
+          AIChangeComparisonView(
+            before: proposal.originalText,
+            after: proposal.replacementText
+          )
           Text(proposal.reason)
             .font(.caption)
             .foregroundStyle(.secondary)
 
           HStack {
             decisionButton(
-              title: "接受",
+              title: "选择应用",
               systemImage: "checkmark",
               decision: .accepted,
               proposal: proposal
             )
             decisionButton(
-              title: "拒绝",
+              title: "取消选择",
               systemImage: "xmark",
               decision: .rejected,
               proposal: proposal
@@ -111,13 +106,13 @@ struct AIChatStructuredEditReviewCard: View {
       }
 
       HStack {
-        Button("全部接受") {
+        Button("选择全部修改") {
           for proposal in payload.document.changes {
             recordDecision(.accepted, proposal, message.model)
           }
           review = AIStructuredEditReviewService.acceptingAll(in: review)
         }
-        Button("全部拒绝") {
+        Button("取消全部选择") {
           for proposal in payload.document.changes {
             recordDecision(.rejected, proposal, message.model)
           }
@@ -127,7 +122,7 @@ struct AIChatStructuredEditReviewCard: View {
         Button {
           preview(review)
         } label: {
-          Label("预览已接受修改", systemImage: "rectangle.split.2x1")
+          Label("预览所选修改", systemImage: "rectangle.split.2x1")
         }
         .disabled(acceptedCount == 0)
       }

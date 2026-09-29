@@ -670,92 +670,6 @@ public struct AIOutboundPayloadPrivacyService: Sendable {
 }
 
 extension AIPublishingAssistantService {
-  func outboundPayload(
-    for request: AIChatRequest,
-    config: AIProviderConfig,
-    privacyService: AIOutboundPayloadPrivacyService,
-    transportVariant: AIOutboundPayloadTransportVariant = .stream,
-    now: Date = Date(),
-    nonce: UUID = UUID()
-  ) -> AIPreparedOutboundPayload? {
-    guard let endpoint = config.chatCompletionsURL else { return nil }
-    let currentModel = request.selectedModel?.nilIfEmpty ?? config.normalizedModel
-    let selectedModel = AIChatModelCatalog.model(
-      for: request.modelGrade,
-      config: config,
-      currentModel: currentModel
-    )
-    let model = config.requestModel(resolving: selectedModel)
-    return privacyService.prepare(
-      AIOutboundPayloadDescriptor(
-        endpoint: endpoint,
-        model: model,
-        messages: chatMessages(for: request),
-        contextCounts: outboundContextCounts(
-          references: request.context.explicitContextReferences,
-          hasAutomaticKnowledge: request.context.knowledgeContext?.citations.isEmpty == false,
-          includesImplicitArticleContext: false,
-          conversationMessageCount: request.messages.suffix(12).count
-        ),
-        contextBindingValues: outboundContextBindingValues(
-          references: request.context.explicitContextReferences,
-          contextMode: request.context.mode,
-          knowledgePolicy: request.context.knowledgePolicy,
-          reasoningLevel: request.reasoningLevel,
-          modelGrade: request.modelGrade,
-          includesImplicitArticleContext: false,
-          transportVariant: transportVariant,
-          config: config
-        )
-      ),
-      now: now,
-      nonce: nonce
-    )
-  }
-
-  func outboundPayload(
-    for request: AIPublishingChatRequest,
-    config: AIProviderConfig,
-    privacyService: AIOutboundPayloadPrivacyService,
-    transportVariant: AIOutboundPayloadTransportVariant = .stream,
-    now: Date = Date(),
-    nonce: UUID = UUID()
-  ) -> AIPreparedOutboundPayload? {
-    guard let endpoint = config.chatCompletionsURL else { return nil }
-    let currentModel = request.selectedModel?.nilIfEmpty ?? config.normalizedModel
-    let selectedModel = AIChatModelCatalog.model(
-      for: request.modelGrade,
-      config: config,
-      currentModel: currentModel
-    )
-    let model = config.requestModel(resolving: selectedModel)
-    return privacyService.prepare(
-      AIOutboundPayloadDescriptor(
-        endpoint: endpoint,
-        model: model,
-        messages: chatMessages(for: request),
-        contextCounts: outboundContextCounts(
-          references: request.explicitContextReferences,
-          hasAutomaticKnowledge: request.knowledgeContext?.citations.isEmpty == false,
-          includesImplicitArticleContext: request.contextMode == .site,
-          conversationMessageCount: request.messages.suffix(12).count
-        ),
-        contextBindingValues: outboundContextBindingValues(
-          references: request.explicitContextReferences,
-          contextMode: request.contextMode,
-          knowledgePolicy: request.knowledgePolicy,
-          reasoningLevel: request.reasoningLevel,
-          modelGrade: request.modelGrade,
-          includesImplicitArticleContext: request.contextMode == .site,
-          transportVariant: transportVariant,
-          config: config
-        )
-      ),
-      now: now,
-      nonce: nonce
-    )
-  }
-
   func outboundContextCounts(
     references: [AIContextReference],
     hasAutomaticKnowledge: Bool,
@@ -879,14 +793,6 @@ public final class AIOutboundPayloadApprovalBroker: ObservableObject {
 
   public func lastPreview(for scopeID: UUID) -> AIOutboundPayloadPreview? {
     lastPreviewsByScopeID[scopeID]
-  }
-
-  public func confirm(requestID: UUID) {
-    resolve(.confirm, requestID: requestID)
-  }
-
-  public func cancel(requestID: UUID) {
-    resolve(.cancel, requestID: requestID)
   }
 
   public func cancelPendingRequest() {

@@ -155,11 +155,15 @@ final class ContentMigrationServiceTests: XCTestCase {
     configuredProfile.markdownPathPattern = "content/new/{slug}.md"
     store.updateActiveProfile(configuredProfile)
 
-    XCTAssertThrowsError(try store.applyContentMigration(plan)) { error in
-      guard case ContentMigrationError.profileChanged = error else {
-        XCTFail("Expected profileChanged, got \(error)")
-        return
-      }
+    do {
+      _ = try await store.applyContentMigrationAsync(
+        plan,
+        selectedDraftIDs: Set(plan.reviewItems.map(\.id))
+      )
+      XCTFail("Expected profileChanged")
+    } catch ContentMigrationError.profileChanged {
+    } catch {
+      XCTFail("Expected profileChanged, got \(error)")
     }
     XCTAssertFalse(store.visibleDrafts.contains { $0.title == "Planned Article" })
   }
@@ -259,14 +263,13 @@ final class ContentMigrationServiceTests: XCTestCase {
     locallyEdited.bodyMarkdown = "Edited locally after preview"
     store.updateDraft(locallyEdited)
 
-    XCTAssertThrowsError(
-      try store.applyContentMigration(plan, selectedDraftIDs: [updateItem.id])
-    ) { error in
-      guard case let ContentMigrationError.draftsChanged(paths) = error else {
-        XCTFail("Expected draftsChanged, got \(error)")
-        return
-      }
+    do {
+      _ = try await store.applyContentMigrationAsync(plan, selectedDraftIDs: [updateItem.id])
+      XCTFail("Expected draftsChanged")
+    } catch let ContentMigrationError.draftsChanged(paths) {
       XCTAssertEqual(paths, ["content/posts/\(slug).md"])
+    } catch {
+      XCTFail("Expected draftsChanged, got \(error)")
     }
     XCTAssertEqual(store.drafts.first { $0.id == existingDraft.id }?.bodyMarkdown, "Edited locally after preview")
   }

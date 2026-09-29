@@ -1,95 +1,9 @@
 import XCTest
+
 @testable import PersonalSitePublisherMac
 @testable import PublishingWorkbenchCore
 
 final class AIChatInspectorHeaderPresentationTests: XCTestCase {
-  func testAgentToolAvailabilityExplainsEveryFailClosedLayer() {
-    var enabledCodex = AIProviderConfig(preset: .codexAppServer)
-    enabledCodex.applyPresetDefaults()
-
-    XCTAssertEqual(
-      AIChatAgentToolAvailabilityPresentation.availability(
-        config: enabledCodex,
-        conversationMode: .inheritConnection
-      ),
-      .available
-    )
-    XCTAssertEqual(
-      AIChatAgentToolAvailabilityPresentation.availability(
-        config: enabledCodex,
-        conversationMode: .textOnly
-      ),
-      .conversationTextOnly
-    )
-
-    var connectionDisabled = enabledCodex
-    connectionDisabled.advancedSettings = AIProviderAdvancedSettings(
-      allowsApplicationTools: false
-    )
-    XCTAssertEqual(
-      AIChatAgentToolAvailabilityPresentation.availability(
-        config: connectionDisabled,
-        conversationMode: .inheritConnection
-      ),
-      .connectionDisabled
-    )
-
-    var draftCreationDenied = enabledCodex
-    draftCreationDenied.advancedSettings = AIProviderAdvancedSettings(
-      allowsApplicationTools: true,
-      agentPermissionPolicy: AIAgentPermissionPolicy(enabledScopes: [.localRead])
-    )
-    XCTAssertEqual(
-      AIChatAgentToolAvailabilityPresentation.availability(
-        config: draftCreationDenied,
-        conversationMode: .inheritConnection
-      ),
-      .draftCreationDenied
-    )
-
-    let unknownCustom = AIProviderConfig(
-      preset: .custom,
-      baseURL: "https://api.example.com/v1",
-      model: "unknown-tools",
-      requiresAPIKey: false,
-      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: true)
-    )
-    XCTAssertEqual(
-      AIChatAgentToolAvailabilityPresentation.availability(
-        config: unknownCustom,
-        conversationMode: .inheritConnection
-      ),
-      .capabilityUnknown
-    )
-    XCTAssertEqual(
-      AIChatAgentToolAvailabilityPresentation.availability(
-        config: unknownCustom,
-        conversationMode: .inheritConnection
-      ).actionTitle,
-      "打开 AI 设置"
-    )
-
-    var unsupportedCustom = unknownCustom
-    let now = Date()
-    let key = AIProviderCapabilityCacheKey(config: unsupportedCustom)
-    unsupportedCustom.capabilityProbeEvidence = [
-      .toolCalling: AIProviderCapabilityProbeEvidence(
-        key: key,
-        capability: .toolCalling,
-        outcome: .unsupported,
-        observedAt: now,
-        expiresAt: now.addingTimeInterval(60)
-      )
-    ]
-    XCTAssertEqual(
-      AIChatAgentToolAvailabilityPresentation.availability(
-        config: unsupportedCustom,
-        conversationMode: .inheritConnection
-      ),
-      .capabilityUnsupported
-    )
-  }
-
   func testConversationTitleUsesTrimmedTitleOrNewConversationFallback() {
     XCTAssertEqual(
       AIChatInspectorHeaderPresentation.conversationTitle("  发布方案讨论  "),
@@ -225,6 +139,77 @@ final class AIChatInspectorHeaderPresentationTests: XCTestCase {
     )
   }
 
+  func testCodexConnectionPresentationCoversEveryReadinessPhase() {
+    XCTAssertNil(
+      AIChatCodexConnectionPresentation.configuration(
+        phase: .ready,
+        progress: nil,
+        failure: nil
+      )
+    )
+
+    let checking = AIChatCodexConnectionPresentation.configuration(
+      phase: .checking,
+      progress: "正在读取账户",
+      failure: nil
+    )
+    XCTAssertNil(checking?.action)
+    XCTAssertEqual(checking?.detail, "正在读取账户")
+
+    let missing = AIChatCodexConnectionPresentation.configuration(
+      phase: .missingComponent,
+      progress: nil,
+      failure: nil
+    )
+    XCTAssertEqual(missing?.action, .prepare)
+
+    let update = AIChatCodexConnectionPresentation.configuration(
+      phase: .updateRequired,
+      progress: nil,
+      failure: nil
+    )
+    XCTAssertEqual(update?.action, .prepare)
+
+    let login = AIChatCodexConnectionPresentation.configuration(
+      phase: .needsLogin,
+      progress: nil,
+      failure: nil
+    )
+    XCTAssertEqual(login?.action, .openSettings)
+
+    let failed = AIChatCodexConnectionPresentation.configuration(
+      phase: .failed,
+      progress: nil,
+      failure: "检查超时"
+    )
+    XCTAssertEqual(failed?.action, .prepare)
+    XCTAssertEqual(failed?.detail, "检查超时")
+
+    let readyWithPreparationFailure = AIChatCodexConnectionPresentation.configuration(
+      phase: .ready,
+      progress: nil,
+      failure: "校验失败"
+    )
+    XCTAssertEqual(readyWithPreparationFailure?.action, .prepare)
+    XCTAssertTrue(readyWithPreparationFailure?.detail.contains("当前组件仍可继续使用") == true)
+  }
+
+  func testCodexRuntimeReadinessDoesNotChangeAPIConnectionReadiness() {
+    let apiConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.example.com/v1",
+      model: "review-model",
+      requiresAPIKey: false
+    )
+    XCTAssertTrue(
+      AIChatConnectionStatusPresentation.readiness(
+        for: apiConfig,
+        hasToken: false,
+        hasDraft: true
+      ).isReady
+    )
+  }
+
   func testQuickSwitchSheetBuildsFastStandardAndHighQualityCandidates() {
     let config = AIProviderConfig(
       preset: .custom,
@@ -352,24 +337,6 @@ final class AIChatInspectorHeaderPresentationTests: XCTestCase {
         hasToken: true,
         hasDraft: true
       ).isReady
-    )
-  }
-
-  func testConnectionBlockerSuppressesAgentNoiseUntilConnectionIsReady() {
-    XCTAssertFalse(
-      AIChatConnectionBlockerPresentation.shouldShowAgentToolBanner(
-        readiness: .missingAPIKey
-      )
-    )
-    XCTAssertFalse(
-      AIChatConnectionBlockerPresentation.shouldShowAgentToolBanner(
-        readiness: .missingEndpoint
-      )
-    )
-    XCTAssertTrue(
-      AIChatConnectionBlockerPresentation.shouldShowAgentToolBanner(
-        readiness: .ready
-      )
     )
   }
 

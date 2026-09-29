@@ -50,7 +50,7 @@ enum AIConnectionTestAvailability: Equatable {
     case .missingModel:
       return String(localized: "请先在“连接与服务”中选择或填写模型。")
     case .missingAPIKey:
-      return String(localized: "请先在上方保存当前连接所需的 API Key。")
+      return String(localized: "请先保存当前连接所需的 API Key。")
     case .credentialAccessFailed(let detail):
       return String(localized: "凭据读取失败：\(detail)")
     case .consentRequired:
@@ -127,7 +127,7 @@ struct AIConnectionTestSection: View {
         .font(.caption)
         .foregroundStyle(.secondary)
 
-      capabilityProbeSelection
+      DisclosureGroup("可选能力探测") { capabilityProbeSelection }
     }
   }
 
@@ -138,7 +138,7 @@ struct AIConnectionTestSection: View {
       Text("默认不额外探测。勾选后会增加对应请求；选择普通对话会复用本次最小 ping。")
         .font(.workbenchMetadata)
         .foregroundStyle(.secondary)
-      ForEach(AIProviderCapabilityProbeKind.allCases) { capability in
+      ForEach(AIProviderCapabilityProbeKind.allCases.filter { $0 != .toolCalling }) { capability in
         Toggle(
           localizedProbeCapabilityName(capability),
           isOn: probeBinding(for: capability)

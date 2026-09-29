@@ -27,12 +27,10 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
     observe(store.repositoryStore.$isRemoteRepositoryChecking)
     observe(store.repositoryStore.$remoteRepositoryPublishProgress)
     observe(store.repositoryStore.$remoteRepositoryPublishResult)
-    observe(store.repositoryStore.$localGitPublishResult)
     observe(store.aiWorkspaceStore.$isAIChatRunning)
     observe(store.aiWorkspaceStore.$isAIActionRunning)
     observe(store.aiWorkspaceStore.$isAIMetadataSuggestionRunning)
     observe(store.aiWorkspaceStore.$isAutomationRunning)
-    observe(store.aiWorkspaceStore.$isAIImageTextRunning)
     observeAIMessage(store.aiWorkspaceStore.$aiChatMessage)
     observeAIMessage(store.aiWorkspaceStore.$aiActionMessage)
     observe(store.aiWorkspaceStore.$aiChatMessageIsFailure)
@@ -308,7 +306,6 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
       || ai.isAIActionRunning
       || ai.isAIMetadataSuggestionRunning
       || ai.isAutomationRunning
-      || ai.isAIImageTextRunning
     let message = ai.aiChatMessage ?? ai.aiActionMessage
     if isRunning {
       let target = activeAIChatTarget
@@ -725,7 +722,6 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
             || ai.isAIActionRunning
             || ai.isAIMetadataSuggestionRunning
             || ai.isAutomationRunning
-            || ai.isAIImageTextRunning
             || self.store.aiStore.aiChatManualRetryState != nil
             || self.store.aiStore.aiGeneralChatManualRetryState != nil
         else {

@@ -34,12 +34,6 @@ extension WorkbenchStore {
     aiStore.seoSocialPreviewSnapshot(for: draft)
   }
 
-  public func seoSocialPreviewCachePresentation(for draft: ArticleDraft)
-    -> SEOSocialPreviewCachePresentation
-  {
-    aiStore.seoSocialPreviewCachePresentation(for: draft)
-  }
-
   public func seoReport(for draft: ArticleDraft) -> SEOAuditReport {
     aiStore.seoReport(for: draft)
   }
@@ -48,25 +42,6 @@ extension WorkbenchStore {
     for draft: ArticleDraft
   ) async throws -> WorkbenchSEOInspectorPresentation {
     try await aiStore.seoInspectorPresentation(for: draft)
-  }
-
-  @discardableResult
-  public func saveAIAPIKey(_ token: String) -> Bool {
-    aiStore.saveAIAPIKey(token)
-  }
-
-  public func deleteAIAPIKey() {
-    aiStore.deleteAIAPIKey()
-  }
-
-  public func testAIConnection(
-    probeCapabilities: Set<AIProviderCapabilityProbeKind> = []
-  ) async -> AIConnectionTestReport? {
-    await aiStore.testAIConnection(probeCapabilities: probeCapabilities)
-  }
-
-  public func clearAIChat() {
-    aiStore.clearAIChat()
   }
 
   public func setAIChatModelGrade(_ grade: AIChatModelGrade) {
@@ -87,28 +62,6 @@ extension WorkbenchStore {
 
   public func resetAIChatModelToProfileDefault() {
     aiStore.resetAIChatModelToProfileDefault()
-  }
-
-  public func setAIChatConversationTitle(_ title: String?, draft: ArticleDraft? = nil) {
-    aiStore.setAIChatConversationTitle(title, draft: draft)
-  }
-
-  public func aiChatConversations(
-    for draftID: UUID,
-    includingArchived: Bool = false
-  ) -> [AIConversation] {
-    aiStore.aiChatConversations(
-      for: draftID,
-      includingArchived: includingArchived
-    )
-  }
-
-  public func activeAIChatConversationID(for draftID: UUID) -> UUID? {
-    aiStore.activeAIChatConversationID(for: draftID)
-  }
-
-  public var activeAIChatConversation: AIConversation? {
-    aiStore.activeAIChatConversation()
   }
 
   @discardableResult
@@ -139,10 +92,6 @@ extension WorkbenchStore {
     aiStore.deleteAIChatConversation(conversationID)
   }
 
-  public func setAIChatFocusedParagraph(_ paragraphID: String?, draft: ArticleDraft? = nil) {
-    aiStore.setAIChatFocusedParagraph(paragraphID, draft: draft)
-  }
-
   @discardableResult
   public func saveAIChatCustomPrompt(title: String, prompt: String) -> AIPublishingCustomPrompt? {
     aiStore.saveAIChatCustomPrompt(title: title, prompt: prompt)
@@ -167,26 +116,12 @@ extension WorkbenchStore {
     }
   #endif
 
-  public func deleteAIChatMessage(
-    _ messageID: AIPublishingChatMessage.ID, draft: ArticleDraft? = nil
-  ) {
-    aiStore.deleteAIChatMessage(messageID, draft: draft)
-  }
-
   @discardableResult
   public func branchAIChatConversation(
     after messageID: AIPublishingChatMessage.ID,
     draft: ArticleDraft? = nil
   ) -> AIConversation? {
     aiStore.branchAIChatConversation(after: messageID, draft: draft)
-  }
-
-  public func cancelAIChatReply() {
-    aiStore.cancelAIChatReply()
-  }
-
-  public func cancelAIChatReply(expectedOwnerToken: UUID) {
-    aiStore.cancelAIChatReply(expectedOwnerToken: expectedOwnerToken)
   }
 
   @discardableResult
@@ -202,21 +137,6 @@ extension WorkbenchStore {
       ownerToken: ownerToken,
       expectedContextMode: expectedContextMode
     )
-  }
-
-  @discardableResult
-  public func regenerateLastAIChatReply(draft: ArticleDraft? = nil) async
-    -> AIPublishingChatMessage?
-  {
-    await aiStore.regenerateLastAIChatReply(draft: draft)
-  }
-
-  @discardableResult
-  public func regenerateAIChatReply(
-    messageID: AIPublishingChatMessage.ID,
-    draft: ArticleDraft? = nil
-  ) async -> AIPublishingChatMessage? {
-    await aiStore.regenerateAIChatReply(messageID: messageID, draft: draft)
   }
 
   @discardableResult
@@ -244,10 +164,6 @@ extension WorkbenchStore {
     aiStore.consumePendingAIQuickPrompt()
   }
 
-  public func showAIPublishingAssistant(for draftID: UUID? = nil) {
-    aiStore.showAIPublishingAssistant(for: draftID)
-  }
-
   public func hideAIPublishingAssistant() {
     aiStore.hideAIPublishingAssistant()
   }
@@ -259,10 +175,6 @@ extension WorkbenchStore {
     aiStore.openAIChatWorkspace(for: draftID, quickPrompt: quickPrompt)
   }
 
-  public func focusedAIChatParagraph(for draft: ArticleDraft) -> AIPublishingChatDraftParagraph? {
-    aiStore.focusedAIChatParagraph(for: draft)
-  }
-
   @discardableResult
   public func applyAIMetadataSuggestion(
     field: AIPublishingMetadataField,
@@ -272,64 +184,10 @@ extension WorkbenchStore {
     aiStore.applyAIMetadataSuggestion(field: field, value: value, draft: draft)
   }
 
-  @discardableResult
-  public func applyAIMetadataSuggestion(
-    _ suggestion: AIPublishingMetadataSuggestion,
-    draft: ArticleDraft
-  ) -> ArticleDraft? {
-    aiStore.applyAIMetadataSuggestion(suggestion, draft: draft)
-  }
-
-  public func recentAIMetadataApplicationRecords(
-    for draft: ArticleDraft,
-    limit: Int = 10
-  ) -> [AIPublishingMetadataApplicationRecord] {
-    aiStore.recentAIMetadataApplicationRecords(for: draft, limit: limit)
-  }
-
-  @discardableResult
-  public func rollbackAIMetadataApplicationRecord(
-    _ record: AIPublishingMetadataApplicationRecord
-  ) -> ArticleDraft? {
-    aiStore.rollbackAIMetadataApplicationRecord(record)
-  }
-
-  @discardableResult
-  public func rollbackAIMetadataApplicationRecords(
-    _ records: [AIPublishingMetadataApplicationRecord]
-  ) -> AIPublishingMetadataApplicationBatchRollbackResult {
-    aiStore.rollbackAIMetadataApplicationRecords(records)
-  }
-
-  public func clearAIMetadataApplicationRecords(for draft: ArticleDraft) {
-    aiStore.clearAIMetadataApplicationRecords(for: draft)
-  }
-
-  public func aiChatImageAttachments(
-    for draft: ArticleDraft,
-    attachmentIDs: Set<UUID>
-  ) async -> [AIChatImageAttachment] {
-    await aiStore.aiChatImageAttachments(for: draft, attachmentIDs: attachmentIDs)
-  }
-
-  public func aiMetadataSuggestion(for draft: ArticleDraft)
-    -> AIPublishingMetadataSuggestion?
-  {
-    aiStore.aiMetadataSuggestion(for: draft)
-  }
-
   public func aiMetadataSuggestion(for draftID: UUID)
     -> AIPublishingMetadataSuggestion?
   {
     aiStore.aiMetadataSuggestion(for: draftID)
-  }
-
-  public func isAIMetadataSuggestionRunning(for draft: ArticleDraft) -> Bool {
-    aiStore.isAIMetadataSuggestionRunning(for: draft)
-  }
-
-  public func isAIMetadataSuggestionRunning(for draftID: UUID) -> Bool {
-    aiStore.isAIMetadataSuggestionRunning(for: draftID)
   }
 
   public func makeAttachment(
@@ -342,58 +200,6 @@ extension WorkbenchStore {
       draft: draft,
       fileStore: fileStore ?? managedAttachmentFileStore
     )
-  }
-
-  public func aiImageTextSuggestions(for draft: ArticleDraft)
-    -> [AIPublishingImageTextSuggestion]
-  {
-    aiStore.aiImageTextSuggestions(for: draft)
-  }
-
-  public func aiImageTextSuggestions(for draftID: UUID)
-    -> [AIPublishingImageTextSuggestion]
-  {
-    aiStore.aiImageTextSuggestions(for: draftID)
-  }
-
-  public func isAIImageTextRunning(for draft: ArticleDraft) -> Bool {
-    aiStore.isAIImageTextRunning(for: draft)
-  }
-
-  public func isAIImageTextRunning(for draftID: UUID) -> Bool {
-    aiStore.isAIImageTextRunning(for: draftID)
-  }
-
-  public func prepareAIImageTextSuggestions(for draft: ArticleDraft) {
-    aiStore.prepareAIImageTextSuggestions(for: draft)
-  }
-
-  @discardableResult
-  public func generateAIImageTextSuggestions(draft: ArticleDraft) async
-    -> [AIPublishingImageTextSuggestion]
-  {
-    await aiStore.generateAIImageTextSuggestions(draft: draft)
-  }
-
-  public func applyAIImageTextSuggestion(_ suggestion: AIPublishingImageTextSuggestion) {
-    aiStore.applyAIImageTextSuggestion(suggestion)
-  }
-
-  public func applyAIImageTextSuggestions(_ suggestions: [AIPublishingImageTextSuggestion]) {
-    aiStore.applyAIImageTextSuggestions(suggestions)
-  }
-
-  public func clearAIImageTextSuggestions() {
-    aiStore.clearAIImageTextSuggestions()
-  }
-
-  public func seoSitemapPreview(for draft: ArticleDraft) -> SEOSitemapPreview {
-    aiStore.seoSitemapPreview(for: draft)
-  }
-
-  public func seoSocialPublishPackageMarkdown(for draft: ArticleDraft) async -> String? {
-    await refreshSiteMaintenanceSnapshot()
-    return aiStore.seoSocialPublishPackageMarkdown(for: draft)
   }
 
   @discardableResult
@@ -415,13 +221,6 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func generateAIMetadataSuggestions(
-    draft: ArticleDraft
-  ) async -> AIPublishingMetadataSuggestion? {
-    await aiStore.generateAIMetadataSuggestions(draft: draft)
-  }
-
-  @discardableResult
   public func sendMaintenanceActionToAI(_ item: MaintenanceActionItem) async
     -> AIPublishingChatMessage?
   {
@@ -433,12 +232,5 @@ extension WorkbenchStore {
     -> AIPublishingChatMessage?
   {
     await aiStore.sendReleaseRecoveryPackageToAI(for: entry)
-  }
-
-  @discardableResult
-  public func sendSEOSocialPreviewToAI(for draft: ArticleDraft? = nil) async
-    -> AIPublishingChatMessage?
-  {
-    await aiStore.sendSEOSocialPreviewToAI(for: draft)
   }
 }

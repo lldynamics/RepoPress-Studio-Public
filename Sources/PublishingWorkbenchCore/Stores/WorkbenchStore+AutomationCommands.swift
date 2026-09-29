@@ -13,6 +13,17 @@ public enum WorkbenchAutomationExecutor {
     var updatedPlan = plan
     var records: [WorkbenchAutomationStepRecord] = []
 
+    // History can be decoded and inspected, but no caller may replay an Agent plan.
+    guard plan.source != .agentLoop else {
+      records = plan.steps.map {
+        WorkbenchAutomationStepRecord(
+          command: $0.command, status: .cancelled,
+          message: AIAgentRetirement.message, targetDraftID: $0.arguments.draftID
+        )
+      }
+      return result(plan: plan, startedAt: startedAt, records: records)
+    }
+
     do {
       try WorkbenchAutomationPlanValidator.validateStructure(plan)
     } catch {
@@ -87,14 +98,6 @@ public enum WorkbenchAutomationExecutor {
             targetDraftID: step.arguments.draftID
           )
         )
-        if plan.source == .agentLoop, onlyStepID == nil {
-          // A model-proposed mutation is a hard barrier for the rest of the
-          // plan. Running a later read-only step against the pre-mutation
-          // state would give the model a stale observation and make the
-          // eventual confirmed continuation ambiguous. The caller can resume
-          // one step at a time after confirmation.
-          break
-        }
         break
       }
 
@@ -127,7 +130,7 @@ public enum WorkbenchAutomationExecutor {
 
       updatedPlan.steps[index].status = .running
       do {
-        let stepRecord = try await executeStep(step, source: plan.source, in: store)
+        let stepRecord = try await executeStep(step, in: store)
         updatedPlan.steps[index].status = .succeeded
         updatedPlan.steps[index].resultMessage = stepRecord.message
         records.append(stepRecord)
@@ -261,7 +264,6 @@ public enum WorkbenchAutomationExecutor {
 
   private static func executeStep(
     _ step: WorkbenchAutomationStep,
-    source: WorkbenchAutomationPlanSource,
     in store: WorkbenchStore
   ) async throws -> WorkbenchAutomationStepRecord {
     try WorkbenchAutomationPlanValidator.validateArguments(step)
@@ -285,11 +287,7 @@ public enum WorkbenchAutomationExecutor {
         step, CoreL10n.format("已打开文章“%@”。", draft.title.nilIfEmpty ?? CoreL10n.text("未命名文章")))
 
     case .createDraft:
-      if source == .agentLoop {
-        store.createGeneralDraft()
-      } else {
-        store.createDraft()
-      }
+      store.createDraft()
       guard var draft = store.selectedDraft else {
         throw WorkbenchAutomationValidationError.draftNotFound
       }

@@ -17,13 +17,17 @@ struct WorkspaceContextListHeader<Subtitle: View, Actions: View>: View {
   var body: some View {
     HStack(alignment: .center, spacing: 8) {
       VStack(alignment: .leading, spacing: 2) {
+        // Keep the section name whole; longer localized actions yield first.
         Text(title)
           .font(.workbenchSectionTitle)
+          .lineLimit(1)
+          .minimumScaleFactor(0.85)
         subtitle()
           .font(.workbenchMetadata)
           .foregroundStyle(.secondary)
           .lineLimit(2)
       }
+      .layoutPriority(1)
 
       Spacer(minLength: 8)
 

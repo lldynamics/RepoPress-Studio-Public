@@ -2,117 +2,6 @@ import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
 
-struct SiteMaintenanceMetricGrid: View {
-  let report: SiteMaintenanceReport
-  let latestRelease: ReleaseRecord?
-  let deploymentSnapshot: DeploymentStatusSnapshot?
-
-  private var blockingCount: Int {
-    report.actionItems.filter { $0.priority == .high }.count
-  }
-
-  private var onlineStatusText: String {
-    if deploymentSnapshot?.level == .success {
-      return String(localized: "已确认")
-    }
-    if latestRelease == nil {
-      return String(localized: "暂无")
-    }
-    return String(localized: "待确认")
-  }
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      PrimaryStatusMetricGrid {
-        MetricTile(
-          title: "阻断",
-          value: "\(blockingCount)",
-          semantic: blockingCount == 0 ? .passed : .blocking
-        )
-        MetricTile(
-          title: "待处理",
-          value: "\(report.actionItems.count)",
-          semantic: report.actionItems.isEmpty ? .passed : .warning
-        )
-        MetricTile(
-          title: "已上线",
-          value: onlineStatusText,
-          semantic: deploymentSnapshot?.level == .success ? .passed : .neutral
-        )
-      }
-
-      Divider()
-
-      Label("站点指标", systemImage: "chart.bar.xaxis")
-        .font(.callout.weight(.medium))
-
-      LazyVGrid(
-        columns: [GridItem(.adaptive(minimum: 138, maximum: 220))],
-        spacing: 10
-      ) {
-        MetricTile(title: "文章", value: "\(report.draftCount)", semantic: .neutral)
-        MetricTile(title: "待发布", value: "\(report.readyCount)", semantic: .progress)
-        MetricTile(title: "已发布", value: "\(report.publishedCount)", semantic: .passed)
-        MetricTile(
-          title: "旧文候选",
-          value: "\(report.staleArticles.count)",
-          semantic: report.staleArticles.isEmpty ? .passed : .warning
-        )
-        MetricTile(title: "内链机会", value: "\(report.internalLinkOpportunityCount)", semantic: .progress)
-        MetricTile(
-          title: "链接提示",
-          value: "\(report.linkAuditItems.count)",
-          semantic: report.linkAuditItems.isEmpty ? .passed : .warning
-        )
-      }
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-  }
-}
-
-struct SiteMaintenanceHealthSection: View {
-  let summary: SiteMaintenanceHealthSummary
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(alignment: .firstTextBaseline) {
-        Label(summary.title, systemImage: summary.level.systemImage)
-          .font(.headline)
-          .foregroundStyle(siteMaintenanceHealthForeground(summary.level))
-        Spacer()
-        Text("\(summary.score)/100")
-          .font(.title3.weight(.semibold))
-          .foregroundStyle(siteMaintenanceHealthForeground(summary.level))
-        Text(summary.level.localizedDisplayName)
-          .font(.caption.weight(.medium))
-          .foregroundStyle(siteMaintenanceHealthForeground(summary.level))
-      }
-
-      Text(summary.message)
-        .font(.callout)
-        .foregroundStyle(.secondary)
-
-      Label(summary.nextAction, systemImage: "arrow.forward.circle")
-        .font(.caption.weight(.medium))
-        .foregroundStyle(siteMaintenanceHealthForeground(summary.level))
-
-      if !summary.drivers.isEmpty {
-        VStack(alignment: .leading, spacing: 5) {
-          ForEach(summary.drivers, id: \.self) { driver in
-            Label(driver, systemImage: "smallcircle.filled.circle")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-        }
-      }
-    }
-    .padding(.vertical, WorkbenchSpacing.control)
-    .overlay(alignment: .bottom) {
-      Divider()
-    }
-  }
-}
-
 struct SiteMaintenanceActionQueueSection: View {
   let report: SiteMaintenanceReport
   let isAIChatRunning: Bool
@@ -244,17 +133,6 @@ struct SiteMaintenanceActionQueueSection: View {
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-  }
-}
-
-private func siteMaintenanceHealthForeground(_ level: SiteMaintenanceHealthLevel) -> AnyShapeStyle {
-  switch level {
-  case .stable, .watch:
-    return AnyShapeStyle(.secondary)
-  case .needsWork:
-    return AnyShapeStyle(WorkbenchTheme.warning)
-  case .urgent:
-    return AnyShapeStyle(WorkbenchTheme.risk)
   }
 }
 

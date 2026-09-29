@@ -117,8 +117,8 @@ public actor ImageBatchProcessingActor {
 
     // Image encoders are CPU and memory heavy. Admission is bounded by both
     // CPU slots and estimated decoded bytes; an oversized draft runs alone.
-    // Each attachment destination is UUID-based, so drafts can safely share
-    // the staging directory.
+    // Drafts receive separate staging directories because imported or legacy
+    // drafts can share an attachment UUID.
     let service = self.service
     let workItems = drafts.enumerated().map { index, draft in
       ImageBatchMemoryScheduler.WorkItem(
@@ -146,15 +146,23 @@ public actor ImageBatchProcessingActor {
           let draftIndex = workItem.index
           let draft = drafts[draftIndex]
           let includedAttachmentIDs = includedAttachmentIDsByDraftID[draft.id]
+          let draftOutputDirectory = outputDirectory.appendingPathComponent(
+            draft.id.uuidString,
+            isDirectory: true
+          )
           group.addTask {
             try Task.checkCancellation()
             try cancellationToken.throwIfCancelled()
+            try FileManager.default.createDirectory(
+              at: draftOutputDirectory,
+              withIntermediateDirectories: true
+            )
             let result = try Self.process(
               service: service,
               operation: operation,
               draft: draft,
               includedAttachmentIDs: includedAttachmentIDs,
-              destinationDirectory: outputDirectory,
+              destinationDirectory: draftOutputDirectory,
               cancellationToken: cancellationToken
             )
             try Task.checkCancellation()

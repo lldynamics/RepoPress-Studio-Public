@@ -3,7 +3,6 @@
 // module directly; these exports preserve existing source compatibility during
 // the staged migration.
 @_exported import PublishingAICore
-@_exported import PublishingAgentContracts
 @_exported import PublishingCoreSupport
 @_exported import PublishingDomainContracts
 @_exported import PublishingGitCore

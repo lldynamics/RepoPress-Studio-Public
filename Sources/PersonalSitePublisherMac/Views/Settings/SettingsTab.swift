@@ -15,17 +15,13 @@ struct SettingsContext {
   let healthNavigationRequestID: UUID
   let navigationDestination: SettingsDestination?
   let navigationRequestID: UUID
+  let selectedSubsection: SettingsSubsection
   let selectConfigurationHealthDestination: (SettingsConfigurationHealthDestination) -> Void
   let selectSettingsDestination: (SettingsDestination) -> Void
 
   var actions: SettingsStoreActions {
     SettingsStoreActions(store: store)
   }
-}
-
-enum SettingsScrollOwnership: String, Equatable {
-  case nativeForm
-  case nativeScrollView
 }
 
 enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
@@ -171,70 +167,10 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
     }
   }
 
-  var scrollOwnership: SettingsScrollOwnership {
-    switch self {
-    case .configurationStatus, .dataManagement:
-      return .nativeScrollView
-    case .defaultRules, .token, .ai, .siteAI, .appearance, .editor, .rss,
-      .privacy:
-      return .nativeForm
-    }
-  }
-
   static let siteSettings: [SettingsTab] = [.configurationStatus, .defaultRules, .token, .siteAI]
   static let applicationSettings: [SettingsTab] = [
     .appearance, .editor, .ai, .rss, .dataManagement, .privacy,
   ]
-
-  var searchKeywords: [String] {
-    switch self {
-    case .configurationStatus:
-      return ["状态", "健康", "就绪", "本地发布", "overview", "status"]
-    case .defaultRules:
-      return ["发布规则", "Front Matter", "作者", "标签", "分类", "Slug", "文件名", "路径", "模板"]
-    case .token:
-      return ["仓库", "部署", "GitHub", "GitLab", "Token", "令牌", "凭据", "权限"]
-    case .ai:
-      return ["模型", "服务", "API Key", "授权", "连接测试", "共享连接", "本地 AI"]
-    case .siteAI:
-      return ["写作风格", "语气", "受众", "连接选择", "站点 AI", "提示词"]
-    case .appearance:
-      return ["通用", "启动", "自动检查", "扫描", "主题", "强调色", "外观"]
-    case .editor:
-      return [
-        "编辑器", "字号", "行距", "正文宽度", "拼写检查", "打字机模式", "当前段落",
-        "正文分析", "纸张背景", "自动配对", "段落聚光灯", "新文章", "全局预设", "Front Matter", "editor",
-      ]
-    case .rss:
-      return [
-        "订阅", "OPML", "离线", "内网", "保留", "历史文章", "清理", "远程图片", "自动翻译",
-        "remote image", "translation",
-      ]
-    case .privacy:
-      return ["隐私", "私密内容", "内容遮挡", "正文", "路径", "预览", "保护状态"]
-    case .dataManagement:
-      return ["数据", "草稿", "版本", "回收站", "存储", "清理", "备份", "恢复", "迁移", "导入"]
-    }
-  }
-
-  func matchesSearchDirectly(_ query: String) -> Bool {
-    let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !normalizedQuery.isEmpty else { return true }
-    let searchableText = ([title, subtitle] + searchKeywords).joined(separator: " ")
-    return searchableText.range(
-      of: normalizedQuery,
-      options: [.caseInsensitive, .diacriticInsensitive]
-    ) != nil
-  }
-
-  func matchesSearch(_ query: String) -> Bool {
-    let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !normalizedQuery.isEmpty else { return true }
-    if matchesSearchDirectly(normalizedQuery) {
-      return true
-    }
-    return SettingsSearchIndex.search(query: normalizedQuery).contains(where: { $0.tab == self })
-  }
 
   static func tab(forRequestedID id: String) -> SettingsTab? {
     SettingsDestination(requestedID: id)?.tab

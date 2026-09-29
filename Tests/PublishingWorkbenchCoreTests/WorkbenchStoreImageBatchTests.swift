@@ -31,7 +31,11 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
       attachments: [attachment]
     )
 
-    let images = await store.aiChatImageAttachments(for: draft, attachmentIDs: [attachment.id])
+    let result = await store.ai.chatImageAttachmentLoadResult(
+      for: draft,
+      attachmentIDs: [attachment.id]
+    )
+    let images = result.images
 
     XCTAssertEqual(images.count, 1)
     XCTAssertEqual(images[0].filename, "cover.png")
@@ -61,7 +65,11 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
       attachments: [attachment]
     )
 
-    let images = await store.aiChatImageAttachments(for: draft, attachmentIDs: [attachment.id])
+    let result = await store.ai.chatImageAttachmentLoadResult(
+      for: draft,
+      attachmentIDs: [attachment.id]
+    )
+    let images = result.images
 
     XCTAssertEqual(images.count, 1)
     XCTAssertEqual(images[0].data.count, 5 * 1_024 * 1_024)
@@ -93,13 +101,14 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
       attachments: [attachment]
     )
 
-    let images = await store.aiChatImageAttachments(for: draft, attachmentIDs: [attachment.id])
+    let result = await store.ai.chatImageAttachmentLoadResult(
+      for: draft,
+      attachmentIDs: [attachment.id]
+    )
+    let images = result.images
 
     XCTAssertTrue(images.isEmpty)
-    XCTAssertEqual(
-      store.aiChatMessage,
-      "已跳过 1 个无法读取、格式不支持或超过 \(AIPublishingChatImageAttachmentPresentation.attachmentSizeLimitText()) 的图片附件。"
-    )
+    XCTAssertEqual(result.failures.map(\.reason), [.exceedsSizeLimit])
   }
 
   func testAIChatImageAttachmentsSkipsUnsupportedImageFormat() async throws {
@@ -121,10 +130,15 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
       attachments: [attachment]
     )
 
-    let images = await store.aiChatImageAttachments(for: draft, attachmentIDs: [attachment.id])
+    let result = await store.ai.chatImageAttachmentLoadResult(
+      for: draft,
+      attachmentIDs: [attachment.id]
+    )
+    let images = result.images
 
     XCTAssertTrue(images.isEmpty)
-    XCTAssertTrue(store.aiChatMessage?.contains("格式不支持") == true)
+    XCTAssertEqual(result.failures.map(\.reason), [.unsupportedFormat])
+    XCTAssertTrue(result.submissionFailureMessage?.contains("格式不支持") == true)
   }
 
   func testAttachRepositoryImageToSelectedDraftKeepsRepositoryPathAndSourceFile() throws {

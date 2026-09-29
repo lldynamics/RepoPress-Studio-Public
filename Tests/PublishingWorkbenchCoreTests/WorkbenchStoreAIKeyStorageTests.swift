@@ -69,7 +69,7 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
 
     XCTAssertEqual(store.aiTokenAvailability.accessState, .missing)
     XCTAssertNil(store.aiTokenAvailability.accessFailureMessage)
-    XCTAssertFalse(store.saveAIAPIKey("sk-should-not-save"))
+    XCTAssertFalse(store.aiStore.saveAIAPIKey("sk-should-not-save"))
     XCTAssertEqual(store.aiActionMessage, "API Base URL 尚未配置。")
   }
 
@@ -129,7 +129,7 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
         requiresAPIKey: true
       )
     }
-    store.saveAIAPIKey("  sk-test-token  ")
+    store.aiStore.saveAIAPIKey("  sk-test-token  ")
 
     XCTAssertEqual(store.aiActionMessage, "AI API Key 已保存到 Keychain。")
     XCTAssertTrue(store.aiTokenAvailability.hasToken)
@@ -155,9 +155,9 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
         requiresAPIKey: true
       )
     }
-    store.saveAIAPIKey("sk-test-token")
+    store.aiStore.saveAIAPIKey("sk-test-token")
 
-    store.deleteAIAPIKey()
+    store.aiStore.deleteAIAPIKey()
 
     XCTAssertEqual(store.aiActionMessage, "AI API Key 已删除。")
     XCTAssertEqual(store.aiChatMessage, "AI API Key 已删除，请重新配置后再发送消息。")
@@ -184,7 +184,7 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
         requiresAPIKey: true
       )
     }
-    store.saveAIAPIKey("deepseek-token")
+    store.aiStore.saveAIAPIKey("deepseek-token")
     XCTAssertTrue(store.aiTokenAvailability.hasToken)
 
     store.updateActiveProfile { profile in
@@ -216,7 +216,7 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
         requiresAPIKey: true
       )
     }
-    store.saveAIAPIKey("original-profile-token")
+    store.aiStore.saveAIAPIKey("original-profile-token")
     XCTAssertTrue(store.aiTokenAvailability.hasToken)
 
     let secondProfile = store.createProfile(named: "Second")
@@ -272,7 +272,7 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
     store.setAIChatMessage("AI 讨论失败：请先在 Settings 的 AI 页保存 API Key。")
     XCTAssertFalse(store.aiTokenAvailability.hasToken)
 
-    let report = await store.testAIConnection()
+    let report = await store.aiStore.testAIConnection()
 
     XCTAssertNotNil(report)
     XCTAssertTrue(store.aiTokenAvailability.hasToken)

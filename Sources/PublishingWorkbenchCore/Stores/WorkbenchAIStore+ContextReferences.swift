@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 extension WorkbenchAIStore {
   /// Context choices exposed by the independent general chat window. These
@@ -479,5 +480,54 @@ extension WorkbenchAIStore {
     return issues.prefix(40).map { issue in
       "- [\(issue.severity.rawValue)] \(issue.title)：\(issue.message)"
     }.joined(separator: "\n")
+  }
+
+  public func aiChatImageAttachmentLoadResult(
+    for draft: ArticleDraft,
+    attachmentIDs: Set<UUID>
+  ) async -> AIChatImageAttachmentLoadResult {
+    let resolvedAttachments = draft.attachments.filter { attachmentIDs.contains($0.id) }
+    let resolvedAttachmentIDs = Set(resolvedAttachments.map(\.id))
+    let missingAttachmentIDs = attachmentIDs.subtracting(resolvedAttachmentIDs)
+      .sorted { $0.uuidString < $1.uuidString }
+    let attachmentLimit = AIPublishingChatImageAttachmentPresentation.maxSelectedImageCount
+    let attachmentsWithinLimit = Array(resolvedAttachments.prefix(attachmentLimit))
+    let overflowAttachments = resolvedAttachments.dropFirst(attachmentLimit)
+    let nonImageAttachments = attachmentsWithinLimit.filter { $0.mediaKind != .image }
+    let imageAttachments = attachmentsWithinLimit.filter { $0.mediaKind == .image }
+    let removedAttachmentName = CoreL10n.text("已移除的图片")
+
+    let result = await Task.detached(priority: .userInitiated) {
+      AIChatImageAttachmentLoader.loadResult(imageAttachments)
+    }.value
+    guard !Task.isCancelled else {
+      return AIChatImageAttachmentLoadResult(images: [], failures: [])
+    }
+
+    let nonImageFailures = nonImageAttachments.map { attachment in
+      AIChatImageAttachmentLoadFailure(
+        attachmentID: attachment.id,
+        filename: attachment.originalFilename,
+        reason: .notImage
+      )
+    }
+    let overflowFailures = overflowAttachments.map { attachment in
+      AIChatImageAttachmentLoadFailure(
+        attachmentID: attachment.id,
+        filename: attachment.originalFilename,
+        reason: .exceedsSelectionLimit
+      )
+    }
+    let missingFailures = missingAttachmentIDs.map { attachmentID in
+      AIChatImageAttachmentLoadFailure(
+        attachmentID: attachmentID,
+        filename: removedAttachmentName,
+        reason: .removedFromArticle
+      )
+    }
+    return AIChatImageAttachmentLoadResult(
+      images: result.images,
+      failures: result.failures + nonImageFailures + overflowFailures + missingFailures
+    )
   }
 }

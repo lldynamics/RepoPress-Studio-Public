@@ -1,20 +1,5 @@
 import Foundation
 
-public enum SiteDraftFileSaveState: Equatable, Sendable {
-  case pending(repositoryPath: String)
-  case saved(repositoryPath: String, savedAt: Date)
-  case failed(repositoryPath: String, message: String)
-
-  public var repositoryPath: String {
-    switch self {
-    case .pending(let repositoryPath),
-      .saved(let repositoryPath, _),
-      .failed(let repositoryPath, _):
-      return repositoryPath
-    }
-  }
-}
-
 private struct SiteDraftFileReconciliationCandidate: Sendable {
   let draft: ArticleDraft
   let profile: SiteProfile
@@ -23,17 +8,6 @@ private struct SiteDraftFileReconciliationCandidate: Sendable {
 }
 
 extension WorkbenchStore {
-  /// Only failures that blocked the latest flush belong in the exit error.
-  /// Full file paths remain available in each group's details.
-  var siteDraftFileFlushErrorMessage: String? {
-    let failures = currentSiteDraftFileSaveFailures.filter {
-      siteDraftFileFlushFailureIDs.contains($0.draftID)
-    }
-    let groups = SiteDraftFileSaveFailureGroup.grouped(failures)
-    guard !groups.isEmpty else { return nil }
-    return groups.map(\.summary).joined(separator: "\n\n")
-  }
-
   func scheduleSiteDraftFileAutosave(
     for draft: ArticleDraft,
     immediate: Bool = false
@@ -53,7 +27,8 @@ extension WorkbenchStore {
     }
 
     let profile = profile(for: draft)
-    let repositoryPath = draft.repositoryPath?.normalizedRelativePath()
+    let repositoryPath =
+      draft.repositoryPath?.normalizedRelativePath()
       ?? profile.markdownPath(for: draft)
     let generation = (siteDraftFileSaveGenerations[draft.id] ?? 0) &+ 1
     siteDraftFileSaveGenerations[draft.id] = generation
@@ -150,11 +125,13 @@ extension WorkbenchStore {
         return
       }
       let digestTask = Self.siteDraftFileReconciliationDigestTask(candidates: candidates)
-      let staleCandidates = await withTaskCancellationHandler(operation: {
-        await digestTask.value
-      }, onCancel: {
-        digestTask.cancel()
-      })
+      let staleCandidates = await withTaskCancellationHandler(
+        operation: {
+          await digestTask.value
+        },
+        onCancel: {
+          digestTask.cancel()
+        })
 
       guard !Task.isCancelled,
         self.siteDraftFileReconciliationGeneration == generation
@@ -196,9 +173,10 @@ extension WorkbenchStore {
   }
 
   private func cancelSiteDraftFileAutosaveIfNeeded(for draftID: UUID) {
-    guard siteDraftFileAutosaveTasks[draftID] != nil
-      || siteDraftFileWritesInProgress.contains(draftID)
-      || siteDraftFileSaveStates[draftID] != nil
+    guard
+      siteDraftFileAutosaveTasks[draftID] != nil
+        || siteDraftFileWritesInProgress.contains(draftID)
+        || siteDraftFileSaveStates[draftID] != nil
     else {
       return
     }
@@ -319,7 +297,8 @@ extension WorkbenchStore {
         continue
       }
       let profile = profile(for: draft)
-      let repositoryPath = draft.repositoryPath?.normalizedRelativePath()
+      let repositoryPath =
+        draft.repositoryPath?.normalizedRelativePath()
         ?? profile.markdownPath(for: draft)
       do {
         let result = try siteDraftFileStore.write(draft: draft, profile: profile)
@@ -386,7 +365,8 @@ extension WorkbenchStore {
     let generation = (siteDraftFileSaveGenerations[draftID] ?? 0) &+ 1
     siteDraftFileSaveGenerations[draftID] = generation
     let profile = profile(for: draft)
-    let repositoryPath = draft.repositoryPath?.normalizedRelativePath()
+    let repositoryPath =
+      draft.repositoryPath?.normalizedRelativePath()
       ?? profile.markdownPath(for: draft)
     // An explicit write starts a new attempt. Keeping the prior failure here
     // would suppress a follow-up autosave if the article changes during I/O.
@@ -471,7 +451,7 @@ extension WorkbenchStore {
   func suspendScheduledSiteDraftFileWrites() {
     cancelSiteDraftFileReconciliation()
     for draftID in Array(siteDraftFileAutosaveTasks.keys)
-      where !siteDraftFileWritesInProgress.contains(draftID) {
+    where !siteDraftFileWritesInProgress.contains(draftID) {
       siteDraftFileAutosaveTasks[draftID]?.cancel()
       siteDraftFileAutosaveTasks[draftID] = nil
       siteDraftFileSaveGenerations[draftID] = (siteDraftFileSaveGenerations[draftID] ?? 0) &+ 1
@@ -611,29 +591,5 @@ extension WorkbenchStore {
     updatedDraft.markUpdated(at: previousDraft.updatedAt, replacing: previousDraft)
     publishingStore.drafts[index] = updatedDraft
     scheduleAutosave()
-  }
-
-  private func setSiteDraftFileFailureMessage(
-    _ error: Error, draftID: UUID, profile: SiteProfile
-  ) {
-    if let state = siteDraftFileSaveStates[draftID] {
-      siteDraftFileSaveFailures[draftID] = SiteDraftFileSaveFailure(
-        draftID: draftID, profile: profile, repositoryPath: state.repositoryPath, error: error
-      )
-    }
-    scheduleAutosave()
-    if case LocalPublishPreviewError.missingRepositoryRoot = error {
-      siteDraftFileFlushFailureIDs.remove(draftID)
-      siteDraftFileSaveFailures[draftID] = nil
-      setPublishActionMessage(
-        CoreL10n.text("当前站点未选择本地项目；站点草稿仍保存在软件中，请选择项目后使用“加入项目”重试。"),
-        status: .warning
-      )
-    } else {
-      setPublishActionMessage(
-        CoreL10n.format("站点草稿写入项目失败：%@", error.localizedDescription),
-        status: .failure
-      )
-    }
   }
 }

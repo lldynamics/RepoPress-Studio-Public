@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import PublishingAICore
 import PublishingDomainContracts
@@ -44,7 +45,9 @@ enum AIChatImageAttachmentSelectionPolicy {
     guard AIPublishingChatImageAttachmentPresentation.supportedMIMETypes.contains(mimeType) else {
       return String(localized: "格式不支持（仅支持 PNG、JPEG、GIF 或 WebP）")
     }
-    guard AIPublishingChatImageAttachmentPresentation.isWithinAttachmentSizeLimit(attachment.byteSize) else {
+    guard
+      AIPublishingChatImageAttachmentPresentation.isWithinAttachmentSizeLimit(attachment.byteSize)
+    else {
       return String(
         localized: "超过 \(AIPublishingChatImageAttachmentPresentation.attachmentSizeLimitText()) 限制"
       )
@@ -68,6 +71,7 @@ struct AIChatContextInspectorView: View {
   let selectedDraftID: UUID?
   let usesWindowDraftSelection: Bool
   @StateObject var chatState: WorkbenchAIChatFeatureFacade
+  @ObservedObject var codexConnection = CodexConnectionController.shared
   @StateObject var staticProjectionCache = AIChatInspectorStaticProjectionCache()
   @ObservedObject var operationSession: AIChatSurfaceOperationSession
   @Binding var surfaceState: AIChatSurfaceState
@@ -140,15 +144,8 @@ struct AIChatContextInspectorView: View {
 
       Divider()
 
-      if connectionReadiness != .ready && connectionReadiness != .noDraft {
+      if shouldShowConnectionBlocker {
         connectionBlockerBanner
-        Divider()
-      }
-
-      if AIChatConnectionBlockerPresentation.shouldShowAgentToolBanner(
-        readiness: connectionReadiness
-      ) && agentToolAvailability?.message != nil {
-        agentToolsUnavailableBanner
         Divider()
       }
 
@@ -277,6 +274,20 @@ struct AIChatContextInspectorView: View {
       .onChange(of: generalKeyAvailabilityRefreshKey) { _, _ in
         refreshDisplayedGeneralKeyAvailability()
       }
+      .onChange(of: ai.chatManualRetryState) { _, retryState in
+        guard retryState != nil, currentAIProviderConfig.usesCodexAppServer else { return }
+        Task { await codexConnection.refresh() }
+      }
+      .onChange(of: ai.generalChatManualRetryState) { _, retryState in
+        guard retryState != nil, currentAIProviderConfig.usesCodexAppServer else { return }
+        Task { await codexConnection.refresh() }
+      }
+      .onReceive(
+        NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+      ) { _ in
+        guard currentAIProviderConfig.usesCodexAppServer else { return }
+        Task { await codexConnection.refresh() }
+      }
       .onChange(of: ai.activeChatConversationID) { _, _ in
         if ai.chatContextMode != .general {
           synchronizeInspectorSurfaceWithActiveConversation()
@@ -300,6 +311,10 @@ struct AIChatContextInspectorView: View {
 
   var body: some View {
     inspectorLifecycleContent
+      .task(id: currentAIProviderConfig.usesCodexAppServer) {
+        guard currentAIProviderConfig.usesCodexAppServer else { return }
+        await codexConnection.refresh()
+      }
       .sheet(item: $draftDiffPreview) { preview in
         AIChatDraftDiffPreviewSheet(preview: preview) {
           applyDraftDiffPreview(preview)

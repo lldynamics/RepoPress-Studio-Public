@@ -20,13 +20,14 @@ extension WorkbenchAIStore {
       store.aiProviderConfig(for: initialProfile)
     )
     let initialRequest: AIWritingStyleExtractionRequest
+    let initialAPIKey: String?
     do {
       initialRequest = try service.makeExtractionRequest(
         profile: initialProfile,
         drafts: store.drafts,
         selectedArticleIDs: exemplarArticleIDs
       )
-      _ = try aiChatAvailableAPIKey(for: initialProfile)
+      initialAPIKey = try aiChatAvailableAPIKey(for: initialProfile)
     } catch {
       store.setAIActionFailureMessage(
         CoreL10n.format("无法提炼写作风格：%@", error.localizedDescription)
@@ -36,6 +37,7 @@ extension WorkbenchAIStore {
 
     let lane = AIGenerationLane.writingStyle
     let generation = beginAIRequest(lane, showsActionLoading: true)
+    let requestAuthorization = bindNonStreamingAuthorization(lane, profile: initialProfile)
     defer { finishAIRequest(lane, generation: generation) }
 
     let privacyService = AIOutboundPayloadPrivacyService()
@@ -119,8 +121,21 @@ extension WorkbenchAIStore {
           privacyService: privacyService
         )
         let apiKey = try aiChatAvailableAPIKey(for: currentProfile)
+        guard apiKey == initialAPIKey else {
+          throw AIOutboundPayloadConfirmationError.drifted
+        }
+        try checkNonStreamingAuthorization(
+          requestAuthorization, apiKey: apiKey, lane: lane, generation: generation
+        )
         try authorization.consume()
-        let reply = try await aiPublishingAssistantService.completePrepared(
+        let guardedAssistant = aiPublishingAssistantService.authorizingNonStreamingRequests {
+          @MainActor [weak self] in
+          guard let self else { throw CancellationError() }
+          try self.checkNonStreamingAuthorization(
+            requestAuthorization, apiKey: apiKey, lane: lane, generation: generation
+          )
+        }
+        let reply = try await guardedAssistant.completePrepared(
           authorizedTransport,
           apiKey: apiKey
         )

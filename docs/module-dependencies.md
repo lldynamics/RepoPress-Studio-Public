@@ -27,7 +27,7 @@ python3 script/check_swift_module_boundaries.py --describe-policy
 | `RepoPressCore`、`RepoPressAppleSupport` | 共享快照中的纯值逻辑与 Apple 格式支持；前者保持 Foundation-only，后者承载 CryptoKit 笔记格式，不拥有任一 app 的持久化、UI 或网络会话 |
 | `PublishingCoreSupport`、`PublishingDomainContracts` | 通用基础设施、跨域值契约；不依赖业务或工作台 target |
 | `PublishingMarkdownCore`、`PublishingGitCore`、`PublishingAICore` | 各自领域能力；仅使用策略列出的底层依赖，不反向依赖 Workbench 或 App |
-| `PublishingKnowledgeCore`、`PublishingAgentContracts` | 组合所需的领域能力或契约；新增跨域边须说明必要性 |
+| `PublishingKnowledgeCore` | 组合所需的领域能力；新增跨域边须说明必要性 |
 | `PublishingPreviewCore` | 本地预览计划、页面就绪探测、文件观察与信任校验；站点配置和草稿参与的规划仍由上层适配 |
 | `PublishingBackupCore` | 工作区交换格式与有界编解码；站点配置映射和工作区恢复仍由上层组合 |
 | `PublishingSyncCore` | 仓库同步审阅值、受保护的快进与变基服务；通过窄协议读取站点仓库身份 |
@@ -38,6 +38,8 @@ python3 script/check_swift_module_boundaries.py --describe-policy
 公共值类型优先放在合适的契约模块，领域实现留在所属 Core，跨域工作流由上层组合。不要为了复用一个类型让底层反向依赖工作台。不要通过新增 re-export 隐藏消费者的真实依赖。
 
 工作区交换编解码和仓库同步服务的底层实现已按单向依赖迁出。`ArticleVisibility` 位于值契约模块，`SiteProfile` 通过同步核心的窄协议提供仓库身份。Workbench 中仍保留需要完整草稿、快照或 Store 状态的适配与编排；兼容导入尚未归零，不能将本阶段视为 umbrella 退役验收。
+
+`PublishingAgentContracts` 是已退役的应用内部运行时产品，已从此 SwiftPM 包的公开产品、target、兼容导出和边界策略中移除。本仓不据此推断外部使用者的迁移情况。旧会话的可编码工具身份仍分别由 `PublishingAICore` 的 `AIAgentExternalToolBinding` 与 `PublishingWorkbenchCore` 的会话/检查点模型保留；它们用于读取历史记录，不恢复外部工具注册或执行协议。
 
 ## 已执行的阻断检查
 

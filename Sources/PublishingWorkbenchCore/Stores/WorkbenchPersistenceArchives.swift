@@ -15,53 +15,6 @@ extension WorkbenchPersistence {
       .appendingPathComponent("OptimizedImages", isDirectory: true)
   }
 
-  /// Removes successful batch folders that are no longer referenced by any
-  /// attachment. Non-batch files are deliberately left untouched.
-  @discardableResult
-  func pruneUnreferencedImageOptimizationBatches(
-    referencedSourceFilePaths: [String]
-  ) -> Int {
-    let fileManager = FileManager.default
-    let rootURL = imageOptimizationDirectoryURL.standardizedFileURL
-    guard
-      let children = try? fileManager.contentsOfDirectory(
-        at: rootURL,
-        includingPropertiesForKeys: [.isDirectoryKey],
-        options: []
-      )
-    else {
-      return 0
-    }
-
-    let rootPrefix = rootURL.path.hasSuffix("/") ? rootURL.path : rootURL.path + "/"
-    let referencedBatchNames = Set(
-      referencedSourceFilePaths.compactMap { path -> String? in
-        let sourcePath = URL(fileURLWithPath: path).standardizedFileURL.path
-        guard sourcePath.hasPrefix(rootPrefix) else { return nil }
-        let relativePath = String(sourcePath.dropFirst(rootPrefix.count))
-        guard let firstComponent = relativePath.split(separator: "/").first else { return nil }
-        let name = String(firstComponent)
-        return name.hasPrefix(".image-batch-") ? name : nil
-      })
-
-    var removedCount = 0
-    for child in children where child.lastPathComponent.hasPrefix(".image-batch-") {
-      let standardizedChild = child.standardizedFileURL
-      guard standardizedChild.deletingLastPathComponent() == rootURL,
-        !referencedBatchNames.contains(standardizedChild.lastPathComponent)
-      else {
-        continue
-      }
-      do {
-        try fileManager.removeItem(at: standardizedChild)
-        removedCount += 1
-      } catch {
-        continue
-      }
-    }
-    return removedCount
-  }
-
   func retiredFeatureArchivesFromPersistedSnapshots() throws
     -> [WorkbenchRetiredFeatureArchive]
   {

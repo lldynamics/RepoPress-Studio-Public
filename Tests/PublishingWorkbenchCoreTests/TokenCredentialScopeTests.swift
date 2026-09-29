@@ -185,32 +185,12 @@ final class TokenCredentialScopeTests: XCTestCase {
       accessFailure: KeychainTokenStoreError.unhandledStatus(errSecInteractionNotAllowed)
     )
 
-    let chatIssue = try XCTUnwrap(
-      AIPublishingChatConversationPresentation.configurationIssue(
-        config: config,
-        aiTokenAvailability: failure,
-        grade: .standard,
-        selectedModel: config.normalizedModel
-      )
-    )
-    XCTAssertTrue(chatIssue.contains("读取失败"))
-    XCTAssertFalse(chatIssue.contains("未保存"))
-
     let connection = AISettingsConnectionPresentationService.presentation(
       config: config,
       tokenAvailability: failure,
       report: nil
     )
     XCTAssertTrue(connection.title.contains("读取失败"))
-
-    let image = AIImageTextGenerationAvailabilityService.presentation(
-      targetCount: 1,
-      isGenerating: false,
-      aiProviderConfig: config,
-      aiTokenAvailability: failure
-    )
-    XCTAssertFalse(image.isEnabled)
-    XCTAssertTrue(image.unavailableReason?.contains("读取失败") == true)
   }
 
   func testKeychainScopesKeepRepositoryAndDeploymentTokensSeparate() throws {

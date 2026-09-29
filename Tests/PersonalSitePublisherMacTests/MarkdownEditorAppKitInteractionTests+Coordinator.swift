@@ -768,9 +768,15 @@ final class MarkdownEditorAppKitInteractionCoordinatorTests: MarkdownEditorAppKi
     )
   }
 
-  func testDismantleFlushesLastLiveTextBinding() {
-    var text = "正文"
+  func testDismantleCommitsTextAndSelectionWithoutPublishingTransientFrontMatterState() {
+    let originalText = "---\ntitle: 示例\n---\n正文"
+    let bodyOffset = (originalText as NSString).range(of: "正文").location
+    var text = originalText
+    var selectedRange = NSRange(location: 0, length: 0)
     var textWriteCount = 0
+    var selectionWriteCount = 0
+    var frontMatterWriteCount = 0
+    var documentCommits: [String] = []
     let coordinator = MacMarkdownTextView.Coordinator(
       text: Binding(
         get: { text },
@@ -779,10 +785,17 @@ final class MarkdownEditorAppKitInteractionCoordinatorTests: MarkdownEditorAppKi
           text = $0
         }
       ),
-      bodyMarkdown: text,
-      bodyUTF16Offset: 0,
-      selectedRange: Binding(get: { NSRange(location: 0, length: 0) }, set: { _ in }),
-      isFrontMatterSelection: Binding(get: { false }, set: { _ in }),
+      bodyMarkdown: "正文",
+      bodyUTF16Offset: bodyOffset,
+      selectedRange: Binding(
+        get: { selectedRange },
+        set: {
+          selectionWriteCount += 1
+          selectedRange = $0
+        }
+      ),
+      isFrontMatterSelection: Binding(
+        get: { true }, set: { _ in frontMatterWriteCount += 1 }),
       comfortConfiguration: MarkdownEditorComfortConfiguration(),
       diagnostics: [],
       onStatisticsChanged: { _ in },
@@ -790,18 +803,40 @@ final class MarkdownEditorAppKitInteractionCoordinatorTests: MarkdownEditorAppKi
       onScrollPositionChanged: { _ in },
       onDroppedFiles: { _ in }
     )
+    coordinator.onDocumentTextCommitted = { previous, next in
+      XCTAssertEqual(previous, originalText)
+      documentCommits.append(next)
+    }
     let textView = NSTextView()
-    textView.string = "正文最后一个字"
+    textView.string = originalText + "最后一个字"
     coordinator.textDidChange(
       Notification(name: NSText.didChangeNotification, object: textView)
     )
+    let finalSelection = NSRange(location: 3, length: 2)
+    textView.setSelectedRange(
+      NSRange(location: bodyOffset + finalSelection.location, length: finalSelection.length)
+    )
+    coordinator.textViewDidChangeSelection(
+      Notification(name: NSTextView.didChangeSelectionNotification, object: textView)
+    )
+    XCTAssertEqual(coordinator.pendingFrontMatterBindingValue, false)
     let scrollView = NSScrollView()
     scrollView.documentView = textView
 
     MacMarkdownTextView.dismantleNSView(scrollView, coordinator: coordinator)
 
-    XCTAssertEqual(text, "正文最后一个字")
+    XCTAssertEqual(text, originalText + "最后一个字")
     XCTAssertEqual(textWriteCount, 1)
+    XCTAssertEqual(documentCommits, [text])
+    XCTAssertEqual(selectedRange, finalSelection)
+    XCTAssertEqual(selectionWriteCount, 1)
+    XCTAssertEqual(frontMatterWriteCount, 0)
+    XCTAssertNil(coordinator.bindingFlushTask)
+    coordinator.flushPendingBindingWrites(notifyingDocumentCommit: true)
+    XCTAssertEqual(textWriteCount, 1)
+    XCTAssertEqual(selectionWriteCount, 1)
+    XCTAssertEqual(frontMatterWriteCount, 0)
+    XCTAssertEqual(documentCommits, [text])
   }
 
   func testAutomaticPairingUsesLiveTextViewUndoableInsertionPath() {

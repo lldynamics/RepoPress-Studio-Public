@@ -37,10 +37,6 @@ extension WorkbenchStore {
     publishingStore.removeDraftPublishPreviewSnapshots(forProfileID: activeProfileID)
   }
 
-  func setLocalGitPublishResult(_ result: LocalGitPublishResult?) {
-    repositoryStore.localGitPublishResult = result
-  }
-
   func setRemoteRepositoryAccessCheck(_ check: RemoteRepositoryAccessCheck?) {
     repositoryStore.setRemoteRepositoryAccessCheck(check, for: activeProfileID)
     publishingStore.removeDraftPublishPreviewSnapshots(forProfileID: activeProfileID)

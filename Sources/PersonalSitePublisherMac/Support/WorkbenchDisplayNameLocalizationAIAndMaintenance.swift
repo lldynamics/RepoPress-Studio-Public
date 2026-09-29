@@ -143,17 +143,6 @@ extension AIPublishingPromptLibraryScope {
   var fallbackDisplayName: String { displayName }
 }
 
-extension AIPublishingCapabilityCenterMode {
-  var workbenchDisplayNameSemanticKey: String {
-    switch self {
-    case .featured: "display.ai-publishing-capability-center-mode.featured"
-    case .all: "display.ai-publishing-capability-center-mode.all"
-    }
-  }
-
-  var fallbackDisplayName: String { displayName }
-}
-
 extension AIPublishingQuickPromptGroup {
   var workbenchDisplayNameSemanticKey: String {
     switch self {

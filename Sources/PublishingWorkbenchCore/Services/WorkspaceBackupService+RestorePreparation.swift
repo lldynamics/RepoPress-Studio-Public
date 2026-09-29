@@ -4,6 +4,20 @@ import PublishingBackupCore
 import PublishingDomainContracts
 
 extension WorkspaceBackupService {
+  /// A remaining journal owns the live files until rollback completes. Check
+  /// attributes rather than fileExists so an unreadable journal fails closed.
+  public static func hasUnfinishedRestoreTransaction(persistenceFileURL: URL) throws -> Bool {
+    let url = WorkspaceBackupService().restoreTransactionURL(for: persistenceFileURL)
+    do {
+      _ = try FileManager.default.attributesOfItem(atPath: url.path)
+      return true
+    } catch let error as CocoaError
+      where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile
+    {
+      return false
+    }
+  }
+
   /// Stages a merged archive tree before a restore transaction can replace the
   /// live directory. Any live/backup name collision with different bytes
   /// fails while the live directory is still untouched.

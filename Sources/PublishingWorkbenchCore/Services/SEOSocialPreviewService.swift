@@ -96,79 +96,6 @@ public struct SEOSocialPreviewService: Sendable {
     )
   }
 
-  public func sitemapPreview(
-    drafts: [ArticleDraft],
-    selectedDraft: ArticleDraft,
-    profile: SiteProfile,
-    localPreviewURL: URL? = nil
-  ) -> SEOSitemapPreview {
-    let sitemapURLText = sitemapURL(profile: profile, localPreviewURL: localPreviewURL)
-    let eligibleDrafts = drafts
-      .filter { $0.belongs(toSiteProfileID: profile.id) && !$0.isPrivate && !$0.draft }
-      .sorted {
-        if $0.date == $1.date {
-          return $0.title < $1.title
-        }
-        return $0.date > $1.date
-      }
-    let entries = eligibleDrafts.map { draft in
-      SEOSitemapEntry(
-        loc: canonicalURL(
-          draft: draft,
-          profile: profile,
-          localPreviewURL: localPreviewURL
-        ),
-        lastmod: iso8601DateString(from: draft.updatedAt),
-        title: draft.title.trimmedForPublishing.nilIfEmpty ?? draft.slug,
-        isSelectedDraft: draft.id == selectedDraft.id
-      )
-    }
-    let selectedEntry = entries.first { $0.isSelectedDraft }
-    let xml = sitemapXML(entries: entries)
-
-    if sitemapURLText == nil {
-      return SEOSitemapPreview(
-        status: .missing,
-        title: "缺少 sitemap 站点地址",
-        message: "请配置部署站点 URL，或启动本地预览后再生成可提交的 sitemap.xml。",
-        sitemapURLText: nil,
-        entries: entries,
-        xml: xml
-      )
-    }
-
-    if selectedDraft.isPrivate || selectedDraft.draft {
-      return SEOSitemapPreview(
-        status: .warning,
-        title: "当前文章不会进入 sitemap",
-        message: "私密文章或草稿不应出现在 sitemap.xml 中。",
-        sitemapURLText: sitemapURLText,
-        entries: entries,
-        xml: xml
-      )
-    }
-
-    if selectedEntry == nil {
-      return SEOSitemapPreview(
-        status: .warning,
-        title: "当前文章未进入 sitemap",
-        message: "当前文章没有出现在生成的 sitemap 条目中，请检查站点资料和文章归属。",
-        sitemapURLText: sitemapURLText,
-        entries: entries,
-        xml: xml
-      )
-    }
-
-    return SEOSitemapPreview(
-      status: .ready,
-      title: "sitemap.xml 可生成",
-      message: "当前公开文章已包含在 sitemap.xml 预览中。",
-      sitemapURLText: sitemapURLText,
-      entries: entries,
-      xml: xml
-    )
-  }
-
   public func signature(
     draft: ArticleDraft,
     profile: SiteProfile,
@@ -342,14 +269,6 @@ public struct SEOSocialPreviewService: Sendable {
     ISO8601DateFormatter().string(from: date)
   }
 
-  private func iso8601DateString(from date: Date) -> String {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.timeZone = TimeZone(secondsFromGMT: 0)
-    formatter.dateFormat = "yyyy-MM-dd"
-    return formatter.string(from: date)
-  }
-
   private func structuredDataPreview(
     title: String,
     description: String,
@@ -446,45 +365,6 @@ public struct SEOSocialPreviewService: Sendable {
       return "{}"
     }
     return text
-  }
-
-  private func sitemapURL(profile: SiteProfile, localPreviewURL: URL?) -> String? {
-    let profileDeploymentURL = profile.deploymentSiteURL
-      .flatMap { URL(string: $0.trimmedForPublishing) }
-      .flatMap { url in
-        url.scheme != nil && url.host != nil ? url : nil
-      }
-    guard let url = localPreviewURL ?? profileDeploymentURL,
-          let scheme = url.scheme,
-          let host = url.host else {
-      return nil
-    }
-    var components = URLComponents()
-    components.scheme = scheme
-    components.host = host
-    components.port = url.port
-    let basePath = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-    components.path = "/" + ([basePath, "sitemap.xml"].filter { !$0.isEmpty }.joined(separator: "/"))
-    return components.url?.absoluteString
-  }
-
-  private func sitemapXML(entries: [SEOSitemapEntry]) -> String {
-    var lines = [
-      #"<?xml version="1.0" encoding="UTF-8"?>"#,
-      #"<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">"#,
-    ]
-    for entry in entries {
-      lines.append("  <url>")
-      lines.append("    <loc>\(xmlEscaped(entry.loc))</loc>")
-      lines.append("    <lastmod>\(xmlEscaped(entry.lastmod))</lastmod>")
-      lines.append("  </url>")
-    }
-    lines.append("</urlset>")
-    return lines.joined(separator: "\n")
-  }
-
-  private func xmlEscaped(_ value: String) -> String {
-    MarkupEscaping.xmlText(value)
   }
 
   private func cardSpecification(

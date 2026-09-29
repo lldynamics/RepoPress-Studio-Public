@@ -56,20 +56,12 @@ extension WritingDraftColumn {
       Button {
         store.createDraft()
       } label: {
-        Label("新建文章", systemImage: "doc.badge.plus")
-          .labelStyle(.titleAndIcon)
-          .lineLimit(1)
-          .allowsTightening(true)
-          .minimumScaleFactor(0.8)
-          .font(.workbenchButtonLabel.weight(.bold))
-          .foregroundStyle(WorkbenchTheme.primaryActionForeground)
-          .padding(.horizontal, 10)
-          .frame(height: 28)
-          .background(
-            WorkbenchTheme.primaryActionFill,
-            in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-          )
-          .fixedSize(horizontal: true, vertical: false)
+        // Longer localizations fall back to the icon so the section title and
+        // count never wrap or push the sidebar wider than its column.
+        ViewThatFits(in: .horizontal) {
+          createArticleButtonLabel(.titleAndIcon)
+          createArticleButtonLabel(.iconOnly)
+        }
       }
       .buttonStyle(.plain)
       .help("新建站点文章")
@@ -359,5 +351,20 @@ extension WritingDraftColumn {
       }
     }
     .accessibilityAddTraits(filter == candidate ? .isSelected : [])
+  }
+
+  private func createArticleButtonLabel<Style: LabelStyle>(_ style: Style) -> some View {
+    Label("新建文章", systemImage: "doc.badge.plus")
+      .labelStyle(style)
+      .lineLimit(1)
+      .font(.workbenchButtonLabel.weight(.bold))
+      .foregroundStyle(WorkbenchTheme.primaryActionForeground)
+      .padding(.horizontal, 10)
+      .frame(height: 28)
+      .background(
+        WorkbenchTheme.primaryActionFill,
+        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+      )
+      .fixedSize(horizontal: true, vertical: false)
   }
 }

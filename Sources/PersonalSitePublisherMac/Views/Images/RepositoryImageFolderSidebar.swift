@@ -124,7 +124,7 @@ struct RepositoryImageFolderSidebar: View {
           toggleExpansion(for: node.repositoryPath)
         } label: {
           Image(systemName: isExpanded(node) ? "chevron.down" : "chevron.right")
-            .font(.caption2.weight(.semibold))
+            .font(.caption.weight(.semibold))
             .frame(width: 18, height: 24)
             .contentShape(Rectangle())
         }

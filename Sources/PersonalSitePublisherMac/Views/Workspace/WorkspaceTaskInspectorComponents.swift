@@ -3,46 +3,6 @@ import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
 
-struct InspectorScaffold<Content: View>: View {
-  let title: String
-  let subtitle: String
-  let systemImage: String
-  @ViewBuilder var content: Content
-
-  var body: some View {
-    VStack(spacing: 0) {
-      HStack(alignment: .top, spacing: 10) {
-        Image(systemName: systemImage)
-          .foregroundStyle(.secondary)
-          .frame(width: 18)
-
-        VStack(alignment: .leading, spacing: 2) {
-          Text(LocalizedStringKey(title))
-            .font(.headline)
-          Text(LocalizedStringKey(subtitle))
-            .font(.workbenchSupporting)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
-        }
-
-        Spacer()
-      }
-      .padding(14)
-
-      Divider()
-
-      ScrollView {
-        VStack(alignment: .leading, spacing: 14) {
-          content
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-      }
-    }
-    .background(.bar)
-  }
-}
-
 struct TranslationRelationshipSection: View {
   @Binding var draft: ArticleDraft
   let store: WorkbenchStore

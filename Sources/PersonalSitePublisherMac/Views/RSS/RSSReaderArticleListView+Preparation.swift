@@ -76,46 +76,33 @@ extension RSSArticleList {
       // correct before their predicates are moved into SQLite.
       limit: archiveQueryLimit
     )
+    guard !Task.isCancelled else { return }
 
-    let result = await Task.detached(priority: .userInitiated) {
-      let matching = RSSArticlePresentationSupport.applyFiltersAndSort(
-        to: base,
+    let preparation = Task.detached(priority: .userInitiated) {
+      try RSSPreparedPresentationSnapshot.prepare(
+        base: base,
         sourceID: sourceID,
         author: author,
         tag: tag,
         dateRange: dateRange,
-        sortOrder: sortOrder
-      )
-      let visible = Array(matching.prefix(displayLimit))
-      let sections = RSSArticlePresentationSupport.sections(
-        for: visible,
+        sortOrder: sortOrder,
         groupsByDate: groupsByDate,
-        sortOrder: sortOrder
+        displayLimit: displayLimit
       )
-      let unreadIDs = Set(matching.lazy.filter { !$0.isRead }.map(\.id))
-      let sourceIDs = Set(base.map(\.feedID))
-      let authors = Array(Set(base.compactMap { $0.author?.trimmedForPublishing.nilIfEmpty }))
-        .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-      let tags = Array(Set(base.flatMap(\.tags)))
-        .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-      let articleIDsByIndex = matching.map(\.id)
-      let indexByArticleID = Dictionary(
-        uniqueKeysWithValues: articleIDsByIndex.enumerated().map { ($1, $0) }
-      )
-      return RSSPreparedPresentationSnapshot(
-        matchingArticles: matching,
-        visibleArticles: visible,
-        sections: sections,
-        unreadMatchingArticleIDs: unreadIDs,
-        scopedArticleCount: base.count,
-        unreadArticleCount: unreadIDs.count,
-        sourceIDs: sourceIDs,
-        authors: authors,
-        tags: tags,
-        articleIDsByIndex: articleIDsByIndex,
-        indexByArticleID: indexByArticleID
-      )
-    }.value
+    }
+    let result: RSSPreparedPresentationSnapshot
+    do {
+      result = try await withTaskCancellationHandler {
+        try await preparation.value
+      } onCancel: {
+        preparation.cancel()
+      }
+    } catch is CancellationError {
+      return
+    } catch {
+      presentation.errorMessage = error.localizedDescription
+      return
+    }
 
     guard !Task.isCancelled else { return }
     presentation.cachePreparedMatchingArticles(
@@ -175,5 +162,76 @@ extension RSSArticleList {
     } else {
       Task { await store.refreshAll() }
     }
+  }
+}
+
+extension RSSPreparedPresentationSnapshot {
+  static func prepare(
+    base: [RSSArticleHeader],
+    sourceID: UUID?,
+    author: String?,
+    tag: String?,
+    dateRange: RSSArticleDateRange,
+    sortOrder: RSSArticleSortOrder,
+    groupsByDate: Bool,
+    displayLimit: Int
+  ) throws -> Self {
+    let matching = try RSSArticlePresentationSupport.applyFiltersAndSortCheckingCancellation(
+      to: base,
+      sourceID: sourceID,
+      author: author,
+      tag: tag,
+      dateRange: dateRange,
+      sortOrder: sortOrder
+    )
+    let visible = Array(matching.prefix(displayLimit))
+    let sections = RSSArticlePresentationSupport.sections(
+      for: visible,
+      groupsByDate: groupsByDate,
+      sortOrder: sortOrder
+    )
+    var unreadIDs = Set<String>()
+    var articleIDsByIndex: [String] = []
+    var indexByArticleID: [String: Int] = [:]
+    articleIDsByIndex.reserveCapacity(matching.count)
+    indexByArticleID.reserveCapacity(matching.count)
+    for (index, article) in matching.enumerated() {
+      if index.isMultiple(of: 128) { try Task.checkCancellation() }
+      if !article.isRead { unreadIDs.insert(article.id) }
+      articleIDsByIndex.append(article.id)
+      indexByArticleID[article.id] = index
+    }
+    var sourceIDs = Set<UUID>()
+    var authorSet = Set<String>()
+    var tagSet = Set<String>()
+    for (index, article) in base.enumerated() {
+      if index.isMultiple(of: 128) { try Task.checkCancellation() }
+      sourceIDs.insert(article.feedID)
+      if let author = article.author?.trimmedForPublishing.nilIfEmpty {
+        authorSet.insert(author)
+      }
+      tagSet.formUnion(article.tags)
+    }
+    try Task.checkCancellation()
+    let authors = try RSSCancellableSort.sorted(Array(authorSet)) {
+      $0.localizedStandardCompare($1) == .orderedAscending
+    }
+    let tags = try RSSCancellableSort.sorted(Array(tagSet)) {
+      $0.localizedStandardCompare($1) == .orderedAscending
+    }
+    try Task.checkCancellation()
+    return Self(
+      matchingArticles: matching,
+      visibleArticles: visible,
+      sections: sections,
+      unreadMatchingArticleIDs: unreadIDs,
+      scopedArticleCount: base.count,
+      unreadArticleCount: unreadIDs.count,
+      sourceIDs: sourceIDs,
+      authors: authors,
+      tags: tags,
+      articleIDsByIndex: articleIDsByIndex,
+      indexByArticleID: indexByArticleID
+    )
   }
 }

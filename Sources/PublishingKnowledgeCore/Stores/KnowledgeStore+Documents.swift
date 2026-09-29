@@ -962,7 +962,7 @@ extension KnowledgeStore {
         try await service.applySourceRefresh(preview)
       }
       await waitAfterAcceptedMutationBeforeProjection()
-      await reloadAfterAcceptedMutation(selecting: preview.documentID)
+      await reloadAfterAcceptedMutation()
       statusMessage =
         result.updatedCount > 0
         ? "来源更新已保存为新版本，可在版本历史中恢复旧内容。"
@@ -995,11 +995,11 @@ extension KnowledgeStore {
       if let index = documents.firstIndex(where: { $0.id == documentID }) {
         documents[index] = restored
       }
-      selectedDocumentText = ""
-      loadDocument(nil)
-      loadDocument(documentID)
-      loadDocumentInsights(documentID: documentID)
-      loadRelatedChapters(documentID: documentID, anchorChunkID: nil)
+      if selectedDocumentID == documentID {
+        loadDocument(documentID)
+        loadDocumentInsights(documentID: documentID)
+        loadRelatedChapters(documentID: documentID, anchorChunkID: nil)
+      }
       statusMessage = "已恢复所选资料版本，全文与语义检索已切换。"
       lastError = nil
       return true

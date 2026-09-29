@@ -82,47 +82,6 @@ public struct AIPublishingPromptLibrarySnapshot: Equatable, Sendable {
   }
 }
 
-public enum AIPublishingCapabilityCenterMode: String, CaseIterable, Identifiable, Sendable {
-  case featured
-  case all
-
-  public var id: String { rawValue }
-
-  public var displayName: String {
-    switch self {
-    case .featured:
-      return "精选"
-    case .all:
-      return "全部能力"
-    }
-  }
-
-  public var detail: String {
-    switch self {
-    case .featured:
-      return "默认展示高频 AI 动作，保持聊天页轻量。"
-    case .all:
-      return "展开完整 AI 能力库；所有动作仍需手动点选才会运行。"
-    }
-  }
-}
-
-public struct AIPublishingCapabilityCenterSnapshot: Equatable, Sendable {
-  public var mode: AIPublishingCapabilityCenterMode
-  public var promptSections: [AIPublishingQuickPromptSection]
-  public var editorActionSections: [AIPublishingEditorActionSection]
-
-  public init(
-    mode: AIPublishingCapabilityCenterMode,
-    promptSections: [AIPublishingQuickPromptSection],
-    editorActionSections: [AIPublishingEditorActionSection]
-  ) {
-    self.mode = mode
-    self.promptSections = promptSections
-    self.editorActionSections = editorActionSections
-  }
-}
-
 public struct AIPublishingActionRecommendation: Equatable, Sendable {
   public var title: String
   public var description: String
@@ -161,41 +120,6 @@ public struct AIPublishingEditorActionSection: Equatable, Identifiable, Sendable
   ) {
     self.group = group
     self.actions = actions
-  }
-}
-
-public enum AIPublishingCapabilityCenterService {
-  public static func snapshot(
-    mode: AIPublishingCapabilityCenterMode
-  ) -> AIPublishingCapabilityCenterSnapshot {
-    switch mode {
-    case .featured:
-      return AIPublishingCapabilityCenterSnapshot(
-        mode: mode,
-        promptSections: AIPublishingQuickPrompt.featuredCapabilitySections,
-        editorActionSections: editorActionSections(
-          for: AIPublishingDefaultCapability.defaultActionKinds
-        )
-      )
-    case .all:
-      return AIPublishingCapabilityCenterSnapshot(
-        mode: mode,
-        promptSections: AIPublishingQuickPrompt.capabilitySections,
-        editorActionSections: editorActionSections(for: AIPublishingActionKind.promptLibraryActions)
-      )
-    }
-  }
-
-  private static func editorActionSections(
-    for actions: [AIPublishingActionKind]
-  ) -> [AIPublishingEditorActionSection] {
-    AIPublishingQuickPromptGroup.allCases.compactMap { group in
-      let groupActions = actions.filter { $0.promptLibraryGroup == group }
-      guard !groupActions.isEmpty else {
-        return nil
-      }
-      return AIPublishingEditorActionSection(group: group, actions: groupActions)
-    }
   }
 }
 
@@ -1096,9 +1020,5 @@ public extension AIPublishingActionKind {
     case .pullRequestDescription:
       return "基于当前发布上下文生成 PR/MR 描述和检查清单。"
     }
-  }
-
-  var requiresSelectedTextForBestResult: Bool {
-    promptLibraryGroup == .editing
   }
 }

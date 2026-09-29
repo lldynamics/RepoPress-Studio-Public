@@ -440,10 +440,6 @@ public final class DeploymentStore: ObservableObject {
       )
   }
 
-  public func releaseRecoveryVerificationDraftMarkdown(store: WorkbenchStore) -> String {
-    activeProfileReleaseLedger(store: store).remoteRecoveryVerificationDraftMarkdown
-  }
-
   public func deploymentPollingEligibleRecords(store: WorkbenchStore) -> [ReleaseRecord] {
     deploymentPollingEligibleRecords(
       for: store.activeProfileID, store: store, includeLegacyRecords: true)

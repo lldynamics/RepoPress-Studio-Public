@@ -44,7 +44,6 @@ public final class RepositoryStore: ObservableObject {
     RepositoryRebaseRecoveryContext?
   @Published public internal(set) var repositoryRebaseRecoveryDiagnostic: String?
   @Published public internal(set) var repositoryScanState: RepositoryScanState
-  @Published public internal(set) var localGitPublishResult: LocalGitPublishResult?
   @Published public internal(set) var localRepositoryBranches: [RepositoryBranch]
   @Published public internal(set) var localRepositoryRecentCommits: [RepositoryCommitInfo]
   @Published public internal(set) var localRepositoryReleaseHistory:
@@ -123,7 +122,6 @@ public final class RepositoryStore: ObservableObject {
     repositoryRebaseRecoveryContext: RepositoryRebaseRecoveryContext? = nil,
     repositoryRebaseRecoveryDiagnostic: String? = nil,
     repositoryScanState: RepositoryScanState = .idle,
-    localGitPublishResult: LocalGitPublishResult? = nil,
     localRepositoryBranches: [RepositoryBranch] = [],
     localRepositoryRecentCommits: [RepositoryCommitInfo] = [],
     localRepositoryReleaseHistory: RepositoryReleaseHistorySnapshot = .init(),
@@ -160,7 +158,6 @@ public final class RepositoryStore: ObservableObject {
     self.repositoryRebaseRecoveryContext = repositoryRebaseRecoveryContext
     self.repositoryRebaseRecoveryDiagnostic = repositoryRebaseRecoveryDiagnostic
     self.repositoryScanState = repositoryScanState
-    self.localGitPublishResult = localGitPublishResult
     self.localRepositoryBranches = localRepositoryBranches
     self.localRepositoryRecentCommits = localRepositoryRecentCommits
     self.localRepositoryReleaseHistory = localRepositoryReleaseHistory

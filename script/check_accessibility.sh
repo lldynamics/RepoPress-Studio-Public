@@ -97,6 +97,11 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
+  "PublishingConsoleCreationCommands()" \
+  "workspace commands must install the scene-local creation command helper"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCreationCommands.swift" \
   "CommandGroup(replacing: .newItem)" \
   "the File menu must expose the app's new-article command"
 
@@ -387,8 +392,13 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
-  "dismissPublishDrawerForInspectorRequestIfNeeded()" \
+  "guard prepareInspectorForUserRequest() else { return }" \
   "AI and Inspector requests must arbitrate with the publish drawer"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
+  "dismissPublishDrawerIfNeeded()" \
+  "Inspector preparation must dismiss an existing publish drawer"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
@@ -543,16 +553,9 @@ require_absent_literal \
 
 for repository_image_identifier in \
   repository-image-browser \
-  repository-image-target-picker \
-  repository-image-open-target-article \
   repository-image-search \
   repository-image-filter \
-  repository-image-list \
-  repository-image-detail \
-  repository-image-attach \
-  repository-image-preview \
-  repository-image-reveal \
-  repository-image-copy-path; do
+  repository-image-list; do
   require_literal \
     "Sources/PersonalSitePublisherMac/Views/Images/RepositoryImageBrowserView.swift" \
     ".accessibilityIdentifier(\"$repository_image_identifier\")" \
@@ -560,9 +563,30 @@ for repository_image_identifier in \
 done
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Images/RepositoryImageBrowserView.swift" \
+  "Sources/PersonalSitePublisherMac/Views/Images/RepositoryImageInspectorView.swift" \
   ".accessibilityIdentifier(\"repository-image-open-article-\(reference.draftID.uuidString)\")" \
-  "each repository image reference must expose a unique open-article accessibility identifier"
+  "each repository image file-info reference must expose a unique open-article accessibility identifier"
+
+for repository_image_identifier in \
+  repository-image-target-picker \
+  repository-image-open-target-article \
+  repository-image-attach-target; do
+  require_literal \
+    "Sources/PersonalSitePublisherMac/Views/Images/RepositoryImageInspectorUsageView.swift" \
+    ".accessibilityIdentifier(\"$repository_image_identifier\")" \
+    "repository image usage control must expose a unique identifier: $repository_image_identifier"
+done
+
+for repository_image_identifier in \
+  repository-image-inspector \
+  repository-image-preview \
+  repository-image-reveal \
+  repository-image-copy-path; do
+  require_literal \
+    "Sources/PersonalSitePublisherMac/Views/Images/RepositoryImageInspectorView.swift" \
+    ".accessibilityIdentifier(\"$repository_image_identifier\")" \
+    "repository image inspector control must expose a unique identifier: $repository_image_identifier"
+done
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Site/ContentHealthDetailView.swift" \
@@ -971,7 +995,12 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceContextSidebarView.swift" \
-  "repositoryContextStage: selectedSection == .sync" \
+  "repositoryContextStage: WorkspaceNavigationRouteDescriptor.primarySection(" \
+  "repository navigation must pass through the shared primary-section routing"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceContextSidebarView.swift" \
+  "for: selectedSection) == .sync" \
   "repository navigation must be injected below search only for the sync workspace"
 
 require_literal \
@@ -1050,24 +1079,6 @@ require_absent_literal \
   "Sources/PersonalSitePublisherMac/Views/Site/ContentHealthDetailView.swift" \
   "pageModePicker" \
   "content health must not restore duplicate center-stage navigation"
-
-for unfolded_health_file in \
-  Sources/PersonalSitePublisherMac/Views/Site/SiteMaintenanceSnapshotHeader.swift \
-  Sources/PersonalSitePublisherMac/Views/Site/SiteMaintenancePrimarySections.swift; do
-  require_absent_literal \
-    "$unfolded_health_file" \
-    "Menu {" \
-    "site-maintenance actions must remain visible instead of hidden in menus: $unfolded_health_file"
-done
-
-for unfolded_health_file in \
-  Sources/PersonalSitePublisherMac/Views/Site/SiteMaintenancePrimarySections.swift \
-  Sources/PersonalSitePublisherMac/Views/Site/OnlineSiteInspectionSection.swift; do
-  require_absent_literal \
-    "$unfolded_health_file" \
-    "DisclosureGroup" \
-    "site-maintenance metrics must remain visible instead of folded: $unfolded_health_file"
-done
 
 require_absent_literal \
   "Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspaceView.swift" \
@@ -1290,8 +1301,18 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftColumn+Toolbar.swift" \
-  ".labelStyle(.titleAndIcon)" \
-  "writing create action must not collapse to an icon-only label"
+  "createArticleButtonLabel(.titleAndIcon)" \
+  "writing create action must prefer its visible title and icon"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftColumn+Toolbar.swift" \
+  "ViewThatFits(in: .horizontal)" \
+  "writing create action must adapt to the sidebar width"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftColumn+Toolbar.swift" \
+  '.accessibilityLabel("新建站点文章")' \
+  "writing create action must keep an accessible name when its label falls back to an icon"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftColumn+Toolbar.swift" \

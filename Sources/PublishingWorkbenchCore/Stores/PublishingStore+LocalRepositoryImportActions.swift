@@ -1,38 +1,6 @@
 import Foundation
 
 extension PublishingStore {
-  @discardableResult
-  public func importDraftsFromLocalRepository(store: WorkbenchStore)
-    -> LocalContentImportMergeSummary
-  {
-    importDraftsFromLocalRepositoryOperation(store: store).summary
-  }
-
-  func importDraftsFromLocalRepositoryOperation(
-    store: WorkbenchStore
-  ) -> LocalContentImportOperationResult {
-    guard !store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty else {
-      setPublishActionMessage("选择本地仓库后才能导入文章。", status: .warning)
-      return .empty(outcome: .recorded)
-    }
-    store.flushDraftBodyEditorBuffers()
-    let imported = hydrateLocalRepositoryBaselines(
-      localContentImportService.importDrafts(profile: store.activeProfile),
-      profile: store.activeProfile,
-      store: store
-    )
-    return mergeImportedDraftsOperation(
-      imported,
-      store: store
-    )
-  }
-
-  @discardableResult
-  public func importDraftsFromLocalRepositoryAsync(store: WorkbenchStore) async
-    -> LocalContentImportMergeSummary
-  {
-    await importDraftsFromLocalRepositoryAsyncOperation(store: store).summary
-  }
 
   func importDraftsFromLocalRepositoryAsyncOperation(
     store: WorkbenchStore
@@ -144,17 +112,6 @@ extension PublishingStore {
       privateDraftsOnly: false,
       announcesInsertions: false,
       repositoryPaths: repositoryPaths
-    ).summary.insertedCount
-  }
-
-  /// Keeps the narrower private-only migration available for older callers.
-  @discardableResult
-  public func importMissingPrivateDraftsFromLocalRepository(store: WorkbenchStore) async -> Int {
-    await discoverMissingDraftsFromLocalRepository(
-      store: store,
-      privateDraftsOnly: true,
-      announcesInsertions: false,
-      repositoryPaths: nil
     ).summary.insertedCount
   }
 
@@ -292,49 +249,6 @@ extension PublishingStore {
       ),
       outcome: hydratedResult.issues.isEmpty ? .succeeded : .partial
     )
-  }
-
-  @discardableResult
-  public func importDraftFromLocalRepository(
-    repositoryPath: String,
-    store: WorkbenchStore
-  ) -> LocalContentImportMergeSummary {
-    importDraftFromLocalRepositoryOperation(
-      repositoryPath: repositoryPath,
-      store: store
-    ).summary
-  }
-
-  func importDraftFromLocalRepositoryOperation(
-    repositoryPath: String,
-    store: WorkbenchStore
-  ) -> LocalContentImportOperationResult {
-    store.flushDraftBodyEditorBuffers()
-    let imported = hydrateLocalRepositoryBaselines(
-      localContentImportService.importDraft(
-        profile: store.activeProfile,
-        repositoryPath: repositoryPath
-      ),
-      profile: store.activeProfile,
-      store: store
-    )
-    let operationResult = mergeImportedDraftsOperation(imported, store: store)
-    let normalizedPath = repositoryPath.normalizedRelativePath()
-    if let imported = drafts.first(where: {
-      $0.belongs(toSiteProfileID: store.activeProfileID) && $0.repositoryPath == normalizedPath
-    }) {
-      selectedDraftID = imported.id
-    }
-    selectedSection = .writing
-    store.save()
-    return operationResult
-  }
-
-  @discardableResult
-  public func importChangedArticleDraftsFromLocalRepository(store: WorkbenchStore) async
-    -> LocalContentImportMergeSummary
-  {
-    await importChangedArticleDraftsFromLocalRepositoryOperation(store: store).summary
   }
 
   func importChangedArticleDraftsFromLocalRepositoryOperation(

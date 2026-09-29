@@ -1,6 +1,21 @@
 import AppKit
 import SwiftUI
 
+struct MainWindowOpenActionRegistration: View {
+  @Environment(\.openWindow) private var openWindow
+  let register: (@escaping () -> Void) -> Void
+
+  var body: some View {
+    Color.clear
+      .frame(width: 0, height: 0)
+      .onAppear {
+        register {
+          openWindow(id: "main-workbench")
+        }
+      }
+  }
+}
+
 /// Applies the current workspace default once to windows restored from an
 /// older build. SwiftUI's `defaultSize` covers new windows, while this tiny
 /// bridge migrates an existing restoration record before preserving later

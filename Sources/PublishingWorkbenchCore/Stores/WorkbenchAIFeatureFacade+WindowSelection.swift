@@ -2,6 +2,13 @@ import Foundation
 import PublishingAICore
 
 extension WorkbenchAIFeatureFacade {
+  /// Diff acceptance must not write through a newer body still staged by an
+  /// editor window. The caller reads this and commits on the same main actor.
+  public func chatDraftForDiffApplication(_ draftID: UUID) -> ArticleDraft? {
+    guard !store.draftBodyEditorBuffer(for: draftID).isDirty else { return nil }
+    return store.draft(for: draftID)
+  }
+
   public func availableGeneralChatContextReferences(
     windowID: UUID? = nil
   ) -> [AIContextReference] {

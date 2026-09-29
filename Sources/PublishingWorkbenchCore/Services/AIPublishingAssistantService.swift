@@ -662,8 +662,6 @@ public enum AIPublishingAssistantError: LocalizedError, Equatable {
   case emptyChatMessage
   case unsupportedImageAttachments(String)
   case emptyMetadataSuggestion
-  case emptyImageTextTargets
-  case emptyImageTextSuggestions
 
   public var errorDescription: String? {
     switch self {
@@ -677,10 +675,6 @@ public enum AIPublishingAssistantError: LocalizedError, Equatable {
       return CoreL10n.format("%@ 当前接口不支持图片输入，请切换到支持视觉输入的模型。", providerName)
     case .emptyMetadataSuggestion:
       return CoreL10n.text("AI 没有返回可应用的元数据建议。")
-    case .emptyImageTextTargets:
-      return CoreL10n.text("当前文章没有需要生成 alt/caption 的图片。")
-    case .emptyImageTextSuggestions:
-      return CoreL10n.text("AI 没有返回可应用的图片 alt/caption 建议。")
     }
   }
 }

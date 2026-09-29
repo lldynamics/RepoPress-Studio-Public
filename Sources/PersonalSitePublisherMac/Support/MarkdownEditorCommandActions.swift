@@ -1,3 +1,4 @@
+import AppKit
 import PublishingMarkdownCore
 import SwiftUI
 
@@ -24,13 +25,21 @@ struct MarkdownEditorCommandActions {
   var exportDocument: ((MarkdownDocumentExportFormat) -> Void)? = nil
 }
 
-private struct MarkdownEditorCommandActionsKey: FocusedValueKey {
-  typealias Value = MarkdownEditorCommandActions
-}
-
-extension FocusedValues {
-  var markdownEditorCommandActions: MarkdownEditorCommandActions? {
-    get { self[MarkdownEditorCommandActionsKey.self] }
-    set { self[MarkdownEditorCommandActionsKey.self] = newValue }
+enum MarkdownFormattingResponderBridge {
+  @MainActor
+  static func perform(_ command: MarkdownFormattingCommand) -> Bool {
+    let selectorName: String
+    switch command {
+    case .bold:
+      selectorName = "applyMarkdownBold:"
+    case .italic:
+      selectorName = "applyMarkdownItalic:"
+    case .link:
+      selectorName = "applyMarkdownLink:"
+    case .heading(let level):
+      guard (1...3).contains(level) else { return false }
+      selectorName = "applyMarkdownHeading\(level):"
+    }
+    return NSApp.sendAction(NSSelectorFromString(selectorName), to: nil, from: nil)
   }
 }

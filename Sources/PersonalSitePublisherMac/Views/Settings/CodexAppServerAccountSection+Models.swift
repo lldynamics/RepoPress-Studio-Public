@@ -277,6 +277,8 @@ struct CodexAppServerRuntimeStatusContent: View {
     case .compatible:
       let version = runtimeStatus.parsedVersion.map { " · \($0)" } ?? ""
       switch runtimeStatus.source {
+      case .managed:
+        return String(localized: "本应用管理的运行组件可用") + version
       case .homebrew:
         return String(localized: "Homebrew 运行组件可用") + version
       case .path:
@@ -506,4 +508,31 @@ struct CodexAppServerDeviceCodeContent: View {
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("settings-ai-codex-device-code")
   }
+}
+
+enum CodexAccountLabels {
+  static func loginMethodTitle(_ status: CodexAppServerAccountStatus) -> String {
+    switch status.accountType {
+    case "chatgpt": return "ChatGPT"
+    case "apiKey": return "API Key"
+    case let value?: return value
+    case nil: return "ChatGPT"
+    }
+  }
+
+  static func planTitle(_ plan: String) -> String {
+    switch plan.lowercased() {
+    case "free": return "Free"
+    case "go": return "Go"
+    case "plus": return "Plus"
+    case "pro": return "Pro"
+    case "prolite": return "Pro Lite"
+    case "team": return "Team"
+    case "business", "self_serve_business_usage_based": return "Business"
+    case "enterprise", "enterprise_cbp_usage_based": return "Enterprise"
+    case "edu": return "Edu"
+    default: return plan
+    }
+  }
+
 }

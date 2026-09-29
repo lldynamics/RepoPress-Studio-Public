@@ -241,93 +241,6 @@ final class SiteMaintenanceServiceTests: XCTestCase {
     })
   }
 
-  func testMaintenanceChecklistMarkdownSummarizesActionableWorkbenchSections() {
-    var profile = SiteProfile.defaultProfile
-    profile.markdownPathPattern = "content/posts/{slug}.md"
-    let now = date(year: 2026, month: 7, day: 6)
-    let oldID = UUID(uuidString: "C2BC7219-3C9C-4E8D-9B4F-FAD57D1E2BD8")!
-    let relatedID = UUID(uuidString: "3A5A6420-4E0D-475A-8017-50A5C8E20E1F")!
-    let old = ArticleDraft(
-      id: oldID,
-      siteProfileID: profile.id,
-      title: "旧文维护",
-      date: date(year: 2025, month: 1, day: 1),
-      slug: "old-maintenance",
-      tags: ["Swift"],
-      categories: [],
-      draft: false,
-      bodyMarkdown: "[缺失](/missing-page/) TODO",
-      status: .published,
-      updatedAt: date(year: 2025, month: 1, day: 2)
-    )
-    let related = ArticleDraft(
-      id: relatedID,
-      siteProfileID: profile.id,
-      title: "Swift 新文",
-      date: date(year: 2026, month: 7, day: 1),
-      slug: "swift-new",
-      tags: ["Swift"],
-      categories: ["工具"],
-      draft: false,
-      bodyMarkdown: "正文",
-      status: .ready,
-      updatedAt: date(year: 2026, month: 7, day: 2)
-    )
-    let record = ReleaseRecord(
-      kind: .remoteDirectCommit,
-      title: "线上提交：维护清单",
-      summary: "GitHub · main · 1 个文件",
-      siteProfileID: profile.id,
-      createdAt: date(year: 2026, month: 7, day: 3)
-    )
-
-    let report = SiteMaintenanceService().report(
-      drafts: [old, related],
-      profile: profile,
-      releaseRecords: [record],
-      now: now
-    )
-    let markdown = report.maintenanceChecklistMarkdown
-    let sprint = report.maintenanceSprintPlanMarkdown
-
-    XCTAssertTrue(markdown.contains("# 站点维护清单"))
-    XCTAssertTrue(markdown.contains("- 文章：2"))
-    XCTAssertTrue(markdown.contains("- 健康分："))
-    XCTAssertTrue(markdown.contains("## 维护健康摘要"))
-    XCTAssertTrue(markdown.contains("- 下一步："))
-    XCTAssertTrue(markdown.contains("## 维护行动队列"))
-    XCTAssertTrue(markdown.contains("复查旧文：旧文维护"))
-    XCTAssertFalse(markdown.contains("## 内容日历"))
-    XCTAssertFalse(markdown.contains("## 内容节奏提示"))
-    XCTAssertFalse(markdown.contains("## 待发布排期"))
-    XCTAssertTrue(markdown.contains("Swift 新文"))
-    XCTAssertTrue(markdown.contains("## 标签治理"))
-    XCTAssertTrue(markdown.contains("- Swift：2 篇"))
-    XCTAssertTrue(markdown.contains("## 分类治理"))
-    XCTAssertTrue(markdown.contains("- 缺失：1"))
-    XCTAssertTrue(markdown.contains("## 旧文整理"))
-    XCTAssertTrue(markdown.contains("content/posts/old-maintenance.md"))
-    XCTAssertTrue(markdown.contains("## 文章关系 / 内链机会"))
-    XCTAssertTrue(markdown.contains("Swift 新文 -> 旧文维护"))
-    XCTAssertTrue(markdown.contains("## 链接审计"))
-    XCTAssertTrue(markdown.contains("[警告] 旧文维护：/missing-page/"))
-    XCTAssertTrue(markdown.contains("## 操作日志"))
-    XCTAssertTrue(markdown.contains("线上提交：维护清单"))
-
-    XCTAssertTrue(sprint.contains("# 站点维护冲刺计划"))
-    XCTAssertTrue(sprint.contains("## 今日优先"))
-    XCTAssertTrue(sprint.contains("复查旧文：旧文维护"))
-    XCTAssertTrue(sprint.contains("可操作：打开草稿，必要时交给 AI 生成修复草案。"))
-    XCTAssertFalse(sprint.contains("## 本轮排期"))
-    XCTAssertTrue(sprint.contains("Swift 新文"))
-    XCTAssertTrue(sprint.contains("## 旧文和链接"))
-    XCTAssertTrue(sprint.contains("[警告] 旧文维护：/missing-page/"))
-    XCTAssertTrue(sprint.contains("## 内链机会"))
-    XCTAssertTrue(sprint.contains("Swift 新文 -> 旧文维护"))
-    XCTAssertTrue(sprint.contains("## 完成标准"))
-    XCTAssertTrue(sprint.contains("重新生成 SEO / Social 快照"))
-  }
-
   func testReportIncludesRecentReleaseRecordsAsOperationLog() {
     let profile = SiteProfile.defaultProfile
     let record = ReleaseRecord(
@@ -379,9 +292,8 @@ final class SiteMaintenanceServiceTests: XCTestCase {
     XCTAssertEqual(report.operationLogEntries.map(\.id), [maintenanceRecord.id, releaseRecord.id])
     XCTAssertEqual(report.operationLogEntries.first?.title, "维护处理：修复链接：旧文")
     XCTAssertEqual(report.operationLogEntries.first?.systemImage, MaintenanceActionKind.linkAudit.systemImage)
-    XCTAssertTrue(report.maintenanceChecklistMarkdown.contains("维护处理：修复链接：旧文"))
-    XCTAssertTrue(report.maintenanceChecklistMarkdown.contains("已确认缺失内链并补充目标页面。"))
-    XCTAssertTrue(report.maintenanceChecklistMarkdown.contains("线上提交：维护测试"))
+    XCTAssertEqual(report.operationLogEntries.first?.summary, "已确认缺失内链并补充目标页面。")
+    XCTAssertEqual(report.operationLogEntries.last?.title, "线上提交：维护测试")
   }
 
   @MainActor
@@ -423,8 +335,10 @@ final class SiteMaintenanceServiceTests: XCTestCase {
     XCTAssertTrue(reloaded.maintenanceOperationRecords.contains { $0.id == record.id })
     await reloaded.refreshSiteMaintenanceSnapshot(force: true)
     let reloadedReport = try XCTUnwrap(reloaded.siteMaintenanceSnapshot?.report)
-    XCTAssertTrue(reloadedReport.maintenanceChecklistMarkdown.contains("维护处理：修复链接：旧文"))
-    XCTAssertTrue(reloadedReport.maintenanceChecklistMarkdown.contains("已修复缺失内链。"))
+    XCTAssertTrue(
+      reloadedReport.operationLogEntries.contains {
+        $0.title == "维护处理：修复链接：旧文" && $0.summary == "已修复缺失内链。"
+      })
   }
 
   @MainActor
@@ -519,9 +433,10 @@ final class SiteMaintenanceServiceTests: XCTestCase {
     )
 
     XCTAssertEqual(report.operationLogEntries.map(\.id), [legacyRecord.id, currentRecord.id])
-    XCTAssertTrue(report.maintenanceChecklistMarkdown.contains("当前站点发布"))
-    XCTAssertTrue(report.maintenanceChecklistMarkdown.contains("旧版无站点记录"))
-    XCTAssertFalse(report.maintenanceChecklistMarkdown.contains("其他站点发布"))
+    let titles = report.operationLogEntries.map(\.title)
+    XCTAssertTrue(titles.contains("当前站点发布"))
+    XCTAssertTrue(titles.contains("旧版无站点记录"))
+    XCTAssertFalse(titles.contains("其他站点发布"))
   }
 
   func testLegacySnapshotDecodesWithEmptyMaintenanceOperationRecords() throws {

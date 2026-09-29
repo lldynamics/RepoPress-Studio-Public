@@ -1150,12 +1150,15 @@ public struct LocalSitePreviewService {
       )
     }
 
-    let defaultPort = preferredPort ?? Self.defaultPort(for: siteKind)
+    let defaultPort = Self.defaultPort(for: siteKind)
     let allocation = portAllocator.allocate(
-      preferredPort: defaultPort,
+      preferredPort: preferredPort ?? defaultPort,
       forceDynamicPort: forceDynamicPort
     )
-    let selectedPort = allocation?.port ?? defaultPort
+    let selectedPort = allocation?.port ?? preferredPort ?? defaultPort
+    let usesDynamicPort =
+      allocation != nil
+      && (allocation?.usesDynamicPort == true || selectedPort != defaultPort)
     if allocation == nil {
       issues.append(
         LocalSitePreviewIssue(
@@ -1165,7 +1168,7 @@ public struct LocalSitePreviewService {
           severity: .error
         )
       )
-    } else if allocation?.usesDynamicPort == true {
+    } else if usesDynamicPort {
       notes.append("默认端口 \(defaultPort) 已被占用，本次预览自动改用端口 \(selectedPort)。")
     }
 
@@ -1174,7 +1177,7 @@ public struct LocalSitePreviewService {
       siteKind: siteKind,
       packageManager: packageManager,
       port: selectedPort,
-      includesPortArgument: allocation?.usesDynamicPort == true
+      includesPortArgument: usesDynamicPort
     )
     let previewURL = URL(string: "http://127.0.0.1:\(selectedPort)")!
     let command =
@@ -1217,91 +1220,10 @@ public struct LocalSitePreviewService {
       command: command,
       previewURL: previewURL,
       notes: notes,
-      usesDynamicPort: allocation?.usesDynamicPort == true,
+      usesDynamicPort: usesDynamicPort,
       diagnostics: diagnostics,
       executionIdentity: executionIdentity
     )
-  }
-
-  private func arguments(
-    baseArguments: [String],
-    siteKind: SiteKind,
-    packageManager: String?,
-    port: Int,
-    includesPortArgument: Bool
-  ) -> [String] {
-    switch siteKind {
-    case .zola:
-      return baseArguments + ["--interface", "127.0.0.1"]
-        + portArguments(port, included: includesPortArgument)
-    case .hugo:
-      return baseArguments + ["--bind", "127.0.0.1"]
-        + portArguments(port, included: includesPortArgument)
-    case .astro, .vitePress, .docusaurus:
-      return baseArguments
-        + forwardedPackageScriptArguments(
-          ["--host", "127.0.0.1"]
-            + portArguments(port, included: includesPortArgument),
-          packageManager: packageManager
-        )
-    case .nextJS:
-      return baseArguments
-        + forwardedPackageScriptArguments(
-          ["--hostname", "127.0.0.1"]
-            + portArguments(port, included: includesPortArgument),
-          packageManager: packageManager
-        )
-    case .hexo:
-      return baseArguments
-        + forwardedPackageScriptArguments(
-          ["--ip", "127.0.0.1"]
-            + portArguments(port, included: includesPortArgument),
-          packageManager: packageManager
-        )
-    case .jekyll:
-      return baseArguments + ["--host", "127.0.0.1"]
-        + portArguments(port, included: includesPortArgument)
-    case .mkDocs:
-      return baseArguments + ["--dev-addr", "127.0.0.1:\(port)"]
-    case .quartz:
-      return baseArguments + [
-        String(port), String(ProcessInfo.processInfo.processIdentifier),
-      ]
-    case .foam:
-      return baseArguments
-    }
-  }
-
-  private func portArguments(_ port: Int, included: Bool) -> [String] {
-    included ? ["--port", "\(port)"] : []
-  }
-
-  private func forwardedPackageScriptArguments(
-    _ arguments: [String],
-    packageManager: String?
-  ) -> [String] {
-    packageManager == "yarn" ? arguments : ["--"] + arguments
-  }
-
-  private static func defaultPort(for siteKind: SiteKind) -> Int {
-    switch siteKind {
-    case .zola:
-      return 1111
-    case .hugo:
-      return 1313
-    case .astro:
-      return 4321
-    case .vitePress:
-      return 5173
-    case .nextJS, .foam, .docusaurus:
-      return 3000
-    case .quartz:
-      return 8080
-    case .hexo, .jekyll:
-      return 4000
-    case .mkDocs:
-      return 8000
-    }
   }
 
   private static let maximumPackageJSONByteCount = 1 * 1_024 * 1_024

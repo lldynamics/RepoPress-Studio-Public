@@ -21,12 +21,45 @@ final class WritingDraftListCacheTests: XCTestCase {
     )
     XCTAssertEqual(
       writingDraftListDateText(previousDay, now: now, calendar: calendar),
-      previousDay.formatted(
-        .dateTime
-          .year()
-          .month()
-          .day()
-      )
+      previousDay.formatted(date: .numeric, time: .omitted)
+    )
+  }
+
+  func testRowPresentationKeepsStatusAndFullDateInSeparateMetadataFields() {
+    let profile = SiteProfile.defaultProfile
+    let metadataUpdatedAt = Date(timeIntervalSince1970: 1_700_000_000)
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "English article title",
+      slug: "english-article",
+      visibility: .private,
+      status: .ready,
+      metadataUpdatedAt: metadataUpdatedAt
+    )
+    let display = PrivateContentDisplay(
+      title: draft.title,
+      summary: draft.summary,
+      isMasked: false
+    )
+
+    let presentation = WritingDraftRowPresentation(
+      draft: draft,
+      profile: profile,
+      display: display
+    )
+
+    XCTAssertEqual(
+      presentation.metadataDetails,
+      [draft.status.localizedDisplayName, draft.visibility.localizedDisplayName]
+        .joined(separator: " · ")
+    )
+    XCTAssertEqual(
+      presentation.metadataDate,
+      writingDraftListDateText(metadataUpdatedAt)
+    )
+    XCTAssertEqual(
+      presentation.metadata,
+      [presentation.metadataDetails, presentation.metadataDate].joined(separator: " · ")
     )
   }
 

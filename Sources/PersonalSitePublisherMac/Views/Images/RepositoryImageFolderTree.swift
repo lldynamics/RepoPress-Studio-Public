@@ -206,5 +206,3 @@ public struct RepositoryImageFolderTree: Hashable, Sendable {
     return result
   }
 }
-
-public typealias RepositoryImageFolder = RepositoryImageFolderNode

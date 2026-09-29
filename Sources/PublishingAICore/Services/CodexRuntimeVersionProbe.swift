@@ -17,6 +17,7 @@ final class CodexRuntimeVersionProbe: @unchecked Sendable {
   }
 
   private let executableURL: URL
+  private let processEnvironment: [String: String]
   private let expectedExecutableIdentity: CodexExecutableIdentity?
   private let outputPipe = Pipe()
   private let errorPipe = Pipe()
@@ -39,9 +40,11 @@ final class CodexRuntimeVersionProbe: @unchecked Sendable {
   init(
     executableURL: URL,
     expectedExecutableIdentity: CodexExecutableIdentity? = nil,
+    environment: [String: String] = CodexRuntimeProcessEnvironment.sanitized(),
     processDidLaunch: (@Sendable (pid_t) -> Void)? = nil
   ) {
     self.executableURL = executableURL
+    self.processEnvironment = CodexRuntimeProcessEnvironment.sanitized(from: environment)
     self.expectedExecutableIdentity = expectedExecutableIdentity
     self.processDidLaunch = processDidLaunch
   }
@@ -177,7 +180,7 @@ final class CodexRuntimeVersionProbe: @unchecked Sendable {
   private func launchProcess() throws -> pid_t {
     let arguments = try CodexRuntimeCStringArray([executableURL.path, "--version"])
     let environment = try CodexRuntimeCStringArray(
-      CodexRuntimeProcessEnvironment.sanitized()
+      processEnvironment
         .sorted { $0.key < $1.key }
         .map { "\($0.key)=\($0.value)" }
     )

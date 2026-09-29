@@ -23,48 +23,6 @@ public struct RemoteReviewDraftBuilder {
     )
   }
 
-  public func buildBatch(plan: BatchPublishPlan, profile: SiteProfile) -> RemoteReviewDraft? {
-    let items = plan.writableItems
-    guard !items.isEmpty else {
-      return nil
-    }
-
-    let branchName = BatchPublishCommandBuilder().reviewBranchName(for: items, now: plan.generatedAt)
-    let targetBranch = profile.branch.nilIfEmpty ?? "main"
-    let title = CoreL10n.format("发布 %d 篇文章", items.count)
-    let body = batchReviewBody(items: items, plan: plan, profile: profile, targetBranch: targetBranch)
-
-    return RemoteReviewDraft(
-      provider: profile.repositoryProvider,
-      branchName: branchName,
-      targetBranch: targetBranch,
-      title: title,
-      body: body,
-      webURL: reviewWebURL(
-        branchName: branchName,
-        targetBranch: targetBranch,
-        title: title,
-        profile: profile,
-        body: body
-      )
-    )
-  }
-
-  public func branchCommands(package: PublishPackage, profile: SiteProfile) -> [String] {
-    guard let rootPath = profile.localRepositoryRootURL?.path else {
-      return []
-    }
-
-    return RemoteReviewBranchCommandBuilder().buildCommands(
-      for: RemoteReviewBranchCommandInput(
-        rootPath: rootPath,
-        branchName: package.reviewBranchName,
-        commitMessage: package.commitMessage,
-        repositoryPaths: package.files.map(\.repositoryPath)
-      )
-    )
-  }
-
   private func reviewBody(package: PublishPackage, profile: SiteProfile) -> String {
     let checklist = package.reviewChecklist
       .map { "- [ ] \(localizedChecklistItem($0))" }
@@ -86,46 +44,6 @@ public struct RemoteReviewDraftBuilder {
       "",
       CoreL10n.text("## 检查清单"),
       checklist,
-    ].joined(separator: "\n")
-  }
-
-  private func batchReviewBody(
-    items: [BatchPublishPlanItem],
-    plan: BatchPublishPlan,
-    profile: SiteProfile,
-    targetBranch: String
-  ) -> String {
-    let articles = items
-      .map {
-        CoreL10n.format("- %@：`%@`（%d 个变化）", $0.draftTitle, $0.markdownPath, $0.changedFileCount)
-      }
-      .joined(separator: "\n")
-    let files = items
-      .flatMap { item in
-        item.package.files.map { file in
-          CoreL10n.format("- %@：`%@`", localizedReviewAction(for: file), file.repositoryPath)
-        }
-      }
-      .joined(separator: "\n")
-
-    return [
-      CoreL10n.text("## 批量发布内容"),
-      CoreL10n.format("- 站点：%@", profile.name),
-      CoreL10n.format("- 目标分支：%@", targetBranch),
-      CoreL10n.format("- 文章数：%d", items.count),
-      CoreL10n.format("- 文件变化：%d", plan.changedFileCount),
-      "",
-      CoreL10n.text("## 文章"),
-      articles,
-      "",
-      CoreL10n.text("## 文件"),
-      files,
-      "",
-      CoreL10n.text("## 检查清单"),
-      "- [ ] \(CoreL10n.text("Front Matter 已检查"))",
-      "- [ ] \(CoreL10n.text("图片路径和 alt/caption 已检查"))",
-      "- [ ] \(CoreL10n.text("本地预览已确认"))",
-      "- [ ] \(CoreL10n.text("公开风险和私密内容已确认"))",
     ].joined(separator: "\n")
   }
 

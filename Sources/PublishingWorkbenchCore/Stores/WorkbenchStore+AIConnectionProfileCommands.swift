@@ -39,6 +39,24 @@ extension WorkbenchStore {
     return profile
   }
 
+  /// Copies a shared connection without changing any site's selection or reading credentials.
+  @discardableResult
+  public func duplicateAIConnectionProfile(_ connectionID: UUID) -> AIConnectionProfile? {
+    guard let original = aiConnectionProfile(for: connectionID),
+      aiConnectionProfiles.count < 64
+    else { return nil }
+    var config = original.config
+    config.capabilityProbeEvidence = nil
+    let copy = AIConnectionProfile(
+      name: CoreL10n.format("%@ 副本", original.name),
+      config: config,
+      allowsLegacyCredentialFallback: false
+    )
+    aiConnectionProfiles.append(copy)
+    save()
+    return copy
+  }
+
   /// Copies only settings and atomically binds the current site to the new
   /// profile. Existing shared or legacy credentials are never read or changed.
   @discardableResult
@@ -72,6 +90,7 @@ extension WorkbenchStore {
       setAIActionMessage(CoreL10n.text("AI 连接副本未能保存，当前站点仍使用原连接。"))
       return nil
     }
+    aiStore.cancelNonStreamingAuthorization(profileID: site.id)
     refreshAIKeyAvailability()
     setAIActionMessage(
       copy.config.requiresAPIKey
@@ -109,6 +128,7 @@ extension WorkbenchStore {
     else { return false }
     if aiConnectionProfiles[index].config != normalized.config {
       aiStore.cancelStreamingAuthorization(connectionID: normalized.id)
+      aiStore.cancelNonStreamingAuthorization(connectionID: normalized.id)
     }
     aiConnectionProfiles[index] = normalized
 
@@ -154,6 +174,7 @@ extension WorkbenchStore {
     var updatedProfile = activeProfile
     updatedProfile.aiConnectionProfileID = connection.id
     updatedProfile.aiProviderConfig = connection.config
+    aiStore.cancelNonStreamingAuthorization(profileID: previousProfile.id)
     updateActiveProfile(updatedProfile)
     save()
     refreshAIKeyAvailability()
@@ -190,6 +211,7 @@ extension WorkbenchStore {
     }
 
     aiConnectionProfiles.removeAll { $0.id == connectionID }
+    aiStore.cancelNonStreamingAuthorization(connectionID: connectionID)
     save()
     setAIActionMessage(CoreL10n.text("AI 连接及其 API Key 已删除。"))
     return true

@@ -89,120 +89,12 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     XCTAssertTrue(snapshot.socialShareChecklistMarkdown.contains("Image alt: Mac publishing workflow"))
     XCTAssertTrue(snapshot.socialShareChecklistMarkdown.contains("Image URL: http://127.0.0.1:1111/images/2026/cover.jpg"))
     XCTAssertTrue(snapshot.socialShareChecklistMarkdown.contains("Hashtags: #Mac发布 #SEO #个人网站"))
-    let package = snapshot.publishPackageMarkdown()
-    XCTAssertTrue(package.contains("# SEO / Social 发布包"))
-    XCTAssertTrue(package.contains("- 预览类型：静态元数据快照"))
-    XCTAssertTrue(package.contains("## 平台就绪度"))
-    XCTAssertTrue(package.contains("## 结构化数据"))
-    XCTAssertTrue(package.contains("## 分享文案"))
-    XCTAssertTrue(package.contains("## 卡片预览"))
-    XCTAssertTrue(package.contains("Hashtags：#Mac发布 #SEO #个人网站"))
-    XCTAssertTrue(package.contains("- 图片 URL：http://127.0.0.1:1111/images/2026/cover.jpg"))
-    XCTAssertTrue(package.contains("## Meta HTML"))
-    XCTAssertTrue(package.contains("- 图片 Alt：Mac publishing workflow"))
-    XCTAssertTrue(package.contains(#"<meta property="og:title" content="macOS RepoPress实践">"#))
-    XCTAssertTrue(package.contains(#"<meta property="article:published_time" content="2026-07-07T04:00:00Z">"#))
-    XCTAssertTrue(package.contains(#"<meta property="article:modified_time" content="2026-07-07T05:00:00Z">"#))
-    XCTAssertTrue(package.contains(#"<meta property="article:author" content="Jinfang">"#))
-    XCTAssertTrue(package.contains(#"<meta property="article:section" content="个人网站">"#))
-    XCTAssertTrue(package.contains(#"<meta property="article:tag" content="Mac 发布">"#))
-    XCTAssertTrue(package.contains(#"<meta property="og:image:width" content="1200">"#))
-    XCTAssertTrue(package.contains(#"<meta property="og:image:height" content="630">"#))
     XCTAssertEqual(snapshot.structuredData.status, .ready)
     XCTAssertTrue(snapshot.structuredData.jsonLD.contains(#""@type" : "Article""#))
     XCTAssertTrue(snapshot.structuredData.jsonLD.contains(#""headline" : "macOS RepoPress实践""#))
     XCTAssertTrue(snapshot.structuredData.jsonLD.contains(#""image" : ["#))
     XCTAssertTrue(snapshot.structuredData.jsonLD.contains("http://127.0.0.1:1111/images/2026/cover.jpg"))
     XCTAssertTrue(snapshot.findings.contains { $0.title == "JSON-LD 已生成" })
-  }
-
-  func testSitemapPreviewGeneratesXmlForPublicDraftsOnly() throws {
-    var profile = SiteProfile.defaultProfile
-    profile.name = "Jinfang Notes"
-    profile.deploymentSiteURL = "https://example.com/blog/"
-    profile.markdownPathPattern = "content/posts/{slug}.md"
-    let selectedID = UUID(uuidString: "E27E0D48-0581-45C9-BA0A-3B4D48806C85")!
-    let privateID = UUID(uuidString: "91D93445-7F83-4A45-BFF8-F01B19EC79F0")!
-    let draftID = UUID(uuidString: "EEA13B35-A65F-45CB-A5E6-E53320717806")!
-    let selected = ArticleDraft(
-      id: selectedID,
-      siteProfileID: profile.id,
-      title: "公开 sitemap 文章",
-      date: Date(timeIntervalSince1970: 1_783_396_800),
-      slug: "public-sitemap-entry",
-      draft: false,
-      summary: "这篇文章验证 sitemap.xml 会生成公开文章条目。",
-      bodyMarkdown: "# 公开 sitemap 文章",
-      updatedAt: Date(timeIntervalSince1970: 1_783_400_400)
-    )
-    let privateDraft = ArticleDraft(
-      id: privateID,
-      siteProfileID: profile.id,
-      title: "私密 sitemap 文章",
-      slug: "private-sitemap-entry",
-      draft: false,
-      visibility: .private,
-      summary: "不应进入 sitemap。",
-      bodyMarkdown: "# 私密 sitemap 文章"
-    )
-    let unpublishedDraft = ArticleDraft(
-      id: draftID,
-      siteProfileID: profile.id,
-      title: "草稿 sitemap 文章",
-      slug: "draft-sitemap-entry",
-      draft: true,
-      summary: "草稿不应进入 sitemap。",
-      bodyMarkdown: "# 草稿 sitemap 文章"
-    )
-
-    let sitemap = SEOSocialPreviewService().sitemapPreview(
-      drafts: [privateDraft, unpublishedDraft, selected],
-      selectedDraft: selected,
-      profile: profile
-    )
-
-    XCTAssertEqual(sitemap.status, .ready)
-    XCTAssertEqual(sitemap.sitemapURLText, "https://example.com/blog/sitemap.xml")
-    XCTAssertEqual(sitemap.entries.count, 1)
-    XCTAssertEqual(sitemap.entries.first?.loc, "https://example.com/blog/public-sitemap-entry")
-    XCTAssertEqual(sitemap.entries.first?.lastmod, "2026-07-07")
-    XCTAssertTrue(sitemap.entries.first?.isSelectedDraft == true)
-    XCTAssertTrue(sitemap.xml.contains("<urlset"))
-    XCTAssertTrue(sitemap.xml.contains("<loc>https://example.com/blog/public-sitemap-entry</loc>"))
-    XCTAssertFalse(sitemap.xml.contains("private-sitemap-entry"))
-    XCTAssertFalse(sitemap.xml.contains("draft-sitemap-entry"))
-
-    let privateSitemap = SEOSocialPreviewService().sitemapPreview(
-      drafts: [privateDraft, selected],
-      selectedDraft: privateDraft,
-      profile: profile
-    )
-    XCTAssertEqual(privateSitemap.status, .warning)
-    XCTAssertTrue(privateSitemap.message.contains("私密文章或草稿"))
-  }
-
-  func testSitemapPreviewRequiresAbsoluteSiteURL() {
-    var profile = SiteProfile.defaultProfile
-    profile.markdownPathPattern = "content/posts/{slug}.md"
-    let draft = ArticleDraft(
-      siteProfileID: profile.id,
-      title: "相对 sitemap",
-      slug: "relative-sitemap",
-      draft: false,
-      summary: "这篇文章验证没有部署 URL 时 sitemap 会提示缺少站点地址。",
-      bodyMarkdown: "# 相对 sitemap"
-    )
-
-    let sitemap = SEOSocialPreviewService().sitemapPreview(
-      drafts: [draft],
-      selectedDraft: draft,
-      profile: profile
-    )
-
-    XCTAssertEqual(sitemap.status, .missing)
-    XCTAssertNil(sitemap.sitemapURLText)
-    XCTAssertTrue(sitemap.message.contains("部署站点 URL"))
-    XCTAssertTrue(sitemap.xml.contains("<loc>/relative-sitemap/</loc>"))
   }
 
   func testPlatformReadinessWarnsWhenSocialImageAltTextIsMissing() {
@@ -230,7 +122,6 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     let snapshot = SEOSocialPreviewService().snapshot(draft: draft, profile: profile)
     let openGraph = snapshot.platformReadiness.first { $0.kind == .openGraph }
     let twitter = snapshot.platformReadiness.first { $0.kind == .twitter }
-    let package = snapshot.publishPackageMarkdown()
 
     XCTAssertEqual(snapshot.imagePath, "/images/cover.jpg")
     XCTAssertNil(snapshot.imageAltText)
@@ -240,7 +131,6 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     XCTAssertTrue(twitter?.warningMessages.contains { $0.contains("twitter:image:alt") } == true)
     XCTAssertTrue(snapshot.findings.contains { $0.title == "社交预览图缺少 Alt" })
     XCTAssertTrue(snapshot.socialShareChecklistMarkdown.contains("Image alt: missing"))
-    XCTAssertTrue(package.contains("- 图片 Alt：missing"))
     XCTAssertNil(snapshot.metaTags.first { $0.property == "og:image:alt" })
     XCTAssertNil(snapshot.metaTags.first { $0.property == "twitter:image:alt" })
   }
@@ -284,16 +174,11 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
       "https://cards-dev.twitter.com/validator"
     )
 
-    let package = snapshot.publishPackageMarkdown()
     let checklist = snapshot.socialShareChecklistMarkdown
     XCTAssertTrue(checklist.contains("## External Debug Links"))
     XCTAssertTrue(checklist.contains("- [ ] Facebook Sharing Debugger"))
     XCTAssertTrue(checklist.contains("Purpose: 刷新 Open Graph 抓取缓存并检查分享卡片字段。"))
     XCTAssertTrue(checklist.contains("https://www.linkedin.com/post-inspector/inspect/https%3A%2F%2Fexample.com%2Fblog%2Fsocial-debug-links"))
-    XCTAssertTrue(package.contains("## 外部调试链接"))
-    XCTAssertTrue(package.contains("Facebook Sharing Debugger"))
-    XCTAssertTrue(package.contains("LinkedIn Post Inspector"))
-    XCTAssertTrue(package.contains("X Card Validator"))
   }
 
   func testSnapshotUsesJekyllDatedPermalinkForCanonicalAndMetaURLs() {
@@ -572,7 +457,6 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     let openGraph = snapshot.platformReadiness.first { $0.kind == .openGraph }
     let twitter = snapshot.platformReadiness.first { $0.kind == .twitter }
     let openGraphCard = snapshot.cards.first { $0.kind == .openGraph }
-    let package = snapshot.publishPackageMarkdown()
 
     XCTAssertEqual(snapshot.imageDimensions, ImageDimensions(width: 800, height: 800))
     XCTAssertEqual(openGraphCard?.imageDimensions, ImageDimensions(width: 800, height: 800))
@@ -584,9 +468,6 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     XCTAssertTrue(openGraph?.warningMessages.contains { $0.contains("图片比例 1.00:1") } == true)
     XCTAssertTrue(snapshot.findings.contains { $0.title == "社交预览图尺寸偏小" })
     XCTAssertTrue(snapshot.socialShareChecklistMarkdown.contains("Image size: 800x800"))
-    XCTAssertTrue(package.contains("- 图片尺寸：800x800"))
-    XCTAssertTrue(package.contains(#"<meta property="og:image:width" content="800">"#))
-    XCTAssertTrue(package.contains(#"<meta property="og:image:height" content="800">"#))
   }
 
   func testPlatformReadinessReportsMissingRequiredMetaTags() {
@@ -626,18 +507,18 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     XCTAssertTrue(snapshot.socialShareChecklistMarkdown.contains("Missing: og:type"))
   }
 
-  func testStoreKeepsCachedSnapshotUntilManualRefresh() throws {
+  func testStoreKeepsCachedSnapshotUntilManualRefresh() async throws {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     var draft = try XCTUnwrap(store.selectedDraft)
 
-    let missingPresentation = store.seoSocialPreviewCachePresentation(for: draft)
+    let missingPresentation = try await store.seoInspectorPresentation(for: draft).cachePresentation
     XCTAssertEqual(missingPresentation.state, .missing)
     XCTAssertTrue(missingPresentation.needsManualRefresh)
     XCTAssertEqual(missingPresentation.manualRefreshTitle, "生成快照")
 
     store.prepareSEOSocialPreview(for: draft)
     let originalTitle = try XCTUnwrap(store.seoSocialPreviewSnapshot?.cards.first?.title)
-    let freshPresentation = store.seoSocialPreviewCachePresentation(for: draft)
+    let freshPresentation = try await store.seoInspectorPresentation(for: draft).cachePresentation
     XCTAssertEqual(freshPresentation.state, .fresh)
     XCTAssertFalse(freshPresentation.needsManualRefresh)
     XCTAssertTrue(freshPresentation.message.contains("缓存快照"))
@@ -647,7 +528,7 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
 
     XCTAssertEqual(store.seoSocialPreviewSnapshot?.cards.first?.title, originalTitle)
     XCTAssertTrue(store.isSEOSocialPreviewStale(for: draft))
-    let stalePresentation = store.seoSocialPreviewCachePresentation(for: draft)
+    let stalePresentation = try await store.seoInspectorPresentation(for: draft).cachePresentation
     XCTAssertEqual(stalePresentation.state, .stale)
     XCTAssertTrue(stalePresentation.needsManualRefresh)
     XCTAssertEqual(stalePresentation.manualRefreshTitle, "刷新过期快照")
@@ -657,10 +538,12 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
 
     XCTAssertEqual(store.seoSocialPreviewSnapshot?.cards.first?.title, "更新后的社交标题")
     XCTAssertFalse(store.isSEOSocialPreviewStale(for: draft))
-    XCTAssertEqual(store.seoSocialPreviewCachePresentation(for: draft).state, .fresh)
+    let refreshedPresentation =
+      try await store.seoInspectorPresentation(for: draft).cachePresentation
+    XCTAssertEqual(refreshedPresentation.state, .fresh)
   }
 
-  func testStoreMarksSocialPreviewStaleWhenCoverSourceFileChanges() throws {
+  func testStoreMarksSocialPreviewStaleWhenCoverSourceFileChanges() async throws {
     let imageURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("seo-cache-cover-\(UUID().uuidString).jpg")
     try writeTestImage(at: imageURL, width: 1200, height: 630)
@@ -695,36 +578,36 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     try FileManager.default.setAttributes([.modificationDate: changedDate], ofItemAtPath: imageURL.path)
 
     XCTAssertTrue(store.isSEOSocialPreviewStale(for: draft))
-    XCTAssertEqual(store.seoSocialPreviewCachePresentation(for: draft).state, .stale)
+    let refreshedPresentation =
+      try await store.seoInspectorPresentation(for: draft).cachePresentation
+    XCTAssertEqual(refreshedPresentation.state, .stale)
   }
 
-	  func testApplyingAIMetadataRefreshesSEOSocialPreviewSnapshot() throws {
-	    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
-	    let draft = try XCTUnwrap(store.selectedDraft)
-	    store.prepareSEOSocialPreview(for: draft)
-	    let originalTitle = try XCTUnwrap(store.seoSocialPreviewSnapshot(for: draft)?.cards.first?.title)
+  func testApplyingAIMetadataRefreshesSEOSocialPreviewSnapshot() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let draft = try XCTUnwrap(store.selectedDraft)
+    store.prepareSEOSocialPreview(for: draft)
+    let originalTitle = try XCTUnwrap(
+      store.seoSocialPreviewSnapshot(for: draft)?.cards.first?.title)
 
     let suggestion = AIPublishingMetadataSuggestion(
       titles: ["AI 刷新的社交标题"],
       summary: "AI 生成的社交摘要，用来验证应用元数据后会刷新 SEO 社交预览。", tags: ["SEO", "AI"])
     installAIMetadataSuggestionForApplicationTest(suggestion, draft: draft, store: store)
     let updated = try XCTUnwrap(
-	      store.applyAIMetadataSuggestion(
+      store.aiStore.applyAIMetadataSuggestion(
         suggestion,
         draft: draft
-	      )
-	    )
+      )
+    )
 
-	    XCTAssertEqual(store.seoSocialPreviewSnapshot(for: updated)?.cards.first?.title, "AI 刷新的社交标题")
-	    XCTAssertFalse(store.isSEOSocialPreviewStale(for: updated))
-	    XCTAssertEqual(store.seoSocialPreviewMessage, "AI 元数据变更后，SEO 社交预览已同步刷新。")
+    XCTAssertEqual(store.seoSocialPreviewSnapshot(for: updated)?.cards.first?.title, "AI 刷新的社交标题")
+    XCTAssertFalse(store.isSEOSocialPreviewStale(for: updated))
+    XCTAssertEqual(store.seoSocialPreviewMessage, "AI 元数据变更后，SEO 社交预览已同步刷新。")
 
-	    let record = try XCTUnwrap(store.recentAIMetadataApplicationRecords(for: updated).first)
-	    let restored = try XCTUnwrap(store.rollbackAIMetadataApplicationRecord(record))
-
-	    XCTAssertEqual(store.seoSocialPreviewSnapshot(for: restored)?.cards.first?.title, originalTitle)
-	    XCTAssertFalse(store.isSEOSocialPreviewStale(for: restored))
-	}
+    XCTAssertNotEqual(originalTitle, "AI 刷新的社交标题")
+  }
 
   func testStoreCachesSocialPreviewSnapshotsPerDraftAndPersistsThem() async throws {
     let url = try temporaryPersistenceURL()
@@ -777,59 +660,6 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
 
     reloaded.createDraft()
     XCTAssertNil(reloaded.seoSocialPreviewSnapshot)
-  }
-
-  func testStoreSEOSocialPublishPackageIncludesRelatedArticleSuggestions() async throws {
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
-    let profile = store.activeProfile
-    let sourceID = UUID(uuidString: "8E76D4C3-1573-4246-9E1F-9C744420C7C1")!
-    let targetID = UUID(uuidString: "9712FC15-C35D-4EB0-9E53-F3C730694BC8")!
-    let unpublishedTargetID = UUID(uuidString: "7A4A1F55-3627-462B-A1D9-436916C82FC1")!
-    let source = ArticleDraft(
-      id: sourceID,
-      siteProfileID: profile.id,
-      title: "SEO 发布包",
-      slug: "seo-publish-package",
-      tags: ["SEO", "Mac"],
-      draft: false,
-      summary: "这篇文章验证 SEO 社交发布包会携带平台状态、Meta HTML 和关联文章建议。",
-      bodyMarkdown: "正文还没有链接到目标文章。",
-      status: .published
-    )
-    let target = ArticleDraft(
-      id: targetID,
-      siteProfileID: profile.id,
-      title: "Mac SEO 预览",
-      slug: "mac-seo-preview",
-      tags: ["SEO"],
-      draft: false,
-      summary: "目标文章。",
-      bodyMarkdown: "目标正文。",
-      status: .published
-    )
-    let unpublishedTarget = ArticleDraft(
-      id: unpublishedTargetID,
-      siteProfileID: profile.id,
-      title: "未上线 SEO 预览",
-      slug: "unpublished-seo-preview",
-      tags: ["SEO"],
-      draft: false,
-      summary: "还没有发布的候选文章。",
-      bodyMarkdown: "未上线正文。",
-      status: .ready
-    )
-    store.setDrafts([source, target, unpublishedTarget])
-
-    store.prepareSEOSocialPreview(for: source)
-
-    let generatedPackage = await store.seoSocialPublishPackageMarkdown(for: source)
-    let package = try XCTUnwrap(generatedPackage)
-    XCTAssertTrue(package.contains("## 关联文章建议"))
-    XCTAssertTrue(package.contains("SEO 发布包 -> Mac SEO 预览"))
-    XCTAssertTrue(package.contains("/mac-seo-preview/"))
-    XCTAssertFalse(package.contains("未上线 SEO 预览"))
-    XCTAssertFalse(package.contains("/unpublished-seo-preview/"))
-    XCTAssertTrue(package.contains("## Meta HTML"))
   }
 
   private func temporaryPersistenceURL() throws -> URL {

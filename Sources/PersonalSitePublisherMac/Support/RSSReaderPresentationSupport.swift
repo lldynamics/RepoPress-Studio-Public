@@ -111,6 +111,49 @@ enum RSSArticlePresentationSupport {
     }
   }
 
+  /// Used by the detached list preparation. Every archive-wide pass can stop
+  /// when the view's previous preparation task is cancelled.
+  static func applyFiltersAndSortCheckingCancellation(
+    to articles: [RSSArticleHeader],
+    sourceID: UUID?,
+    author: String?,
+    tag: String?,
+    dateRange: RSSArticleDateRange,
+    sortOrder: RSSArticleSortOrder,
+    now: Date = Date(),
+    calendar: Calendar = .current
+  ) throws -> [RSSArticleHeader] {
+    var filtered: [RSSArticleHeader] = []
+    filtered.reserveCapacity(articles.count)
+    for (index, article) in articles.enumerated() {
+      if index.isMultiple(of: 128) { try Task.checkCancellation() }
+      if let sourceID, article.feedID != sourceID { continue }
+      if let author, article.author?.localizedCaseInsensitiveCompare(author) != .orderedSame {
+        continue
+      }
+      if let tag,
+        !article.tags.contains(where: { $0.localizedCaseInsensitiveCompare(tag) == .orderedSame })
+      {
+        continue
+      }
+      guard
+        includes(
+          article.publishedAt ?? article.fetchedAt,
+          in: dateRange,
+          now: now,
+          calendar: calendar
+        )
+      else { continue }
+      filtered.append(article)
+    }
+    try Task.checkCancellation()
+    guard sortOrder != .newest else { return filtered }
+
+    return try RSSCancellableSort.sorted(filtered) {
+      precedes($0, $1, order: sortOrder)
+    }
+  }
+
   static func sections(
     for articles: [RSSArticleHeader],
     groupsByDate: Bool,
@@ -263,6 +306,51 @@ enum RSSArticlePresentationSupport {
     if calendar.isDateInYesterday(date) { return .yesterday }
     let start = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: now)) ?? now
     return date >= start ? .lastSevenDays : .earlier
+  }
+}
+
+/// A heap makes archive and facet sorts interruptible between small batches.
+enum RSSCancellableSort {
+  static func sorted<Element>(
+    _ values: [Element],
+    by precedes: (Element, Element) -> Bool
+  ) throws -> [Element] {
+    var heap: [Element] = []
+    heap.reserveCapacity(values.count)
+    for (index, value) in values.enumerated() {
+      if index.isMultiple(of: 128) { try Task.checkCancellation() }
+      heap.append(value)
+      var child = heap.count - 1
+      while child > 0 {
+        let parent = (child - 1) / 2
+        guard precedes(heap[child], heap[parent]) else { break }
+        heap.swapAt(child, parent)
+        child = parent
+      }
+    }
+    var result: [Element] = []
+    result.reserveCapacity(heap.count)
+    while !heap.isEmpty {
+      if result.count.isMultiple(of: 128) { try Task.checkCancellation() }
+      result.append(heap[0])
+      let last = heap.removeLast()
+      guard !heap.isEmpty else { break }
+      heap[0] = last
+      var parent = 0
+      while true {
+        let left = parent * 2 + 1
+        guard left < heap.count else { break }
+        let right = left + 1
+        let child =
+          right < heap.count && precedes(heap[right], heap[left])
+          ? right : left
+        guard precedes(heap[child], heap[parent]) else { break }
+        heap.swapAt(parent, child)
+        parent = child
+      }
+    }
+    try Task.checkCancellation()
+    return result
   }
 }
 

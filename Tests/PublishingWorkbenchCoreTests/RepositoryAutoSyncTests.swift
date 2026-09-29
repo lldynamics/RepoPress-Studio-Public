@@ -451,7 +451,8 @@ final class RepositoryAutoSyncTests: XCTestCase {
         )
       ],
       snapshots: [],
-      locallyChangedPaths: []
+      locallyChangedPaths: [],
+      profileID: store.activeProfileID
     )
 
     XCTAssertEqual(summary.importedCount, 0)
@@ -478,7 +479,8 @@ final class RepositoryAutoSyncTests: XCTestCase {
         RepositoryChangedFile(status: "A", path: path, kind: .added)
       ],
       snapshots: [],
-      locallyChangedPaths: []
+      locallyChangedPaths: [],
+      profileID: store.activeProfileID
     )
 
     XCTAssertEqual(summary.importedCount, 0)
@@ -525,7 +527,8 @@ final class RepositoryAutoSyncTests: XCTestCase {
         )
       ],
       snapshots: [],
-      locallyChangedPaths: []
+      locallyChangedPaths: [],
+      profileID: store.activeProfileID
     )
 
     XCTAssertEqual(summary.deletionPaths, [])
@@ -565,7 +568,8 @@ final class RepositoryAutoSyncTests: XCTestCase {
           repositorySHA: "private-sha"
         )
       ],
-      locallyChangedPaths: []
+      locallyChangedPaths: [],
+      profileID: store.activeProfileID
     )
 
     XCTAssertEqual(summary.importedCount, 1)
@@ -643,7 +647,8 @@ final class RepositoryAutoSyncTests: XCTestCase {
             repositorySHA: "new-sha"
           )
         ],
-        locallyChangedPaths: []
+        locallyChangedPaths: [],
+        profileID: store.activeProfileID
       )
 
       XCTAssertEqual(summary.importedCount, 0)

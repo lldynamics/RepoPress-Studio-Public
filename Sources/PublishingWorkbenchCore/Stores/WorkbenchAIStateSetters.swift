@@ -52,18 +52,6 @@ extension WorkbenchStore {
     aiWorkspaceStore.isAIChatRunning = isRunning
   }
 
-  func setAIImageTextSuggestionDraftID(_ draftID: UUID?) {
-    aiWorkspaceStore.aiImageTextSuggestionDraftID = draftID
-  }
-
-  func setAIImageTextSuggestions(_ suggestions: [AIPublishingImageTextSuggestion]) {
-    aiWorkspaceStore.aiImageTextSuggestions = suggestions
-  }
-
-  func setAIImageTextRunning(_ isRunning: Bool) {
-    aiWorkspaceStore.isAIImageTextRunning = isRunning
-  }
-
   func setAIPublishingAssistantPresented(_ isPresented: Bool) {
     guard aiWorkspaceStore.isAIPublishingAssistantPresented != isPresented else { return }
     aiWorkspaceStore.isAIPublishingAssistantPresented = isPresented

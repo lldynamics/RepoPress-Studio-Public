@@ -3,33 +3,6 @@ import PublishingAICore
 import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 
-enum AIChatAgentToolAvailabilityPresentation {
-  static func availability(
-    config: AIProviderConfig,
-    conversationMode: AIConversationAgentMode
-  ) -> AIChatAgentToolAvailability {
-    guard conversationMode != .textOnly else {
-      return .conversationTextOnly
-    }
-    let settings = config.resolvedAdvancedSettings
-    guard settings.resolvedAllowsApplicationTools else {
-      return .connectionDisabled
-    }
-    guard settings.resolvedAgentPermissionPolicy.allows(.draftCreation) else {
-      return .draftCreationDenied
-    }
-    switch config.capabilitySupport(for: .toolCalling) {
-    case .supported:
-      return .available
-    case .unknown:
-      return .capabilityUnknown
-    case .unsupported:
-      return .capabilityUnsupported
-    }
-  }
-
-}
-
 enum AIChatConnectionStatusPresentation {
   static func readiness(
     for config: AIProviderConfig,
@@ -86,20 +59,90 @@ enum AIChatConnectionStatusPresentation {
 }
 
 enum AIChatConnectionBlockerPresentation {
-  /// A connection blocker owns the banner while it is unresolved. Agent
-  /// capability details are useful only after the connection can actually
-  /// submit a request.
-  static func shouldShowAgentToolBanner(
-    readiness: AIChatConnectionReadiness
-  ) -> Bool {
-    readiness == .ready
-  }
-
   static func shouldShowDetail(
     title: String,
     detail: String
   ) -> Bool {
     title != detail
+  }
+}
+
+/// The Codex app-server is a local runtime plus an account, so its readiness
+/// is intentionally separate from ordinary API endpoint/key readiness.
+/// These value-only labels keep the inspector card easy to exercise without
+/// starting a runtime check or installation from presentation tests.
+enum AIChatCodexConnectionPresentation {
+  enum Action: Equatable {
+    case prepare
+    case refresh
+    case openSettings
+  }
+
+  struct Configuration: Equatable {
+    let title: String
+    let detail: String
+    let action: Action?
+    let actionTitle: String?
+  }
+
+  static func configuration(
+    phase: CodexConnectionPhase,
+    progress: String?,
+    failure: String?
+  ) -> Configuration? {
+    if let failure = failure?.nilIfEmpty {
+      let detail: String
+      if phase.isReady {
+        detail = failure + " " + String(localized: "当前组件仍可继续使用；你可以稍后重试更新。")
+      } else {
+        detail = failure
+      }
+      return .init(
+        title: String(localized: "Codex 组件准备失败"),
+        detail: detail,
+        action: .prepare,
+        actionTitle: String(localized: "重试准备")
+      )
+    }
+    switch phase {
+    case .ready:
+      return nil
+    case .checking:
+      return .init(
+        title: String(localized: "正在检查 Codex 组件"),
+        detail: progress?.nilIfEmpty ?? String(localized: "正在读取本机运行组件和 ChatGPT 账户状态。"),
+        action: nil,
+        actionTitle: nil
+      )
+    case .missingComponent:
+      return .init(
+        title: String(localized: "需要安装 Codex 组件"),
+        detail: String(localized: "安装后可使用 ChatGPT 登录；当前输入会保留。"),
+        action: .prepare,
+        actionTitle: String(localized: "安装并继续")
+      )
+    case .updateRequired:
+      return .init(
+        title: String(localized: "需要更新 Codex 组件"),
+        detail: String(localized: "更新到本应用已验证的版本后，再重新检测账户状态。"),
+        action: .prepare,
+        actionTitle: String(localized: "更新并继续")
+      )
+    case .needsLogin:
+      return .init(
+        title: String(localized: "需要登录 ChatGPT"),
+        detail: String(localized: "运行组件已就绪。请在 AI 设置中完成 ChatGPT 登录。"),
+        action: .openSettings,
+        actionTitle: String(localized: "打开账户设置")
+      )
+    case .failed:
+      return .init(
+        title: String(localized: "Codex 组件检查失败"),
+        detail: failure?.nilIfEmpty ?? String(localized: "请重新检测，或在 AI 设置中修复组件。"),
+        action: .prepare,
+        actionTitle: String(localized: "修复组件")
+      )
+    }
   }
 }
 
@@ -286,7 +329,7 @@ enum AIChatInspectorDensityPresentation {
 
     let references = explicitReferenceCount > 0 ? "\(explicitReferenceCount) 项手动引用" : nil
     return
-      ([boundary, references, "资料库：\(knowledgeTitle)", "Agent：\(agentTitle)"]
+      ([boundary, references, "资料库：\(knowledgeTitle)"]
       .compactMap { $0 })
       .joined(separator: " · ")
   }
@@ -301,63 +344,5 @@ enum AIChatInspectorDensityPresentation {
     case .fullChips:
       return "\(configuration.accessibilityState)。\(compactSummary)。正在显示完整来源、设置和快捷提示。"
     }
-  }
-}
-
-/// Presentation policy for the human review surface used by Agent content
-/// changes. Keeping this as a value-only policy makes the keyboard and
-/// accessibility contract testable without constructing a SwiftUI sheet.
-enum AIChatAgentReviewPresentation {
-  static let sheetAccessibilityIdentifier = "ai-agent-review-sheet"
-  static let laterAccessibilityIdentifier = "ai-agent-review-later"
-  static let rejectAccessibilityIdentifier = "ai-agent-review-reject"
-  static let acceptAccessibilityIdentifier = "ai-agent-review-accept"
-  static let deliveryUncertainAccessibilityIdentifier = "ai-agent-delivery-uncertain"
-  static let deliveryUncertainAbandonAccessibilityIdentifier =
-    "ai-agent-delivery-uncertain-abandon"
-  static let deliveryUncertainBranchAccessibilityIdentifier =
-    "ai-agent-delivery-uncertain-branch"
-
-  static let deliveryUncertainWarning = String(localized: "续跑结果不确定，系统没有自动重试")
-  static let deliveryUncertainDetail =
-    String(localized: "请结束续跑并保留记录，或从这里新建对话。")
-  static let deliveryUncertainAbandonTitle = String(localized: "结束续跑并保留记录")
-  static let deliveryUncertainBranchTitle = String(localized: "从这里新建对话")
-  static let deliveryUncertainEndedTitle = String(localized: "已结束，记录保留")
-
-  static func isDeliveryUncertain(
-    phase: AIPublishingChatAgentContinuationPhase
-  ) -> Bool {
-    phase == .deliveryUncertain
-  }
-
-  static func isDeliveryUncertainTerminal(
-    phase: AIPublishingChatAgentContinuationPhase
-  ) -> Bool {
-    phase == .abandonedAfterDeliveryUncertain
-  }
-
-  static func canResolveDeliveryUncertain(
-    phase: AIPublishingChatAgentContinuationPhase,
-    isBusy: Bool,
-    conversationID: UUID?
-  ) -> Bool {
-    !isBusy && conversationID != nil && isDeliveryUncertain(phase: phase)
-  }
-
-  static func allowsRollbackAction(
-    phase: AIPublishingChatAgentContinuationPhase?
-  ) -> Bool {
-    guard let phase else { return true }
-    return !isDeliveryUncertain(phase: phase)
-      && !isDeliveryUncertainTerminal(phase: phase)
-  }
-
-  static func isContentChangeReview(
-    plan: WorkbenchAutomationPlan,
-    step: WorkbenchAutomationStep
-  ) -> Bool {
-    plan.source == .agentLoop
-      && WorkbenchAutomationRegistry.descriptor(for: step.command)?.risk == .contentChange
   }
 }

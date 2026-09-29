@@ -174,43 +174,6 @@ enum AIChatConnectionReadiness: Equatable {
   }
 }
 
-enum AIChatAgentToolAvailability: Equatable {
-  case available
-  case conversationTextOnly
-  case connectionDisabled
-  case draftCreationDenied
-  case capabilityUnknown
-  case capabilityUnsupported
-
-  var message: String? {
-    switch self {
-    case .available:
-      return nil
-    case .conversationTextOnly:
-      return String(localized: "本对话为仅问答模式；不会提供新建文章等应用工具。")
-    case .connectionDisabled:
-      return String(localized: "Agent 已在当前连接中关闭；AI 只能回答，不能新建文章。")
-    case .draftCreationDenied:
-      return String(localized: "当前连接未授权“新建文章草稿”权限。")
-    case .capabilityUnknown:
-      return String(localized: "当前模型尚未确认支持工具调用；新建文章功能暂不可用。")
-    case .capabilityUnsupported:
-      return String(localized: "当前模型不支持工具调用；新建文章功能不可用。")
-    }
-  }
-
-  var actionTitle: String? {
-    switch self {
-    case .available:
-      return nil
-    case .conversationTextOnly:
-      return String(localized: "改为跟随连接")
-    case .connectionDisabled, .draftCreationDenied, .capabilityUnknown, .capabilityUnsupported:
-      return String(localized: "打开 AI 设置")
-    }
-  }
-}
-
 struct AIChatInspectorConversationContext {
   /// General conversations deliberately have no implicit draft. Site
   /// conversations retain the draft only for explicit editing affordances.

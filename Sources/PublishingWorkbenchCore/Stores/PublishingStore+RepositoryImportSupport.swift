@@ -145,32 +145,6 @@ extension PublishingStore {
     return Set(activePaths + recycledPaths + cleanupPaths)
   }
 
-  /// Local files are the working tree, so their first import does not carry
-  /// the upstream version that the publish preflight needs for a safe update.
-  /// Hydrate that baseline only when the upstream snapshot exists; new local
-  /// files remain untracked and continue to require the normal create path.
-  func hydrateLocalRepositoryBaselines(
-    _ result: LocalContentImportResult,
-    profile: SiteProfile,
-    store: WorkbenchStore
-  ) -> LocalContentImportResult {
-    let paths = LocalRepositoryImportBackgroundWork.repositoryPathsRequiringBaseline(
-      from: result.importedDrafts
-    )
-    let snapshots = paths.compactMap { repositoryPath in
-      store.repositoryStore.remoteFileSnapshot(
-        profile: profile,
-        repositoryPath: repositoryPath
-      )
-    }
-    return LocalRepositoryImportBackgroundWork.hydrateLocalRepositoryBaselines(
-      result,
-      profile: profile,
-      snapshots: snapshots,
-      importService: localContentImportService
-    )
-  }
-
   /// Fetches all upstream baselines with one detached batch operation and
   /// performs the remote Markdown parse/render work in a second detached
   /// operation. Only the guarded result crosses back to the main actor.

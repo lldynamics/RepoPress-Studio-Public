@@ -1,24 +1,7 @@
 import AppKit
-import OSLog
 import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
-
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-  private enum ContentViewBodyPerformanceProbe {
-    private static let isEnabled =
-      ProcessInfo.processInfo.environment["PERSONAL_SITE_PUBLISHER_CONTENT_VIEW_BODY_PROBE"] == "1"
-    private static let signposter = OSSignposter(
-      subsystem: "com.jinfang.PersonalSitePublisherMac",
-      category: "SwiftUIBody"
-    )
-
-    static func record() {
-      guard isEnabled else { return }
-      signposter.emitEvent("ContentView.body")
-    }
-  }
-#endif
 
 struct ContentView: View {
   @WorkspaceModuleVisibilityStorage private var moduleVisibility
@@ -30,6 +13,7 @@ struct ContentView: View {
   @Environment(\.controlActiveState) private var controlActiveState
   @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
   @Environment(\.openSettings) private var openSettingsWindow
+  @Environment(\.openWindow) private var openWindow
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
   @AppStorage(RSSReaderUserPreferences.backgroundRefreshEnabledKey)
@@ -277,7 +261,9 @@ struct ContentView: View {
       .toolbar {
         workspaceNavigationToolbar
 
-        ToolbarItem(placement: .automatic) {
+        // With the window title hidden, a principal item supplies the flexible
+        // center; otherwise the primary actions pack beside the navigation group.
+        ToolbarItem(placement: .principal) {
           commandSearchToolbarButton
         }
 
@@ -755,8 +741,6 @@ struct ContentView: View {
           }
         )
       }
-    case .localSitePreview:
-      LocalSitePreviewPanelView(store: store, state: localSitePreviewState)
     case .firstRunSetup:
       if let profile = firstRunHandoffProfile {
         FirstRunRepositoryHandoffView(
@@ -880,11 +864,10 @@ struct ContentView: View {
 
   private func openLocalSitePreview() {
     guard activateCurrentWindowSharedContext() else { return }
-    selectWorkspaceSection(.sync)
     if !store.localSitePreviewRuntimeStatus.isRunning {
       store.startLocalSitePreview()
     }
-    modalPresentation.present(.localSitePreview)
+    openWindow(id: LocalSitePreviewWindowScene.id)
   }
 
   private func applyWorkbenchPreferences() {
@@ -1735,7 +1718,7 @@ struct ContentView: View {
     transaction.disablesAnimations = true
     withTransaction(transaction) {
       responsiveLayout = snapshot
-      if !canOverrideInspector(snapshot) {
+      if !snapshot.canManuallyRevealInspector(for: windowSession.selectedSection) {
         revealsInspectorInCompactWorkspace = false
       }
     }
@@ -1751,11 +1734,7 @@ struct ContentView: View {
   }
 
   private var canOverrideInspectorInCurrentLayout: Bool {
-    canOverrideInspector(responsiveLayout)
-  }
-
-  private func canOverrideInspector(_ snapshot: WorkspaceResponsiveLayoutSnapshot) -> Bool {
-    snapshot.canManuallyRevealInspector(for: windowSession.selectedSection)
+    responsiveLayout.canManuallyRevealInspector(for: windowSession.selectedSection)
   }
 
   private var canRequestInspectorInCurrentLayout: Bool {
@@ -1805,12 +1784,8 @@ struct ContentView: View {
       revealsInspectorInCompactWorkspace = true
     }
 
-    dismissPublishDrawerForInspectorRequestIfNeeded()
-    return true
-  }
-
-  private func dismissPublishDrawerForInspectorRequestIfNeeded() {
     dismissPublishDrawerIfNeeded()
+    return true
   }
 
   private func dismissPublishDrawerIfNeeded() {
@@ -1827,11 +1802,7 @@ struct ContentView: View {
 
   private func toggleFocusMode() {
     guard windowSession.selectedSection == .writing else { return }
-    if isFocusMode {
-      isFocusMode = false
-    } else {
-      isFocusMode = true
-    }
+    isFocusMode.toggle()
   }
 
   private func toggleWorkspaceSidebar() {

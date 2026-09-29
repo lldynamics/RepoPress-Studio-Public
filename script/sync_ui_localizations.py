@@ -87,7 +87,7 @@ LITERAL_LOCALIZATION_CALL_PREFIX_PATTERN = re.compile(
 DISPLAY_NAME_SEMANTIC_KEY_PATTERN = re.compile(r'"(display\.[a-z0-9.-]+)"')
 DIRECT_DISPLAY_NAME_PATTERN = re.compile(r"\.displayName\b")
 NAMED_COMPONENT_TITLE_PATTERN = re.compile(
-    r"\b(?:MetricTile|InspectorScaffold|InspectorStatRow|"
+    r"\b(?:MetricTile|InspectorStatRow|"
     r"PublishDrawerCard|PublishDrawerStat|PublishDrawerInfoRow|SettingsConfigurationHealthItem|EmptyStateView)"
     r"\s*\([\s\S]{0,240}?\btitle:\s*\"((?:\\.|[^\"\\])*)\""
 )
@@ -538,7 +538,26 @@ def localized_plural_states(entry: dict, language: str) -> dict[str, str]:
     return states
 
 
+def substitution_format_specifier(substitution: dict) -> str:
+    """Return the catalog specifier without its `%`, e.g. `lld`."""
+    specifier = substitution.get("formatSpecifier") if isinstance(substitution, dict) else None
+    return specifier.lstrip("%") if isinstance(specifier, str) else ""
+
+
+def catalog_substitution_value(value: str, specifier: str) -> str:
+    """Store a displayed plural fragment in String Catalog form.
+
+    String Catalog substitutions refer to their own argument as `%arg`; a
+    literal `%lld` inside the variation is read as an extra argument and
+    renders `(null)` at runtime.
+    """
+    if not specifier or "%arg" in value:
+        return value
+    return re.sub(rf"%(?:\d+\$)?{re.escape(specifier)}", "%arg", value, count=1)
+
+
 def localized_plural_substitutions(entry: dict, language: str) -> dict[str, dict[str, str]]:
+    """Return plural fragments as displayed text, with `%arg` expanded."""
     substitutions = (
         entry.get("localizations", {})
         .get(language, {})
@@ -551,8 +570,9 @@ def localized_plural_substitutions(entry: dict, language: str) -> dict[str, dict
         plural = substitution.get("variations", {}).get("plural", {}) if isinstance(substitution, dict) else {}
         if not isinstance(plural, dict):
             continue
+        specifier = substitution_format_specifier(substitution)
         categories = {
-            category: variation.get("stringUnit", {}).get("value")
+            category: variation["stringUnit"]["value"].replace("%arg", f"%{specifier}")
             for category, variation in plural.items()
             if isinstance(variation, dict)
             and isinstance(variation.get("stringUnit", {}).get("value"), str)
@@ -560,6 +580,47 @@ def localized_plural_substitutions(entry: dict, language: str) -> dict[str, dict
         if categories:
             values[name] = categories
     return values
+
+
+def plural_substitution_format_errors(entry: dict, language: str) -> list[str]:
+    """Catalog substitutions must use a bare specifier and `%arg` fragments."""
+    substitutions = (
+        entry.get("localizations", {}).get(language, {}).get("substitutions", {})
+    )
+    errors: list[str] = []
+    if not isinstance(substitutions, dict):
+        return errors
+    for name, substitution in substitutions.items():
+        if not isinstance(substitution, dict):
+            continue
+        specifier = substitution.get("formatSpecifier")
+        if not isinstance(specifier, str) or not specifier or specifier.startswith("%"):
+            errors.append(f"{name}: formatSpecifier must omit %")
+        plural = substitution.get("variations", {}).get("plural", {})
+        for category, variation in (plural.items() if isinstance(plural, dict) else []):
+            value = variation.get("stringUnit", {}).get("value") if isinstance(variation, dict) else None
+            if isinstance(value, str) and "%arg" not in value:
+                errors.append(f"{name}.{category}: variation must use %arg")
+    return errors
+
+
+def normalize_plural_substitutions(entry: dict) -> None:
+    for localization in entry.get("localizations", {}).values():
+        substitutions = localization.get("substitutions") if isinstance(localization, dict) else None
+        if not isinstance(substitutions, dict):
+            continue
+        for substitution in substitutions.values():
+            if not isinstance(substitution, dict):
+                continue
+            specifier = substitution_format_specifier(substitution)
+            if not specifier:
+                continue
+            substitution["formatSpecifier"] = specifier
+            plural = substitution.get("variations", {}).get("plural", {})
+            for variation in (plural.values() if isinstance(plural, dict) else []):
+                unit = variation.get("stringUnit") if isinstance(variation, dict) else None
+                if isinstance(unit, dict) and isinstance(unit.get("value"), str):
+                    unit["value"] = catalog_substitution_value(unit["value"], specifier)
 
 
 def localized_effective_plural_values(entry: dict, language: str) -> dict[str, str]:
@@ -610,6 +671,8 @@ def validate(catalog: dict, extracted: dict[str, str], model_keys: set[str]) -> 
             missing.append(f"{key}: en placeholders differ")
         if CJK_PATTERN.search(en_value):
             missing.append(f"{key}: English value contains CJK text")
+        for error in plural_substitution_format_errors(entry, "en"):
+            missing.append(f"{key}: en plural substitution {error}")
         if requires_english_plural_variation(en_value):
             substitution_values = localized_plural_substitutions(entry, "en")
             if substitution_values:
@@ -1000,6 +1063,7 @@ def update_localization_plural(
                 unit = variation.setdefault("stringUnit", {})
                 unit["value"] = replacement
                 unit["state"] = "translated"
+            normalize_plural_substitutions(entry)
         elif not isinstance(direct, str):
             raise RuntimeError(f"reviewed plural template mismatch: {key or language}")
         return
@@ -1034,7 +1098,9 @@ def prune_catalog(catalog: dict, managed_keys: set[str]) -> list[str]:
 
 def pruned_reviewed_translation_files(
     managed_keys: set[str],
+    core_keys: set[str] | None = None,
 ) -> tuple[dict[Path, dict], dict[Path, list[str]]]:
+    managed_keys = managed_keys | (core_keys or set())
     pruned_files: dict[Path, dict] = {}
     removed_by_path: dict[Path, list[str]] = {}
     for path in TRANSLATION_PATHS:
@@ -1079,6 +1145,9 @@ def synchronize(catalog: dict, extracted: dict[str, str]) -> dict:
             continue
         if expectation is None:
             raise RuntimeError(f"missing reviewed offline translation: {key}")
+    for entry in strings.values():
+        if isinstance(entry, dict):
+            normalize_plural_substitutions(entry)
     return catalog
 
 
@@ -1221,7 +1290,7 @@ def main() -> int:
     if arguments.prune_stale:
         removed_catalog_keys = prune_catalog(synchronized, set(extracted))
         pruned_translation_files, removed_translation_keys = pruned_reviewed_translation_files(
-            set(extracted)
+            set(extracted), set(core_extracted)
         )
     failures = validate(synchronized, extracted, model_keys) + core_failures
     if failures:

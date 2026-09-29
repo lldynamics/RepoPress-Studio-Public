@@ -56,15 +56,4 @@ enum AIApplicationContract {
           retained.tags.joined(separator: "\n")
         ).contains)
   }
-
-  static func imageTextSuggestions(
-    _ proposals: [AIPublishingImageTextSuggestion],
-    belongTo retained: [AIPublishingImageTextSuggestion]
-  ) -> Bool {
-    let proposedIDs = proposals.map(\.id)
-    guard Set(proposedIDs).count == proposedIDs.count else { return false }
-    return proposals.allSatisfy { proposal in
-      retained.first { $0.id == proposal.id } == proposal
-    }
-  }
 }

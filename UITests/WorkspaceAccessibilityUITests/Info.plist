@@ -18,5 +18,7 @@
 	<string>$(PERSONAL_SITE_PUBLISHER_RUNTIME_HOME)</string>
 	<key>WorkbenchXCUIAppPath</key>
 	<string>$(WORKBENCH_XCUI_APP_PATH)</string>
+	<key>WorkbenchXCUIGitPath</key>
+	<string>$(DEVELOPER_DIR)/usr/bin/git</string>
 </dict>
 </plist>

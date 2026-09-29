@@ -746,62 +746,10 @@ struct ContentHealthDetailView: View {
           : String(localized: "通过是当前筛选下没有错误或警告的文章统计，不能作为筛选条件。")
       )
     }
-    .frame(maxWidth: usesCompactLayout ? 300 : 552, alignment: .leading)
+    .frame(maxWidth: usesCompactLayout ? 360 : 640, alignment: .leading)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("内容健康摘要")
     .accessibilityValue(contentHealthReadinessAccessibilityValue(summary))
-  }
-
-  private func healthSummaryBadge(
-    title: LocalizedStringKey,
-    value: Int,
-    systemImage: String,
-    color: Color,
-    action: (() -> Void)? = nil,
-    help: String? = nil
-  ) -> some View {
-    let badge = HStack(spacing: 5) {
-      Image(systemName: systemImage)
-        .accessibilityHidden(true)
-      Text(title)
-      Text("\(value)")
-        .fontWeight(.semibold)
-        .monospacedDigit()
-      if action != nil {
-        Image(systemName: "line.3.horizontal.decrease.circle")
-          .font(.caption)
-          .accessibilityHidden(true)
-      }
-    }
-    .font(.callout.weight(.medium))
-    .foregroundStyle(value > 0 ? color : Color.secondary)
-    .padding(.horizontal, 9)
-    .padding(.vertical, 6)
-    .frame(maxWidth: .infinity, alignment: .center)
-    .background(
-      action == nil
-        ? AnyShapeStyle(Color.clear)
-        : value > 0
-          ? AnyShapeStyle(color.opacity(WorkbenchOpacity.noticeBackground))
-          : WorkbenchBackgroundStyle.control,
-      in: Capsule()
-    )
-    return Group {
-      if let action {
-        Button(action: action) {
-          badge
-        }
-        .buttonStyle(.plain)
-        .help(help ?? String(localized: "点击后按此项筛选检查问题。"))
-        .accessibilityHint(String(localized: "点击以应用对应的检查筛选。"))
-      } else {
-        if let help {
-          badge.help(help)
-        } else {
-          badge
-        }
-      }
-    }
   }
 
   private func contentHealthReadinessAccessibilityValue(
@@ -1362,17 +1310,6 @@ struct ContentHealthDetailView: View {
       }
       .buttonStyle(.borderless)
       .controlSize(.small)
-    }
-  }
-
-  private func conflictingDrafts(for routes: [String], targetDraftID: UUID) -> [ArticleDraft] {
-    let normalized = Set(routes.map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "/")) })
-    return store.publishing.visibleDrafts.filter { draft in
-      guard draft.id != targetDraftID, !draft.isGeneralDraft else { return false }
-      let slug = draft.slug.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-      let aliases = Set(
-        draft.aliases.map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "/")) })
-      return normalized.contains(slug) || !aliases.isDisjoint(with: normalized)
     }
   }
 

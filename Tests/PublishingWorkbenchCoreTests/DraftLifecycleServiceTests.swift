@@ -192,9 +192,15 @@ final class DraftLifecycleServiceTests: XCTestCase {
     store.setAIChatMessages([
       AIPublishingChatMessage(role: .user, content: "First conversation")
     ])
-    store.setAIChatConversationTitle("First", draft: draft)
+    store.aiStore.cacheCurrentAIChatSessionForAIStore()
+    XCTAssertTrue(
+      store.aiStore.renameAIChatConversation(
+        try XCTUnwrap(store.aiStore.activeAIChatConversationID(for: draft.id)),
+        title: "First"
+      )
+    )
     let firstConversationID = try XCTUnwrap(
-      store.activeAIChatConversationID(for: draft.id)
+      store.aiStore.activeAIChatConversationID(for: draft.id)
     )
     let secondConversation = try XCTUnwrap(
       store.startNewAIChatConversation(draft: draft)
@@ -202,7 +208,13 @@ final class DraftLifecycleServiceTests: XCTestCase {
     store.setAIChatMessages([
       AIPublishingChatMessage(role: .user, content: "Second conversation")
     ])
-    store.setAIChatConversationTitle("Second", draft: draft)
+    store.aiStore.cacheCurrentAIChatSessionForAIStore()
+    XCTAssertTrue(
+      store.aiStore.renameAIChatConversation(
+        try XCTUnwrap(store.aiStore.activeAIChatConversationID(for: draft.id)),
+        title: "Second"
+      )
+    )
 
     store.deleteDraft(id: draft.id)
     await store.waitForPendingSave()
@@ -210,11 +222,11 @@ final class DraftLifecycleServiceTests: XCTestCase {
     let reloaded = WorkbenchStore(persistence: persistence)
     XCTAssertEqual(reloaded.recycledDrafts.map(\.id), [draft.id])
     XCTAssertEqual(
-      Set(reloaded.aiChatConversations(for: draft.id).map(\.id)),
+      Set(reloaded.aiStore.aiChatConversations(for: draft.id).map(\.id)),
       Set([firstConversationID, secondConversation.id])
     )
     XCTAssertEqual(
-      reloaded.activeAIChatConversationID(for: draft.id),
+      reloaded.aiStore.activeAIChatConversationID(for: draft.id),
       secondConversation.id
     )
 

@@ -70,46 +70,6 @@ final class ReleaseRecordTests: XCTestCase {
     XCTAssertNil(record.commitSHA)
   }
 
-  func testReviewBranchRecordCapturesCommitAndReviewURL() throws {
-    var profile = SiteProfile.defaultProfile
-    profile.repoOwner = "jinfang"
-    profile.repoName = "site"
-    profile.branch = "main"
-    profile.markdownPathPattern = "content/posts/{slug}.md"
-
-    let draft = ArticleDraft(
-      siteProfileID: profile.id,
-      title: "Review Record",
-      slug: "review-record",
-      bodyMarkdown: "Body"
-    )
-    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
-    let review = RemoteReviewDraftBuilder().build(package: package, profile: profile)
-    let result = LocalGitPublishResult(
-      mode: .reviewBranch,
-      branchName: package.reviewBranchName,
-      committedPaths: [package.markdownPath],
-      commitSHA: "abcdef1234567890",
-      commandLog: [],
-      output: ""
-    )
-
-    let record = ReleaseRecord.gitPublish(
-      package: package,
-      profile: profile,
-      result: result,
-      reviewDraft: review
-    )
-
-    XCTAssertEqual(record.kind, .reviewBranch)
-    XCTAssertEqual(record.branchName, package.reviewBranchName)
-    XCTAssertEqual(record.targetBranch, "main")
-    XCTAssertEqual(record.commitSHA, "abcdef1234567890")
-    XCTAssertEqual(record.shortCommitSHA, "abcdef12")
-    XCTAssertEqual(record.reviewTitle, review.title)
-    XCTAssertTrue(try XCTUnwrap(record.reviewURL).contains("github.com/jinfang/site"))
-  }
-
   func testBatchLocalWriteRecordCapturesSiteAndChangedPaths() {
     var profile = SiteProfile.defaultProfile
     profile.name = "批量站点"

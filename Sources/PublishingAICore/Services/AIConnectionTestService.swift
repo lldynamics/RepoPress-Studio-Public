@@ -108,7 +108,7 @@ public enum AISettingsConnectionPresentationService {
     if config.requiresAPIKey && !tokenAvailability.hasToken {
       return AISettingsConnectionPresentation(
         title: CoreL10n.text("AI API Key 未就绪"),
-        message: CoreL10n.text("请先保存当前站点的 AI API Key，再测试连接。"),
+        message: CoreL10n.text("请先保存当前连接的 AI API Key，再测试连接。"),
         footnote: providerHelpText(config),
         systemImage: "key",
         level: .warning

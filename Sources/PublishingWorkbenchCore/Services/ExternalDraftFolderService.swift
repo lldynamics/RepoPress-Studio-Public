@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import PublishingCoreSupport
 
 public struct ExternalDraftFile: Sendable, Equatable {
   public let relativePath: String
@@ -20,6 +21,9 @@ public enum ExternalDraftFolderServiceError: LocalizedError, Equatable, Sendable
   case rootIsNotDirectory
   case fileTooLarge(relativePath: String)
   case fileCountExceeded
+  case totalSizeExceeded
+  case directoryDepthExceeded
+  case entryCountExceeded
   case unreadableFile(relativePath: String)
   case invalidUTF8(relativePath: String)
 
@@ -33,6 +37,12 @@ public enum ExternalDraftFolderServiceError: LocalizedError, Equatable, Sendable
       return CoreL10n.format("外部草稿文件过大：%@", path)
     case .fileCountExceeded:
       return CoreL10n.text("外部草稿文件数量超过扫描上限。")
+    case .totalSizeExceeded:
+      return CoreL10n.text("外部草稿总大小超过扫描上限，请选择更小的文件夹。")
+    case .directoryDepthExceeded:
+      return CoreL10n.text("外部草稿文件夹层级过深，请选择更下层的文件夹。")
+    case .entryCountExceeded:
+      return CoreL10n.text("外部草稿文件夹中的项目过多，请选择更小的文件夹。")
     case .unreadableFile(let path):
       return CoreL10n.format("外部草稿文件无法读取：%@", path)
     case .invalidUTF8(let path):
@@ -45,10 +55,45 @@ public enum ExternalDraftFolderServiceError: LocalizedError, Equatable, Sendable
 public struct ExternalDraftFolderService: Sendable {
   public static let maximumFileSize = 16 * 1024 * 1024
   public static let maximumFileCount = 10_000
+  public static let maximumTotalSize = 64 * 1024 * 1024
+  public static let maximumDirectoryDepth = 32
+  public static let maximumEntryCount = 50_000
 
-  public init() {}
+  struct ScanLimits: Sendable {
+    var fileSize = ExternalDraftFolderService.maximumFileSize
+    var fileCount = ExternalDraftFolderService.maximumFileCount
+    var totalSize = ExternalDraftFolderService.maximumTotalSize
+    var directoryDepth = ExternalDraftFolderService.maximumDirectoryDepth
+    var entryCount = ExternalDraftFolderService.maximumEntryCount
+  }
+
+  private let limits: ScanLimits
+
+  public init() { limits = ScanLimits() }
+
+  init(limits: ScanLimits) {
+    precondition(limits.fileSize > 0 && limits.fileCount > 0 && limits.totalSize > 0)
+    precondition(limits.directoryDepth >= 0 && limits.entryCount > 0)
+    self.limits = limits
+  }
+
+  public func scanAsync(rootURL: URL) async throws -> [ExternalDraftFile] {
+    let task = Task.detached(priority: .utility) { try self.scan(rootURL: rootURL) }
+    let files = try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
+    try Task.checkCancellation()
+    return files
+  }
 
   public func scan(rootURL: URL) throws -> [ExternalDraftFile] {
+    try scan(rootURL: rootURL, checkCancellation: { try Task.checkCancellation() })
+  }
+
+  func scan(rootURL: URL, checkCancellation: () throws -> Void) throws -> [ExternalDraftFile] {
+    try checkCancellation()
     let selectedRoot = rootURL.standardizedFileURL
     guard !isSymbolicLink(at: selectedRoot.path) else {
       throw ExternalDraftFolderServiceError.inaccessibleRoot
@@ -72,37 +117,47 @@ public struct ExternalDraftFolderService: Sendable {
     }
 
     var drafts: [ExternalDraftFile] = []
-    try scanDirectory(root: root, directory: root, drafts: &drafts)
-    return drafts.sorted { $0.relativePath < $1.relativePath }
+    try scanDirectory(root: root, drafts: &drafts, checkCancellation: checkCancellation)
+    try checkCancellation()
+    let sorted = drafts.sorted { $0.relativePath < $1.relativePath }
+    try checkCancellation()
+    return sorted
   }
 
   private var fileManager: FileManager { .default }
 
   private func scanDirectory(
     root: URL,
-    directory: URL,
-    drafts: inout [ExternalDraftFile]
+    drafts: inout [ExternalDraftFile],
+    checkCancellation: () throws -> Void
   ) throws {
-    let entries: [URL]
-    do {
-      entries = try fileManager.contentsOfDirectory(
-        at: directory,
+    // Enumerate lazily so a wide directory cannot allocate an unbounded URL array.
+    guard
+      let entries = fileManager.enumerator(
+        at: root,
         includingPropertiesForKeys: [],
         options: [.skipsHiddenFiles]
       )
-    } catch {
-      if directory == root {
-        throw ExternalDraftFolderServiceError.inaccessibleRoot
-      }
-      return
+    else {
+      throw ExternalDraftFolderServiceError.inaccessibleRoot
     }
-
-    for entry in entries {
+    var entryCount = 0
+    var totalSize = 0
+    while true {
+      try checkCancellation()
+      guard let entry = entries.nextObject() as? URL else { break }
+      guard entryCount < limits.entryCount else {
+        throw ExternalDraftFolderServiceError.entryCountExceeded
+      }
+      entryCount += 1
       let path = entry.path
-      let attributes = try? fileManager.attributesOfItem(atPath: path)
-      guard let attributes else { continue }
+      let attributes: [FileAttributeKey: Any]
+      do { attributes = try fileManager.attributesOfItem(atPath: path) } catch { continue }
       let type = attributes[.type] as? FileAttributeType
-      if type == .typeSymbolicLink { continue }
+      if type == .typeSymbolicLink {
+        entries.skipDescendants()
+        continue
+      }
 
       let relativePath = relativePath(of: entry, from: root)
       guard !relativePath.isEmpty, !relativePath.hasPrefix("../"), relativePath != ".." else {
@@ -110,32 +165,44 @@ public struct ExternalDraftFolderService: Sendable {
       }
 
       if type == .typeDirectory {
-        // `skipsHiddenFiles` handles normal dot directories; this explicit check
-        // also keeps the rule stable if the Foundation enumerator changes.
-        guard !entry.lastPathComponent.hasPrefix(".") else { continue }
-        try scanDirectory(root: root, directory: entry, drafts: &drafts)
+        guard entries.level <= limits.directoryDepth else {
+          throw ExternalDraftFolderServiceError.directoryDepthExceeded
+        }
         continue
       }
       guard type == .typeRegular,
         isMarkdownFile(entry.lastPathComponent)
       else { continue }
 
-      guard drafts.count < Self.maximumFileCount else {
+      guard drafts.count < limits.fileCount else {
         throw ExternalDraftFolderServiceError.fileCountExceeded
       }
       let size = (attributes[.size] as? NSNumber)?.intValue ?? 0
-      guard size <= Self.maximumFileSize else {
+      guard size >= 0, size <= limits.fileSize else {
         throw ExternalDraftFolderServiceError.fileTooLarge(relativePath: relativePath)
       }
+      let remainingBytes = limits.totalSize - totalSize
+      guard size <= remainingBytes else { throw ExternalDraftFolderServiceError.totalSizeExceeded }
+      try checkCancellation()
       let data: Data
       do {
-        data = try Data(contentsOf: entry, options: [.mappedIfSafe])
+        // The descriptor-based reader also bounds files that grow after enumeration.
+        data = try SafeFileReader.data(
+          relativePath: relativePath, under: root,
+          maximumByteCount: min(limits.fileSize, max(1, remainingBytes)))
+      } catch SafeFileReadError.exceedsByteLimit {
+        if remainingBytes < limits.fileSize {
+          throw ExternalDraftFolderServiceError.totalSizeExceeded
+        }
+        throw ExternalDraftFolderServiceError.fileTooLarge(relativePath: relativePath)
       } catch {
         throw ExternalDraftFolderServiceError.unreadableFile(relativePath: relativePath)
       }
-      guard data.count <= Self.maximumFileSize else {
-        throw ExternalDraftFolderServiceError.fileTooLarge(relativePath: relativePath)
+      try checkCancellation()
+      guard data.count <= remainingBytes else {
+        throw ExternalDraftFolderServiceError.totalSizeExceeded
       }
+      totalSize += data.count
       guard var markdown = String(data: data, encoding: .utf8) else {
         throw ExternalDraftFolderServiceError.invalidUTF8(relativePath: relativePath)
       }
@@ -147,9 +214,10 @@ public struct ExternalDraftFolderService: Sendable {
       drafts.append(
         ExternalDraftFile(
           relativePath: relativePath,
-          title: title(
+          title: try title(
             for: markdown.hasPrefix("\u{FEFF}") ? String(markdown.dropFirst()) : markdown,
-            filename: entry.deletingPathExtension().lastPathComponent
+            filename: entry.deletingPathExtension().lastPathComponent,
+            checkCancellation: checkCancellation
           ),
           markdown: markdown,
           fingerprint: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
@@ -169,10 +237,22 @@ public struct ExternalDraftFolderService: Sendable {
     return ext == "md" || ext == "markdown" || ext == "mdx" || ext == "txt"
   }
 
-  private func title(for markdown: String, filename: String) -> String {
+  private func title(
+    for markdown: String, filename: String, checkCancellation: () throws -> Void
+  ) throws -> String {
     var inFence = false
-    for line in markdown.split(whereSeparator: \.isNewline).map(String.init) {
-      let trimmed = line.trimmingCharacters(in: .whitespaces)
+    var lineStart = markdown.startIndex
+    while lineStart < markdown.endIndex {
+      try checkCancellation()
+      var lineEnd = lineStart
+      var visitedCharacters = 0
+      while lineEnd < markdown.endIndex, !markdown[lineEnd].isNewline {
+        if visitedCharacters.isMultiple(of: 4_096) { try checkCancellation() }
+        lineEnd = markdown.index(after: lineEnd)
+        visitedCharacters += 1
+      }
+      let trimmed = markdown[lineStart..<lineEnd].trimmingCharacters(in: .whitespaces)
+      lineStart = lineEnd == markdown.endIndex ? lineEnd : markdown.index(after: lineEnd)
       if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
         inFence.toggle()
         continue

@@ -34,7 +34,7 @@ final class AIConnectionProfileCommandsTests: XCTestCase {
     initialConnection.config = configuredTestProvider()
     store.updateAIConnectionProfile(initialConnection)
     let connectionID = store.activeAIConnectionProfile.id
-    XCTAssertTrue(store.saveAIAPIKey("destination-secret"))
+    XCTAssertTrue(store.aiStore.saveAIAPIKey("destination-secret"))
 
     var connection = store.activeAIConnectionProfile
     connection.config.baseURL = "https://replacement.example/v1"
@@ -67,7 +67,7 @@ final class AIConnectionProfileCommandsTests: XCTestCase {
     )
     store.updateAIConnectionProfile(initialConnection)
     let connectionID = store.activeAIConnectionProfile.id
-    XCTAssertTrue(store.saveAIAPIKey("preset-secret"))
+    XCTAssertTrue(store.aiStore.saveAIAPIKey("preset-secret"))
 
     var connection = store.activeAIConnectionProfile
     connection.config.preset = .custom
@@ -90,7 +90,7 @@ final class AIConnectionProfileCommandsTests: XCTestCase {
     initialConnection.config = configuredTestProvider()
     store.updateAIConnectionProfile(initialConnection)
     let connectionID = store.activeAIConnectionProfile.id
-    XCTAssertTrue(store.saveAIAPIKey("model-secret"))
+    XCTAssertTrue(store.aiStore.saveAIAPIKey("model-secret"))
 
     var connection = store.activeAIConnectionProfile
     connection.config.model = "replacement-model"

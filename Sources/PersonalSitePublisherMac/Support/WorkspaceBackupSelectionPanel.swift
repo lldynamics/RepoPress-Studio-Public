@@ -2,6 +2,11 @@ import AppKit
 import UniformTypeIdentifiers
 
 extension UTType {
+  static let personalSiteKnowledgeLibraryBackup = UTType(
+    exportedAs: "com.jinfang.personalsitepublisher.knowledge-library-backup",
+    conformingTo: .package
+  )
+
   static let personalSiteWorkspaceBackup = UTType(
     exportedAs: "com.jinfang.personalsitepublisher.workspace-backup",
     conformingTo: .package

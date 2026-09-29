@@ -11,6 +11,7 @@ extension WorkbenchAIStore {
     if activeStreamingAuthorization?.config.requiresAPIKey == true {
       cancelStreamingAuthorization()
     }
+    cancelNonStreamingAuthorization(requiresAPIKeyOnly: true)
     refreshAIKeyAvailability()
     aiActionMessage = CoreL10n.format(
       "API Key 保存位置已切换为 %@。不同保存位置之间不会自动复制或删除 Key。",

@@ -11,30 +11,38 @@ struct AIProviderCapabilitiesSection: View {
 
   var body: some View {
     Section {
-      LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-        ForEach(config.capabilityDescriptors) { descriptor in
-          capabilityCell(
-            title: descriptor.localizedTitle,
-            support: descriptor.support,
-            evidenceState: descriptor.evidenceState,
-            probeOutcome: descriptor.probeOutcome,
-            image: systemImage(for: descriptor.capability)
-          )
-        }
-        ForEach(config.protocolCapabilityDescriptors) { descriptor in
-          capabilityCell(
-            title: descriptor.localizedTitle,
-            support: descriptor.support,
-            evidenceState: descriptor.evidenceState,
-            probeOutcome: descriptor.probeOutcome,
-            image: systemImage(for: descriptor.capability)
-          )
-        }
+      DisclosureGroup("连接能力与诊断") {
+        capabilitiesGrid
+        Text("静态推断不等于实测；只有当前未过期的探测证据或可信静态支持才会启用可选字段。已过期和未知能力均按安全降级处理。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
       }
     } header: {
       Text("当前连接能力")
-    } footer: {
-      Text("静态推断不等于实测；只有当前未过期的探测证据或可信静态支持才会启用可选字段。已过期和未知能力均按安全降级处理。")
+    }
+  }
+
+  private var capabilitiesGrid: some View {
+    LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+      ForEach(config.capabilityDescriptors) { descriptor in
+        capabilityCell(
+          title: descriptor.localizedTitle,
+          support: descriptor.support,
+          evidenceState: descriptor.evidenceState,
+          probeOutcome: descriptor.probeOutcome,
+          image: systemImage(for: descriptor.capability)
+        )
+      }
+      ForEach(config.protocolCapabilityDescriptors.filter { $0.capability != .toolCalling }) {
+        descriptor in
+        capabilityCell(
+          title: descriptor.localizedTitle,
+          support: descriptor.support,
+          evidenceState: descriptor.evidenceState,
+          probeOutcome: descriptor.probeOutcome,
+          image: systemImage(for: descriptor.capability)
+        )
+      }
     }
   }
 
@@ -114,7 +122,8 @@ struct AIProviderCapabilitiesSection: View {
     outcome: AIProviderCapabilityProbeOutcome?
   ) -> String {
     if state == .probed, outcome == .inconclusive {
-      return "\(CoreL10n.text(support.localizationKey)) · \(localizedEvidenceStateName(state))（结果不确定）"
+      return
+        "\(CoreL10n.text(support.localizationKey)) · \(localizedEvidenceStateName(state))（结果不确定）"
     }
     return "\(CoreL10n.text(support.localizationKey)) · \(localizedEvidenceStateName(state))"
   }

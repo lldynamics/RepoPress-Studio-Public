@@ -10,8 +10,7 @@ struct CodexAppServerAccountSection: View {
   let grantConsentForConnection: (CodexAppServerAccountStatus) -> Void
   let testConnection: () async -> AIConnectionTestReport?
 
-  @State private var runtimeStatus: CodexAppServerRuntimeStatus?
-  @State private var accountStatus: CodexAppServerAccountStatus?
+  @ObservedObject private var connection = CodexConnectionController.shared
   @State private var rateLimits: CodexAppServerRateLimits?
   @State private var availableModels: [CodexAppServerModel] = []
   @State private var isLoadingModels = false
@@ -29,9 +28,7 @@ struct CodexAppServerAccountSection: View {
   var body: some View {
     Group {
       Section("ChatGPT 账户") {
-        CodexRuntimeSetupSection(status: runtimeStatus) {
-          await refreshAll(showSuccess: true)
-        }
+        CodexRuntimeSetupSection(connection: connection)
         CodexAppServerRuntimeStatusContent(
           runtimeStatus: runtimeStatus,
           openInstallationGuide: openRuntimeInstallationGuide,
@@ -54,7 +51,7 @@ struct CodexAppServerAccountSection: View {
 
           Spacer()
 
-          if isWorking {
+          if isOperationWorking {
             ProgressView()
               .controlSize(.small)
               .accessibilityLabel("正在检查 ChatGPT 账户")
@@ -64,17 +61,17 @@ struct CodexAppServerAccountSection: View {
             startRefreshAll()
           }
           .buttonStyle(.borderless)
-          .disabled(isWorking)
+          .disabled(isOperationWorking)
           .accessibilityIdentifier("settings-ai-codex-account-refresh")
         }
 
         if let accountStatus, accountStatus.isAuthenticated {
-          LabeledContent("登录方式", value: loginMethodTitle(accountStatus))
+          LabeledContent("登录方式", value: CodexAccountLabels.loginMethodTitle(accountStatus))
           if let email = accountStatus.email?.trimmedForPublishing.nilIfEmpty {
             LabeledContent("账户", value: email)
           }
           if let plan = accountStatus.planType?.trimmedForPublishing.nilIfEmpty {
-            LabeledContent("套餐", value: planTitle(plan))
+            LabeledContent("套餐", value: CodexAccountLabels.planTitle(plan))
           }
           if let primary = rateLimits?.primary?.usedPercent {
             LabeledContent("当前用量", value: "\(Int(primary.rounded()))%")
@@ -87,7 +84,7 @@ struct CodexAppServerAccountSection: View {
               startBrowserLogin()
             }
             .workbenchProminentActionStyle()
-            .disabled(isWorking || !isRuntimeCompatible)
+            .disabled(isOperationWorking || !isRuntimeCompatible)
             .accessibilityHint(runtimeActionHint)
             .accessibilityIdentifier("settings-ai-codex-account-login")
           }
@@ -97,7 +94,7 @@ struct CodexAppServerAccountSection: View {
               isLogoutConfirmationPresented = true
             }
             .buttonStyle(.borderless)
-            .disabled(isWorking)
+            .disabled(isOperationWorking)
             .accessibilityIdentifier("settings-ai-codex-account-logout")
           }
 
@@ -110,7 +107,7 @@ struct CodexAppServerAccountSection: View {
               startPostLoginConnectionTest()
             }
             .workbenchProminentActionStyle()
-            .disabled(isWorking)
+            .disabled(isOperationWorking)
             .accessibilityIdentifier("settings-ai-codex-account-consent")
           }
 
@@ -122,7 +119,7 @@ struct CodexAppServerAccountSection: View {
               startPostLoginConnectionTest()
             }
             .buttonStyle(.borderless)
-            .disabled(isWorking)
+            .disabled(isOperationWorking)
             .accessibilityIdentifier("settings-ai-codex-account-test")
           }
 
@@ -140,7 +137,7 @@ struct CodexAppServerAccountSection: View {
             startDeviceCodeLogin()
           }
           .buttonStyle(.link)
-          .disabled(isWorking || !isRuntimeCompatible)
+          .disabled(isOperationWorking || !isRuntimeCompatible)
           .accessibilityHint("浏览器回跳不可用时使用")
           .accessibilityIdentifier("settings-ai-codex-device-login")
         }
@@ -183,6 +180,14 @@ struct CodexAppServerAccountSection: View {
     .accessibilityIdentifier("settings-ai-codex-account")
     .task {
       await refreshAll(showSuccess: false)
+    }
+    .onChange(of: connection.phase) { _, phase in
+      guard phase == .ready else { return }
+      refreshReadyAccountDetailsIfNeeded()
+    }
+    .onChange(of: connection.isPreparing) { _, isPreparing in
+      guard !isPreparing else { return }
+      refreshReadyAccountDetailsIfNeeded()
     }
     .onDisappear {
       operationTask?.cancel()
@@ -237,6 +242,18 @@ struct CodexAppServerAccountSection: View {
         : String(localized: "已登录其他账户")
     }
     return String(localized: "尚未登录 ChatGPT")
+  }
+
+  private var runtimeStatus: CodexAppServerRuntimeStatus? {
+    connection.runtimeStatus
+  }
+
+  private var accountStatus: CodexAppServerAccountStatus? {
+    connection.accountStatus
+  }
+
+  private var isOperationWorking: Bool {
+    isWorking || connection.isChecking || connection.isPreparing
   }
 
   private var loginButtonTitle: String {
@@ -304,30 +321,6 @@ struct CodexAppServerAccountSection: View {
     }
   }
 
-  private func loginMethodTitle(_ status: CodexAppServerAccountStatus) -> String {
-    switch status.accountType {
-    case "chatgpt": return "ChatGPT"
-    case "apiKey": return "API Key"
-    case let value?: return value
-    case nil: return "ChatGPT"
-    }
-  }
-
-  private func planTitle(_ plan: String) -> String {
-    switch plan.lowercased() {
-    case "free": return "Free"
-    case "go": return "Go"
-    case "plus": return "Plus"
-    case "pro": return "Pro"
-    case "prolite": return "Pro Lite"
-    case "team": return "Team"
-    case "business", "self_serve_business_usage_based": return "Business"
-    case "enterprise", "enterprise_cbp_usage_based": return "Enterprise"
-    case "edu": return "Edu"
-    default: return plan
-    }
-  }
-
   private func startRefreshAll() {
     operationTask?.cancel()
     operationTask = Task { @MainActor in
@@ -336,64 +329,73 @@ struct CodexAppServerAccountSection: View {
     }
   }
 
+  private func refreshReadyAccountDetailsIfNeeded() {
+    guard connection.phase == .ready,
+      !connection.isPreparing,
+      accountStatus?.isAuthenticated == true,
+      !isWorking,
+      !isLoadingModels
+    else { return }
+    isWorking = true
+    Task { @MainActor in
+      await refreshAccountDetails(showSuccess: false)
+    }
+  }
+
   @MainActor
   private func refreshAll(showSuccess: Bool) async {
     isWorking = true
     connectionTestState = .idle
-    runtimeStatus = await CodexAppServerProcessTransport.inspectRuntime()
+    await connection.refresh()
     guard runtimeStatus?.isCompatible == true else {
-      accountStatus = nil
       rateLimits = nil
       availableModels = []
       isLoadingModels = false
       modelsError = nil
       isError = true
-      actionMessage = showSuccess ? runtimeRecoveryMessage : nil
+      actionMessage = showSuccess ? (connection.failure ?? runtimeRecoveryMessage) : nil
       isWorking = false
       return
     }
-    await refresh(showSuccess: showSuccess)
+    await refreshAccountDetails(showSuccess: showSuccess)
   }
 
   @MainActor
-  private func refresh(showSuccess: Bool) async {
+  private func refreshAccountDetails(showSuccess: Bool) async {
     isWorking = true
     defer { isWorking = false }
-    do {
-      let status = try await CodexAppServerClient.shared.accountStatus()
-      accountStatus = status
-      if status.isAuthenticated {
-        isLoadingModels = true
-        do {
-          rateLimits = try await CodexAppServerClient.shared.rateLimits()
-        } catch {
-          // Optional quota metadata must not hide a valid authenticated account.
-          rateLimits = nil
-        }
-        await refreshModels()
-      } else {
-        rateLimits = nil
-        availableModels = []
-        isLoadingModels = false
-        modelsError = nil
-      }
-      isError = false
-      if showSuccess {
-        actionMessage =
-          status.isAuthenticated
-          ? String(localized: "ChatGPT 登录状态已刷新。")
-          : String(localized: "ChatGPT 尚未登录。")
-      } else {
-        actionMessage = nil
-      }
-    } catch {
-      accountStatus = nil
+    guard let status = accountStatus else {
       rateLimits = nil
       availableModels = []
       isLoadingModels = false
       modelsError = nil
       isError = true
-      actionMessage = error.localizedDescription
+      actionMessage = connection.failure ?? String(localized: "ChatGPT 状态不可用")
+      return
+    }
+    if status.isAuthenticated {
+      isLoadingModels = true
+      do {
+        rateLimits = try await CodexAppServerClient.shared.rateLimits()
+      } catch {
+        // Optional quota metadata must not hide a valid authenticated account.
+        rateLimits = nil
+      }
+      await refreshModels()
+    } else {
+      rateLimits = nil
+      availableModels = []
+      isLoadingModels = false
+      modelsError = nil
+    }
+    isError = false
+    if showSuccess {
+      actionMessage =
+        status.isAuthenticated
+        ? String(localized: "ChatGPT 登录状态已刷新。")
+        : String(localized: "ChatGPT 尚未登录。")
+    } else {
+      actionMessage = nil
     }
   }
 
@@ -503,7 +505,8 @@ struct CodexAppServerAccountSection: View {
   private func finishSuccessfulLogin() async {
     isLoginFlowActive = false
     deviceCodeLogin = nil
-    await refresh(showSuccess: false)
+    await connection.accountDidChange()
+    await refreshAccountDetails(showSuccess: false)
     guard accountStatus?.isAuthenticated == true else {
       isWorking = false
       return
@@ -575,7 +578,7 @@ struct CodexAppServerAccountSection: View {
       }
       do {
         try await CodexAppServerClient.shared.logout()
-        accountStatus = CodexAppServerAccountStatus(isAuthenticated: false)
+        await connection.accountDidChange()
         rateLimits = nil
         availableModels = []
         connectionTestState = .idle

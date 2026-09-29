@@ -21,9 +21,9 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parent.parent
-POLICY_VERSION = "swift-module-boundaries-v4"
+POLICY_VERSION = "swift-module-boundaries-v5"
 SCHEMA_VERSION = "2"
-TOOL_VERSION = "4"
+TOOL_VERSION = "5"
 
 GOVERNED_DEPENDENCIES: dict[str, set[str]] = {
     "PublishingCoreSupport": set(),
@@ -31,14 +31,12 @@ GOVERNED_DEPENDENCIES: dict[str, set[str]] = {
     "PublishingMarkdownCore": {"PublishingCoreSupport"},
     "PublishingGitCore": {"PublishingCoreSupport", "PublishingDomainContracts"},
     "PublishingAICore": {"PublishingCoreSupport"},
-    "PublishingAgentContracts": {"PublishingAICore"},
     "PublishingKnowledgeCore": {"PublishingCoreSupport", "PublishingMarkdownCore"},
     "PublishingPreviewCore": {"PublishingCoreSupport", "PublishingDomainContracts"},
     "PublishingBackupCore": {"PublishingCoreSupport", "PublishingDomainContracts"},
     "PublishingSyncCore": {"PublishingCoreSupport", "PublishingGitCore"},
     "PublishingWorkbenchCore": {
         "PublishingAICore",
-        "PublishingAgentContracts",
         "PublishingCoreSupport",
         "PublishingDomainContracts",
         "PublishingGitCore",
@@ -67,7 +65,6 @@ EXPECTED_PRODUCTION_TARGET_TYPES = {
     "PublishingMarkdownCore": "regular",
     "PublishingGitCore": "regular",
     "PublishingAICore": "regular",
-    "PublishingAgentContracts": "regular",
     "PublishingKnowledgeCore": "regular",
     "PublishingPreviewCore": "regular",
     "PublishingBackupCore": "regular",
@@ -83,15 +80,10 @@ TEST_TARGET_DEPENDENCIES: dict[str, set[str]] = {
     "PublishingGitCoreTests": {"PublishingDomainContracts", "PublishingGitCore"},
     "PublishingDomainContractsTests": {"PublishingDomainContracts"},
     "PublishingAICoreTests": {"PublishingAICore", "PublishingCoreSupport"},
-    "PublishingAgentContractsTests": {
-        "PublishingAICore",
-        "PublishingAgentContracts",
-    },
     "PublishingCoreSupportTests": {"PublishingCoreSupport"},
     "PublishingKnowledgeCoreTests": {"PublishingKnowledgeCore"},
     "PublishingWorkbenchCoreTests": {
         "PublishingAICore",
-        "PublishingAgentContracts",
         "PublishingCoreSupport",
         "PublishingDomainContracts",
         "PublishingGitCore",
@@ -114,7 +106,6 @@ TEST_TARGET_DEPENDENCIES: dict[str, set[str]] = {
         "PublishingWorkbenchCore",
         "PublishingPreviewCore",
         "PublishingBackupCore",
-        "PublishingSyncCore",
         "PublishingTestSupport",
     },
 }
@@ -122,10 +113,6 @@ EXPECTED_PRODUCTS = {
     "PublishingMarkdownCore": {"type": "library", "targets": {"PublishingMarkdownCore"}},
     "PublishingGitCore": {"type": "library", "targets": {"PublishingGitCore"}},
     "PublishingAICore": {"type": "library", "targets": {"PublishingAICore"}},
-    "PublishingAgentContracts": {
-        "type": "library",
-        "targets": {"PublishingAgentContracts"},
-    },
     "PublishingKnowledgeCore": {"type": "library", "targets": {"PublishingKnowledgeCore"}},
     "PublishingPreviewCore": {"type": "library", "targets": {"PublishingPreviewCore"}},
     "PublishingBackupCore": {"type": "library", "targets": {"PublishingBackupCore"}},
@@ -143,7 +130,6 @@ EXPECTED_EXTERNAL_PRODUCTS: dict[str, dict[str, str]] = {
     },
     "PublishingGitCore": {},
     "PublishingAICore": {},
-    "PublishingAgentContracts": {},
     "PublishingKnowledgeCore": {"RepoPressAppleSupport": "RepoPressShared"},
     "PublishingPreviewCore": {},
     "PublishingBackupCore": {},
@@ -171,7 +157,6 @@ LEAF_TARGETS = {
     "PublishingMarkdownCore",
     "PublishingGitCore",
     "PublishingAICore",
-    "PublishingAgentContracts",
     "PublishingKnowledgeCore",
     "PublishingPreviewCore",
     "PublishingBackupCore",
@@ -188,7 +173,6 @@ CORE_SOURCE_TARGETS = (
     "PublishingMarkdownCore",
     "PublishingGitCore",
     "PublishingAICore",
-    "PublishingAgentContracts",
     "PublishingKnowledgeCore",
     "PublishingPreviewCore",
     "PublishingBackupCore",
@@ -197,7 +181,6 @@ CORE_SOURCE_TARGETS = (
 )
 EXPECTED_EXPORTS = {
     "PublishingAICore",
-    "PublishingAgentContracts",
     "PublishingCoreSupport",
     "PublishingDomainContracts",
     "PublishingGitCore",

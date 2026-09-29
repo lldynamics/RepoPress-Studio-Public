@@ -17,6 +17,38 @@ struct KnowledgeCollectionNavigationView: View {
   @State private var hoveredCollectionItemID: String?
 
   var body: some View {
+    let savedCollections = decodedSavedCollections
+    let navigationSnapshot = knowledge.navigationSnapshot(savedCollections: savedCollections)
+    let allItem = CollectionNavigationItem(
+      id: "all",
+      title: "全部资料",
+      systemImage: "books.vertical",
+      count: navigationSnapshot.documentCount,
+      scope: .all
+    )
+    let unfiledItem = CollectionNavigationItem(
+      id: "unfiled",
+      title: "未分类",
+      systemImage: "tray",
+      count: navigationSnapshot.unfiledDocumentCount,
+      scope: .unfiled
+    )
+    let allNavigationItems = makeNavigationItems(
+      snapshot: navigationSnapshot,
+      savedCollections: savedCollections,
+      baseItems: [allItem, unfiledItem]
+    )
+    let folderItems = allNavigationItems.filter { $0.folder != nil }
+    let savedItems = allNavigationItems.filter { $0.savedCollection != nil }
+    let smartItemsByKind = Dictionary(
+      uniqueKeysWithValues: visibleSmartCollectionKinds.map {
+        ($0, smartItems(kind: $0, snapshot: navigationSnapshot))
+      }
+    )
+    let selectedNavigationItem =
+      allNavigationItems.first(where: { $0.scope == knowledge.folderScope }) ?? allItem
+    let favorites = favoriteItems(in: allNavigationItems)
+
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 8) {
         Button {
@@ -74,57 +106,58 @@ struct KnowledgeCollectionNavigationView: View {
       if isNavigationExpanded {
         ScrollView(.vertical, showsIndicators: true) {
           LazyVStack(alignment: .leading, spacing: 2) {
-          if !favoriteItems.isEmpty {
-            collectionSectionTitle("收藏", systemImage: "star.fill")
-            ForEach(Array(favoriteItems.enumerated()), id: \.element.id) { index, item in
-              collectionRow(item, favoriteIndex: index)
-            }
-          }
-
-          collectionSectionTitle("文件夹", systemImage: "folder")
-          collectionRow(allItem)
-          collectionRow(unfiledItem)
-          ForEach(folderItems) { item in
-            collectionRow(item)
-          }
-
-          if !savedItems.isEmpty {
-            collectionSectionTitle("已存集合", systemImage: "bookmark")
-            ForEach(savedItems) { item in
-              collectionRow(item)
-            }
-          }
-
-          if visibleSmartCollectionKinds.contains(where: { !smartItems(kind: $0).isEmpty }) {
-              collectionSectionTitle("智能集合", systemImage: "line.3.horizontal.decrease.circle")
-            ForEach(visibleSmartCollectionKinds) { kind in
-              let items = smartItems(kind: kind)
-              if !items.isEmpty {
-                DisclosureGroup(
-                  isExpanded: Binding(
-                    get: { expandedSmartKinds.contains(kind.id) },
-                    set: { isExpanded in
-                      if isExpanded {
-                        expandedSmartKinds.insert(kind.id)
-                      } else {
-                        expandedSmartKinds.remove(kind.id)
-                      }
-                    }
-                  )
-                ) {
-                  ForEach(items) { item in
-                    collectionRow(item, isIndented: true)
-                  }
-                } label: {
-                  Label(kind.localizedDisplayName, systemImage: kind.systemImage)
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 2)
+            if !favorites.isEmpty {
+              collectionSectionTitle("收藏", systemImage: "star.fill")
+              ForEach(Array(favorites.enumerated()), id: \.element.id) { index, item in
+                collectionRow(item, favoriteItems: favorites, favoriteIndex: index)
               }
             }
-          }
+
+            collectionSectionTitle("文件夹", systemImage: "folder")
+            collectionRow(allItem, favoriteItems: favorites)
+            collectionRow(unfiledItem, favoriteItems: favorites)
+            ForEach(folderItems) { item in
+              collectionRow(item, favoriteItems: favorites)
+            }
+
+            if !savedItems.isEmpty {
+              collectionSectionTitle("已存集合", systemImage: "bookmark")
+              ForEach(savedItems) { item in
+                collectionRow(item, favoriteItems: favorites)
+              }
+            }
+
+            if visibleSmartCollectionKinds.contains(where: { !(smartItemsByKind[$0] ?? []).isEmpty }
+            ) {
+              collectionSectionTitle("智能集合", systemImage: "line.3.horizontal.decrease.circle")
+              ForEach(visibleSmartCollectionKinds) { kind in
+                let items = smartItemsByKind[kind] ?? []
+                if !items.isEmpty {
+                  DisclosureGroup(
+                    isExpanded: Binding(
+                      get: { expandedSmartKinds.contains(kind.id) },
+                      set: { isExpanded in
+                        if isExpanded {
+                          expandedSmartKinds.insert(kind.id)
+                        } else {
+                          expandedSmartKinds.remove(kind.id)
+                        }
+                      }
+                    )
+                  ) {
+                    ForEach(items) { item in
+                      collectionRow(item, favoriteItems: favorites, isIndented: true)
+                    }
+                  } label: {
+                    Label(kind.localizedDisplayName, systemImage: kind.systemImage)
+                      .font(.body)
+                      .foregroundStyle(.secondary)
+                  }
+                  .padding(.horizontal, 10)
+                  .padding(.vertical, 2)
+                }
+              }
+            }
           }
           .padding(.vertical, 4)
         }
@@ -157,6 +190,7 @@ struct KnowledgeCollectionNavigationView: View {
   @ViewBuilder
   private func collectionRow(
     _ item: CollectionNavigationItem,
+    favoriteItems: [CollectionNavigationItem],
     favoriteIndex: Int? = nil,
     isIndented: Bool = false
   ) -> some View {
@@ -210,10 +244,14 @@ struct KnowledgeCollectionNavigationView: View {
         toggleFavorite(item.id)
       }
       if let favoriteIndex {
-        Button("上移") { moveFavorite(at: favoriteIndex, offset: -1) }
-          .disabled(favoriteIndex == 0)
-        Button("下移") { moveFavorite(at: favoriteIndex, offset: 1) }
-          .disabled(favoriteIndex == favoriteItems.count - 1)
+        Button("上移") {
+          moveFavorite(at: favoriteIndex, offset: -1, items: favoriteItems)
+        }
+        .disabled(favoriteIndex == 0)
+        Button("下移") {
+          moveFavorite(at: favoriteIndex, offset: 1, items: favoriteItems)
+        }
+        .disabled(favoriteIndex == favoriteItems.count - 1)
       }
       if let folder = item.folder {
         Divider()
@@ -231,41 +269,41 @@ struct KnowledgeCollectionNavigationView: View {
     .accessibilityAddTraits(knowledge.folderScope == item.scope ? [.isSelected] : [])
   }
 
-  private var allItem: CollectionNavigationItem {
-    CollectionNavigationItem(
-      id: "all",
-      title: "全部资料",
-      systemImage: "books.vertical",
-      count: knowledge.documents.count,
-      scope: .all
-    )
-  }
-
-  private var unfiledItem: CollectionNavigationItem {
-    CollectionNavigationItem(
-      id: "unfiled",
-      title: "未分类",
-      systemImage: "tray",
-      count: knowledge.documents.count { $0.folderID == nil },
-      scope: .unfiled
-    )
-  }
-
-  private var folderItems: [CollectionNavigationItem] {
-    knowledge.folders.map { folder in
+  private func makeNavigationItems(
+    snapshot: KnowledgeNavigationSnapshot,
+    savedCollections: [KnowledgeSavedCollection],
+    baseItems: [CollectionNavigationItem]
+  ) -> [CollectionNavigationItem] {
+    let folderItems = knowledge.folders.map { folder in
       CollectionNavigationItem(
         id: "folder:\(folder.id.uuidString)",
         title: folder.name,
         systemImage: "folder",
-        count: knowledge.documents.count { $0.folderID == folder.id },
+        count: snapshot.documentCount(forFolderID: folder.id),
         scope: .folder(folder.id),
         folder: folder
       )
     }
+    let savedItems = savedCollections.map { collection in
+      CollectionNavigationItem(
+        id: "saved:\(collection.id.uuidString)",
+        title: collection.name,
+        systemImage: "bookmark",
+        count: snapshot.documentCount(for: collection),
+        scope: .savedCollection(collection),
+        savedCollection: collection
+      )
+    }
+    return baseItems + folderItems
+      + visibleSmartCollectionKinds.flatMap { smartItems(kind: $0, snapshot: snapshot) }
+      + savedItems
   }
 
-  private func smartItems(kind: KnowledgeSmartCollectionKind) -> [CollectionNavigationItem] {
-    knowledge.smartCollections(kind: kind).map { collection in
+  private func smartItems(
+    kind: KnowledgeSmartCollectionKind,
+    snapshot: KnowledgeNavigationSnapshot
+  ) -> [CollectionNavigationItem] {
+    snapshot.smartCollections.filter { $0.rule.kind == kind }.map { collection in
       CollectionNavigationItem(
         id: "smart:\(collection.rule.id)",
         title: collection.rule.localizedDisplayName,
@@ -276,34 +314,13 @@ struct KnowledgeCollectionNavigationView: View {
     }
   }
 
-  private var savedItems: [CollectionNavigationItem] {
-    savedCollections.map { collection in
-      CollectionNavigationItem(
-        id: "saved:\(collection.id.uuidString)",
-        title: collection.name,
-        systemImage: "bookmark",
-        count: knowledge.documentCount(for: collection),
-        scope: .savedCollection(collection),
-        savedCollection: collection
-      )
-    }
-  }
-
-  private var allItems: [CollectionNavigationItem] {
-    [allItem, unfiledItem] + folderItems
-      + visibleSmartCollectionKinds.flatMap(smartItems)
-      + savedItems
-  }
-
   private var visibleSmartCollectionKinds: [KnowledgeSmartCollectionKind] {
     KnowledgeSmartCollectionKind.allCases
   }
 
-  private var selectedNavigationItem: CollectionNavigationItem {
-    allItems.first(where: { $0.scope == knowledge.folderScope }) ?? allItem
-  }
-
-  private var favoriteItems: [CollectionNavigationItem] {
+  private func favoriteItems(
+    in allItems: [CollectionNavigationItem]
+  ) -> [CollectionNavigationItem] {
     let itemsByID = Dictionary(uniqueKeysWithValues: allItems.map { ($0.id, $0) })
     let ordered = favoriteOrder.compactMap { itemsByID[$0] }
     let orderedIDs = Set(ordered.map(\.id))
@@ -314,11 +331,7 @@ struct KnowledgeCollectionNavigationView: View {
     return ordered + remainder
   }
 
-  private var savedCollections: [KnowledgeSavedCollection] {
-    allSavedCollections
-  }
-
-  private var allSavedCollections: [KnowledgeSavedCollection] {
+  private var decodedSavedCollections: [KnowledgeSavedCollection] {
     decode([KnowledgeSavedCollection].self, from: savedCollectionsJSON) ?? []
   }
 
@@ -347,8 +360,12 @@ struct KnowledgeCollectionNavigationView: View {
     favoriteOrderJSON = encode(order)
   }
 
-  private func moveFavorite(at index: Int, offset: Int) {
-    var ids = favoriteItems.map(\.id)
+  private func moveFavorite(
+    at index: Int,
+    offset: Int,
+    items: [CollectionNavigationItem]
+  ) {
+    var ids = items.map(\.id)
     let destination = index + offset
     guard ids.indices.contains(index), ids.indices.contains(destination) else { return }
     ids.swapAt(index, destination)
@@ -361,20 +378,21 @@ struct KnowledgeCollectionNavigationView: View {
     matchMode: KnowledgeSmartCollectionMatchMode
   ) {
     let collection = KnowledgeSavedCollection(name: name, rules: rules, matchMode: matchMode)
-    var collections = allSavedCollections
+    var collections = decodedSavedCollections
     collections.append(collection)
     savedCollectionsJSON = encode(collections)
     knowledge.setFolderScope(.savedCollection(collection))
   }
 
   private func deleteSavedCollection(_ collection: KnowledgeSavedCollection) {
-    var collections = allSavedCollections
+    var collections = decodedSavedCollections
     collections.removeAll { $0.id == collection.id }
     savedCollectionsJSON = encode(collections)
     let itemID = "saved:\(collection.id.uuidString)"
     if isFavorite(itemID) { toggleFavorite(itemID) }
     if case .savedCollection(let selected) = knowledge.folderScope,
-       selected.id == collection.id {
+      selected.id == collection.id
+    {
       knowledge.setFolderScope(.all)
     }
   }
@@ -439,7 +457,9 @@ private struct KnowledgeSavedCollectionBuilderView: View {
                 ForEach(kindCollections) { collection in
                   Toggle(isOn: ruleSelection(collection.rule)) {
                     HStack {
-                      Label(collection.rule.localizedDisplayName, systemImage: collection.rule.systemImage)
+                      Label(
+                        collection.rule.localizedDisplayName,
+                        systemImage: collection.rule.systemImage)
                       Spacer()
                       Text("\(collection.documentCount)")
                         .foregroundStyle(.secondary)
@@ -472,7 +492,8 @@ private struct KnowledgeSavedCollectionBuilderView: View {
         }
         .workbenchProminentActionStyle()
         .keyboardShortcut(.defaultAction)
-        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedRuleIDs.isEmpty)
+        .disabled(
+          name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedRuleIDs.isEmpty)
       }
       .padding(14)
     }

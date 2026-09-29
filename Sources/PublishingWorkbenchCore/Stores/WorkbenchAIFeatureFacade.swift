@@ -107,7 +107,6 @@ public struct WorkbenchRSSListTitleTranslationState: Equatable, Sendable {
   public let providerConfiguration: AIProviderConfig
   public let tokenAvailability: KeychainTokenAvailability
   public let dataSharingConsent: AIDataSharingConsentPresentation
-
 }
 
 /// Narrow observation and command boundary for RSS list-title translation.
@@ -169,8 +168,6 @@ public final class WorkbenchRSSListTitleTranslationFeatureFacade: ObservableObje
   public var tokenAvailability: KeychainTokenAvailability { state.tokenAvailability }
 
   public var dataSharingConsent: AIDataSharingConsentPresentation { state.dataSharingConsent }
-
-
 
   public func translateRSSTitles(
     _ titles: [RSSArticleTranslationTextRequest],
@@ -267,8 +264,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
       forConnectionProfileID: connectionProfileID
     )
   }
-
-
 
   public var isActionRunning: Bool {
     store.isAIActionRunning
@@ -397,20 +392,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   public var activeGeneralChatConversation: AIConversation? {
     store.aiStore.activeGeneralAIChatConversation
-  }
-
-  public func conversationAgentMode(
-    for conversationID: UUID
-  ) -> AIConversationAgentMode? {
-    store.aiStore.aiConversationAgentMode(for: conversationID)
-  }
-
-  @discardableResult
-  public func setConversationAgentMode(
-    _ mode: AIConversationAgentMode,
-    conversationID: UUID
-  ) -> Bool {
-    store.aiStore.setAIConversationAgentMode(mode, for: conversationID)
   }
 
   public func generalChatConversation(
@@ -591,10 +572,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.aiChatManualRetryState
   }
 
-  public var isImageTextRunning: Bool {
-    store.isAIImageTextRunning
-  }
-
   @discardableResult
   public func recordKnowledgeBacklinks(
     _ citations: [KnowledgeCitation],
@@ -620,18 +597,21 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
   }
 
   @discardableResult
-  public func saveAPIKey(_ token: String) -> Bool {
-    store.saveAIAPIKey(token)
+  public func saveAPIKey(_ token: String, connectionProfileID: UUID? = nil) -> Bool {
+    store.aiStore.saveAIAPIKey(token, forConnectionProfileID: connectionProfileID)
   }
 
-  public func deleteAPIKey() {
-    store.deleteAIAPIKey()
+  public func deleteAPIKey(connectionProfileID: UUID? = nil) {
+    store.aiStore.deleteAIAPIKey(forConnectionProfileID: connectionProfileID)
   }
 
   public func testConnection(
+    connectionProfileID: UUID? = nil,
     probeCapabilities: Set<AIProviderCapabilityProbeKind> = []
   ) async -> AIConnectionTestReport? {
-    await store.testAIConnection(probeCapabilities: probeCapabilities)
+    await store.aiStore.testAIConnection(
+      connectionProfileID: connectionProfileID, probeCapabilities: probeCapabilities
+    )
   }
 
   public func discoverModels(
@@ -669,8 +649,8 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.rssListTitleTranslation.refreshAuthorizationState()
   }
 
-  public func revokeDataSharingConsent() {
-    store.aiStore.revokeAIDataSharingConsent()
+  public func revokeDataSharingConsent(connectionProfileID: UUID? = nil) {
+    store.aiStore.revokeAIDataSharingConsent(connectionProfileID: connectionProfileID)
     store.rssListTitleTranslation.refreshAuthorizationState()
   }
 
@@ -856,10 +836,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     draft: ArticleDraft? = nil
   ) -> AIConversation? {
     store.branchAIChatConversation(after: messageID, draft: draft)
-  }
-
-  public func cancelChatReply() {
-    store.cancelAIChatReply()
   }
 
   public func cancelChatReply(expectedOwnerToken: UUID) {
@@ -1263,5 +1239,4 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     guard let data = try? JSONEncoder().encode(bounded) else { return }
     UserDefaults.standard.set(data, forKey: "aiLocalContentFreeFeedbackRecords")
   }
-
 }

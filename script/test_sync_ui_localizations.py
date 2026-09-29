@@ -299,19 +299,19 @@ public enum WorkspaceCenterSurface {
                             "substitutions": {
                                 "articles": {
                                     "argNum": 1,
-                                    "formatSpecifier": "%lld",
+                                    "formatSpecifier": "lld",
                                     "variations": {
                                         "plural": {
                                             "one": {
                                                 "stringUnit": {
                                                     "state": "translated",
-                                                    "value": "%lld article",
+                                                    "value": "%arg article",
                                                 }
                                             },
                                             "other": {
                                                 "stringUnit": {
                                                     "state": "translated",
-                                                    "value": "%lld articles",
+                                                    "value": "%arg articles",
                                                 }
                                             },
                                         }
@@ -328,6 +328,38 @@ public enum WorkspaceCenterSurface {
             "%lld articles, %lld references",
         )
         self.assertEqual(SYNC.validate(catalog, {key: key}, set()), [])
+
+    def test_validation_rejects_literal_specifier_in_plural_substitution(self) -> None:
+        # A literal %lld inside a substitution renders "(null)" at runtime.
+        key = "%lld / %lld 篇"
+        entry = {
+            "localizations": {
+                "zh-Hans": {"stringUnit": {"state": "translated", "value": key}},
+                "en": {
+                    "stringUnit": {"state": "translated", "value": "%lld / %#@article@"},
+                    "substitutions": {
+                        "article": {
+                            "argNum": 2,
+                            "formatSpecifier": "%lld",
+                            "variations": {"plural": {
+                                "one": {"stringUnit": {"state": "translated", "value": "%lld article"}},
+                                "other": {"stringUnit": {"state": "translated", "value": "%lld articles"}},
+                            }},
+                        }
+                    },
+                },
+            }
+        }
+        failures = SYNC.validate({"strings": {key: entry}}, {key: key}, set())
+        self.assertTrue(any("formatSpecifier must omit %" in failure for failure in failures))
+        self.assertTrue(any("must use %arg" in failure for failure in failures))
+
+        SYNC.normalize_plural_substitutions(entry)
+        self.assertEqual(SYNC.plural_substitution_format_errors(entry, "en"), [])
+        self.assertEqual(
+            SYNC.localized_effective_plural_values(entry, "en"),
+            {"one": "%lld / %lld article", "other": "%lld / %lld articles"},
+        )
 
     def test_synchronize_writes_reviewed_english_plural_variations(self) -> None:
         key = "%lld 篇文章"
@@ -432,6 +464,12 @@ public enum WorkspaceCenterSurface {
             SYNC.localized_plural_substitutions(result, "en")["articles"],
             {"one": "%lld article", "other": "%lld articles"},
         )
+        articles = result["localizations"]["en"]["substitutions"]["articles"]
+        self.assertEqual(articles["formatSpecifier"], "lld")
+        self.assertEqual(
+            articles["variations"]["plural"]["one"]["stringUnit"]["value"], "%arg article"
+        )
+        self.assertEqual(SYNC.plural_substitution_format_errors(result, "en"), [])
 
     def test_unmanaged_existing_translation_remains_compatible(self) -> None:
         key = "Unmanaged English key"
@@ -603,6 +641,21 @@ public enum WorkspaceCenterSurface {
             SYNC.placeholders("%2$@ then %1$lld"),
             ["%@", "%lld"],
         )
+
+    def test_reviewed_pruning_preserves_core_only_translations(self) -> None:
+        original_paths = SYNC.TRANSLATION_PATHS
+        with tempfile.TemporaryDirectory() as directory:
+            master = Path(directory) / "translations.json"
+            entries = {"app": "App", "core": "Core", "obsolete": "Old"}
+            master.write_text(json.dumps(entries), encoding="utf-8")
+            try:
+                SYNC.TRANSLATION_PATHS = (master,)
+                retained, removed = SYNC.pruned_reviewed_translation_files({"app"}, {"core"})
+            finally:
+                SYNC.TRANSLATION_PATHS = original_paths
+            self.assertEqual(retained[master], {"app": "App", "core": "Core"})
+            self.assertEqual(removed[master], ["obsolete"])
+            self.assertEqual(json.loads(master.read_text()), entries)
 
     def test_translation_comparison_preserves_explicit_argument_identity(self) -> None:
         self.assertNotEqual(

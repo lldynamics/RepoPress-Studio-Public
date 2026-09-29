@@ -57,9 +57,6 @@ public final class ImageWorkbenchStore: ObservableObject {
     self.imageWorkbenchService = imageWorkbenchService
     self.persistence = persistence
     self.batchProcessor = ImageBatchProcessingActor(service: imageWorkbenchService)
-    persistence.pruneUnreferencedImageOptimizationBatches(
-      referencedSourceFilePaths: store.drafts.flatMap(\.attachments).compactMap(\.sourceFilePath)
-    )
   }
 
   private var selectedDraft: ArticleDraft? {
@@ -247,9 +244,9 @@ public final class ImageWorkbenchStore: ObservableObject {
         )
         return
       }
-      persistence.pruneUnreferencedImageOptimizationBatches(
-        referencedSourceFilePaths: store.drafts.flatMap(\.attachments).compactMap(\.sourceFilePath)
-      )
+      // Published output can still be referenced by versions, recycle bins,
+      // durable recovery snapshots, or another save. Only discard batches
+      // owned by this operation when their results have never been applied.
       scheduleImageWorkbenchCachesRefresh(force: true)
     } else {
       try? FileManager.default.removeItem(at: result.outputDirectory)
@@ -635,14 +632,6 @@ public final class ImageWorkbenchStore: ObservableObject {
         await refreshImageWorkbenchSiteSummaryInBackground(force: force)
       }
     }
-  }
-
-  public func imageTextTargetCount(for draft: ArticleDraft, report: ImageWorkbenchReport?) -> Int {
-    imageWorkbenchService.imageTextTargets(
-      draft: draft,
-      profile: profile(for: draft),
-      report: report
-    ).count
   }
 
   public func fillMissingImageMetadataForSelectedDraft() {

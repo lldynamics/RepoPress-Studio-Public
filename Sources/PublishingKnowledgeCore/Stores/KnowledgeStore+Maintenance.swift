@@ -138,8 +138,7 @@ extension KnowledgeStore {
       let result = try await performQueuedKnowledgeMutation { [service] in
         try await service.applyLocalContentRepairs(previews)
       }
-      let selectedID = selectedDocumentID
-      await reloadAfterAcceptedMutation(selecting: selectedID)
+      await reloadAfterAcceptedMutation()
       _ = await refreshLibraryHealth()
       statusMessage = "资料质量修复完成：已为 \(result.updatedCount) 条网页创建新版，并重建检索索引。"
       lastError = nil

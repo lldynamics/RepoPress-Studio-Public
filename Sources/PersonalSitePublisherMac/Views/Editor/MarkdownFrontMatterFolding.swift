@@ -3,7 +3,24 @@ import AppKit
 /// Folding only changes the visible document bounds. Markdown bytes, UTF-16
 /// offsets and the text view's undo stack remain intact.
 final class MarkdownFrontMatterClipView: NSClipView {
-  var hiddenPrefixHeight: CGFloat = 0
+  var hiddenPrefixHeight: CGFloat = 0 {
+    didSet {
+      if bounds.origin.y < hiddenPrefixHeight {
+        super.setBoundsOrigin(NSPoint(x: bounds.origin.x, y: hiddenPrefixHeight))
+      }
+    }
+  }
+
+  /// Session restore, typewriter scrolling and range reveals can set the
+  /// origin directly without `constrainBoundsRect`; keep the folded prefix
+  /// hidden on every path.
+  override func scroll(to newOrigin: NSPoint) {
+    super.scroll(to: NSPoint(x: newOrigin.x, y: max(newOrigin.y, hiddenPrefixHeight)))
+  }
+
+  override func setBoundsOrigin(_ newOrigin: NSPoint) {
+    super.setBoundsOrigin(NSPoint(x: newOrigin.x, y: max(newOrigin.y, hiddenPrefixHeight)))
+  }
 
   override var documentRect: NSRect {
     var rect = super.documentRect

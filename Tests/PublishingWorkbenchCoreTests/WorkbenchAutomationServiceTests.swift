@@ -382,7 +382,8 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
     var draftB = try XCTUnwrap(store.selectedDraft)
     draftB.title = "文章 B"
     draftB.slug = "article-b"
-    draftB.bodyMarkdown = String(repeating: "这是文章 B 的正文。", count: 12)
+    draftB.bodyMarkdown =
+      String(repeating: "这是文章 B 的正文。", count: 12)
       + "\n[待修复链接](/missing-automation-target/)"
     store.updateDraft(draftB)
     let storedDraftB = try XCTUnwrap(store.draft(for: draftB.id))
@@ -464,7 +465,7 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
     XCTAssertEqual(store.remoteReviewDraft, projectedReviewDraft)
   }
 
-  func testAgentLoopPureReadOnlyPlanStillExecutesAllSteps() async throws {
+  func testRetiredAgentReadOnlyPlanIsNotReplayed() async throws {
     let store = try TestWorkbenchFactory.makeStore(prefix: "AgentReadOnlyPlan")
     let draft = try XCTUnwrap(store.selectedDraft)
     let plan = WorkbenchAutomationPlan(
@@ -484,11 +485,12 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
 
     let result = await WorkbenchAutomationExecutor.execute(plan: plan, in: store)
 
-    XCTAssertEqual(result.plan.steps.map(\.status), [.succeeded, .succeeded])
-    XCTAssertEqual(result.record.steps.map(\.status), [.succeeded, .succeeded])
+    XCTAssertEqual(result.plan, plan)
+    XCTAssertEqual(result.record.steps.map(\.status), [.cancelled, .cancelled])
+    XCTAssertTrue(result.record.steps.allSatisfy { $0.message == AIAgentRetirement.message })
   }
 
-  func testAgentLoopConfirmationIsABarrierUntilEachStepIsResumed() async throws {
+  func testRetiredAgentMutationCannotBeConfirmedOrResumed() async throws {
     let store = try TestWorkbenchFactory.makeStore(prefix: "AgentConfirmationBarrier")
     let draft = try XCTUnwrap(store.selectedDraft)
     let mutation = WorkbenchAutomationStep(
@@ -511,28 +513,18 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
 
     let blocked = await WorkbenchAutomationExecutor.execute(plan: plan, in: store)
 
-    XCTAssertEqual(blocked.plan.steps[0].status, .awaitingConfirmation)
-    XCTAssertEqual(blocked.plan.steps[1].status, .proposed)
-    XCTAssertEqual(blocked.record.steps.map(\.status), [.awaitingConfirmation])
+    XCTAssertEqual(blocked.plan, plan)
+    XCTAssertEqual(blocked.record.steps.map(\.status), [.cancelled, .cancelled])
     XCTAssertEqual(store.selectedDraft?.bodyMarkdown, draft.bodyMarkdown)
 
-    let confirmed = await WorkbenchAutomationExecutor.execute(
-      plan: blocked.plan,
-      in: store,
-      onlyStepID: mutation.id,
-      confirmedStepIDs: [mutation.id]
-    )
-    XCTAssertEqual(confirmed.plan.steps[0].status, .succeeded)
-    XCTAssertEqual(confirmed.plan.steps[1].status, .proposed)
-    XCTAssertTrue(store.selectedDraft?.bodyMarkdown.contains("确认后追加的段落") == true)
-
-    let resumedReadOnly = await WorkbenchAutomationExecutor.execute(
-      plan: confirmed.plan,
-      in: store,
-      onlyStepID: readOnly.id
-    )
-    XCTAssertEqual(resumedReadOnly.plan.steps[1].status, .succeeded)
-    XCTAssertEqual(resumedReadOnly.record.steps.map(\.status), [.succeeded])
+    for step in [mutation, readOnly] {
+      let result = await WorkbenchAutomationExecutor.execute(
+        plan: plan, in: store, onlyStepID: step.id, confirmedStepIDs: [step.id]
+      )
+      XCTAssertEqual(result.plan, plan)
+      XCTAssertTrue(result.record.steps.allSatisfy { $0.status == .cancelled })
+      XCTAssertEqual(store.selectedDraft?.bodyMarkdown, draft.bodyMarkdown)
+    }
   }
 
   func testWebFetchRejectsLoopbackAndPrivateAddressesBeforeTransport() async throws {
@@ -551,7 +543,7 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
       let plan = WorkbenchAutomationPlan(
         goal: "抓取网页",
         steps: [step],
-        source: .agentLoop
+        source: .legacy
       )
       let result = await WorkbenchAutomationExecutor.execute(plan: plan, in: store)
 

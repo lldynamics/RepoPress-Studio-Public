@@ -36,6 +36,10 @@ def baseline(target_b_minimum: float = 40, changed_minimum: float = 50) -> dict[
         "sourceLineCoveragePercentMinimum": 40,
         "sourceLineCoveragePercentMinimumByTarget": {"TargetA": 40, "TargetB": target_b_minimum},
         "changedExecutableSourceLineCoveragePercentMinimum": changed_minimum,
+        "sourceFileLineMaximums": {
+            "defaultMaximum": 600,
+            "existingFileMaximums": {},
+        },
         "swiftFormatWarningMaximums": {
             "sourcesByTarget": {"TargetA": 0, "TargetB": 0},
             "testsByTarget": {},

@@ -271,22 +271,6 @@ public struct LocalPublishPreviewService: Sendable {
     ).writtenPaths
   }
 
-  public func commitCommand(package: PublishPackage, profile: SiteProfile) -> String? {
-    guard let rootPath = profile.localRepositoryRootURL?.path else {
-      return nil
-    }
-    guard package.files.allSatisfy({ !isGitControlPath($0.repositoryPath) }) else {
-      return nil
-    }
-
-    let paths = package.files
-      .map(\.repositoryPath)
-      .map(posixShellQuote)
-      .joined(separator: " ")
-    return
-      "cd \(posixShellQuote(rootPath)) && git add \(paths) && git commit -m \(posixShellQuote(package.commitMessage))"
-  }
-
   private func repositoryRootAvailabilityError(
     for error: Error,
     rootURL: URL

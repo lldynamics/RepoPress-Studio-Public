@@ -54,21 +54,6 @@ extension WorkbenchStore {
     )
   }
 
-  public func commitSelectedDraftDirectly() async {
-    refreshSelectedDraftPublishingState()
-    await publishingStore.commitSelectedDraftDirectly(store: self)
-  }
-
-  public func commitSelectedDraftToReviewBranch() async {
-    refreshSelectedDraftPublishingState()
-    await publishingStore.commitSelectedDraftToReviewBranch(store: self)
-  }
-
-  public func commitSelectedDraftUsingPreferredStrategy() async {
-    refreshSelectedDraftPublishingState()
-    await publishingStore.commitSelectedDraftUsingPreferredStrategy(store: self)
-  }
-
   @discardableResult
   public func publishSelectedDraftOnlineUsingPreferredStrategy(
     expectedReview: SinglePublishReviewExpectation? = nil
@@ -124,30 +109,6 @@ extension WorkbenchStore {
     -> RemoteRepositoryReviewWithdrawalResult?
   {
     await publishingStore.withdrawRemoteReview(record, store: self)
-  }
-
-  public func localCommitCommandForSelectedDraft() -> String? {
-    refreshSelectedDraftPublishingState()
-    return publishingStore.localCommitCommandForSelectedDraft(store: self)
-  }
-
-  public func reviewBranchCommandsForSelectedDraft() -> [String] {
-    refreshSelectedDraftPublishingState()
-    return publishingStore.reviewBranchCommandsForSelectedDraft(store: self)
-  }
-
-  public func batchLocalCommitCommandForWritableDrafts() -> String? {
-    refreshBatchPublishPlan()
-    return publishingStore.batchLocalCommitCommandForWritableDrafts(store: self)
-  }
-
-  public func batchReviewBranchCommandsForWritableDrafts() -> [String] {
-    refreshBatchPublishPlan()
-    return publishingStore.batchReviewBranchCommandsForWritableDrafts(store: self)
-  }
-
-  public func preferredLocalGitPublishMode(for profile: SiteProfile) -> LocalGitPublishMode {
-    publishingStore.preferredLocalGitPublishMode(for: profile)
   }
 
   public func preferredRemoteRepositoryPublishMode(for profile: SiteProfile)

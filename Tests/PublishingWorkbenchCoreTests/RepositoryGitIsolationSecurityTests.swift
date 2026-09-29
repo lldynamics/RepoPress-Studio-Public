@@ -54,57 +54,6 @@ final class RepositoryGitIsolationSecurityTests: XCTestCase {
     XCTAssertEqual(asyncWorkTree.standardOutput, "true")
   }
 
-  func testSyncAndAsyncAutomaticCommitsSkipRepositoryHooks() async throws {
-    let rootURL = try temporaryDirectoryURL(prefix: "RepoPressGitHooks")
-    defer { try? FileManager.default.removeItem(at: rootURL) }
-    try FileManager.default.createDirectory(
-      at: rootURL.appendingPathComponent("content/posts", isDirectory: true),
-      withIntermediateDirectories: true
-    )
-    try runGit(["init", "-b", "main"], rootURL: rootURL)
-    try runGit(["config", "user.email", "tests@example.com"], rootURL: rootURL)
-    try runGit(["config", "user.name", "Tests"], rootURL: rootURL)
-    try "seed\n".write(
-      to: rootURL.appendingPathComponent("README.md"),
-      atomically: true,
-      encoding: .utf8
-    )
-    try runGit(["add", "README.md"], rootURL: rootURL)
-    try runGit(["commit", "-m", "Initial"], rootURL: rootURL)
-
-    let markerURL = rootURL.deletingLastPathComponent()
-      .appendingPathComponent("RepoPressGitHookMarker-\(UUID().uuidString)")
-    defer { try? FileManager.default.removeItem(at: markerURL) }
-    let hook = "#!/bin/sh\nprintf 'hook executed' >> \(posixShellQuote(markerURL.path))\nexit 1\n"
-    for hookName in ["pre-commit", "commit-msg", "post-commit"] {
-      let hookURL = rootURL.appendingPathComponent(".git/hooks/\(hookName)")
-      try hook.write(to: hookURL, atomically: true, encoding: .utf8)
-      try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hookURL.path)
-    }
-
-    var profile = SiteProfile.defaultProfile
-    profile.rememberLocalRepositoryRoot(rootURL)
-    profile.markdownPathPattern = "content/posts/{slug}.md"
-    let service = LocalGitPublishService()
-
-    let syncResult = try service.publish(
-      package: makePackage(path: "content/posts/sync.md", body: "sync body\n"),
-      profile: profile,
-      mode: .directCommit
-    )
-    XCTAssertFalse(syncResult.commitSHA.isEmpty)
-    XCTAssertFalse(FileManager.default.fileExists(atPath: markerURL.path))
-
-    let asyncResult = try await service.publishAsync(
-      package: makePackage(path: "content/posts/async.md", body: "async body\n"),
-      profile: profile,
-      mode: .directCommit
-    )
-    XCTAssertFalse(asyncResult.commitSHA.isEmpty)
-    XCTAssertFalse(FileManager.default.fileExists(atPath: markerURL.path))
-    XCTAssertEqual(try runGit(["status", "--porcelain"], rootURL: rootURL), "")
-  }
-
   func testRepositoryCleanFilterCannotExecuteDuringStatusOrDiff() throws {
     let rootURL = try makeTrackedRepository(prefix: "RepoPressGitFilter")
     defer { try? FileManager.default.removeItem(at: rootURL) }

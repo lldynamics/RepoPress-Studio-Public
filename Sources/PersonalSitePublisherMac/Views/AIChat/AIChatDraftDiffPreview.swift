@@ -29,13 +29,51 @@ struct AIChatDraftDiffPreview: Identifiable {
 }
 
 enum AIChatDraftDiffApplicationPolicy {
+  @MainActor
+  static func appliedDraft(
+    in ai: WorkbenchAIFeatureFacade,
+    draftID: UUID,
+    preview: AIChatDraftDiffPreview
+  ) -> ArticleDraft? {
+    guard let current = ai.chatDraftForDiffApplication(draftID) else { return nil }
+    return appliedDraft(currentDraft: current, preview: preview)
+  }
+
   static func canApply(
     currentDraft: ArticleDraft,
     preview: AIChatDraftDiffPreview
   ) -> Bool {
-    currentDraft.id == preview.originalDraft.id
-      && currentDraft.repositoryContentFingerprint
-        == preview.originalDraft.repositoryContentFingerprint
+    appliedDraft(currentDraft: currentDraft, preview: preview) != nil
+  }
+
+  /// Keep settings and ownership from the live draft. The preview can change
+  /// only the body and the four metadata fields displayed in its Diff.
+  static func appliedDraft(
+    currentDraft: ArticleDraft,
+    preview: AIChatDraftDiffPreview
+  ) -> ArticleDraft? {
+    let original = preview.originalDraft
+    let proposed = preview.updatedDraft
+    guard currentDraft.id == original.id,
+      proposed.id == original.id,
+      currentDraft.scope == original.scope,
+      proposed.scope == original.scope,
+      currentDraft.siteProfileID == original.siteProfileID,
+      proposed.siteProfileID == original.siteProfileID,
+      currentDraft.repositoryContentFingerprint == original.repositoryContentFingerprint
+    else { return nil }
+
+    var applied = currentDraft
+    applied.bodyMarkdown = proposed.bodyMarkdown
+    applied.title = proposed.title
+    applied.slug = proposed.slug
+    applied.summary = proposed.summary
+    applied.tags = proposed.tags
+    // Fail closed if a producer starts changing a field that this preview
+    // neither displays nor applies. That change must receive an explicit patch.
+    guard applied.repositoryContentFingerprint == proposed.repositoryContentFingerprint
+    else { return nil }
+    return applied
   }
 }
 
@@ -43,20 +81,14 @@ struct AIChatDraftDiffPreviewSheet: View {
   @Environment(\.dismiss) private var dismiss
   let preview: AIChatDraftDiffPreview
   let onApply: () -> Void
-  let onReject: (() -> Void)?
-  let isAgentReview: Bool
   @State private var wrapLines = true
 
   init(
     preview: AIChatDraftDiffPreview,
-    isAgentReview: Bool = false,
-    onReject: (() -> Void)? = nil,
     onApply: @escaping () -> Void
   ) {
     self.preview = preview
     self.onApply = onApply
-    self.onReject = onReject
-    self.isAgentReview = isAgentReview
   }
 
   var body: some View {
@@ -81,19 +113,12 @@ struct AIChatDraftDiffPreviewSheet: View {
 
           VStack(spacing: 0) {
             ForEach(metadataChanges) { change in
-              VStack(alignment: .leading, spacing: 4) {
+              VStack(alignment: .leading, spacing: 6) {
                 Text(change.title)
                   .font(.caption.weight(.semibold))
                   .foregroundStyle(.secondary)
-                Text(change.before.isEmpty ? "未设置" : change.before)
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
-                  .strikethrough()
-                Text(change.after.isEmpty ? "清空" : change.after)
-                  .font(.callout.weight(.medium))
-                  .textSelection(.enabled)
+                AIChangeComparisonView(before: change.before, after: change.after)
               }
-              .frame(maxWidth: .infinity, alignment: .leading)
               .padding(9)
 
               if change.id != metadataChanges.last?.id {
@@ -150,51 +175,13 @@ struct AIChatDraftDiffPreviewSheet: View {
       .padding(14)
 
       Divider()
-      HStack {
-        Text(changeSummary)
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.secondary)
-        Spacer()
-        Text(isAgentReview ? "应用前不会改动文章，可稍后决定。" : "应用前不会改动文章，可随时取消。")
-          .font(.caption)
-          .foregroundStyle(.tertiary)
-        if isAgentReview {
-          Button("稍后决定") { dismiss() }
-            .keyboardShortcut(.cancelAction)
-            .accessibilityIdentifier(AIChatAgentReviewPresentation.laterAccessibilityIdentifier)
-
-          Button("拒绝修改") {
-            onReject?()
-            dismiss()
-          }
-          .accessibilityIdentifier(AIChatAgentReviewPresentation.rejectAccessibilityIdentifier)
-        } else {
-          Button("取消") { dismiss() }
-            .keyboardShortcut(.cancelAction)
-        }
-
-        Button("接受修改") {
-          onApply()
-          dismiss()
-        }
-        .workbenchProminentActionStyle()
-        .keyboardShortcut(.defaultAction)
-        .accessibilityIdentifier(
-          isAgentReview
-            ? AIChatAgentReviewPresentation.acceptAccessibilityIdentifier
-            : "ai-draft-diff-accept"
-        )
-      }
-      .padding(12)
+      footerControls
+        .padding(12)
     }
-    .frame(minWidth: 820, idealWidth: 1_020, minHeight: 620, idealHeight: 760)
+    .frame(minWidth: 640, idealWidth: 1_020, minHeight: 620, idealHeight: 760)
     .workbenchGlassContainer(material: .regularMaterial)
     .accessibilityLabel("AI 修改 Diff 预览")
-    .accessibilityIdentifier(
-      isAgentReview
-        ? AIChatAgentReviewPresentation.sheetAccessibilityIdentifier
-        : "ai-draft-diff-sheet"
-    )
+    .accessibilityIdentifier("ai-draft-diff-sheet")
   }
 
   private var comparison: DraftVersionComparison {
@@ -249,6 +236,48 @@ struct AIChatDraftDiffPreviewSheet: View {
   ) {
     guard before != after else { return }
     changes.append(AIChatMetadataDiffItem(title: title, before: before, after: after))
+  }
+
+  private var footerControls: some View {
+    ViewThatFits(in: .horizontal) {
+      HStack {
+        footerSummary
+        Spacer()
+        footerActions
+      }
+      VStack(alignment: .trailing, spacing: 8) {
+        footerSummary
+        footerActions
+      }
+    }
+  }
+
+  private var footerSummary: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text(changeSummary)
+        .font(.caption.monospacedDigit())
+        .foregroundStyle(.secondary)
+      Text("应用前不会改动文章，可随时取消。")
+        .font(.caption)
+        .foregroundStyle(.tertiary)
+    }
+  }
+
+  private var footerActions: some View {
+    HStack {
+      Button("取消") { dismiss() }
+        .keyboardShortcut(.cancelAction)
+
+      Button("接受修改") {
+        onApply()
+        dismiss()
+      }
+      .workbenchProminentActionStyle()
+      .keyboardShortcut(.defaultAction)
+      .accessibilityIdentifier(
+        "ai-draft-diff-accept"
+      )
+    }
   }
 
 }

@@ -64,35 +64,30 @@ struct EditorAIReviewBar: View {
       )
       .font(.workbenchMetadata)
       .foregroundStyle(.secondary)
-      Text(hunk.originalText)
-        .font(.caption.monospaced())
-        .strikethrough()
-        .foregroundStyle(.secondary)
-        .lineLimit(2)
-      Text(hunk.replacementText)
-        .font(.caption.monospaced())
-        .foregroundStyle(WorkbenchTheme.primary)
-        .lineLimit(2)
+      AIChangeComparisonView(
+        before: hunk.originalText,
+        after: hunk.replacementText
+      )
       HStack {
         Button(action: onPrevious) { Label("上一个", systemImage: "chevron.up") }
           .accessibilityIdentifier("editor-ai-review-previous")
         Button(action: onNext) { Label("下一个", systemImage: "chevron.down") }
           .accessibilityIdentifier("editor-ai-review-next")
         Spacer()
-        Button(action: onReject) { Label("拒绝", systemImage: "xmark") }
+        Button(action: onReject) { Label("取消选择", systemImage: "xmark") }
           .tint(decision == .rejected ? .red : nil)
           .accessibilityIdentifier("editor-ai-review-reject")
-        Button(action: onAccept) { Label("接受", systemImage: "checkmark") }
+        Button(action: onAccept) { Label("选择应用", systemImage: "checkmark") }
           .tint(decision == .accepted ? WorkbenchTheme.primary : nil)
           .accessibilityIdentifier("editor-ai-review-accept")
       }
       HStack {
-        Button("全部接受", action: onAcceptAll)
+        Button("选择全部修改", action: onAcceptAll)
           .accessibilityIdentifier("editor-ai-review-accept-all")
-        Button("全部拒绝", action: onRejectAll)
+        Button("取消全部选择", action: onRejectAll)
           .accessibilityIdentifier("editor-ai-review-reject-all")
         Spacer()
-        Button(action: onApply) { Label("应用已接受", systemImage: "checkmark.seal") }
+        Button(action: onApply) { Label("应用所选修改", systemImage: "checkmark.seal") }
           .workbenchProminentActionStyle()
           .accessibilityIdentifier("editor-ai-review-apply")
       }
@@ -107,9 +102,9 @@ struct EditorAIReviewBar: View {
 
   private var decisionLabel: String {
     switch decision {
-    case .pending: "当前修改待处理"
-    case .accepted: "当前修改已接受"
-    case .rejected: "当前修改已拒绝"
+    case .pending: "当前修改待选择是否应用"
+    case .accepted: "当前修改已选择应用"
+    case .rejected: "当前修改未选择应用"
     }
   }
 
@@ -199,6 +194,6 @@ extension MacMarkdownComposerView {
       return
     }
     pendingInlineStructuredEditApplyRequestID = requestID
-    selectionActionMessage = "正在应用已接受的 AI 修改…"
+    selectionActionMessage = "正在应用所选修改的 AI 修改…"
   }
 }

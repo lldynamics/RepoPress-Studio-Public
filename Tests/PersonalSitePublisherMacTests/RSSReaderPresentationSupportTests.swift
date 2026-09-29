@@ -156,6 +156,121 @@ final class RSSReaderPresentationSupportTests: XCTestCase {
     XCTAssertEqual(result.map(\.id), ["unread", "read"])
   }
 
+  func testCancellableArchiveSortPreservesCompleteFilterAndOrder() throws {
+    let feedID = UUID()
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let articles = (0..<2_048).map { index in
+      RSSArticleHeader(
+        id: "article-\(index)",
+        feedID: feedID,
+        title: "Article \(index)",
+        author: index.isMultiple(of: 3) ? "Alice" : "Bob",
+        publishedAt: now.addingTimeInterval(TimeInterval(-index * 60)),
+        readAt: index.isMultiple(of: 5) ? now : nil,
+        tags: index.isMultiple(of: 2) ? ["Swift"] : ["Other"]
+      )
+    }
+    for order: RSSArticleSortOrder in [.oldest, .unreadFirst] {
+      let expected = RSSArticlePresentationSupport.applyFiltersAndSort(
+        to: articles,
+        sourceID: feedID,
+        author: "alice",
+        tag: "swift",
+        dateRange: .all,
+        sortOrder: order,
+        now: now
+      )
+      let actual = try RSSArticlePresentationSupport.applyFiltersAndSortCheckingCancellation(
+        to: articles,
+        sourceID: feedID,
+        author: "alice",
+        tag: "swift",
+        dateRange: .all,
+        sortOrder: order,
+        now: now
+      )
+      XCTAssertEqual(actual.map(\.id), expected.map(\.id))
+    }
+  }
+
+  func testCancelledArchivePreparationStopsBeforePublishingSnapshot() async {
+    let feedID = UUID()
+    let articles = (0..<20_000).map { index in
+      RSSArticleHeader(id: "cancel-\(index)", feedID: feedID, title: "Article")
+    }
+    let preparation = Task.detached { () -> Bool in
+      do {
+        _ = try RSSPreparedPresentationSnapshot.prepare(
+          base: articles,
+          sourceID: nil,
+          author: nil,
+          tag: nil,
+          dateRange: .all,
+          sortOrder: .oldest,
+          groupsByDate: false,
+          displayLimit: 50
+        )
+        return false
+      } catch is CancellationError {
+        return true
+      } catch {
+        return false
+      }
+    }
+    preparation.cancel()
+    let stopped = await preparation.value
+    XCTAssertTrue(stopped)
+  }
+
+  func testPreparedArchiveRetainsCountsFacetsPagingAndNavigationIndexes() throws {
+    let firstFeedID = UUID()
+    let secondFeedID = UUID()
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let articles = (0..<600).map { index in
+      RSSArticleHeader(
+        id: "archive-\(index)",
+        feedID: index.isMultiple(of: 2) ? firstFeedID : secondFeedID,
+        title: "Article \(index)",
+        author: index.isMultiple(of: 3) ? "Alice" : "Bob",
+        publishedAt: now.addingTimeInterval(TimeInterval(-index * 60)),
+        readAt: index.isMultiple(of: 5) ? now : nil,
+        tags: index.isMultiple(of: 4) ? ["Swift"] : ["Other"]
+      )
+    }
+    let expected = RSSArticlePresentationSupport.applyFiltersAndSort(
+      to: articles,
+      sourceID: firstFeedID,
+      author: "Alice",
+      tag: "Swift",
+      dateRange: .all,
+      sortOrder: .oldest,
+      now: now
+    )
+    let snapshot = try RSSPreparedPresentationSnapshot.prepare(
+      base: articles,
+      sourceID: firstFeedID,
+      author: "Alice",
+      tag: "Swift",
+      dateRange: .all,
+      sortOrder: .oldest,
+      groupsByDate: true,
+      displayLimit: 12
+    )
+    XCTAssertEqual(snapshot.matchingArticles.map(\.id), expected.map(\.id))
+    XCTAssertEqual(snapshot.visibleArticles.map(\.id), Array(expected.prefix(12)).map(\.id))
+    XCTAssertEqual(
+      snapshot.sections.flatMap(\.articles).map(\.id), snapshot.visibleArticles.map(\.id))
+    XCTAssertEqual(snapshot.scopedArticleCount, articles.count)
+    XCTAssertEqual(snapshot.unreadArticleCount, expected.filter { !$0.isRead }.count)
+    XCTAssertEqual(snapshot.sourceIDs, Set([firstFeedID, secondFeedID]))
+    XCTAssertEqual(snapshot.authors, ["Alice", "Bob"])
+    XCTAssertEqual(snapshot.tags, ["Other", "Swift"])
+    XCTAssertEqual(snapshot.articleIDsByIndex, expected.map(\.id))
+    for (index, article) in expected.enumerated() {
+      XCTAssertEqual(snapshot.indexByArticleID[article.id], index)
+    }
+  }
+
   func testListStateDistinguishesLoadingFailureValidEmptyFilteredEmptyAndCache() {
     XCTAssertEqual(
       RSSArticlePresentationSupport.listState(

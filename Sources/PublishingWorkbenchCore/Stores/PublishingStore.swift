@@ -131,9 +131,7 @@ public final class PublishingStore: ObservableObject {
   let batchPublishPlanService: BatchPublishPlanService
   let remoteRepositoryPublishService: RemoteRepositoryPublishService
   let repositoryTokenStore: KeychainTokenStore
-  let localGitPublishService: LocalGitPublishService
   let remoteReviewDraftBuilder: RemoteReviewDraftBuilder
-  let batchPublishCommandBuilder: BatchPublishCommandBuilder
   let remotePublishRiskService: RemotePublishRiskService
   let localContentImportService: LocalContentImportService
   let contentMigrationService: ContentMigrationService
@@ -299,9 +297,7 @@ public final class PublishingStore: ObservableObject {
       RemoteRepositoryPublishService(),
     repositoryTokenStore: KeychainTokenStore = KeychainTokenStore(
       service: KeychainCredentialServices.repository),
-    localGitPublishService: LocalGitPublishService = LocalGitPublishService(),
     remoteReviewDraftBuilder: RemoteReviewDraftBuilder = RemoteReviewDraftBuilder(),
-    batchPublishCommandBuilder: BatchPublishCommandBuilder = BatchPublishCommandBuilder(),
     remotePublishRiskService: RemotePublishRiskService = RemotePublishRiskService(),
     localContentImportService: LocalContentImportService = LocalContentImportService(),
     contentMigrationService: ContentMigrationService = ContentMigrationService(),
@@ -319,9 +315,7 @@ public final class PublishingStore: ObservableObject {
     self.batchPublishPlanService = batchPublishPlanService
     self.remoteRepositoryPublishService = remoteRepositoryPublishService
     self.repositoryTokenStore = repositoryTokenStore
-    self.localGitPublishService = localGitPublishService
     self.remoteReviewDraftBuilder = remoteReviewDraftBuilder
-    self.batchPublishCommandBuilder = batchPublishCommandBuilder
     self.remotePublishRiskService = remotePublishRiskService
     self.localContentImportService = localContentImportService
     self.contentMigrationService = contentMigrationService

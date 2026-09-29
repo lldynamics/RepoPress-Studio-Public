@@ -110,12 +110,21 @@ final class RepositoryImageBrowserSession: ObservableObject {
     defer { if projectionID == taskID { isProjecting = false } }
     do { try await Task.sleep(for: .milliseconds(120)) } catch { return }
     let assets = inventory.assets
-    let projected = await Task.detached(priority: .userInitiated) {
-      RepositoryImageBrowserProjection.project(
+    let projectionTask = Task.detached(priority: .userInitiated) {
+      try RepositoryImageBrowserProjection.project(
         assets, scope: scope, includesSubfolders: recursive,
-        query: query, filter: filter, sortOrder: sorting
+        query: query, filter: filter, sortOrder: sorting,
+        checkCancellation: { try Task.checkCancellation() }
       )
-    }.value
+    }
+    let projected: [RepositoryImageAsset]
+    do {
+      projected = try await withTaskCancellationHandler {
+        try await projectionTask.value
+      } onCancel: {
+        projectionTask.cancel()
+      }
+    } catch { return }
     guard !Task.isCancelled, self.inventory?.revisionID == revision, projectionID == taskID else {
       return
     }

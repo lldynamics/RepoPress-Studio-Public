@@ -106,7 +106,6 @@ extension WorkbenchStore {
   public var repositoryScanState: RepositoryScanState {
     repositoryStore.repositoryScanState(for: activeProfileID)
   }
-  public var localGitPublishResult: LocalGitPublishResult? { repositoryStore.localGitPublishResult }
   public var localRepositoryBranches: [RepositoryBranch] {
     repositoryReport == nil ? [] : repositoryStore.localRepositoryBranches
   }
@@ -234,11 +233,6 @@ extension WorkbenchStore {
   public var aiChatMessage: String? { aiWorkspaceStore.aiChatMessage }
   public var isAIChatRunning: Bool { aiWorkspaceStore.isAIChatRunning }
   public var aiChatManualRetryState: AIChatManualRetryState? { aiStore.aiChatManualRetryState }
-  public var aiImageTextSuggestionDraftID: UUID? { aiWorkspaceStore.aiImageTextSuggestionDraftID }
-  public var aiImageTextSuggestions: [AIPublishingImageTextSuggestion] {
-    aiWorkspaceStore.aiImageTextSuggestions
-  }
-  public var isAIImageTextRunning: Bool { aiWorkspaceStore.isAIImageTextRunning }
   public var seoSocialPreviewSnapshots: [UUID: SEOSocialPreviewSnapshot] {
     aiWorkspaceStore.seoSocialPreviewSnapshots
   }

@@ -45,9 +45,6 @@ public final class AIWorkspaceStore: ObservableObject {
   @Published public internal(set) var isAutomationRunning: Bool
   @Published public internal(set) var activeAutomationPlanID: UUID?
   @Published public internal(set) var automationCancellationRequested: Bool
-  @Published public internal(set) var aiImageTextSuggestionDraftID: UUID?
-  @Published public internal(set) var aiImageTextSuggestions: [AIPublishingImageTextSuggestion]
-  @Published public internal(set) var isAIImageTextRunning: Bool
   @Published public internal(set) var seoSocialPreviewSnapshots: [UUID: SEOSocialPreviewSnapshot]
   @Published public internal(set) var seoSocialPreviewSnapshot: SEOSocialPreviewSnapshot?
   @Published public internal(set) var seoSocialPreviewMessage: String?
@@ -82,9 +79,6 @@ public final class AIWorkspaceStore: ObservableObject {
     isAutomationRunning: Bool = false,
     activeAutomationPlanID: UUID? = nil,
     automationCancellationRequested: Bool = false,
-    aiImageTextSuggestionDraftID: UUID? = nil,
-    aiImageTextSuggestions: [AIPublishingImageTextSuggestion] = [],
-    isAIImageTextRunning: Bool = false,
     seoSocialPreviewSnapshots: [UUID: SEOSocialPreviewSnapshot] = [:],
     seoSocialPreviewSnapshot: SEOSocialPreviewSnapshot? = nil,
     seoSocialPreviewMessage: String? = nil,
@@ -118,9 +112,6 @@ public final class AIWorkspaceStore: ObservableObject {
     self.isAutomationRunning = isAutomationRunning
     self.activeAutomationPlanID = activeAutomationPlanID
     self.automationCancellationRequested = automationCancellationRequested
-    self.aiImageTextSuggestionDraftID = aiImageTextSuggestionDraftID
-    self.aiImageTextSuggestions = aiImageTextSuggestions
-    self.isAIImageTextRunning = isAIImageTextRunning
     self.seoSocialPreviewSnapshots = seoSocialPreviewSnapshots
     self.seoSocialPreviewSnapshot = seoSocialPreviewSnapshot
     self.seoSocialPreviewMessage = seoSocialPreviewMessage

@@ -1,14 +1,6 @@
 import Foundation
 
 extension WorkbenchAIStore {
-  /// Returns the latest metadata suggestion retained for a particular draft.
-  /// This is intentionally independent of the compatibility projection shown
-  /// by the current editor selection.
-  public func aiMetadataSuggestion(for draft: ArticleDraft)
-    -> AIPublishingMetadataSuggestion?
-  {
-    aiMetadataSuggestion(for: draft.id)
-  }
 
   public func aiMetadataSuggestion(for draftID: UUID)
     -> AIPublishingMetadataSuggestion?
@@ -21,49 +13,6 @@ extension WorkbenchAIStore {
       return nil
     }
     return suggestion
-  }
-
-  public func isAIMetadataSuggestionRunning(for draft: ArticleDraft) -> Bool {
-    isAIMetadataSuggestionRunning(for: draft.id)
-  }
-
-  public func isAIMetadataSuggestionRunning(for draftID: UUID) -> Bool {
-    aiMetadataSuggestionRunningDraftIDs.contains(draftID)
-  }
-
-  /// Returns the latest image-text suggestions retained for a particular
-  /// draft. A missing cache is intentionally presented as an empty list.
-  public func aiImageTextSuggestions(for draft: ArticleDraft)
-    -> [AIPublishingImageTextSuggestion]
-  {
-    aiImageTextSuggestions(for: draft.id)
-  }
-
-  public func aiImageTextSuggestions(for draftID: UUID)
-    -> [AIPublishingImageTextSuggestion]
-  {
-    guard let suggestions = aiImageTextSuggestionsByDraftID[draftID],
-      let baseline = aiImageTextSuggestionBaselinesByDraftID[draftID],
-      let profile = aiImageTextSuggestionProfilesByDraftID[draftID],
-      let signature = aiImageTextSuggestionSignaturesByDraftID[draftID],
-      draftOperationStillMatches(baseline, profile: profile),
-      let currentDraft = store.draft(for: draftID),
-      ImageWorkbenchReportInputSignature(
-        draft: currentDraft,
-        profile: store.profile(for: currentDraft)
-      ) == signature
-    else {
-      return []
-    }
-    return suggestions
-  }
-
-  public func isAIImageTextRunning(for draft: ArticleDraft) -> Bool {
-    isAIImageTextRunning(for: draft.id)
-  }
-
-  public func isAIImageTextRunning(for draftID: UUID) -> Bool {
-    aiImageTextSuggestionRunningDraftIDs.contains(draftID)
   }
 
   func bumpAIDraftSuggestionStateRevision() {
@@ -83,33 +32,22 @@ extension WorkbenchAIStore {
       }
     }
     var knownDraftIDs = Set(aiMetadataSuggestionsByDraftID.keys)
-      .union(aiImageTextSuggestionsByDraftID.keys)
       .union(aiMetadataSuggestionBaselinesByDraftID.keys)
       .union(aiMetadataSuggestionProfilesByDraftID.keys)
-      .union(aiImageTextSuggestionBaselinesByDraftID.keys)
-      .union(aiImageTextSuggestionProfilesByDraftID.keys)
-      .union(aiImageTextSuggestionSignaturesByDraftID.keys)
       .union(aiMetadataSuggestionGenerationsByDraftID.keys)
-      .union(aiImageTextSuggestionGenerationsByDraftID.keys)
       .union(aiMetadataSuggestionRunningDraftIDs)
-      .union(aiImageTextSuggestionRunningDraftIDs)
       .union(aiMetadataSuggestionCancellationHandlersByDraftID.keys)
-      .union(aiImageTextSuggestionCancellationHandlersByDraftID.keys)
     if let projectedDraftID = workspace.aiMetadataSuggestionDraftID {
-      knownDraftIDs.insert(projectedDraftID)
-    }
-    if let projectedDraftID = workspace.aiImageTextSuggestionDraftID {
       knownDraftIDs.insert(projectedDraftID)
     }
     let removedDraftIDs = knownDraftIDs.subtracting(validDraftIDs)
     var didChange = false
 
     for draftID in removedDraftIDs {
-      for lane in [AIGenerationLane.metadata(draftID), .imageText(draftID)] {
-        if let generation = currentAIRequestGeneration(lane) {
-          cancelAIRequest(lane, generation: generation)
-          didChange = true
-        }
+      let lane = AIGenerationLane.metadata(draftID)
+      if let generation = currentAIRequestGeneration(lane) {
+        cancelAIRequest(lane, generation: generation)
+        didChange = true
       }
       if let cancellation =
         aiMetadataSuggestionCancellationHandlersByDraftID
@@ -118,17 +56,7 @@ extension WorkbenchAIStore {
         cancellation()
         didChange = true
       }
-      if let cancellation =
-        aiImageTextSuggestionCancellationHandlersByDraftID
-        .removeValue(forKey: draftID)
-      {
-        cancellation()
-        didChange = true
-      }
       if aiMetadataSuggestionsByDraftID.removeValue(forKey: draftID) != nil {
-        didChange = true
-      }
-      if aiImageTextSuggestionsByDraftID.removeValue(forKey: draftID) != nil {
         didChange = true
       }
       if aiMetadataSuggestionBaselinesByDraftID.removeValue(forKey: draftID) != nil {
@@ -137,25 +65,10 @@ extension WorkbenchAIStore {
       if aiMetadataSuggestionProfilesByDraftID.removeValue(forKey: draftID) != nil {
         didChange = true
       }
-      if aiImageTextSuggestionBaselinesByDraftID.removeValue(forKey: draftID) != nil {
-        didChange = true
-      }
-      if aiImageTextSuggestionProfilesByDraftID.removeValue(forKey: draftID) != nil {
-        didChange = true
-      }
-      if aiImageTextSuggestionSignaturesByDraftID.removeValue(forKey: draftID) != nil {
-        didChange = true
-      }
       if aiMetadataSuggestionGenerationsByDraftID.removeValue(forKey: draftID) != nil {
         didChange = true
       }
-      if aiImageTextSuggestionGenerationsByDraftID.removeValue(forKey: draftID) != nil {
-        didChange = true
-      }
       if aiMetadataSuggestionRunningDraftIDs.remove(draftID) != nil {
-        didChange = true
-      }
-      if aiImageTextSuggestionRunningDraftIDs.remove(draftID) != nil {
         didChange = true
       }
     }
@@ -163,11 +76,6 @@ extension WorkbenchAIStore {
     let nextMetadataRunning = !aiMetadataSuggestionRunningDraftIDs.isEmpty
     if workspaceIsAIMetadataSuggestionRunning != nextMetadataRunning {
       workspaceIsAIMetadataSuggestionRunning = nextMetadataRunning
-      didChange = true
-    }
-    let nextImageTextRunning = !aiImageTextSuggestionRunningDraftIDs.isEmpty
-    if workspaceIsAIImageTextRunning != nextImageTextRunning {
-      workspaceIsAIImageTextRunning = nextImageTextRunning
       didChange = true
     }
 
@@ -191,20 +99,6 @@ extension WorkbenchAIStore {
       return
     }
     aiMetadataSuggestionCancellationHandlersByDraftID[draftID] = handler
-  }
-
-  func registerAIImageTextSuggestionCancellationHandler(
-    for draftID: UUID,
-    generation: UInt64,
-    handler: @escaping () -> Void
-  ) {
-    guard !Task.isCancelled,
-      aiImageTextSuggestionGenerationsByDraftID[draftID] == generation
-    else {
-      handler()
-      return
-    }
-    aiImageTextSuggestionCancellationHandlersByDraftID[draftID] = handler
   }
 
   func beginAIMetadataSuggestionOperation(for draftID: UUID) -> UInt64 {
@@ -296,89 +190,6 @@ extension WorkbenchAIStore {
     }
   }
 
-  func beginAIImageTextSuggestionOperation(for draftID: UUID) -> UInt64 {
-    aiImageTextSuggestionCancellationHandlersByDraftID.removeValue(forKey: draftID)?()
-    let generation = nextAIRequestGeneration()
-    aiImageTextSuggestionGenerationsByDraftID[draftID] = generation
-    aiImageTextSuggestionRunningDraftIDs.insert(draftID)
-    workspaceIsAIImageTextRunning = true
-    if store.selectedDraftID == draftID {
-      restoreDraftSuggestionProjectionForCurrentSelection()
-    } else {
-      bumpAIDraftSuggestionStateRevision()
-    }
-    return generation
-  }
-
-  func finishAIImageTextSuggestionOperation(for draftID: UUID, generation: UInt64) {
-    guard aiImageTextSuggestionGenerationsByDraftID[draftID] == generation else { return }
-    aiImageTextSuggestionCancellationHandlersByDraftID.removeValue(forKey: draftID)
-    aiImageTextSuggestionRunningDraftIDs.remove(draftID)
-    workspaceIsAIImageTextRunning = !aiImageTextSuggestionRunningDraftIDs.isEmpty
-    bumpAIDraftSuggestionStateRevision()
-  }
-
-  @discardableResult
-  func installAIImageTextSuggestions(
-    _ suggestions: [AIPublishingImageTextSuggestion],
-    for draftID: UUID,
-    generation: UInt64
-  ) -> Bool {
-    guard !Task.isCancelled,
-      aiImageTextSuggestionGenerationsByDraftID[draftID] == generation
-    else {
-      return false
-    }
-    guard let baseline = store.draftOperationBaseline(for: draftID) else {
-      return false
-    }
-    let profile = store.profile(for: baseline.draft)
-    aiImageTextSuggestionsByDraftID[draftID] = suggestions
-    aiImageTextSuggestionBaselinesByDraftID[draftID] = baseline
-    aiImageTextSuggestionProfilesByDraftID[draftID] = profile
-    aiImageTextSuggestionSignaturesByDraftID[draftID] =
-      ImageWorkbenchReportInputSignature(draft: baseline.draft, profile: profile)
-    if store.selectedDraftID == draftID {
-      restoreDraftSuggestionProjectionForCurrentSelection()
-    } else {
-      bumpAIDraftSuggestionStateRevision()
-    }
-    return true
-  }
-
-  func removeAIImageTextSuggestions(
-    withIDs suggestionIDs: Set<String>,
-    for draftID: UUID
-  ) {
-    guard var cached = aiImageTextSuggestionsByDraftID[draftID] else { return }
-    cached.removeAll { suggestionIDs.contains($0.id) }
-    if cached.isEmpty {
-      aiImageTextSuggestionsByDraftID.removeValue(forKey: draftID)
-      aiImageTextSuggestionBaselinesByDraftID.removeValue(forKey: draftID)
-      aiImageTextSuggestionProfilesByDraftID.removeValue(forKey: draftID)
-      aiImageTextSuggestionSignaturesByDraftID.removeValue(forKey: draftID)
-    } else {
-      aiImageTextSuggestionsByDraftID[draftID] = cached
-    }
-    if store.selectedDraftID == draftID {
-      restoreDraftSuggestionProjectionForCurrentSelection()
-    } else {
-      bumpAIDraftSuggestionStateRevision()
-    }
-  }
-
-  func removeAllAIImageTextSuggestions(for draftID: UUID) {
-    aiImageTextSuggestionsByDraftID.removeValue(forKey: draftID)
-    aiImageTextSuggestionBaselinesByDraftID.removeValue(forKey: draftID)
-    aiImageTextSuggestionProfilesByDraftID.removeValue(forKey: draftID)
-    aiImageTextSuggestionSignaturesByDraftID.removeValue(forKey: draftID)
-    if store.selectedDraftID == draftID {
-      restoreDraftSuggestionProjectionForCurrentSelection()
-    } else {
-      bumpAIDraftSuggestionStateRevision()
-    }
-  }
-
   /// Rebuilds the legacy workspace fields for the selected draft. Every
   /// selection path already calls `restoreSEOSocialPreviewSnapshotForCurrentSelection`,
   /// so keeping this projection here avoids adding selection-specific calls at
@@ -390,27 +201,16 @@ extension WorkbenchAIStore {
     let nextMetadataSuggestion = selectedDraftID.flatMap {
       aiMetadataSuggestion(for: $0)
     }
-    let nextImageTextSuggestions = selectedDraftID.flatMap {
-      aiImageTextSuggestions(for: $0)
-    } ?? []
 
     let didChange =
       workspace.aiMetadataSuggestionDraftID != selectedDraftID
       || workspace.aiMetadataSuggestion != nextMetadataSuggestion
-      || workspace.aiImageTextSuggestionDraftID != selectedDraftID
-      || workspace.aiImageTextSuggestions != nextImageTextSuggestions
 
     if workspace.aiMetadataSuggestionDraftID != selectedDraftID {
       workspace.aiMetadataSuggestionDraftID = selectedDraftID
     }
     if workspace.aiMetadataSuggestion != nextMetadataSuggestion {
       workspace.aiMetadataSuggestion = nextMetadataSuggestion
-    }
-    if workspace.aiImageTextSuggestionDraftID != selectedDraftID {
-      workspace.aiImageTextSuggestionDraftID = selectedDraftID
-    }
-    if workspace.aiImageTextSuggestions != nextImageTextSuggestions {
-      workspace.aiImageTextSuggestions = nextImageTextSuggestions
     }
     if didChange {
       bumpAIDraftSuggestionStateRevision()
@@ -483,49 +283,11 @@ extension WorkbenchAIStore {
     return currentDraft
   }
 
-  func currentDraftForAIImageTextApplication(
-    _ suggestions: [AIPublishingImageTextSuggestion],
-    draftID: UUID
-  ) -> ArticleDraft? {
-    guard let currentDraft = store.draft(for: draftID) else {
-      aiActionMessage = "找不到要应用图片文案的文章。"
-      return nil
-    }
-    guard let retained = aiImageTextSuggestionsByDraftID[draftID],
-      let baseline = aiImageTextSuggestionBaselinesByDraftID[draftID],
-      let profile = aiImageTextSuggestionProfilesByDraftID[draftID],
-      let signature = aiImageTextSuggestionSignaturesByDraftID[draftID]
-    else {
-      aiActionMessage = "图片文案建议已过期，未应用。"
-      return nil
-    }
-    guard draftOperationStillMatches(baseline, profile: profile),
-      ImageWorkbenchReportInputSignature(
-        draft: currentDraft,
-        profile: store.profile(for: currentDraft)
-      ) == signature
-    else {
-      removeAllAIImageTextSuggestions(for: draftID)
-      aiActionMessage = "图片文案建议已过期，未应用。"
-      return nil
-    }
-    guard AIApplicationContract.imageTextSuggestions(suggestions, belongTo: retained) else {
-      aiActionMessage = "图片文案建议与当前文章不匹配，未应用。"
-      return nil
-    }
-    return currentDraft
-  }
-
   // These small aliases keep the operation helpers from calling the public
   // compatibility setters, whose legacy semantics intentionally clear all
   // running state when set to false.
   private var workspaceIsAIMetadataSuggestionRunning: Bool {
     get { workspace.isAIMetadataSuggestionRunning }
     set { workspace.isAIMetadataSuggestionRunning = newValue }
-  }
-
-  private var workspaceIsAIImageTextRunning: Bool {
-    get { workspace.isAIImageTextRunning }
-    set { workspace.isAIImageTextRunning = newValue }
   }
 }

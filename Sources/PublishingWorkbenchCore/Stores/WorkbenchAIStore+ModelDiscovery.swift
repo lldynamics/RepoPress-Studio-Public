@@ -27,7 +27,6 @@ extension WorkbenchAIStore {
     forceRefresh: Bool = true
   ) async throws -> [AIModelDescriptor] {
     guard let currentConnection = store.aiConnectionProfile(for: connectionProfileID),
-      store.activeAIConnectionProfile.id == connectionProfileID,
       currentConnection.config.dataSharingConsentIdentifier
         == requestedConfig.dataSharingConsentIdentifier
     else {
@@ -40,7 +39,10 @@ extension WorkbenchAIStore {
     // claim; all transport-sensitive values must come from the applied
     // connection profile that also owns the credential.
     let boundConfig = currentConnection.config
-    let apiKey = try aiChatAvailableAPIKey(for: currentConnection)
+    guard aiDataSharingConsentStore.presentation(for: boundConfig).isGranted else {
+      throw AIModelDiscoveryError.authorizationChanged
+    }
+    let apiKey = try settingsAPIKey(for: currentConnection)
     try Task.checkCancellation()
     let models = try await service.discoverModels(
       for: boundConfig,
@@ -49,7 +51,6 @@ extension WorkbenchAIStore {
     )
     try Task.checkCancellation()
     guard let latestConnection = store.aiConnectionProfile(for: connectionProfileID),
-      store.activeAIConnectionProfile.id == connectionProfileID,
       latestConnection.config.dataSharingConsentIdentifier
         == boundConfig.dataSharingConsentIdentifier,
       latestConnection.config == boundConfig

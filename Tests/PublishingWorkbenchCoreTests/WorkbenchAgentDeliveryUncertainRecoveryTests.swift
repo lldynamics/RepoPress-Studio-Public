@@ -59,7 +59,7 @@ final class WorkbenchAgentDeliveryUncertainRecoveryTests: XCTestCase {
     }
   }
 
-  func testAbandonUsesExactCASAndPreservesAudit() throws {
+  func testAbandonIsRetiredAndLeavesAuditUntouched() throws {
     let fixture = try makeFixture(phase: .deliveryUncertain)
     defer { fixture.cleanup() }
 
@@ -75,7 +75,7 @@ final class WorkbenchAgentDeliveryUncertainRecoveryTests: XCTestCase {
     let originalReviewDecisions = before.reviewDecisions
     let originalAttemptID = before.agentContinuation?.resumeAttemptID
 
-    XCTAssertTrue(
+    XCTAssertFalse(
       fixture.store.aiStore.abandonAgentContinuation(
         conversationID: fixture.conversationID,
         messageID: fixture.messageID,
@@ -85,17 +85,17 @@ final class WorkbenchAgentDeliveryUncertainRecoveryTests: XCTestCase {
       )
     )
 
-    let abandoned = try XCTUnwrap(
+    let unchanged = try XCTUnwrap(
       fixture.store.aiStore.aiConversations.first(where: { $0.id == fixture.conversationID })?
         .messages.first(where: { $0.id == fixture.messageID })
     )
-    XCTAssertEqual(abandoned.agentContinuation?.phase, .abandonedAfterDeliveryUncertain)
-    XCTAssertEqual(abandoned.agentContinuation?.revision, expectedRevision + 1)
-    XCTAssertEqual(abandoned.agentContinuation?.checkpoint, originalCheckpoint)
-    XCTAssertEqual(abandoned.automationPlan, originalPlan)
-    XCTAssertEqual(abandoned.toolRuns, originalToolRuns)
-    XCTAssertEqual(abandoned.reviewDecisions, originalReviewDecisions)
-    XCTAssertEqual(abandoned.agentContinuation?.resumeAttemptID, originalAttemptID)
+    XCTAssertEqual(unchanged.agentContinuation?.phase, .deliveryUncertain)
+    XCTAssertEqual(unchanged.agentContinuation?.revision, expectedRevision)
+    XCTAssertEqual(unchanged.agentContinuation?.checkpoint, originalCheckpoint)
+    XCTAssertEqual(unchanged.automationPlan, originalPlan)
+    XCTAssertEqual(unchanged.toolRuns, originalToolRuns)
+    XCTAssertEqual(unchanged.reviewDecisions, originalReviewDecisions)
+    XCTAssertEqual(unchanged.agentContinuation?.resumeAttemptID, originalAttemptID)
 
     XCTAssertFalse(
       fixture.store.aiStore.abandonAgentContinuation(
@@ -117,29 +117,14 @@ final class WorkbenchAgentDeliveryUncertainRecoveryTests: XCTestCase {
     )
   }
 
-  func testUncertainContinuationBlocksMutationButBranchKeepsOriginalAudit() async throws {
+  func testUncertainContinuationAllowsExplicitConversationOperationsAndKeepsAudit() throws {
     let fixture = try makeFixture(phase: .deliveryUncertain)
     defer { fixture.cleanup() }
-    let originalMessages = fixture.store.aiChatMessages
-
-    let sent = await fixture.store.aiStore.sendAIChatMessage(
-      "不应发送",
-      draft: fixture.draft
+    let newConversation = try XCTUnwrap(
+      fixture.store.aiStore.startNewAIChatConversation(draft: fixture.draft)
     )
-    XCTAssertNil(sent)
-    XCTAssertEqual(fixture.store.aiChatMessages, originalMessages)
-
-    XCTAssertNil(fixture.store.aiStore.startNewAIChatConversation(draft: fixture.draft))
-    XCTAssertFalse(fixture.store.aiStore.archiveAIChatConversation(fixture.conversationID))
-    XCTAssertFalse(fixture.store.aiStore.deleteAIChatConversation(fixture.conversationID))
-    fixture.store.aiStore.deleteAIChatMessage(fixture.messageID, draft: fixture.draft)
-    XCTAssertEqual(fixture.store.aiChatMessages, originalMessages)
-    fixture.store.aiStore.clearAIChat()
-    XCTAssertEqual(fixture.store.aiChatMessages, originalMessages)
-    fixture.store.aiStore.aiChatContextMode = .general
-    fixture.store.aiStore.clearAIChat()
-    XCTAssertEqual(fixture.store.aiChatMessages, originalMessages)
-
+    XCTAssertNotEqual(newConversation.id, fixture.conversationID)
+    XCTAssertTrue(fixture.store.aiStore.selectAIChatConversation(fixture.conversationID))
     let branch = fixture.store.aiStore.branchAIChatConversation(
       after: fixture.messageID,
       draft: fixture.draft
@@ -153,6 +138,9 @@ final class WorkbenchAgentDeliveryUncertainRecoveryTests: XCTestCase {
     )
     XCTAssertEqual(original.agentContinuation?.phase, .deliveryUncertain)
     XCTAssertEqual(original.agentContinuation?.checkpoint, fixture.checkpoint)
+    fixture.store.aiStore.prepareAIChat(for: fixture.draft)
+    XCTAssertTrue(fixture.store.aiStore.archiveAIChatConversation(fixture.conversationID))
+    XCTAssertTrue(fixture.store.aiStore.deleteAIChatConversation(fixture.conversationID))
   }
 
   private func makeFixture(

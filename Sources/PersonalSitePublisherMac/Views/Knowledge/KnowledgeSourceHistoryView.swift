@@ -1,6 +1,12 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
+enum KnowledgeSourceHistorySnapshot {
+  case loading
+  case loaded([KnowledgeDocumentRevision])
+  case failed(String)
+}
+
 struct KnowledgeSourceHistoryView: View {
   @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @Environment(\.dismiss) private var dismiss
@@ -17,6 +23,8 @@ struct KnowledgeSourceHistoryView: View {
   @State private var comparison: KnowledgeRevisionDifference?
   @State private var comparedRevisionID: UUID?
   @State private var isComparing = false
+  @State private var history: KnowledgeSourceHistorySnapshot = .loading
+  @State private var historyRequestID = UUID()
 
   var body: some View {
     VStack(spacing: 0) {
@@ -49,11 +57,11 @@ struct KnowledgeSourceHistoryView: View {
       }
     }
     .frame(minWidth: 760, idealWidth: 920, minHeight: 620, idealHeight: 760)
+    .task(id: document?.currentRevisionID) {
+      await loadHistory()
+    }
     .task {
-      knowledge.loadDocumentInsights(documentID: documentID)
-      if preparesLocalRepairOnAppear {
-        prepareLocalRepair()
-      }
+      if preparesLocalRepairOnAppear { prepareLocalRepair() }
     }
     .confirmationDialog(
       "恢复这个资料版本？",
@@ -70,6 +78,7 @@ struct KnowledgeSourceHistoryView: View {
           if await knowledge.restoreRevision(revision.id, documentID: documentID) {
             comparison = nil
             comparedRevisionID = nil
+            await loadHistory()
           }
         }
       }
@@ -86,7 +95,8 @@ struct KnowledgeSourceHistoryView: View {
 
   private var currentRevision: KnowledgeDocumentRevision? {
     guard let currentRevisionID = document?.currentRevisionID else { return nil }
-    return knowledge.revisions.first { $0.id == currentRevisionID }
+    guard case .loaded(let revisions) = history else { return nil }
+    return revisions.first { $0.id == currentRevisionID }
   }
 
   private var sourceSummary: some View {
@@ -219,11 +229,21 @@ struct KnowledgeSourceHistoryView: View {
     VStack(alignment: .leading, spacing: 10) {
       Label("版本历史", systemImage: "clock")
         .font(.headline)
-      if knowledge.revisions.isEmpty {
+      switch history {
+      case .loading:
         ProgressView("正在读取版本历史…")
           .controlSize(.small)
-      } else {
-        ForEach(knowledge.revisions) { revision in
+      case .failed(let message):
+        HStack {
+          Label(message, systemImage: "exclamationmark.triangle")
+            .foregroundStyle(WorkbenchTheme.warning)
+          Button("重试") { Task { await loadHistory() } }
+        }
+      case .loaded(let revisions) where revisions.isEmpty:
+        Text("此资料暂无版本历史。")
+          .foregroundStyle(.secondary)
+      case .loaded(let revisions):
+        ForEach(revisions) { revision in
           HStack(spacing: 10) {
             Image(systemName: revision.id == document?.currentRevisionID ? "checkmark.circle.fill" : "clock")
             .foregroundStyle(
@@ -380,6 +400,7 @@ struct KnowledgeSourceHistoryView: View {
       localRepairPreview = nil
       comparison = nil
       comparedRevisionID = nil
+      await loadHistory()
       EditorAccessibilityAnnouncementCenter.announce(
         "本机正文净化完成，已创建新版本并重建检索索引。",
         priority: .medium
@@ -393,6 +414,7 @@ struct KnowledgeSourceHistoryView: View {
         refreshPreview = nil
         comparison = nil
         comparedRevisionID = nil
+        await loadHistory()
       }
     }
   }
@@ -411,6 +433,30 @@ struct KnowledgeSourceHistoryView: View {
         comparison = nil
         comparedRevisionID = nil
       }
+    }
+  }
+
+  private func loadHistory() async {
+    let requestID = UUID()
+    historyRequestID = requestID
+    guard document != nil else {
+      history = .loaded([])
+      return
+    }
+    history = .loading
+    do {
+      let revisions = try await knowledge.revisionsForHistory(documentID: documentID)
+      guard !Task.isCancelled, historyRequestID == requestID else { return }
+      guard revisions.allSatisfy({ $0.documentID == documentID }) else {
+        history = .failed(String(localized: "版本历史与资料不匹配。"))
+        return
+      }
+      history = .loaded(revisions)
+    } catch is CancellationError {
+      return
+    } catch {
+      guard !Task.isCancelled, historyRequestID == requestID else { return }
+      history = .failed(error.localizedDescription)
     }
   }
 }

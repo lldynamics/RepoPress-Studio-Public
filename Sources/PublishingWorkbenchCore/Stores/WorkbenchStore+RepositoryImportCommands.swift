@@ -77,15 +77,6 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func importDraftsFromLocalRepository() -> LocalContentImportMergeSummary {
-    let profileID = activeProfileID
-    let operationResult = publishingStore.importDraftsFromLocalRepositoryOperation(store: self)
-    invalidateDraftDerivedCaches()
-    recordContentImport(operationResult, profileID: profileID)
-    return operationResult.summary
-  }
-
-  @discardableResult
   public func importDraftsFromLocalRepositoryAsync() async -> LocalContentImportMergeSummary {
     let profileID = activeProfileID
     let operationResult = await publishingStore.importDraftsFromLocalRepositoryAsyncOperation(
@@ -144,94 +135,14 @@ extension WorkbenchStore {
     return insertedCount
   }
 
-  @discardableResult
-  public func importMissingPrivateDraftsFromLocalRepository() async -> Int {
-    let insertedCount = await publishingStore.importMissingPrivateDraftsFromLocalRepository(store: self)
-    if insertedCount > 0 {
-      invalidateDraftDerivedCaches()
-      recordContentImport(
-        LocalContentImportOperationResult(
-          summary: LocalContentImportMergeSummary(
-            insertedCount: insertedCount,
-            updatedCount: 0,
-            skippedCount: 0
-          ),
-          outcome: .succeeded
-        ),
-        profileID: activeProfileID,
-        actor: .background
-      )
-    }
-    return insertedCount
-  }
-
-  @discardableResult
-  public func importDraftFromLocalRepository(repositoryPath: String) -> LocalContentImportMergeSummary {
-    let profileID = activeProfileID
-    let operationResult = publishingStore.importDraftFromLocalRepositoryOperation(
-      repositoryPath: repositoryPath,
-      store: self
-    )
-    invalidateDraftDerivedCaches()
-    recordContentImport(operationResult, profileID: profileID)
-    return operationResult.summary
-  }
-
   public func makeContentMigrationPlan(sourceURL: URL) async throws -> ContentMigrationPlan {
     try await publishingStore.makeContentMigrationPlan(sourceURL: sourceURL, store: self)
-  }
-
-  public func refreshContentMigrationPlanReview(_ plan: ContentMigrationPlan) -> ContentMigrationPlan {
-    publishingStore.refreshContentMigrationPlanReview(plan, store: self)
   }
 
   public func refreshContentMigrationPlanReviewAsync(
     _ plan: ContentMigrationPlan
   ) async throws -> ContentMigrationPlan {
     try await publishingStore.refreshContentMigrationPlanReviewAsync(plan, store: self)
-  }
-
-  @discardableResult
-  public func applyContentMigration(_ plan: ContentMigrationPlan) throws -> LocalContentImportMergeSummary {
-    let profileID = activeProfileID
-    do {
-      let summary = try publishingStore.applyContentMigration(plan, store: self)
-      invalidateDraftDerivedCaches()
-      recordContentImport(
-        completedContentImportResult(summary),
-        profileID: profileID,
-        kind: .contentMigration
-      )
-      return summary
-    } catch {
-      recordContentImportFailure(error, profileID: profileID, kind: .contentMigration)
-      throw error
-    }
-  }
-
-  @discardableResult
-  public func applyContentMigration(
-    _ plan: ContentMigrationPlan,
-    selectedDraftIDs: Set<UUID>
-  ) throws -> LocalContentImportMergeSummary {
-    let profileID = activeProfileID
-    do {
-      let summary = try publishingStore.applyContentMigration(
-        plan,
-        selectedDraftIDs: selectedDraftIDs,
-        store: self
-      )
-      invalidateDraftDerivedCaches()
-      recordContentImport(
-        completedContentImportResult(summary),
-        profileID: profileID,
-        kind: .contentMigration
-      )
-      return summary
-    } catch {
-      recordContentImportFailure(error, profileID: profileID, kind: .contentMigration)
-      throw error
-    }
   }
 
   @discardableResult
@@ -270,16 +181,6 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func importRemoteChangedArticleDraftsFromRepository() async -> LocalContentImportMergeSummary {
-    let profileID = activeProfileID
-    let operationResult =
-      await publishingStore.importRemoteChangedArticleDraftsFromRepositoryOperation(store: self)
-    invalidateDraftDerivedCaches()
-    recordContentImport(operationResult, profileID: profileID, kind: .remoteContentImport)
-    return operationResult.summary
-  }
-
-  @discardableResult
   public func importRemoteArticleDraftsFromRepository(
     repositoryPaths: [String]
   ) async -> LocalContentImportMergeSummary {
@@ -291,38 +192,6 @@ extension WorkbenchStore {
     invalidateDraftDerivedCaches()
     recordContentImport(operationResult, profileID: profileID, kind: .remoteContentImport)
     return operationResult.summary
-  }
-
-  @discardableResult
-  public func importRemoteDraftFromRepository(repositoryPath: String) async -> LocalContentImportMergeSummary {
-    let profileID = activeProfileID
-    let operationResult = await publishingStore.importRemoteDraftFromRepositoryOperation(
-      repositoryPath: repositoryPath,
-      store: self
-    )
-    invalidateDraftDerivedCaches()
-    recordContentImport(operationResult, profileID: profileID, kind: .remoteContentImport)
-    return operationResult.summary
-  }
-
-  @discardableResult
-  func autoImportRemoteArticleDrafts(
-    remoteFiles: [RepositoryChangedFile],
-    snapshots: [RepositoryFileSnapshot],
-    locallyChangedPaths: Set<String>
-  ) -> RemoteArticleAutoImportSummary {
-    let profileID = activeProfileID
-    let summary = publishingStore.autoImportRemoteArticleDrafts(
-      remoteFiles: remoteFiles,
-      snapshots: snapshots,
-      locallyChangedPaths: locallyChangedPaths,
-      store: self
-    )
-    if summary.importedCount > 0 || summary.unchangedCount > 0 {
-      invalidateDraftDerivedCaches()
-    }
-    recordRemoteAutoImport(summary, profileID: profileID)
-    return summary
   }
 
   @discardableResult

@@ -142,4 +142,34 @@ final class MarkdownFrontMatterFoldingTests: MarkdownEditorAppKitInteractionTest
     clip.hiddenPrefixHeight = 0
     XCTAssertEqual(clip.constrainBoundsRect(NSRect(x: 0, y: 0, width: 400, height: 200)).minY, 0)
   }
+
+  func testFoldClipKeepsHiddenPrefixWhenRestoredOriginBypassesConstraint() {
+    let clip = MarkdownFrontMatterClipView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+    clip.documentView = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 1_000))
+
+    clip.hiddenPrefixHeight = 204
+    XCTAssertEqual(clip.bounds.origin.y, 204, "enabling the fold hides the prefix")
+
+    // Session restore and typewriter scrolling set the origin directly.
+    clip.scroll(to: .zero)
+    XCTAssertEqual(clip.bounds.origin.y, 204)
+    clip.setBoundsOrigin(NSPoint(x: 0, y: 12))
+    XCTAssertEqual(clip.bounds.origin.y, 204)
+    clip.scroll(to: NSPoint(x: 0, y: 320))
+    XCTAssertEqual(clip.bounds.origin.y, 320, "scrolling within the body is unchanged")
+
+    clip.hiddenPrefixHeight = 0
+    clip.scroll(to: .zero)
+    XCTAssertEqual(clip.bounds.origin.y, 0, "expanding metadata allows the top again")
+  }
+
+  func testFoldMeasurementWaitsForASizedViewport() {
+    XCTAssertFalse(MarkdownEditorScrollView.canMeasureFrontMatterFold(viewportSize: .zero))
+    XCTAssertFalse(
+      MarkdownEditorScrollView.canMeasureFrontMatterFold(
+        viewportSize: NSSize(width: 640, height: 0)))
+    XCTAssertTrue(
+      MarkdownEditorScrollView.canMeasureFrontMatterFold(
+        viewportSize: NSSize(width: 640, height: 480)))
+  }
 }

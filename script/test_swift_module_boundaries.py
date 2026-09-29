@@ -67,9 +67,6 @@ def valid_payload() -> dict[str, Any]:
             package_product("PublishingMarkdownCore", "library", ["PublishingMarkdownCore"]),
             package_product("PublishingGitCore", "library", ["PublishingGitCore"]),
             package_product("PublishingAICore", "library", ["PublishingAICore"]),
-            package_product(
-                "PublishingAgentContracts", "library", ["PublishingAgentContracts"]
-            ),
             package_product("PublishingKnowledgeCore", "library", ["PublishingKnowledgeCore"]),
             package_product("PublishingPreviewCore", "library", ["PublishingPreviewCore"]),
             package_product("PublishingBackupCore", "library", ["PublishingBackupCore"]),
@@ -108,11 +105,6 @@ def valid_payload() -> dict[str, Any]:
                 [dependency("PublishingCoreSupport")],
             ),
             target(
-                "PublishingAgentContracts",
-                "regular",
-                [dependency("PublishingAICore")],
-            ),
-            target(
                 "PublishingKnowledgeCore",
                 "regular",
                 [
@@ -145,7 +137,6 @@ def valid_payload() -> dict[str, Any]:
                     dependency("PublishingMarkdownCore"),
                     dependency("PublishingGitCore"),
                     dependency("PublishingAICore"),
-                    dependency("PublishingAgentContracts"),
                     dependency("PublishingKnowledgeCore"),
                     dependency("PublishingPreviewCore"),
                     dependency("PublishingBackupCore"),
@@ -195,14 +186,6 @@ def valid_payload() -> dict[str, Any]:
                 [dependency("PublishingAICore"), dependency("PublishingCoreSupport")],
             ),
             target(
-                "PublishingAgentContractsTests",
-                "test",
-                [
-                    dependency("PublishingAICore"),
-                    dependency("PublishingAgentContracts"),
-                ],
-            ),
-            target(
                 "PublishingCoreSupportTests",
                 "test",
                 [dependency("PublishingCoreSupport")],
@@ -217,7 +200,6 @@ def valid_payload() -> dict[str, Any]:
                 "test",
                 [
                     dependency("PublishingAICore"),
-                    dependency("PublishingAgentContracts"),
                     dependency("PublishingCoreSupport"),
                     dependency("PublishingDomainContracts"),
                     dependency("PublishingGitCore"),
@@ -244,7 +226,6 @@ def valid_payload() -> dict[str, Any]:
                     dependency("PublishingWorkbenchCore"),
                     dependency("PublishingPreviewCore"),
                     dependency("PublishingBackupCore"),
-                    dependency("PublishingSyncCore"),
                     dependency("PublishingTestSupport"),
                 ],
             ),
@@ -252,7 +233,7 @@ def valid_payload() -> dict[str, Any]:
     }
 
 
-EXPECTED_EXPORT_SOURCE = """// fixture compatibility umbrella\n@_exported import PublishingAICore\n@_exported import PublishingAgentContracts\n@_exported import PublishingCoreSupport\n@_exported import PublishingDomainContracts\n@_exported import PublishingGitCore\n@_exported import PublishingKnowledgeCore\n@_exported import PublishingMarkdownCore\n"""
+EXPECTED_EXPORT_SOURCE = """// fixture compatibility umbrella\n@_exported import PublishingAICore\n@_exported import PublishingCoreSupport\n@_exported import PublishingDomainContracts\n@_exported import PublishingGitCore\n@_exported import PublishingKnowledgeCore\n@_exported import PublishingMarkdownCore\n"""
 
 
 def prepare_fixture(root: Path, payload: dict[str, Any]) -> Path:
@@ -263,7 +244,6 @@ def prepare_fixture(root: Path, payload: dict[str, Any]) -> Path:
         "PublishingMarkdownCore",
         "PublishingGitCore",
         "PublishingAICore",
-        "PublishingAgentContracts",
         "PublishingKnowledgeCore",
         "PublishingPreviewCore",
         "PublishingBackupCore",
@@ -289,12 +269,6 @@ def prepare_fixture(root: Path, payload: dict[str, Any]) -> Path:
     leaf_test_source.mkdir(parents=True, exist_ok=True)
     (leaf_test_source / "FixtureTests.swift").write_text(
         "@testable import PublishingMarkdownCore\n",
-        encoding="utf-8",
-    )
-    contracts_test_source = root / "Tests" / "PublishingAgentContractsTests"
-    contracts_test_source.mkdir(parents=True, exist_ok=True)
-    (contracts_test_source / "FixtureTests.swift").write_text(
-        "@testable import PublishingAgentContracts\n",
         encoding="utf-8",
     )
     (root / "Package.swift").write_text("// fixture manifest\n", encoding="utf-8")
@@ -392,13 +366,12 @@ def main() -> int:
         decoded = json.loads(first_report)
         assert decoded["status"] == "passed"
         assert decoded["schemaVersion"] == "2"
-        assert decoded["policyVersion"] == "swift-module-boundaries-v4"
-        assert decoded["tool"]["version"] == "4"
-        assert decoded["targetTypeCounts"] == {"executable": 1, "regular": 11, "test": 10}
+        assert decoded["policyVersion"] == "swift-module-boundaries-v5"
+        assert decoded["tool"]["version"] == "5"
+        assert decoded["targetTypeCounts"] == {"executable": 1, "regular": 10, "test": 9}
         assert [product["name"] for product in decoded["products"]] == [
             "PersonalSitePublisherMac",
             "PublishingAICore",
-            "PublishingAgentContracts",
             "PublishingBackupCore",
             "PublishingGitCore",
             "PublishingKnowledgeCore",
@@ -414,7 +387,6 @@ def main() -> int:
             decoded["externalProductEdges"], key=lambda edge: (edge["from"], edge["product"])
         )
         assert decoded["topologicalOrder"]
-        assert decoded["coreSourceMetrics"]["PublishingAgentContracts"]["swiftFileCount"] == 1
         assert decoded["coreSourceMetrics"]["PublishingWorkbenchCore"]["swiftFileCount"] == 2
         assert decoded["compatibilityUmbrellaConsumerMetrics"]["Tests"]["workbenchImportCount"] == 1
         assert decoded["umbrellaRetirement"]["enforced"] is False
@@ -450,7 +422,6 @@ def main() -> int:
         assert workbench_reachable == sorted(
             [
                 "PublishingAICore",
-                "PublishingAgentContracts",
                 "PublishingCoreSupport",
                 "PublishingDomainContracts",
                 "PublishingGitCore",
@@ -568,18 +539,6 @@ def main() -> int:
     ai_target["dependencies"].append(dependency("PublishingMarkdownCore"))
     expect_rejected(extra_ai_edge, message="PublishingAICore dependencies differ")
 
-    reverse_agent_contracts = valid_payload()
-    contracts_target = next(
-        item
-        for item in reverse_agent_contracts["targets"]
-        if item["name"] == "PublishingAgentContracts"
-    )
-    contracts_target["dependencies"].append(dependency("PublishingWorkbenchCore"))
-    expect_rejected(
-        reverse_agent_contracts,
-        message="dependency cycle",
-    )
-
     reverse_leaf = valid_payload()
     git_target = next(item for item in reverse_leaf["targets"] if item["name"] == "PublishingGitCore")
     git_target["dependencies"].append(dependency("PublishingWorkbenchCore"))
@@ -632,6 +591,15 @@ def main() -> int:
         transitive_import,
         extra_sources={
             "Sources/PublishingGitCore/TransitiveImport.swift": "import PublishingMarkdownCore\n",
+        },
+        message="imports internal module(s) without direct target dependency",
+    )
+
+    expect_rejected(
+        valid_payload(),
+        extra_sources={
+            "Tests/PersonalSitePublisherMacTests/TransitiveSyncImport.swift":
+                "import PublishingSyncCore\n",
         },
         message="imports internal module(s) without direct target dependency",
     )
@@ -846,6 +814,27 @@ import PublishingDomainContracts
     expect_rejected(valid_payload(), source=extra_export, message="extra=")
     duplicate_export = EXPECTED_EXPORT_SOURCE + "@_exported import PublishingAICore\n"
     expect_rejected(valid_payload(), source=duplicate_export, message="duplicate=")
+    restored_runtime_contract_export = (
+        EXPECTED_EXPORT_SOURCE + "@_exported import PublishingAgentContracts\n"
+    )
+    expect_rejected(
+        valid_payload(),
+        source=restored_runtime_contract_export,
+        message="extra=['PublishingAgentContracts']",
+    )
+
+    restored_runtime_contract_target = valid_payload()
+    restored_runtime_contract_target["targets"].append(
+        target(
+            "PublishingAgentContracts",
+            "regular",
+            [dependency("PublishingAICore")],
+        )
+    )
+    expect_rejected(
+        restored_runtime_contract_target,
+        message="production targets violate exact allowlist",
+    )
 
     added_test_target = valid_payload()
     added_test_target["targets"].append(

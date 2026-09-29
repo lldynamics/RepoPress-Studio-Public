@@ -453,7 +453,7 @@ final class LocalContentImportServiceTests: XCTestCase {
     XCTAssertEqual(rejected.skippedPaths, ["static/not-an-article.md"])
   }
 
-  func testStoreImportMergesByRepositoryPath() throws {
+  func testStoreImportMergesByRepositoryPath() async throws {
     let rootURL = try temporaryDirectory()
     try FileManager.default.createDirectory(
       at: rootURL.appendingPathComponent("content/posts", isDirectory: true),
@@ -477,7 +477,7 @@ final class LocalContentImportServiceTests: XCTestCase {
     profile.markdownPathPattern = "content/posts/{slug}.md"
     store.updateActiveProfile(profile)
 
-    let firstSummary = store.importDraftsFromLocalRepository()
+    let firstSummary = await store.importDraftsFromLocalRepositoryAsync()
     XCTAssertEqual(firstSummary.insertedCount, 1)
     XCTAssertEqual(firstSummary.updatedCount, 0)
     let importedID = try XCTUnwrap(
@@ -492,7 +492,7 @@ final class LocalContentImportServiceTests: XCTestCase {
     Updated body
     """.write(to: articleURL, atomically: true, encoding: .utf8)
 
-    let secondSummary = store.importDraftsFromLocalRepository()
+    let secondSummary = await store.importDraftsFromLocalRepositoryAsync()
     XCTAssertEqual(secondSummary.insertedCount, 0)
     XCTAssertEqual(secondSummary.updatedCount, 1)
     let updatedDraft = try XCTUnwrap(
@@ -737,131 +737,6 @@ final class LocalContentImportServiceTests: XCTestCase {
 
     XCTAssertEqual(result.outcome, .cancelled)
     XCTAssertNil(store.repositoryReport)
-  }
-
-  func testMissingPrivateBackfillAddsOnlyNewPrivateDraftsWithoutOverwriting() async throws {
-    let rootURL = try temporaryDirectory()
-    try FileManager.default.createDirectory(
-      at: rootURL.appendingPathComponent("content/posts", isDirectory: true),
-      withIntermediateDirectories: true
-    )
-    try FileManager.default.createDirectory(
-      at: rootURL.appendingPathComponent("private/posts", isDirectory: true),
-      withIntermediateDirectories: true
-    )
-    try "Public body".write(
-      to: rootURL.appendingPathComponent("content/posts/public.md"),
-      atomically: true,
-      encoding: .utf8
-    )
-    try """
-    +++
-    title = "Repository Existing"
-    +++
-
-    Repository body.
-    """.write(
-      to: rootURL.appendingPathComponent("private/posts/existing.md"),
-      atomically: true,
-      encoding: .utf8
-    )
-    try """
-    +++
-    title = "New Private"
-    +++
-
-    New private body.
-    """.write(
-      to: rootURL.appendingPathComponent("private/posts/new-private.md"),
-      atomically: true,
-      encoding: .utf8
-    )
-
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
-    var profile = store.activeProfile
-    profile.rememberLocalRepositoryRoot(rootURL)
-    profile.contentRoot = "content"
-    profile.markdownPathPattern = "content/posts/{slug}.md"
-    store.updateActiveProfile(profile)
-    let locallyEdited = ArticleDraft(
-      siteProfileID: profile.id,
-      title: "Keep Local Edit",
-      visibility: .private,
-      bodyMarkdown: "Locally edited body.",
-      repositoryPath: "private/posts/existing.md"
-    )
-    store.setDrafts([locallyEdited])
-
-    let firstInsertedCount = await store.importMissingPrivateDraftsFromLocalRepository()
-    let secondInsertedCount = await store.importMissingPrivateDraftsFromLocalRepository()
-
-    XCTAssertEqual(firstInsertedCount, 1)
-    XCTAssertEqual(secondInsertedCount, 0)
-    XCTAssertEqual(store.drafts.count, 2)
-    XCTAssertEqual(
-      store.drafts.first { $0.repositoryPath == "private/posts/existing.md" }?.title,
-      "Keep Local Edit")
-    XCTAssertEqual(
-      store.drafts.first { $0.repositoryPath == "private/posts/existing.md" }?.bodyMarkdown,
-      "Locally edited body.")
-    XCTAssertEqual(
-      store.drafts.first { $0.repositoryPath == "private/posts/new-private.md" }?.visibility,
-      .private)
-    XCTAssertNil(store.drafts.first { $0.repositoryPath == "content/posts/public.md" })
-  }
-
-  func testStoreImportsSingleDraftAndMergesByRepositoryPath() throws {
-    let rootURL = try temporaryDirectory()
-    try FileManager.default.createDirectory(
-      at: rootURL.appendingPathComponent("content/posts", isDirectory: true),
-      withIntermediateDirectories: true
-    )
-    let articleURL = rootURL.appendingPathComponent("content/posts/single.md")
-    try """
-    ---
-    title: "Single Store Import"
-    slug: single
-    ---
-
-    First body
-    """.write(to: articleURL, atomically: true, encoding: .utf8)
-
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
-    var profile = store.activeProfile
-    profile.rememberLocalRepositoryRoot(rootURL)
-    profile.contentRoot = "content"
-    profile.markdownPathPattern = "content/posts/{slug}.md"
-    store.updateActiveProfile(profile)
-
-    let firstSummary = store.importDraftFromLocalRepository(
-      repositoryPath: "content/posts/single.md")
-    XCTAssertEqual(firstSummary.insertedCount, 1)
-    XCTAssertEqual(firstSummary.updatedCount, 0)
-    XCTAssertEqual(store.selectedSection, .writing)
-    let importedID = try XCTUnwrap(
-      store.drafts.first { $0.repositoryPath == "content/posts/single.md" }?.id)
-    XCTAssertEqual(store.selectedDraftID, importedID)
-
-    try """
-    ---
-    title: "Single Store Import Updated"
-    slug: single
-    ---
-
-    Updated body
-    """.write(to: articleURL, atomically: true, encoding: .utf8)
-
-    let secondSummary = store.importDraftFromLocalRepository(
-      repositoryPath: "content/posts/single.md")
-    XCTAssertEqual(secondSummary.insertedCount, 0)
-    XCTAssertEqual(secondSummary.updatedCount, 1)
-    let updatedDraft = try XCTUnwrap(
-      store.drafts.first { $0.repositoryPath == "content/posts/single.md" })
-    XCTAssertEqual(updatedDraft.id, importedID)
-    XCTAssertEqual(updatedDraft.title, "Single Store Import Updated")
-    XCTAssertEqual(updatedDraft.bodyMarkdown, "Updated body")
   }
 
   func testStoreImportsOnlyChangedArticleDraftsFromRepositoryReport() async throws {
@@ -1566,17 +1441,17 @@ final class LocalContentImportServiceTests: XCTestCase {
     XCTAssertEqual(result.importedDrafts.map(\.repositoryPath), ["content/index.md"])
   }
 
-  func testStoreImportRequiresLocalRepositoryRoot() throws {
+  func testStoreImportRequiresLocalRepositoryRoot() async throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
 
-    let summary = store.importDraftsFromLocalRepository()
+    let summary = await store.importDraftsFromLocalRepositoryAsync()
 
     XCTAssertEqual(summary.changedCount, 0)
     XCTAssertEqual(store.publishActionMessage, "选择本地仓库后才能导入文章。")
   }
 
-  func testStoreImportReportsUnavailableRepositoryInsteadOfSuccess() throws {
+  func testStoreImportReportsUnavailableRepositoryInsteadOfSuccess() async throws {
     let missingRootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
       "missing-local-content-root-\(UUID().uuidString)",
       isDirectory: true
@@ -1587,7 +1462,7 @@ final class LocalContentImportServiceTests: XCTestCase {
     profile.localRepositoryRootPath = missingRootURL.path
     store.updateActiveProfile(profile)
 
-    let summary = store.importDraftsFromLocalRepository()
+    let summary = await store.importDraftsFromLocalRepositoryAsync()
 
     XCTAssertEqual(summary.changedCount, 0)
     XCTAssertEqual(store.publishActionFeedback?.status, .failure)

@@ -27,7 +27,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
 
     XCTAssertFalse(store.isAIPublishingAssistantPresented)
 
-    store.showAIPublishingAssistant(for: draft.id)
+    XCTAssertTrue(store.openAIChatWorkspace(for: draft.id))
     XCTAssertTrue(store.isAIPublishingAssistantPresented)
     XCTAssertEqual(store.selectedSection, .writing)
 
@@ -115,7 +115,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     let branch = try XCTUnwrap(
       store.branchAIChatConversation(after: second.id, draft: draft)
     )
-    let conversations = store.aiChatConversations(for: draft.id)
+    let conversations = store.aiStore.aiChatConversations(for: draft.id)
     let original = try XCTUnwrap(
       conversations.first { $0.id != branch.id }
     )
@@ -123,7 +123,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertEqual(conversations.count, 2)
     XCTAssertEqual(original.messages.map(\.id), [first.id, second.id, third.id, fourth.id])
     XCTAssertEqual(branch.messages.map(\.id), [first.id, second.id])
-    XCTAssertEqual(store.activeAIChatConversationID(for: draft.id), branch.id)
+    XCTAssertEqual(store.aiStore.activeAIChatConversationID(for: draft.id), branch.id)
     XCTAssertEqual(store.aiChatMessages.map(\.id), [first.id, second.id])
     XCTAssertEqual(store.aiChatMessage, "已从所选消息创建分支。")
   }
@@ -143,9 +143,15 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
 
     store.prepareAIChat(for: draft)
     store.setAIChatMessages([firstMessage])
-    store.setAIChatConversationTitle("第一条", draft: draft)
+    store.aiStore.cacheCurrentAIChatSessionForAIStore()
+    XCTAssertTrue(
+      store.aiStore.renameAIChatConversation(
+        try XCTUnwrap(store.aiStore.activeAIChatConversationID(for: draft.id)),
+        title: "第一条"
+      )
+    )
     let firstConversationID = try XCTUnwrap(
-      store.activeAIChatConversationID(for: draft.id)
+      store.aiStore.activeAIChatConversationID(for: draft.id)
     )
     let secondConversation = try XCTUnwrap(
       store.startNewAIChatConversation(draft: draft)
@@ -159,28 +165,28 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
 
     XCTAssertTrue(store.archiveAIChatConversation(firstConversationID))
     XCTAssertEqual(
-      store.activeAIChatConversationID(for: draft.id),
+      store.aiStore.activeAIChatConversationID(for: draft.id),
       secondConversation.id
     )
     XCTAssertEqual(store.aiChatConversationTitle, "第二条")
-    XCTAssertEqual(store.aiChatConversations(for: draft.id).count, 1)
+    XCTAssertEqual(store.aiStore.aiChatConversations(for: draft.id).count, 1)
     XCTAssertEqual(
-      store.aiChatConversations(for: draft.id, includingArchived: true).count,
+      store.aiStore.aiChatConversations(for: draft.id, includingArchived: true).count,
       2
     )
 
     XCTAssertTrue(store.restoreAIChatConversation(firstConversationID))
     XCTAssertEqual(
-      store.activeAIChatConversationID(for: draft.id),
+      store.aiStore.activeAIChatConversationID(for: draft.id),
       firstConversationID
     )
     XCTAssertEqual(store.aiChatConversationTitle, "第一条")
-    XCTAssertEqual(store.aiChatConversations(for: draft.id).count, 2)
+    XCTAssertEqual(store.aiStore.aiChatConversations(for: draft.id).count, 2)
 
     XCTAssertTrue(store.archiveAIChatConversation(firstConversationID))
     XCTAssertTrue(store.deleteAIChatConversation(firstConversationID))
     XCTAssertEqual(
-      store.aiChatConversations(for: draft.id, includingArchived: true).map(\.id),
+      store.aiStore.aiChatConversations(for: draft.id, includingArchived: true).map(\.id),
       [secondConversation.id]
     )
   }
@@ -194,14 +200,14 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
 
     store.prepareAIChat(for: draft)
     store.setAIChatContextMode(.general)
-    XCTAssertEqual(store.aiChatConversations(for: draft.id).count, 1)
+    XCTAssertEqual(store.aiStore.aiChatConversations(for: draft.id).count, 1)
     XCTAssertTrue(store.flushPendingChanges())
 
     let reloaded = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL)
     )
     let conversation = try XCTUnwrap(
-      reloaded.aiChatConversations(for: draft.id).first
+      reloaded.aiStore.aiChatConversations(for: draft.id).first
     )
 
     XCTAssertEqual(conversation.contextMode, .general)
@@ -231,11 +237,11 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertEqual(store.selectedDraftID, secondDraft.id)
     XCTAssertEqual(store.aiChatDraftID, secondDraft.id)
     XCTAssertEqual(
-      store.aiChatConversations(for: firstDraft.id).first?.selectedModel,
+      store.aiStore.aiChatConversations(for: firstDraft.id).first?.selectedModel,
       "first-model"
     )
     XCTAssertEqual(
-      store.aiChatConversations(for: secondDraft.id).first?.selectedModel,
+      store.aiStore.aiChatConversations(for: secondDraft.id).first?.selectedModel,
       "second-model"
     )
   }
@@ -381,14 +387,6 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
         .sourceChecklist,
       ]
     )
-
-    let summary = AIPublishingDashboardPromptService.summary()
-
-    XCTAssertEqual(summary.prompts, AIPublishingQuickPrompt.writingDashboardPrompts)
-    XCTAssertEqual(summary.promptCount, AIPublishingQuickPrompt.writingDashboardPrompts.count)
-    XCTAssertTrue(summary.summaryText.contains("续写"))
-    XCTAssertTrue(summary.summaryText.contains("发布检查"))
-    XCTAssertTrue(summary.summaryText.contains("来源清单"))
   }
 
   func testDefaultAICapabilitiesStayLimitedToEightStableChoices() {
@@ -909,7 +907,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     installAIMetadataSuggestionForApplicationTest(suggestion, draft: draft, store: store)
 
     let updated = try XCTUnwrap(
-      store.applyAIMetadataSuggestion(suggestion, draft: draft)
+      store.aiStore.applyAIMetadataSuggestion(suggestion, draft: draft)
     )
 
     XCTAssertEqual(updated.title, "AI 批量标题")
@@ -936,7 +934,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
 
     installAIMetadataSuggestionForApplicationTest(suggestion, draft: draft, store: store)
 
-    XCTAssertNil(store.applyAIMetadataSuggestion(suggestion, draft: draft))
+    XCTAssertNil(store.aiStore.applyAIMetadataSuggestion(suggestion, draft: draft))
     XCTAssertEqual(
       store.aiActionMessage,
       "AI 元数据建议没有可应用的新内容。"
@@ -1146,105 +1144,6 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertTrue(
       AIPublishingActionAvailabilityService.canRun(.continueArticle, draft: bodyDraft)
     )
-  }
-
-  func testAIMetadataApplicationRecordPersistsAndRollsBackChangedFields() async throws {
-    let persistenceURL = try temporaryPersistenceURL()
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL)
-    )
-    let draft = try XCTUnwrap(store.selectedDraft)
-    let suggestion = AIPublishingMetadataSuggestion(
-      titles: ["可回滚标题"],
-      slugs: ["rollback-title.md"],
-      summary: "可回滚摘要",
-      tags: ["AI", "回滚"]
-    )
-
-    installAIMetadataSuggestionForApplicationTest(suggestion, draft: draft, store: store)
-
-    let updated = try XCTUnwrap(
-      store.applyAIMetadataSuggestion(suggestion, draft: draft)
-    )
-    let record = try XCTUnwrap(store.recentAIMetadataApplicationRecords(for: updated).first)
-
-    XCTAssertEqual(record.draftID, draft.id)
-    XCTAssertEqual(record.fields, [.title, .slug, .summary, .tags])
-    XCTAssertEqual(record.previousTitle, draft.title)
-    XCTAssertEqual(record.newTitle, "可回滚标题")
-    XCTAssertEqual(record.previousSlug, draft.slug)
-    XCTAssertEqual(record.newSlug, "rollback-title")
-    XCTAssertEqual(record.previousSummary, draft.summary)
-    XCTAssertEqual(record.newSummary, "可回滚摘要")
-    XCTAssertEqual(record.previousTags, draft.tags)
-    XCTAssertEqual(record.newTags, ["AI", "回滚"])
-    await store.waitForPendingSave()
-
-    let reloadedStore = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL)
-    )
-    let reloadedDraft = try XCTUnwrap(reloadedStore.selectedDraft)
-    XCTAssertEqual(reloadedStore.recentAIMetadataApplicationRecords(for: reloadedDraft).first?.id, record.id)
-
-    let restored = try XCTUnwrap(
-      reloadedStore.rollbackAIMetadataApplicationRecord(record)
-    )
-    XCTAssertEqual(restored.title, draft.title)
-    XCTAssertEqual(restored.slug, draft.slug)
-    XCTAssertEqual(restored.summary, draft.summary)
-    XCTAssertEqual(restored.tags, draft.tags)
-    XCTAssertEqual(
-      reloadedStore.aiActionMessage,
-      "已回滚 AI 元数据应用：标题、Slug、摘要、Tags。"
-    )
-  }
-
-  func testAIMetadataApplicationRecordsBatchRollbackAndClear() throws {
-    let persistenceURL = try temporaryPersistenceURL()
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL)
-    )
-    let draft = try XCTUnwrap(store.selectedDraft)
-    let titleSuggestion = AIPublishingMetadataSuggestion(
-      titles: ["批量回滚标题"],
-      summary: "批量回滚摘要"
-    )
-    let tagSuggestion = AIPublishingMetadataSuggestion(
-      tags: ["AI", "批量回滚"]
-    )
-
-    installAIMetadataSuggestionForApplicationTest(titleSuggestion, draft: draft, store: store)
-    let firstUpdate = try XCTUnwrap(store.applyAIMetadataSuggestion(titleSuggestion, draft: draft))
-    installAIMetadataSuggestionForApplicationTest(tagSuggestion, draft: firstUpdate, store: store)
-    let secondUpdate = try XCTUnwrap(store.applyAIMetadataSuggestion(tagSuggestion, draft: firstUpdate))
-    let records = store.recentAIMetadataApplicationRecords(for: secondUpdate)
-
-    XCTAssertEqual(records.count, 2)
-
-    let result = store.rollbackAIMetadataApplicationRecords(records)
-
-    XCTAssertEqual(result.requestedCount, 2)
-    XCTAssertEqual(result.restoredCount, 2)
-    XCTAssertEqual(result.skippedCount, 0)
-    XCTAssertTrue(result.failures.isEmpty)
-    let restored = try XCTUnwrap(store.selectedDraft)
-    XCTAssertEqual(restored.title, draft.title)
-    XCTAssertEqual(restored.summary, draft.summary)
-    XCTAssertEqual(restored.tags, draft.tags)
-    XCTAssertEqual(
-      store.aiActionMessage,
-      "AI 元数据批量回滚完成：恢复 2 条，跳过 0 条，失败 0 条。"
-    )
-
-    let repeatedResult = store.rollbackAIMetadataApplicationRecords(records)
-
-    XCTAssertEqual(repeatedResult.restoredCount, 0)
-    XCTAssertEqual(repeatedResult.skippedCount, 2)
-
-    store.clearAIMetadataApplicationRecords(for: restored)
-
-    XCTAssertTrue(store.recentAIMetadataApplicationRecords(for: restored).isEmpty)
-    XCTAssertEqual(store.aiActionMessage, "已清空当前文章的 AI 应用记录。")
   }
 
   private func temporaryPersistenceURL() throws -> URL {

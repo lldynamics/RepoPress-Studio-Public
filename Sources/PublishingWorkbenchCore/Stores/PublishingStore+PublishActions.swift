@@ -720,10 +720,6 @@ extension PublishingStore {
     }
   }
 
-  public func preferredLocalGitPublishMode(for profile: SiteProfile) -> LocalGitPublishMode {
-    profile.repositoryPublishStrategy == .direct ? .directCommit : .reviewBranch
-  }
-
   public func preferredRemoteRepositoryPublishMode(for profile: SiteProfile)
     -> RemoteRepositoryPublishMode
   {
@@ -875,36 +871,6 @@ extension PublishingStore {
     }
   }
 
-  func confirmLocalGitPublishLifecycle(
-    package: PublishPackage,
-    mode: LocalGitPublishMode
-  ) {
-    guard mode == .directCommit,
-      let index = drafts.firstIndex(where: { $0.id == package.draftID })
-    else {
-      return
-    }
-    let previousDraft = drafts[index]
-    let profile = profile(for: previousDraft)
-    let confirmedPath = package.markdownPath.normalizedRelativePath()
-    let renderedDigest =
-      package.markdownFile?.content
-      .map(ArticleDraft.repositoryDocumentDigest)
-      ?? previousDraft.renderedRepositoryContentDigest(profile: profile)
-    var updatedDraft = previousDraft
-    updatedDraft.recordProjectFile(
-      profile: profile,
-      repositoryPath: confirmedPath,
-      renderedContentDigest: renderedDigest
-    )
-    updatedDraft.repositoryImportFingerprint = updatedDraft.repositoryContentFingerprint
-    if updatedDraft != previousDraft {
-      updatedDraft.markUpdated(at: previousDraft.updatedAt, replacing: previousDraft)
-      drafts[index] = updatedDraft
-    }
-    removeDraftPublishPreviewSnapshot(for: package.draftID)
-  }
-
   func confirmDirectRemotePublishLifecycle(
     packages: [PublishPackage],
     result: RemoteRepositoryPublishResult
@@ -984,5 +950,4 @@ extension PublishingStore {
       commitSHA: commitSHA
     )
   }
-
 }

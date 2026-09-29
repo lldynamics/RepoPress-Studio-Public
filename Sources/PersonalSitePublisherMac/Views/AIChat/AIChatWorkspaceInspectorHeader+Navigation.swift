@@ -82,15 +82,6 @@ extension AIChatContextInspectorView {
     }
   }
 
-  func localizedAgentModeTitle(_ mode: AIConversationAgentMode) -> String {
-    switch mode {
-    case .inheritConnection:
-      return String(localized: "跟随连接")
-    case .textOnly:
-      return String(localized: "仅问答")
-    }
-  }
-
   func openAISettings() {
     SettingsNavigation.present(
       destination: .ai(.connection),
@@ -140,19 +131,4 @@ extension AIChatContextInspectorView {
     )
   }
 
-  var agentModeBinding: Binding<AIConversationAgentMode> {
-    Binding(
-      get: {
-        ai.conversationAgentMode(for: inspectorSurfaceConversationID)
-          ?? .inheritConnection
-      },
-      set: { mode in
-        guard !isChatBusy else { return }
-        _ = ai.setConversationAgentMode(
-          mode,
-          conversationID: inspectorSurfaceConversationID
-        )
-      }
-    )
-  }
 }

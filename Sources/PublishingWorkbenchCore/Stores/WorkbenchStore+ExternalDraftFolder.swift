@@ -61,6 +61,12 @@ extension WorkbenchStore {
   /// Reads an external Markdown directory into linked general drafts. A file
   /// changed in both applications is left untouched on both sides.
   public func scanExternalDraftFolder() async -> ExternalDraftFolderScanSummary {
+    await scanExternalDraftFolder { try await ExternalDraftFolderService().scanAsync(rootURL: $0) }
+  }
+
+  func scanExternalDraftFolder(
+    using scan: @Sendable (URL) async throws -> [ExternalDraftFile]
+  ) async -> ExternalDraftFolderScanSummary {
     var summary = ExternalDraftFolderScanSummary()
     guard !isSafeMode,
       let mapping = activeProfile.externalDraftFolder
@@ -77,11 +83,20 @@ extension WorkbenchStore {
 
     externalDraftFolderScanGeneration &+= 1
     let generation = externalDraftFolderScanGeneration
+    let initialSources = Dictionary(
+      uniqueKeysWithValues: drafts.compactMap { draft in
+        draft.externalDraftSource.map { (draft.id, $0) }
+      })
+    let initialWriteGenerations = externalDraftWriteGenerations
+    let initialPaths = Set(
+      initialSources.values.filter {
+        $0.mappingID == mapping.id || $0.isDetached(in: mapping)
+      }.map(\.relativePath))
     let files: [ExternalDraftFile]
     do {
-      files = try await Task.detached(priority: .utility) {
-        try ExternalDraftFolderService().scan(rootURL: mapping.directoryURL)
-      }.value
+      files = try await scan(mapping.directoryURL)
+    } catch is CancellationError {
+      return summary
     } catch {
       summary.errorMessage = CoreL10n.format(
         "外部草稿文件夹无法扫描：%@",
@@ -117,6 +132,14 @@ extension WorkbenchStore {
             || existingSource.isDetached(in: mapping))
       }) {
         guard let previousSource = existing.externalDraftSource else { continue }
+        // A scan describes the source baseline at its start. A completed
+        // writeback (or an edit still being written) makes that row stale.
+        // Never install its old bytes against a newly accepted fingerprint.
+        guard initialSources[existing.id] == previousSource,
+          initialWriteGenerations[existing.id, default: 0]
+            == externalDraftWriteGenerations[existing.id, default: 0],
+          !externalDraftWritesInProgress.contains(existing.id)
+        else { continue }
         guard previousSource.importedFingerprint != file.fingerprint || previousSource.isDetached
         else {
           externalDraftConflicts.remove(existing.id)
@@ -166,6 +189,9 @@ extension WorkbenchStore {
         externalDraftConflicts.remove(refreshed.id)
         summary.refreshedCount += 1
       } else {
+        // Deleting or detaching a draft while I/O was suspended must not
+        // resurrect it as another imported draft from the old snapshot.
+        guard !initialPaths.contains(file.relativePath) else { continue }
         let draft = ArticleDraft(
           siteProfileID: profileID,
           scope: .general,
@@ -254,9 +280,7 @@ extension WorkbenchStore {
 
     let files: [ExternalDraftFile]
     do {
-      files = try await Task.detached(priority: .utility) {
-        try ExternalDraftFolderService().scan(rootURL: mapping.directoryURL)
-      }.value
+      files = try await ExternalDraftFolderService().scanAsync(rootURL: mapping.directoryURL)
     } catch { return false }
     guard !Task.isCancelled,
       let file = files.first(where: { $0.relativePath == source.relativePath }),

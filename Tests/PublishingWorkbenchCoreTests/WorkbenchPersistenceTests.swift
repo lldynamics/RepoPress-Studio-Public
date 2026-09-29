@@ -255,7 +255,8 @@ final class WorkbenchPersistenceTests: XCTestCase {
   }
 
   func testSoftwareGuidesFollowPreferredChineseAndEnglishLanguage() {
-    let profile = SiteProfile.defaultProfile
+    var profile = SiteProfile.defaultProfile
+    profile.defaultAuthor = "Guide Author"
     let now = Date(timeIntervalSince1970: 1_900_000_000)
     let chinese = ArticleDraft.samples(
       profile: profile,
@@ -287,6 +288,16 @@ final class WorkbenchPersistenceTests: XCTestCase {
       (chinese + english).allSatisfy {
         !$0.bodyMarkdown.contains("Site Starter") && !$0.bodyMarkdown.contains("建站")
       })
+  }
+
+  func testSoftwareGuidesDoNotInventAuthorsForUnconfiguredProfiles() {
+    let profile = SiteProfile.defaultProfile
+    XCTAssertTrue(profile.defaultAuthor.isEmpty)
+    for language in ["zh-Hans", "en-US"] {
+      let guides = ArticleDraft.samples(profile: profile, preferredLanguage: language)
+      XCTAssertFalse(guides.isEmpty)
+      XCTAssertTrue(guides.allSatisfy { $0.authors.isEmpty })
+    }
   }
 
   func testRetiredBrowserGuideRefreshesOnlyManagedContent() throws {
@@ -616,30 +627,6 @@ final class WorkbenchPersistenceTests: XCTestCase {
 
     XCTAssertEqual(
       ReleaseRecord.limitedHistory(records).map(\.title), ["Running", "Failed", "Success"])
-  }
-
-  func testImageOptimizationCachePrunesOnlyUnreferencedBatchFolders() throws {
-    let persistence = WorkbenchPersistence(fileURL: temporaryPersistenceURL())
-    let rootURL = persistence.imageOptimizationDirectoryURL
-    let referencedBatch = rootURL.appendingPathComponent(
-      ".image-batch-referenced", isDirectory: true)
-    let abandonedBatch = rootURL.appendingPathComponent(".image-batch-abandoned", isDirectory: true)
-    let userFolder = rootURL.appendingPathComponent("manual-assets", isDirectory: true)
-    try FileManager.default.createDirectory(at: referencedBatch, withIntermediateDirectories: true)
-    try FileManager.default.createDirectory(at: abandonedBatch, withIntermediateDirectories: true)
-    try FileManager.default.createDirectory(at: userFolder, withIntermediateDirectories: true)
-    let referencedImage = referencedBatch.appendingPathComponent("image.jpg")
-    try Data([1, 2, 3]).write(to: referencedImage)
-    try Data([4, 5, 6]).write(to: abandonedBatch.appendingPathComponent("old.jpg"))
-
-    let removedCount = persistence.pruneUnreferencedImageOptimizationBatches(
-      referencedSourceFilePaths: [referencedImage.path, "/tmp/not-in-cache.jpg"]
-    )
-
-    XCTAssertEqual(removedCount, 1)
-    XCTAssertTrue(FileManager.default.fileExists(atPath: referencedBatch.path))
-    XCTAssertFalse(FileManager.default.fileExists(atPath: abandonedBatch.path))
-    XCTAssertTrue(FileManager.default.fileExists(atPath: userFolder.path))
   }
 
   func testCorruptPrimaryRecoversLastKnownGoodSnapshot() throws {

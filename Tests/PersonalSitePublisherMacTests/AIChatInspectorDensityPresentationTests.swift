@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import PersonalSitePublisherMac
 
 final class AIChatInspectorDensityPresentationTests: XCTestCase {
@@ -27,7 +28,7 @@ final class AIChatInspectorDensityPresentationTests: XCTestCase {
       agentTitle: "仅问答"
     )
 
-    XCTAssertEqual(summary, "通用聊天：不读取当前文章 · 2 项手动引用 · 资料库：自动检索 · Agent：仅问答")
+    XCTAssertEqual(summary, "通用聊天：不读取当前文章 · 2 项手动引用 · 资料库：自动检索")
   }
 
   func testCollapsedAccessibilityValueExplainsHowToReachFullDetails() {

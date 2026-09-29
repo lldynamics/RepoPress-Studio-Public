@@ -22,55 +22,6 @@ enum AIChatDataSharingConsentPolicy {
 
 extension AIChatContextInspectorView {
 
-  var agentToolAvailability: AIChatAgentToolAvailability? {
-    guard let mode = ai.conversationAgentMode(for: inspectorSurfaceConversationID) else {
-      return nil
-    }
-    return AIChatAgentToolAvailabilityPresentation.availability(
-      config: currentAIProviderConfig,
-      conversationMode: mode
-    )
-  }
-
-  @ViewBuilder
-  var agentToolsUnavailableBanner: some View {
-    if let availability = agentToolAvailability,
-      let message = availability.message,
-      let actionTitle = availability.actionTitle
-    {
-      HStack(alignment: .center, spacing: 10) {
-        Label(message, systemImage: "sparkles")
-          .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-
-        Spacer(minLength: 8)
-
-        Button(actionTitle) {
-          switch availability {
-          case .conversationTextOnly:
-            _ = ai.setConversationAgentMode(
-              .inheritConnection,
-              conversationID: inspectorSurfaceConversationID
-            )
-          case .connectionDisabled, .draftCreationDenied, .capabilityUnknown,
-            .capabilityUnsupported:
-            openAISettings()
-          case .available:
-            break
-          }
-        }
-        .controlSize(.small)
-        .disabled(isChatBusy)
-      }
-      .padding(.horizontal, 12)
-      .padding(.vertical, 8)
-      .background(Color.orange.opacity(0.08))
-      .accessibilityElement(children: .contain)
-      .accessibilityIdentifier("ai-assistant-agent-unavailable")
-    }
-  }
-
   var messageComposer: some View {
     VStack(alignment: .leading, spacing: 8) {
       if let status = inspectorStatusText {
@@ -120,8 +71,6 @@ extension AIChatContextInspectorView {
         .padding(.vertical, 4)
         .background(workbenchAccentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
       }
-
-      AIOutboundPayloadSummaryView(scopeID: inspectorSurfaceConversationID)
 
       VStack(alignment: .leading, spacing: 8) {
         if !selectedContextReferences.isEmpty {
@@ -439,9 +388,6 @@ extension AIChatContextInspectorView {
   }
 
   var isComposerInputUnavailable: Bool {
-    if isAIKeyMissing {
-      return true
-    }
     if ai.chatContextMode == .general {
       return ai.generalChatConversation(withID: inspectorSurfaceConversationID)?.isArchived == true
         || isChatBusy
@@ -453,15 +399,14 @@ extension AIChatContextInspectorView {
     (!trimmedInput.isEmpty || !selectedChatImageAttachmentIDs.isEmpty)
       && !isComposerInputUnavailable
       && !isAIKeyMissing
+      && isCodexConnectionReadyForSending
   }
 
   func submitMessage() {
     let draft = ai.chatContextMode == .site ? inspectorDraft : nil
     guard ai.chatContextMode == .general || draft != nil else { return }
     let message = trimmedInput
-    guard !message.isEmpty || !selectedChatImageAttachmentIDs.isEmpty,
-      !isChatBusy
-    else { return }
+    guard canSubmitMessage else { return }
     let config = currentAIProviderConfig
     let consent = ai.dataSharingConsent(for: config)
     if AIChatDataSharingConsentPolicy.requiresConfirmation(consent) {

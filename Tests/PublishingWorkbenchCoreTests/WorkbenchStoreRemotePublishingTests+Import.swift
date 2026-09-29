@@ -58,8 +58,8 @@ final class WorkbenchStoreRemotePublishingImportTests: WorkbenchStoreRemotePubli
     store.updateActiveProfile(profile)
     await store.scanRepositoryAsync()
 
-    let summary = await store.importRemoteDraftFromRepository(
-      repositoryPath: "content/posts/remote-draft.md")
+    let summary = await store.importRemoteArticleDraftsFromRepository(
+      repositoryPaths: ["content/posts/remote-draft.md"])
 
     XCTAssertEqual(summary.insertedCount, 1)
     XCTAssertEqual(summary.updatedCount, 0)
@@ -78,8 +78,7 @@ final class WorkbenchStoreRemotePublishingImportTests: WorkbenchStoreRemotePubli
     XCTAssertEqual(imported.repositorySHA, remoteBlobSHA)
     XCTAssertEqual(store.selectedDraftID, imported.id)
     XCTAssertEqual(store.selectedSection, .writing)
-    XCTAssertEqual(
-      store.publishActionMessage, "已从 origin/main 导入远端文章 content/posts/remote-draft.md。")
+    XCTAssertEqual(store.publishActionMessage, "已从远端文章变更导入 1 篇、更新 0 篇。")
   }
 
   func testImportsRemoteChangedArticleDraftsFromUpstreamQueue() async throws {
@@ -144,7 +143,9 @@ final class WorkbenchStoreRemotePublishingImportTests: WorkbenchStoreRemotePubli
     XCTAssertEqual(store.repositoryAutoSyncState.nonArticleRemoteChangedFileCount, 1)
     XCTAssertTrue(store.repositoryAutoSyncState.message.contains("其中 2 个文章候选路径可手动尝试导入"))
 
-    let summary = await store.importRemoteChangedArticleDraftsFromRepository()
+    let summary = await store.importRemoteArticleDraftsFromRepository(
+      repositoryPaths: (store.repositoryReport?.remoteChangedFiles ?? []).map(\.displayPath)
+    )
 
     XCTAssertEqual(summary.insertedCount, 2)
     XCTAssertEqual(summary.updatedCount, 0)
@@ -190,18 +191,14 @@ final class WorkbenchStoreRemotePublishingImportTests: WorkbenchStoreRemotePubli
       }
       defer { store.repositoryStore.remoteFileSnapshotTestOverride = nil }
 
-      let summary = await store.importRemoteDraftFromRepository(
-        repositoryPath: "content/posts/wrong-name.md"
-      )
+      let summary = await store.importRemoteArticleDraftsFromRepository(
+        repositoryPaths: ["content/posts/wrong-name.md"])
 
       XCTAssertEqual(summary.changedCount, 0)
       XCTAssertGreaterThan(summary.skippedCount, 0)
       let message = try XCTUnwrap(store.publishActionMessage)
-      XCTAssertTrue(message.contains("已跳过候选文件"), "实际消息：\(message)")
-      XCTAssertTrue(
-        message.contains("文章路径与当前站点发布规则不一致"),
-        "实际消息：\(message)"
-      )
+      XCTAssertTrue(message.contains("跳过 1 个候选文件"), "实际消息：\(message)")
+      XCTAssertTrue(message.contains("未通过导入校验"), "实际消息：\(message)")
     }
   #endif
 
@@ -240,9 +237,8 @@ final class WorkbenchStoreRemotePublishingImportTests: WorkbenchStoreRemotePubli
         await gate.waitUntilEntered()
       }
       let importTask = Task { @MainActor in
-        await store.importRemoteDraftFromRepository(
-          repositoryPath: "content/posts/remote-draft.md"
-        )
+        await store.importRemoteArticleDraftsFromRepository(
+          repositoryPaths: ["content/posts/remote-draft.md"])
       }
       for _ in 0..<20 {
         if await gate.hasEntered() { break }

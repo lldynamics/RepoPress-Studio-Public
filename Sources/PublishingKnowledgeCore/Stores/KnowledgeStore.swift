@@ -29,15 +29,24 @@ public final class KnowledgeStore: ObservableObject {
   var visibleDocumentsCache: [KnowledgeDocument] = []
   var visibleSearchResultsCacheRevision: UInt64?
   var visibleSearchResultsCache: [KnowledgeSearchResult] = []
+  var navigationSnapshotRevision: UInt64?
+  var navigationSnapshotDay: Date?
+  var navigationSnapshot = KnowledgeNavigationSnapshot.empty
+  var navigationSavedCollectionsCache: [KnowledgeSavedCollection] = []
+  var navigationSavedCollectionCounts: [KnowledgeSavedCollection: Int] = [:]
   #if DEBUG
     private(set) var visibleDocumentsSnapshotBuildCount = 0
     private(set) var visibleSearchResultsSnapshotBuildCount = 0
+    var navigationSnapshotBuildCount = 0
+    var navigationSavedCollectionCountBuildCount = 0
   #endif
 
   @Published public internal(set) var listPresentationRevision: UInt64 = 0
+  @Published public internal(set) var navigationRevision: UInt64 = 0
   @Published public internal(set) var documents: [KnowledgeDocument] = [] {
     didSet {
       invalidateListPresentation()
+      invalidateNavigationSnapshot()
       refreshSearchAfterKnowledgeMutation()
     }
   }
@@ -231,7 +240,7 @@ public final class KnowledgeStore: ObservableObject {
   }
 
   public var smartCollections: [KnowledgeSmartCollection] {
-    smartCollectionService.collections(for: documents)
+    navigationDocumentSnapshot().smartCollections
   }
 
   public var backlinkGroups: [KnowledgeBacklinkGroup] {
@@ -304,6 +313,14 @@ public final class KnowledgeStore: ObservableObject {
     listPresentationRevision &+= 1
     visibleDocumentsCacheRevision = nil
     visibleSearchResultsCacheRevision = nil
+  }
+
+  func invalidateNavigationSnapshot() {
+    navigationRevision &+= 1
+    navigationSnapshotRevision = nil
+    navigationSnapshotDay = nil
+    navigationSavedCollectionsCache = []
+    navigationSavedCollectionCounts = [:]
   }
 
   /// Keeps the presentation busy state truthful when several asynchronous
