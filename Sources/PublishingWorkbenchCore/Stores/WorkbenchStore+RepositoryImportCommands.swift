@@ -182,15 +182,17 @@ extension WorkbenchStore {
 
   @discardableResult
   public func importRemoteArticleDraftsFromRepository(
-    repositoryPaths: [String]
+    repositoryPaths: [String],
+    expectedTarget: SiteOperationConfirmationTarget? = nil
   ) async -> LocalContentImportMergeSummary {
-    let profileID = activeProfileID
+    let target = expectedTarget ?? SiteOperationConfirmationTarget(profile: activeProfile)
     let operationResult = await publishingStore.importRemoteArticleDraftsFromRepositoryOperation(
       repositoryPaths: repositoryPaths,
+      expectedTarget: target,
       store: self
     )
     invalidateDraftDerivedCaches()
-    recordContentImport(operationResult, profileID: profileID, kind: .remoteContentImport)
+    recordContentImport(operationResult, profileID: target.profile.id, kind: .remoteContentImport)
     return operationResult.summary
   }
 

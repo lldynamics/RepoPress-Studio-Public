@@ -57,7 +57,10 @@ final class AIChatCompletionClientTests: XCTestCase {
     ) { error in
       XCTAssertEqual(
         error as? AIChatCompletionClientError,
-        .responseTooLarge(maximumBytes: URLSessionAIChatTransport.maximumStreamingResponseByteCount)
+        .acceptedResponseFailure(
+          .responseTooLarge(
+            maximumBytes: URLSessionAIChatTransport.maximumStreamingResponseByteCount)
+        )
       )
     }
   }
@@ -1050,7 +1053,10 @@ final class AIChatCompletionClientTests: XCTestCase {
       for try await _ in stream {}
       XCTFail("Expected stream interruption")
     } catch let error as AIChatCompletionClientError {
-      XCTAssertTrue(error.didReceivePartialContent)
+      XCTAssertFalse(error.didReceivePartialContent)
+      XCTAssertTrue(error.requiresDuplicateChargeConfirmation)
+      XCTAssertFalse(error.isAutomaticallyRetryable)
+      XCTAssertTrue(error.supportsManualRetry)
     }
     let requestCount = await transport.capturedRequestCount()
     XCTAssertEqual(requestCount, 1)
@@ -1085,7 +1091,9 @@ final class AIChatCompletionClientTests: XCTestCase {
 
     await XCTAssertThrowsErrorAsync(try await consume(stream)) { error in
       XCTAssertTrue(error is AIChatCompletionClientError)
-      XCTAssertTrue((error as? AIChatCompletionClientError)?.didReceivePartialContent == true)
+      XCTAssertFalse((error as? AIChatCompletionClientError)?.didReceivePartialContent ?? true)
+      XCTAssertTrue(
+        (error as? AIChatCompletionClientError)?.requiresDuplicateChargeConfirmation == true)
     }
     let requestCount = await transport.capturedRequestCount()
     XCTAssertEqual(requestCount, 1)
@@ -1193,13 +1201,13 @@ final class AIChatCompletionClientTests: XCTestCase {
 
     await XCTAssertThrowsErrorAsync(try await consume(stream)) { error in
       guard
-        case .streamInterruptedAfterPartialContent(let message) =
+        case .partialContentFailure(let failure) =
           error as? AIChatCompletionClientError
       else {
         XCTFail("Expected incomplete partial response, got \(error)")
         return
       }
-      XCTAssertTrue(message.contains("响应不完整"))
+      XCTAssertEqual(failure, .incompleteStream)
     }
     let requestCount = await transport.capturedRequestCount()
     XCTAssertEqual(requestCount, 1)
@@ -1226,7 +1234,8 @@ final class AIChatCompletionClientTests: XCTestCase {
     )
 
     await XCTAssertThrowsErrorAsync(try await consume(stream)) { error in
-      XCTAssertEqual(error as? AIChatCompletionClientError, .incompleteStream)
+      XCTAssertEqual(
+        error as? AIChatCompletionClientError, .acceptedResponseFailure(.incompleteStream))
     }
     let requestCount = await transport.capturedRequestCount()
     XCTAssertEqual(requestCount, 1)
@@ -1567,7 +1576,7 @@ final class AIChatCompletionClientTests: XCTestCase {
       }
       XCTFail("Expected interrupted tool call stream")
     } catch let error as AIChatCompletionClientError {
-      XCTAssertTrue(error.didReceivePartialContent)
+      XCTAssertFalse(error.didReceivePartialContent)
     } catch {
       XCTFail("Unexpected error: \(error)")
     }
@@ -1732,11 +1741,14 @@ final class AIChatCompletionClientTests: XCTestCase {
       for try await _ in stream {}
       XCTFail("Expected first-byte timeout")
     } catch let error as AIChatCompletionClientError {
-      guard case .streamInterruptedAfterPartialContent(let detail) = error else {
+      guard case .firstByteTimedOut(let timeout) = error.underlyingFailure else {
         XCTFail("Expected the accepted HTTP 2xx attempt to stop without replay, got \(error)")
         return
       }
-      XCTAssertTrue(detail.contains("0.0 秒"))
+      XCTAssertGreaterThan(timeout, 0)
+      XCTAssertLessThanOrEqual(timeout, 0.03)
+      XCTAssertFalse(error.didReceivePartialContent)
+      XCTAssertTrue(error.requiresDuplicateChargeConfirmation)
     }
     let requestCount = await transport.capturedRequestCount()
     XCTAssertEqual(requestCount, 1)
@@ -1988,15 +2000,23 @@ final class AIChatCompletionClientTests: XCTestCase {
       for try await _ in stream {}
       XCTFail("Expected sanitized streaming error")
     } catch let error as AIChatCompletionClientError {
-      guard case .streamInterruptedAfterPartialContent(let body) = error else {
+      guard case .httpStatus(200, let body, nil) = error.underlyingFailure else {
         XCTFail("Expected streaming HTTP error, got \(error)")
         return
       }
+      XCTAssertEqual(
+        error, .acceptedResponseFailure(.httpStatus(200, body, retryAfterSeconds: nil)))
       XCTAssertFalse(body.contains(apiKey))
       XCTAssertTrue(body.contains("[REDACTED]"))
       XCTAssertTrue(body.contains("远端响应已截断"))
       XCTAssertLessThan(body.count, 2_100)
+      XCTAssertFalse(error.didReceivePartialContent)
+      XCTAssertTrue(error.requiresDuplicateChargeConfirmation)
+      XCTAssertFalse(error.isAutomaticallyRetryable)
+      XCTAssertTrue(error.supportsManualRetry)
     }
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 1)
   }
 
   func testCompleteRejectsHTTPBeforeSendingAPIKey() async {

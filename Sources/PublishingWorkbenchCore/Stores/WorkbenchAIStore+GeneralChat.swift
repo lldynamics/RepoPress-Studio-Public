@@ -629,6 +629,10 @@ extension WorkbenchAIStore {
       store.setAIChatMessage("找不到当前通用 AI 对话。")
       return nil
     }
+    bindAIChatAuthorization(
+      operationID: operationID, config: minimizedConfig,
+      connectionID: conversation.connectionProfileID
+    )
 
     if generalAIChatRequestsDraftCreation(
       conversation.messages.last(where: { $0.role == .user })?.content ?? ""
@@ -686,7 +690,7 @@ extension WorkbenchAIStore {
         )
       case .nonStreaming:
         return try await generateCompleteGeneralAIChatReply(
-          transport: attempt.transport,
+          attempt: attempt,
           conversationID: conversationID,
           operationID: operationID,
           apiKey: token
@@ -806,39 +810,6 @@ extension WorkbenchAIStore {
     return try aiChatAvailableAPIKey(for: connection)
   }
 
-  private func generateCompleteGeneralAIChatReply(
-    transport: AIPreparedPublishingChatTransport,
-    conversationID: UUID,
-    operationID: UUID,
-    apiKey: String?
-  ) async throws -> AIPublishingChatMessage {
-    let assistantMessage = try await aiPublishingAssistantService.completePrepared(
-      transport,
-      apiKey: apiKey
-    )
-    try checkAIChatOperation(operationID)
-    updateGeneralConversationMessages(conversationID) { $0.append(assistantMessage) }
-    store.setAIChatMessage("AI 已回复。")
-    return assistantMessage
-  }
-
-  private func configureGeneralManualRetry(
-    for error: AIChatCompletionClientError,
-    conversationID: UUID,
-    operationID: UUID
-  ) {
-    guard error.supportsManualRetry else {
-      aiGeneralChatManualRetryState = nil
-      return
-    }
-    aiGeneralChatManualRetryState = AIGeneralChatManualRetryState(
-      conversationID: conversationID,
-      operationID: operationID,
-      requiresDuplicateChargeConfirmation: error.didReceivePartialContent,
-      retryAfter: error.retryAfterSeconds.map { Date().addingTimeInterval($0) }
-    )
-  }
-
   @discardableResult
   public func retryLastFailedGeneralAIChatReply(
     confirmingPossibleDuplicateCharge: Bool = false,
@@ -874,7 +845,7 @@ extension WorkbenchAIStore {
     if retryState.requiresDuplicateChargeConfirmation,
       !confirmingPossibleDuplicateCharge
     {
-      store.setAIChatMessage("已保留部分回复。再次生成可能产生重复内容和费用，请确认后手动重新生成。")
+      store.setAIChatMessage(CoreL10n.text("再次生成可能产生重复内容和费用，请确认后手动重新生成。"))
       return nil
     }
     guard let boundConnectionProfileID = conversation.connectionProfileID,
@@ -909,11 +880,12 @@ extension WorkbenchAIStore {
     aiConversations = aiConversations.map { $0.id == updated.id ? updated : $0 }
     aiGeneralChatManualRetryState = nil
 
-    let result = await generateGeneralAIChatReply(
-      conversationID: conversation.id,
-      operationID: operationID,
-      config: connection.config
-    )
+    let result = await runAIChatRequestTask(operationID: operationID) { [weak self] in
+      guard let self else { return nil }
+      return await self.generateGeneralAIChatReply(
+        conversationID: conversation.id, operationID: operationID, config: connection.config
+      )
+    }
     let didCompleteRetry =
       result != nil
       && aiGeneralChatManualRetryState == nil

@@ -40,13 +40,15 @@ public struct AssetResourceManagerService: Sendable {
   }
 
   public func scan(profile: SiteProfile) throws -> AssetResourceScanReport {
-    guard let report = try profile.withLocalRepositoryRootAccess({ rootURL in
-      try scan(
-        repositoryRootURL: rootURL,
-        assetRoot: profile.assetRoot,
-        profileID: profile.id
-      )
-    }) else {
+    guard
+      let report = try profile.withLocalRepositoryRootAccess({ rootURL in
+        try scan(
+          repositoryRootURL: rootURL,
+          assetRoot: profile.assetRoot,
+          profileID: profile.id
+        )
+      })
+    else {
       throw AssetResourceManagerError.repositoryUnavailable
     }
     return report
@@ -70,7 +72,8 @@ public struct AssetResourceManagerService: Sendable {
     )
     let canonicalAssetRoot = canonicalFileURL(requestedAssetRootURL)
     guard requestedAssetRootURL.path == canonicalAssetRoot.path,
-          isDescendantOrSame(canonicalAssetRoot, root: canonicalRoot) else {
+      isDescendantOrSame(canonicalAssetRoot, root: canonicalRoot)
+    else {
       throw AssetResourceManagerError.invalidAssetRoot
     }
     guard directoryExists(canonicalAssetRoot) else {
@@ -107,15 +110,17 @@ public struct AssetResourceManagerService: Sendable {
     items: [AssetResourceItem],
     reviewedReport: AssetResourceScanReport? = nil
   ) throws -> AssetResourceCleanupResult {
-    guard let result = try profile.withLocalRepositoryRootAccess({ rootURL in
-      try moveOrphanedAssetsToTrash(
-        repositoryRootURL: rootURL,
-        assetRoot: profile.assetRoot,
-        profileID: profile.id,
-        items: items,
-        reviewedReport: reviewedReport
-      )
-    }) else {
+    guard
+      let result = try profile.withLocalRepositoryRootAccess({ rootURL in
+        try moveOrphanedAssetsToTrash(
+          repositoryRootURL: rootURL,
+          assetRoot: profile.assetRoot,
+          profileID: profile.id,
+          items: items,
+          reviewedReport: reviewedReport
+        )
+      })
+    else {
       throw AssetResourceManagerError.repositoryUnavailable
     }
     return result
@@ -125,13 +130,15 @@ public struct AssetResourceManagerService: Sendable {
     profile: SiteProfile,
     items: [AssetResourceItem]
   ) throws -> AssetResourceOptimizationResult {
-    guard let result = try profile.withLocalRepositoryRootAccess({ rootURL in
-      try optimizeAssets(
-        repositoryRootURL: rootURL,
-        assetRoot: profile.assetRoot,
-        items: items
-      )
-    }) else {
+    guard
+      let result = try profile.withLocalRepositoryRootAccess({ rootURL in
+        try optimizeAssets(
+          repositoryRootURL: rootURL,
+          assetRoot: profile.assetRoot,
+          items: items
+        )
+      })
+    else {
       throw AssetResourceManagerError.repositoryUnavailable
     }
     return result
@@ -205,8 +212,10 @@ public struct AssetResourceManagerService: Sendable {
         items.allSatisfy({ reviewedReport.orphanedAssets.contains($0) })
       else { throw AssetResourceManagerError.cleanupReviewChanged }
     }
-    let currentByPath = Dictionary(uniqueKeysWithValues: current.assets.map { ($0.repositoryPath, $0) })
-    let validatePath = try makePathValidator(repositoryRootURL: repositoryRootURL, assetRoot: assetRoot)
+    let currentByPath = Dictionary(
+      uniqueKeysWithValues: current.assets.map { ($0.repositoryPath, $0) })
+    let validatePath = try makePathValidator(
+      repositoryRootURL: repositoryRootURL, assetRoot: assetRoot)
     for item in items {
       try Task.checkCancellation()
       guard item.isOrphaned,
@@ -241,7 +250,8 @@ public struct AssetResourceManagerService: Sendable {
       do {
         let sourceURL = try validated(item)
         let originalSize = try currentFileSize(at: sourceURL, expected: item.byteSize)
-        let temporaryURL = sourceURL
+        let temporaryURL =
+          sourceURL
           .deletingLastPathComponent()
           .appendingPathComponent(".asset-manager-\(UUID().uuidString).\(sourceURL.pathExtension)")
         defer { try? fileManager.removeItem(at: temporaryURL) }
@@ -279,12 +289,14 @@ public struct AssetResourceManagerService: Sendable {
 
   private func writeOptimizedImage(from sourceURL: URL, to destinationURL: URL) throws {
     guard let source = CGImageSourceCreateWithURL(sourceURL as CFURL, nil),
-          let sourceType = CGImageSourceGetType(source) else {
+      let sourceType = CGImageSourceGetType(source)
+    else {
       throw AssetResourceManagerError.unsafeAssetPath(sourceURL.lastPathComponent)
     }
 
     guard let dimensions = imageDimensions(at: sourceURL),
-          Int64(dimensions.width) * Int64(dimensions.height) <= Self.maximumSafeInputPixelCount else {
+      Int64(dimensions.width) * Int64(dimensions.height) <= Self.maximumSafeInputPixelCount
+    else {
       throw AssetResourceManagerError.unsafeAssetPath(sourceURL.lastPathComponent)
     }
 
@@ -295,19 +307,22 @@ public struct AssetResourceManagerService: Sendable {
     } else {
       destinationType = sourceType
     }
-    guard let destination = CGImageDestinationCreateWithURL(
-      destinationURL as CFURL,
-      destinationType,
-      1,
-      nil
-    ) else {
+    guard
+      let destination = CGImageDestinationCreateWithURL(
+        destinationURL as CFURL,
+        destinationType,
+        1,
+        nil
+      )
+    else {
       throw AssetResourceManagerError.unsafeAssetPath(sourceURL.lastPathComponent)
     }
 
     if extensionName == "jpg" || extensionName == "jpeg" || extensionName == "heic" {
-      let options = [
-        kCGImageDestinationLossyCompressionQuality: 0.80,
-      ] as CFDictionary
+      let options =
+        [
+          kCGImageDestinationLossyCompressionQuality: 0.80
+        ] as CFDictionary
       CGImageDestinationAddImageFromSource(destination, source, 0, options)
     } else {
       CGImageDestinationAddImageFromSource(destination, source, 0, nil)
@@ -330,23 +345,27 @@ public struct AssetResourceManagerService: Sendable {
     )
     let canonicalAssetRoot = canonicalFileURL(requestedAssetRoot)
     guard requestedAssetRoot.path == canonicalAssetRoot.path,
-          isDescendantOrSame(canonicalAssetRoot, root: canonicalRoot),
-          directoryExists(canonicalAssetRoot) else {
+      isDescendantOrSame(canonicalAssetRoot, root: canonicalRoot),
+      directoryExists(canonicalAssetRoot)
+    else {
       throw AssetResourceManagerError.invalidAssetRoot
     }
 
     return { item in
       let normalizedPath = try self.normalizedRelativePath(item.repositoryPath)
-      guard normalizedPath == normalizedAssetRoot
-        || normalizedPath.hasPrefix(normalizedAssetRoot + "/") else {
+      guard
+        normalizedPath == normalizedAssetRoot
+          || normalizedPath.hasPrefix(normalizedAssetRoot + "/")
+      else {
         throw AssetResourceManagerError.unsafeAssetPath(normalizedPath)
       }
       let requestedURL = URL(fileURLWithPath: canonicalRoot.path + "/" + normalizedPath)
       let canonicalURL = self.canonicalFileURL(requestedURL)
       guard requestedURL.path == canonicalURL.path,
-            self.isDescendantOrSame(canonicalURL, root: canonicalAssetRoot),
-            self.isDescendantOrSame(canonicalURL, root: canonicalRoot),
-            self.fileManager.fileExists(atPath: canonicalURL.path) else {
+        self.isDescendantOrSame(canonicalURL, root: canonicalAssetRoot),
+        self.isDescendantOrSame(canonicalURL, root: canonicalRoot),
+        self.fileManager.fileExists(atPath: canonicalURL.path)
+      else {
         throw AssetResourceManagerError.unsafeAssetPath(normalizedPath)
       }
       let values = try canonicalURL.resourceValues(
@@ -360,8 +379,9 @@ public struct AssetResourceManagerService: Sendable {
         throw AssetResourceManagerError.unsafeAssetPath(normalizedPath)
       }
       if let expectedModifiedAt = item.modifiedAt,
-         let currentModifiedAt = values.contentModificationDate,
-         abs(currentModifiedAt.timeIntervalSince(expectedModifiedAt)) > 0.001 {
+        let currentModifiedAt = values.contentModificationDate,
+        abs(currentModifiedAt.timeIntervalSince(expectedModifiedAt)) > 0.001
+      {
         throw AssetResourceManagerError.unsafeAssetPath(normalizedPath)
       }
       return canonicalURL
@@ -395,11 +415,13 @@ public struct AssetResourceManagerService: Sendable {
     assetRootPath: String
   ) throws -> MarkdownReferenceScanResult {
     let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
-    guard let enumerator = fileManager.enumerator(
-      at: root,
-      includingPropertiesForKeys: Array(keys),
-      options: [.skipsHiddenFiles, .skipsPackageDescendants]
-    ) else {
+    guard
+      let enumerator = fileManager.enumerator(
+        at: root,
+        includingPropertiesForKeys: Array(keys),
+        options: [.skipsHiddenFiles, .skipsPackageDescendants]
+      )
+    else {
       return MarkdownReferenceScanResult(
         referencesByPath: [:],
         brokenReferences: [],
@@ -410,7 +432,8 @@ public struct AssetResourceManagerService: Sendable {
     }
 
     let skippedDirectoryNames: Set<String> = [
-      ".git", ".cache", ".next", ".nuxt", ".vercel", ".vite", "build", "dist", "node_modules", "public", "target",
+      ".git", ".cache", ".next", ".nuxt", ".vercel", ".vite", "build", "dist", "node_modules",
+      "public", "target",
     ]
     var referencesByPath: [String: [AssetResourceReferenceLocation]] = [:]
     var brokenReferences: [AssetResourceBrokenReference] = []
@@ -433,7 +456,8 @@ public struct AssetResourceManagerService: Sendable {
         continue
       }
       guard values?.isRegularFile == true,
-            AssetResourceFileSupport.markdownExtensions.contains(fileURL.pathExtension.lowercased()) else {
+        AssetResourceFileSupport.markdownExtensions.contains(fileURL.pathExtension.lowercased())
+      else {
         continue
       }
       guard let relativePath = relativePath(of: fileURL, root: canonicalRoot) else { continue }
@@ -550,65 +574,6 @@ public struct AssetResourceManagerService: Sendable {
     }
   }
 
-  private struct ExtractedReference {
-    let rawPath: String
-    let lineNumber: Int
-    let isImageSyntax: Bool
-    let tokenUTF16Location: Int
-    let tokenUTF16Length: Int
-  }
-
-  private func extractReferences(text: String, documentPath: String) throws -> [ExtractedReference]
-  {
-    let source = text as NSString
-    let protectedRanges = MarkdownCodeRangeScanner.scan(text).allRanges
-    var references: [ExtractedReference] = []
-    let inlinePattern = #"(?m)(!?)\[[^\]]*\]\(\s*(?:<([^>\r\n]+)>|([^\s)\r\n]+))"#
-    let definitionPattern = #"(?m)^\s*(!?)\[[^\]\r\n]+\]:\s*(?:<([^>\r\n]+)>|([^\s\r\n]+))"#
-    let attributePattern = #"(?i)\b(src|href|poster)\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))"#
-
-    for (pattern, isAttribute) in [
-      (inlinePattern, false),
-      (definitionPattern, false),
-      (attributePattern, true),
-    ] {
-      guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
-      let matches = regex.matches(in: text, range: NSRange(location: 0, length: source.length))
-      for match in matches {
-        try Task.checkCancellation()
-        guard !protectedRanges.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) else {
-          continue
-        }
-        let pathCaptureIndexes: [Int] = isAttribute ? [2, 3, 4] : [2, 3]
-        let pathCaptureIndex = pathCaptureIndexes.first {
-          $0 < match.numberOfRanges && match.range(at: $0).location != NSNotFound
-        }
-        let rawPath = pathCaptureIndex.map { source.substring(with: match.range(at: $0)) }
-        guard let rawPath, !rawPath.trimmedForPublishing.isEmpty else { continue }
-        let isImageSyntax: Bool
-        if isAttribute {
-          let attribute = source.substring(with: match.range(at: 1)).lowercased()
-          isImageSyntax = attribute != "href"
-        } else {
-          isImageSyntax = match.range(at: 1).location != NSNotFound
-            && source.substring(with: match.range(at: 1)) == "!"
-        }
-        let lineNumber = lineNumber(in: source, atUTF16Offset: match.range.location)
-        references.append(
-          ExtractedReference(
-            rawPath: rawPath,
-            lineNumber: lineNumber,
-            isImageSyntax: isImageSyntax,
-            tokenUTF16Location: pathCaptureIndex.map { match.range(at: $0).location } ?? 0,
-            tokenUTF16Length: pathCaptureIndex.map { match.range(at: $0).length } ?? 0
-          )
-        )
-      }
-    }
-
-    return references
-  }
-
   private struct ReferenceResolution {
     let shouldInspect: Bool
     let existingAssetPath: String?
@@ -623,7 +588,8 @@ public struct AssetResourceManagerService: Sendable {
     assetRoot: URL,
     assetRootPath: String
   ) -> ReferenceResolution? {
-    let reference = rawPath
+    let reference =
+      rawPath
       .trimmingCharacters(in: .whitespacesAndNewlines)
       .replacingOccurrences(of: "\\", with: "/")
     guard !reference.isEmpty, !reference.hasPrefix("#") else { return nil }
@@ -659,9 +625,10 @@ public struct AssetResourceManagerService: Sendable {
 
     var requestedURL = URL(fileURLWithPath: root.path + "/" + relativeCandidate)
     if !explicitAssetPath,
-       !path.hasPrefix("/"),
-       !path.split(separator: "/").contains(".."),
-       !fileManager.fileExists(atPath: requestedURL.path) {
+      !path.hasPrefix("/"),
+      !path.split(separator: "/").contains(".."),
+      !fileManager.fileExists(atPath: requestedURL.path)
+    {
       let assetFallbackPath = joinRelative(assetRootPath, path)
       let fallbackURL = URL(fileURLWithPath: root.path + "/" + assetFallbackPath)
       if fileManager.fileExists(atPath: fallbackURL.path) {
@@ -671,10 +638,11 @@ public struct AssetResourceManagerService: Sendable {
     let canonicalURL = canonicalFileURL(requestedURL)
     let isInsideRoot = isDescendantOrSame(canonicalURL, root: root)
     let isInsideAssetRoot = isDescendantOrSame(canonicalURL, root: assetRoot)
-    let candidateLooksLikeAsset = likelyAssetReference(
-      path: path,
-      isImageSyntax: isImageSyntax
-    ) || isImageSyntaxPath(path)
+    let candidateLooksLikeAsset =
+      likelyAssetReference(
+        path: path,
+        isImageSyntax: isImageSyntax
+      ) || isImageSyntaxPath(path)
 
     guard candidateLooksLikeAsset || isInsideAssetRoot else { return nil }
     guard isInsideRoot else {
@@ -717,7 +685,8 @@ public struct AssetResourceManagerService: Sendable {
       )
     }
     guard let repositoryPath = relativePath(of: canonicalURL, root: root),
-          AssetResourceFileSupport.isSupportedPath(repositoryPath) else {
+      AssetResourceFileSupport.isSupportedPath(repositoryPath)
+    else {
       return ReferenceResolution(
         shouldInspect: true,
         existingAssetPath: nil,
@@ -741,11 +710,13 @@ public struct AssetResourceManagerService: Sendable {
       .isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey,
       .fileSizeKey, .contentModificationDateKey,
     ]
-    guard let enumerator = fileManager.enumerator(
-      at: assetRoot,
-      includingPropertiesForKeys: Array(keys),
-      options: [.skipsHiddenFiles, .skipsPackageDescendants]
-    ) else {
+    guard
+      let enumerator = fileManager.enumerator(
+        at: assetRoot,
+        includingPropertiesForKeys: Array(keys),
+        options: [.skipsHiddenFiles, .skipsPackageDescendants]
+      )
+    else {
       throw AssetResourceManagerError.assetDirectoryUnavailable(assetRoot.path)
     }
 
@@ -759,13 +730,15 @@ public struct AssetResourceManagerService: Sendable {
         continue
       }
       guard values?.isRegularFile == true,
-            let kind = AssetResourceFileSupport.kind(for: fileURL.path),
-            let repositoryPath = relativePath(of: fileURL, root: root) else {
+        let kind = AssetResourceFileSupport.kind(for: fileURL.path),
+        let repositoryPath = relativePath(of: fileURL, root: root)
+      else {
         continue
       }
       let canonicalURL = canonicalFileURL(fileURL)
       guard isDescendantOrSame(canonicalURL, root: assetRoot),
-            isDescendantOrSame(canonicalURL, root: root) else { continue }
+        isDescendantOrSame(canonicalURL, root: root)
+      else { continue }
       if assets.count >= Self.maximumAssetCount {
         wasTruncated = true
         break
@@ -775,14 +748,18 @@ public struct AssetResourceManagerService: Sendable {
       let byteSize = Int64(values?.fileSize ?? 0)
       let dimensions = kind == .image ? imageDimensions(at: canonicalURL) : nil
       let extensionName = canonicalURL.pathExtension.lowercased()
-      let isCompressibleExtension = AssetResourceFileSupport.compressibleImageExtensions.contains(extensionName)
-      let isLarge = byteSize >= Self.compressionMinimumByteCount
+      let isCompressibleExtension = AssetResourceFileSupport.compressibleImageExtensions.contains(
+        extensionName)
+      let isLarge =
+        byteSize >= Self.compressionMinimumByteCount
         || dimensions.map { max($0.width, $0.height) >= Self.compressionDimensionThreshold } == true
       let canCompress = kind == .image && isCompressibleExtension && isLarge
       let reason: String?
       if byteSize >= Self.compressionMinimumByteCount {
         reason = CoreL10n.text("文件体积较大")
-      } else if dimensions.map({ max($0.width, $0.height) >= Self.compressionDimensionThreshold }) == true {
+      } else if dimensions.map({ max($0.width, $0.height) >= Self.compressionDimensionThreshold })
+        == true
+      {
         reason = CoreL10n.text("图片尺寸较大")
       } else {
         reason = nil
@@ -813,30 +790,27 @@ public struct AssetResourceManagerService: Sendable {
 
   private func imageDimensions(at url: URL) -> ImageDimensions? {
     guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-          let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-          let width = properties[kCGImagePropertyPixelWidth] as? NSNumber,
-          let height = properties[kCGImagePropertyPixelHeight] as? NSNumber,
-          width.intValue > 0,
-          height.intValue > 0 else {
+      let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+      let width = properties[kCGImagePropertyPixelWidth] as? NSNumber,
+      let height = properties[kCGImagePropertyPixelHeight] as? NSNumber,
+      width.intValue > 0,
+      height.intValue > 0
+    else {
       return nil
     }
     return ImageDimensions(width: width.intValue, height: height.intValue)
-  }
-
-  private func lineNumber(in source: NSString, atUTF16Offset offset: Int) -> Int {
-    guard offset > 0 else { return 1 }
-    let prefix = source.substring(with: NSRange(location: 0, length: min(offset, source.length)))
-    return prefix.reduce(into: 1) { result, character in
-      if character == "\n" { result += 1 }
-    }
   }
 
   private func likelyAssetReference(path: String, isImageSyntax: Bool) -> Bool {
     if isImageSyntax || isImageSyntaxPath(path) { return true }
     if AssetResourceFileSupport.isSupportedPath(path) { return true }
     let normalized = path.replacingOccurrences(of: "\\", with: "/").lowercased()
-    return ["/images/", "/image/", "/media/", "/assets/", "/attachments/", "/files/"].contains { normalized.contains($0) }
-      || ["images/", "image/", "media/", "assets/", "attachments/", "files/"].contains { normalized.hasPrefix($0) }
+    return ["/images/", "/image/", "/media/", "/assets/", "/attachments/", "/files/"].contains {
+      normalized.contains($0)
+    }
+      || ["images/", "image/", "media/", "assets/", "attachments/", "files/"].contains {
+        normalized.hasPrefix($0)
+      }
   }
 
   private func isImageSyntaxPath(_ path: String) -> Bool {
@@ -851,7 +825,8 @@ public struct AssetResourceManagerService: Sendable {
       || lowercased.hasPrefix("data:")
       || lowercased.hasPrefix("mailto:")
       || lowercased.hasPrefix("tel:")
-      || lowercased.hasPrefix("javascript:") {
+      || lowercased.hasPrefix("javascript:")
+    {
       return true
     }
     return URL(string: value)?.scheme != nil
@@ -867,8 +842,9 @@ public struct AssetResourceManagerService: Sendable {
     let trimmed = path.trimmedForPublishing.replacingOccurrences(of: "\\", with: "/")
     let components = trimmed.split(separator: "/", omittingEmptySubsequences: false)
     guard !trimmed.isEmpty,
-          !trimmed.hasPrefix("/"),
-          !components.contains(where: { $0 == ".." }) else {
+      !trimmed.hasPrefix("/"),
+      !components.contains(where: { $0 == ".." })
+    else {
       throw AssetResourceManagerError.invalidAssetRoot
     }
     let normalized = trimmed.normalizedRelativePath()
@@ -880,7 +856,8 @@ public struct AssetResourceManagerService: Sendable {
 
   private func directoryExists(_ url: URL) -> Bool {
     var isDirectory: ObjCBool = false
-    return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+    return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory)
+      && isDirectory.boolValue
   }
 
   private func canonicalFileURL(_ url: URL) -> URL {
@@ -889,7 +866,8 @@ public struct AssetResourceManagerService: Sendable {
     let resolvedPath: String? = standardizedPath.withCString { path in
       buffer.withUnsafeMutableBufferPointer { buffer in
         guard let baseAddress = buffer.baseAddress,
-              let resolved = realpath(path, baseAddress) else {
+          let resolved = realpath(path, baseAddress)
+        else {
           return nil
         }
         return String(cString: resolved)

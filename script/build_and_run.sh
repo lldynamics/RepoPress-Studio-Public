@@ -332,8 +332,8 @@ if [[ "${PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD:-0}" == "1" ]]; then
 fi
 swift_build build "${swift_build_options[@]}" --disable-index-store --product "$APP_NAME"
 BUILD_BIN_DIR="$(swift_build build "${swift_build_options[@]}" --show-bin-path)"
-case "$BUILD_BIN_DIR" in
-  */"$BUILD_CONFIGURATION") ;;
+case "$BUILD_CONFIGURATION:${BUILD_BIN_DIR##*/}" in
+  debug:debug|debug:Debug|release:release|release:Release) ;;
   *)
     echo "SwiftPM returned a non-$BUILD_CONFIGURATION binary directory: $BUILD_BIN_DIR" >&2
     exit 1

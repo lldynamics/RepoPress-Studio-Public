@@ -279,7 +279,6 @@ extension WorkbenchAIStore {
     setAIChatSessionState(state, for: identity, streaming: streaming)
   }
 
-
   func aiChatAvailableAPIKey(for profile: SiteProfile) throws -> String? {
     let connection = store.aiConnectionProfile(for: profile)
     let config = connection.config
@@ -356,14 +355,6 @@ extension WorkbenchAIStore {
     return connectionID
   }
 
-  func setAIChatCancellationRequested(_ value: Bool) {
-    aiChatOperationCoordinator.setCancellationRequested(value)
-  }
-
-  func aiChatCancellationRequested() -> Bool {
-    aiChatOperationCoordinator.isCancellationRequested
-  }
-
   @discardableResult func requestAIChatCancellation(expectedOwnerToken: UUID) -> Bool {
     guard
       aiChatOperationCoordinator.requestCancellation(
@@ -420,15 +411,17 @@ extension WorkbenchAIStore {
     ownerToken: UUID? = nil,
     target: WorkbenchTaskTarget? = nil
   ) -> UUID? {
+    let target = target ?? currentAIChatOperationTarget()
     guard
       let operationID = aiChatOperationCoordinator.begin(
         ownerToken: ownerToken,
-        target: target ?? currentAIChatOperationTarget()
+        target: target
       )
     else {
       store.setAIChatMessage("AI 正在回复，请先停止当前回复后再试。")
       return nil
     }
+    bindAIChatAuthorization(operationID: operationID, target: target)
     if clearsManualRetryState {
       aiChatManualRetryState = nil
       aiGeneralChatManualRetryState = nil
@@ -436,10 +429,6 @@ extension WorkbenchAIStore {
     store.setAIChatRunning(true)
     store.setAIChatMessage(statusMessage)
     return operationID
-  }
-
-  func checkAIChatOperation(_ operationID: UUID) throws {
-    try aiChatOperationCoordinator.check(operationID)
   }
 
   func aiChatRequest(
@@ -1128,7 +1117,7 @@ extension WorkbenchAIStore {
     if retryState.requiresDuplicateChargeConfirmation,
       !confirmingPossibleDuplicateCharge
     {
-      store.setAIChatMessage("已保留部分回复。再次生成可能产生重复内容和费用，请确认后手动重新生成。")
+      store.setAIChatMessage(CoreL10n.text("再次生成可能产生重复内容和费用，请确认后手动重新生成。"))
       return nil
     }
 
@@ -1192,11 +1181,12 @@ extension WorkbenchAIStore {
       }
     }
 
-    let reply = await generateAIChatReply(
-      for: chatDraft,
-      conversationIdentity: conversationIdentity,
-      operationID: operationID
-    )
+    let reply = await runAIChatRequestTask(operationID: operationID) { [weak self] in
+      guard let self else { return nil }
+      return await self.generateAIChatReply(
+        for: chatDraft, conversationIdentity: conversationIdentity, operationID: operationID
+      )
+    }
     if reply == nil {
       updateAIChatSession(for: conversationIdentity) { messages in
         messages = originalMessages

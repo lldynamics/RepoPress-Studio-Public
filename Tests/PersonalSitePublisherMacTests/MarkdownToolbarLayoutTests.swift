@@ -3,46 +3,36 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class MarkdownToolbarLayoutTests: XCTestCase {
-  func testExpandedFormattingExposesEveryCommandWithoutOverflow() {
-    let items = MarkdownToolbarLayout.expandedFormattingItems
-    XCTAssertFalse(items.contains(.moreFormatting))
-    XCTAssertEqual(items.count, Set(items).count)
-    XCTAssertEqual(
-      Set(items),
-      Set(MarkdownToolbarFormattingItem.allCases).subtracting([.moreFormatting])
-    )
-    XCTAssertEqual(
-      Array(items.prefix(6)), [.headingMenu, .bold, .italic, .listMenu, .link, .image]
-    )
-  }
-
-  func testPrimaryFormattingItemsHaveAStableCompactOrder() {
+  func testPrimaryFormattingItemsHaveAStableOrder() {
     XCTAssertEqual(
       MarkdownToolbarLayout.primaryFormattingItems,
-      [.headingMenu, .bold, .italic, .listMenu, .link, .image, .moreFormatting]
+      [.headingMenu, .bold, .italic, .listMenu, .link, .image, .insertMenu, .formatMenu]
     )
   }
 
-  func testMoreFormattingKeepsEverySecondaryCommandReachable() {
+  func testGroupedMenusKeepEverySecondaryCommandReachable() {
     XCTAssertEqual(
-      MarkdownToolbarLayout.moreFormattingItems,
-      [
-        .inlineCode,
-        .blockquote,
-        .codeBlock,
-        .strikethrough,
-        .table,
-        .horizontalRule,
-        .internalLink,
-        .snippets,
-        .video,
-        .chineseTypography,
-        .diagnostics,
-      ]
+      MarkdownToolbarLayout.insertMenuItems,
+      [.codeBlock, .table, .horizontalRule, .video, .internalLink, .snippets]
     )
-    XCTAssertTrue(
-      Set(MarkdownToolbarLayout.primaryFormattingItems)
-        .isDisjoint(with: MarkdownToolbarLayout.moreFormattingItems)
+    XCTAssertEqual(
+      MarkdownToolbarLayout.formatMenuItems,
+      [.inlineCode, .blockquote, .strikethrough, .chineseTypography]
     )
+
+    let primary = MarkdownToolbarLayout.primaryFormattingItems
+    let insert = MarkdownToolbarLayout.insertMenuItems
+    let format = MarkdownToolbarLayout.formatMenuItems
+    let reachable = primary + insert + format
+    XCTAssertEqual(reachable.count, Set(reachable).count, "No command may appear twice.")
+    XCTAssertEqual(Set(reachable), Set(MarkdownToolbarFormattingItem.allCases))
+  }
+
+  func testMenuEntriesAreNotNestedInsideOtherMenus() {
+    let menus: Set<MarkdownToolbarFormattingItem> = [
+      .headingMenu, .listMenu, .insertMenu, .formatMenu,
+    ]
+    XCTAssertTrue(menus.isDisjoint(with: MarkdownToolbarLayout.insertMenuItems))
+    XCTAssertTrue(menus.isDisjoint(with: MarkdownToolbarLayout.formatMenuItems))
   }
 }

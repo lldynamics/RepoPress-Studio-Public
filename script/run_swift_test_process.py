@@ -42,6 +42,10 @@ SWIFT_CACHE_ENVIRONMENT_KEYS = (
     "CLANG_MODULE_CACHE_PATH",
     "SWIFT_MODULE_CACHE_PATH",
 )
+# The Swift Build driver emits shared test-support cases once per consuming
+# test bundle. Native SwiftPM uses one complete inventory; keep the same driver
+# for discovery and every skip-build shard so each listed case runs once.
+SWIFT_TEST_DRIVER_ARGUMENTS = ("--build-system", "native")
 INVENTORY_PATTERN = re.compile(
     r"^([^\.\s/]+)\."
     r"([A-Za-z0-9_:]+)/"
@@ -1154,6 +1158,7 @@ def run_all(root: Path) -> int:
     list_command = [
         swift_binary,
         "test",
+        *SWIFT_TEST_DRIVER_ARGUMENTS,
         "--disable-sandbox",
         *build_arguments,
         "list",
@@ -1226,6 +1231,7 @@ def run_all(root: Path) -> int:
         command = [
             swift_binary,
             "test",
+            *SWIFT_TEST_DRIVER_ARGUMENTS,
             "--disable-sandbox",
             "--skip-build",
             "--filter",

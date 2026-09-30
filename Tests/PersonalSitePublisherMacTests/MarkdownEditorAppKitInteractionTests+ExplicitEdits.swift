@@ -332,6 +332,66 @@ final class MarkdownEditorAppKitInteractionExplicitEditTests:
     )
   }
 
+  func testMountedLongDocumentCanScrollBeforeAnyInteraction() async throws {
+    let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "MarkdownInitialScroll-\(UUID().uuidString)", isDirectory: true
+    )
+    defer {
+      do {
+        if FileManager.default.fileExists(atPath: rootURL.path) {
+          try FileManager.default.removeItem(at: rootURL)
+        }
+      } catch {
+        XCTFail("Could not remove initial-scroll fixture: \(error)")
+      }
+    }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: rootURL.appendingPathComponent("workbench.json")),
+      safeMode: true
+    )
+    var draft = try XCTUnwrap(store.selectedDraft)
+    draft.bodyMarkdown = (0..<240).map { index in
+      "第 \(index) 段：首次打开长文章后，鼠标滚轮应该立即可用，不需要先拖动文字或移动光标。"
+    }.joined(separator: "\n\n")
+    store.updateDraft(draft)
+    let composer = MacMarkdownComposerView(
+      draft: Binding(
+        get: { store.draft(for: draft.id) ?? draft },
+        set: { _ = store.updateDraftFromEditor($0) }
+      ),
+      store: store
+    )
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 900, height: 700),
+      styleMask: .titled, backing: .buffered, defer: false
+    )
+    window.contentView = NSHostingView(
+      rootView:
+        composer
+        .environmentObject(WorkspaceSceneCommandRouter())
+        .frame(width: 900, height: 700)
+    )
+    window.makeKeyAndOrderFront(nil)
+    defer { window.orderOut(nil) }
+    let textView = try await mountedMarkdownTextView(in: window)
+    let scrollView = try XCTUnwrap(textView.enclosingScrollView as? MarkdownEditorScrollView)
+    window.layoutIfNeeded()
+    scrollView.layoutSubtreeIfNeeded()
+
+    // Exercise the ordinary first layout, without warming the text manager,
+    // invalidating height, selecting offscreen text, or waiting for a repaint.
+    let viewportHeight = scrollView.contentView.bounds.height
+    XCTAssertGreaterThan(viewportHeight, 100)
+    XCTAssertGreaterThan(textView.frame.height, viewportHeight * 2)
+    let originalOrigin = scrollView.contentView.bounds.origin
+    scrollView.contentView.scroll(
+      to: NSPoint(x: originalOrigin.x, y: originalOrigin.y + viewportHeight)
+    )
+    scrollView.reflectScrolledClipView(scrollView.contentView)
+    XCTAssertGreaterThan(scrollView.contentView.bounds.minY, originalOrigin.y + 100)
+    XCTAssertTrue(textView.string.hasSuffix(draft.bodyMarkdown))
+  }
+
   func testMountedLongDocumentSelectionRevealKeepsMeasuredHeightCache() async throws {
     let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
       "MarkdownSelectionReveal-\(UUID().uuidString)",

@@ -498,6 +498,8 @@ def test_successful_partition_and_exact_argv() -> None:
         calls = read_calls(paths)
         assert calls[0] == [
             "test",
+            "--build-system",
+            "native",
             "--disable-sandbox",
             "-Xswiftc",
             "-strict-concurrency=complete",
@@ -506,7 +508,7 @@ def test_successful_partition_and_exact_argv() -> None:
             "list",
         ]
         assert all(
-            call[:4] == ["test", "--disable-sandbox", "--skip-build", "--filter"]
+            call[:6] == ["test", "--build-system", "native", "--disable-sandbox", "--skip-build", "--filter"]
             and "--skip" not in call
             for call in calls[1:]
         )
@@ -722,6 +724,8 @@ def test_warnings_as_errors_can_be_explicitly_disabled() -> None:
         calls = read_calls(paths)
         assert calls[0] == [
             "test",
+            "--build-system",
+            "native",
             "--disable-sandbox",
             "-Xswiftc",
             "-strict-concurrency=complete",

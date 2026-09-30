@@ -371,7 +371,7 @@ final class AIChatCompletionAnthropicTests: XCTestCase {
       for try await _ in stream {}
       XCTFail("Expected an unknown event without message_stop to be incomplete")
     } catch let error as AIChatCompletionClientError {
-      XCTAssertEqual(error, .incompleteStream)
+      XCTAssertEqual(error, .acceptedResponseFailure(.incompleteStream))
     }
   }
 
@@ -393,7 +393,7 @@ final class AIChatCompletionAnthropicTests: XCTestCase {
       for try await _ in stream {}
       XCTFail("Expected native Anthropic streams to require message_stop")
     } catch let error as AIChatCompletionClientError {
-      XCTAssertEqual(error, .incompleteStream)
+      XCTAssertEqual(error, .acceptedResponseFailure(.incompleteStream))
     }
   }
 
@@ -519,11 +519,14 @@ final class AIChatCompletionAnthropicTests: XCTestCase {
       for try await _ in stream {}
       XCTFail("Expected the ping-only stream to time out before content")
     } catch let error as AIChatCompletionClientError {
-      guard case .streamInterruptedAfterPartialContent(let detail) = error else {
+      guard case .firstByteTimedOut(let timeout) = error.underlyingFailure else {
         XCTFail("Expected the ping to remain outside the first-byte boundary: \(error)")
         return
       }
-      XCTAssertTrue(detail.contains("0.0 秒"))
+      XCTAssertGreaterThan(timeout, 0)
+      XCTAssertLessThanOrEqual(timeout, 0.02)
+      XCTAssertFalse(error.didReceivePartialContent)
+      XCTAssertTrue(error.requiresDuplicateChargeConfirmation)
     }
   }
 

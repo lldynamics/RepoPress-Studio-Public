@@ -32,7 +32,10 @@ public final class AIWorkspaceStore: ObservableObject {
   @Published public internal(set) var aiConversations: [AIConversation]
   @Published public internal(set) var activeAIConversationIDsByDraftID: [UUID: UUID]
   @Published public internal(set) var activeAIConversationIDsByScope: [String: UUID]
-  @Published public internal(set) var pendingAIQuickPrompt: AIPublishingQuickPrompt?
+  @Published public internal(set) var pendingAIQuickPromptRequest: AIPublishingQuickPromptRequest?
+  public var pendingAIQuickPrompt: AIPublishingQuickPrompt? {
+    pendingAIQuickPromptRequest?.prompt
+  }
   @Published public internal(set) var aiChatMessage: String? {
     didSet {
       if aiChatMessageIsFailure {
@@ -73,7 +76,7 @@ public final class AIWorkspaceStore: ObservableObject {
     aiConversations: [AIConversation] = [],
     activeAIConversationIDsByDraftID: [UUID: UUID] = [:],
     activeAIConversationIDsByScope: [String: UUID] = [:],
-    pendingAIQuickPrompt: AIPublishingQuickPrompt? = nil,
+    pendingAIQuickPromptRequest: AIPublishingQuickPromptRequest? = nil,
     aiChatMessage: String? = nil,
     isAIChatRunning: Bool = false,
     isAutomationRunning: Bool = false,
@@ -106,7 +109,7 @@ public final class AIWorkspaceStore: ObservableObject {
     self.aiConversations = aiConversations
     self.activeAIConversationIDsByDraftID = activeAIConversationIDsByDraftID
     self.activeAIConversationIDsByScope = activeAIConversationIDsByScope
-    self.pendingAIQuickPrompt = pendingAIQuickPrompt
+    self.pendingAIQuickPromptRequest = pendingAIQuickPromptRequest
     self.aiChatMessage = aiChatMessage
     self.isAIChatRunning = isAIChatRunning
     self.isAutomationRunning = isAutomationRunning

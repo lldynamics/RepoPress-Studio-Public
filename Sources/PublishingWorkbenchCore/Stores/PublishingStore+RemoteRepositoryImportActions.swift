@@ -4,10 +4,15 @@ extension PublishingStore {
 
   func importRemoteArticleDraftsFromRepositoryOperation(
     repositoryPaths: [String],
+    expectedTarget: SiteOperationConfirmationTarget,
     store: WorkbenchStore
   ) async -> LocalContentImportOperationResult {
+    guard !Task.isCancelled, expectedTarget.matches(store.activeProfile) else {
+      setPublishActionMessage(CoreL10n.text("站点或仓库配置已变化，请重新预览远端文章导入。"), status: .warning)
+      return .empty(outcome: .cancelled)
+    }
     store.flushDraftBodyEditorBuffers()
-    let profile = store.activeProfile
+    let profile = expectedTarget.profile
     var seenPaths = Set<String>()
     let paths =
       repositoryPaths
@@ -24,8 +29,8 @@ extension PublishingStore {
       setPublishActionMessage("已取消导入远端文章。", status: .warning)
       return .empty(outcome: .cancelled)
     }
-    guard store.activeProfileID == profile.id else {
-      setPublishActionMessage("当前站点已变化，未导入原站点远端文章。", status: .warning)
+    guard expectedTarget.matches(store.activeProfile) else {
+      setPublishActionMessage(CoreL10n.text("站点或仓库配置已变化，请重新预览远端文章导入。"), status: .warning)
       return .empty(outcome: .cancelled)
     }
     guard let result = await remoteContentImportResultAsync(
@@ -34,6 +39,10 @@ extension PublishingStore {
       profile: profile
     ) else {
       setPublishActionMessage("已取消导入远端文章。", status: .warning)
+      return .empty(outcome: .cancelled)
+    }
+    guard expectedTarget.matches(store.activeProfile) else {
+      setPublishActionMessage(CoreL10n.text("站点或仓库配置已变化，请重新预览远端文章导入。"), status: .warning)
       return .empty(outcome: .cancelled)
     }
     let mergedOperation = mergeImportedDraftsOperation(result, store: store)

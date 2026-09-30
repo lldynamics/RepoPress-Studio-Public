@@ -472,6 +472,20 @@ final class WorkbenchStoreRemotePublishingConflictResolutionTests:
     XCTAssertEqual(store.remoteRepositoryPublishResult?.mode, .reviewRequest)
     XCTAssertEqual(store.remoteRepositoryPublishResult?.reviewURL, "https://github.com/owner/site/pull/42")
     XCTAssertEqual(store.drafts.first(where: { $0.id == first.id })?.title, "First Resolved")
+    let reviewedFirst = try XCTUnwrap(store.drafts.first(where: { $0.id == first.id }))
+    let reviewedSecond = try XCTUnwrap(store.drafts.first(where: { $0.id == second.id }))
+    XCTAssertEqual(reviewedFirst.repositorySyncState(for: profile), .awaitingReview)
+    XCTAssertEqual(reviewedSecond.repositorySyncState(for: profile), .awaitingReview)
+    XCTAssertEqual(
+      reviewedFirst.repositoryBinding?.pendingReviewContentDigest,
+      ArticleDraft.repositoryDocumentDigest(mergedFirstDocument)
+    )
+    XCTAssertEqual(
+      reviewedSecond.repositoryBinding?.pendingReviewContentDigest,
+      ArticleDraft.repositoryDocumentDigest(
+        try XCTUnwrap(files.first(where: { $0.repositoryPath == secondPath })?.content)
+      )
+    )
     XCTAssertNil(store.remoteRepositoryConflictSession)
   }
 
@@ -919,6 +933,10 @@ final class WorkbenchStoreRemotePublishingConflictResolutionTests:
     }
     XCTAssertEqual(store.drafts.first?.title, "Reviewed Merge")
     XCTAssertEqual(store.drafts.first?.repositorySyncState(for: profile), .awaitingReview)
+    XCTAssertEqual(
+      store.drafts.first?.repositoryBinding?.pendingReviewContentDigest,
+      ArticleDraft.repositoryDocumentDigest(mergedDocument)
+    )
     XCTAssertNil(store.remoteRepositoryConflictSession)
     XCTAssertEqual(store.remoteRepositoryPublishResult?.reviewURL, "https://github.com/owner/site/pull/44")
     requests = await transport.capturedRequests()

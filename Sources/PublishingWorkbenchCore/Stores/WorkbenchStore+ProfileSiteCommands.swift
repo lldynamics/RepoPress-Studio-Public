@@ -42,9 +42,18 @@ extension WorkbenchStore {
     save()
   }
 
-  public func applySiteKindDefaults(_ siteKind: SiteKind) {
-    publishingStore.applySiteKindDefaults(siteKind, store: self)
+  @discardableResult
+  public func applySiteKindDefaults(
+    _ siteKind: SiteKind,
+    expectedTarget: SiteOperationConfirmationTarget? = nil
+  ) -> Bool {
+    guard
+      publishingStore.applySiteKindDefaults(
+        siteKind, expectedTarget: expectedTarget, store: self
+      )
+    else { return false }
     invalidateDraftDerivedCaches()
+    return true
   }
 
   @discardableResult

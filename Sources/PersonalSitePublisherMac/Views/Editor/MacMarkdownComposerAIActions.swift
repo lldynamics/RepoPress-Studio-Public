@@ -440,22 +440,6 @@ extension MacMarkdownComposerView {
     }
   }
 
-  func performTemplateLibraryAction(_ kind: AIPublishingActionKind) {
-    if isSelectionAIAction(kind) {
-      performSelectionAIAction(kind)
-    } else {
-      performArticleAIAction(kind)
-    }
-  }
-
-  func openTemplateLibraryPrompt(_ prompt: AIPublishingQuickPrompt) {
-    if let aiChatWorkspaceCommandAction {
-      aiChatWorkspaceCommandAction.open(draft.id, prompt)
-    } else {
-      aiActions.openChatWorkspace(for: draft.id, quickPrompt: prompt)
-    }
-  }
-
   func applySelectionEditPreview(_ preview: AIPublishingSelectionEditPreview) {
     do {
       let originalLength = (editorBody as NSString).length

@@ -55,7 +55,7 @@ enum ArticleInspectorTab: String, CaseIterable, Identifiable {
   static func defaultTab(for section: WorkspaceSection) -> ArticleInspectorTab {
     switch section {
     case .writing:
-      return .knowledge
+      return .metadata
     case .sync:
       return .metadata
     case .contentHealth:
@@ -70,7 +70,7 @@ enum ArticleInspectorTab: String, CaseIterable, Identifiable {
   static func availableTabs(for section: WorkspaceSection) -> [ArticleInspectorTab] {
     switch section {
     case .writing:
-      return [.knowledge, .metadata, .seo, .images]
+      return [.metadata, .seo, .images, .knowledge]
     case .contentHealth:
       return [.checks]
     case .images:
@@ -142,10 +142,13 @@ struct ArticleInspectorTabs: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      header
-      Divider()
+      // With several tabs the picker is the header; the article path is
+      // already shown in the editor breadcrumb.
       if availableTabs.count > 1 {
         tabPicker
+        Divider()
+      } else {
+        header
         Divider()
       }
 
@@ -167,14 +170,16 @@ struct ArticleInspectorTabs: View {
           guard let request = publishNavigationRequest, request.draftID == draft.id,
             selectedTab == .metadata,
             case .metadata(let field) = request.target else { return }
+          if field == "title" {
+            store.requestEditorFocus(draftID: draft.id, field: "title")
+            return
+          }
           await Task.yield()
           guard !Task.isCancelled else { return }
           proxy.scrollTo(PublishMetadataFieldAnchor.id(for: field), anchor: .center)
         }
       }
 
-      Divider()
-      actionFooter
     }
     .background(.bar)
     .accessibilityIdentifier("article-inspector")
@@ -263,38 +268,6 @@ struct ArticleInspectorTabs: View {
     .accessibilityValue(selectedTab.title)
   }
 
-  private var actionFooter: some View {
-    HStack(spacing: 10) {
-      if availableTabs.contains(.metadata) || availableTabs.contains(.seo) || availableTabs.contains(.images) {
-        MacMarkdownEditorSaveStatusIcon(
-          store: store,
-          draftID: draft.id,
-          isCompact: false,
-          accessibilityIdentifier: "article-inspector-save-status"
-        )
-      }
-
-      if availableTabs.contains(.checks) {
-        Button {
-          selectedTab = .checks
-          requestManualPreflightRefresh()
-          store.scheduleImageWorkbenchCachesRefresh(for: draft, force: true)
-        } label: {
-          Label("重新检查", systemImage: "checklist")
-        }
-      }
-
-      Spacer(minLength: 0)
-
-    }
-    .controlSize(.small)
-    .padding(.horizontal, 14)
-    .padding(.vertical, 10)
-    .background(.bar)
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("文章详情栏主要操作")
-  }
-
   private func scrollToFocusedImage(using proxy: ScrollViewProxy) {
     guard selectedTab == .images,
           let request = imageWorkbench.imageInspectorFocusRequest,
@@ -363,10 +336,6 @@ struct ArticleInspectorTabs: View {
     WorkspaceTaskMetadataSection(
       draft: $draft,
       store: store,
-      state: WorkspaceTaskMetadataState(
-        draft: draft,
-        profile: store.profile(for: draft)
-      ),
       tagSuggestions: taxonomySuggestions(\.tags),
       categorySuggestions: taxonomySuggestions(\.categories)
     )
@@ -487,6 +456,8 @@ struct ArticleInspectorTabs: View {
     switch issue.structuredField {
     case .body:
       store.requestEditorFocus(draftID: draft.id, field: issue.field, query: issue.editorQuery)
+    case .title:
+      store.requestEditorFocus(draftID: draft.id, field: "title")
     case .attachments, .cover:
       selectedTab = .images
     case .repository, .contentRoot, .assetRoot, .markdownPathPattern:

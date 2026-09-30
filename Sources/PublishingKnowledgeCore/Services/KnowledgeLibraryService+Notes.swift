@@ -7,7 +7,7 @@ private struct KnowledgeNoteWritePlan: Sendable {
   var artifacts: [String: Data]
 }
 
-private enum KnowledgeNoteWriteMode {
+enum KnowledgeNoteWriteMode {
   case localEdit(expectedContentRevision: String?)
   case exactImport
 }
@@ -265,6 +265,14 @@ extension KnowledgeLibraryService {
     guard !notes.isEmpty else { return [] }
     storageMutationLock.lock()
     defer { storageMutationLock.unlock() }
+    return try writeNotesAlreadyLocked(notes, mode: mode)
+  }
+
+  /// The caller holds storageMutationLock for the complete read/decide/write operation.
+  func writeNotesAlreadyLocked(
+    _ notes: [KnowledgeNote], mode: KnowledgeNoteWriteMode
+  ) throws -> [KnowledgeNote] {
+    guard !notes.isEmpty else { return [] }
     if case .localEdit(let expectedContentRevision?) = mode {
       guard notes.count == 1,
         let current = try self.note(documentID: notes[0].id),

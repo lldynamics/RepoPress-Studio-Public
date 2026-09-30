@@ -69,7 +69,7 @@ extension RemoteRepositoryPublishService {
       )
     )
 
-    let result: RemoteRepositoryPublishResult
+    var result: RemoteRepositoryPublishResult
     switch profile.repositoryProvider {
     case .github:
       result = try await publishToGitHub(
@@ -88,6 +88,12 @@ extension RemoteRepositoryPublishService {
         onProgress: onProgress
       )
     }
+    if mode == .previewBranch, result.changedPaths.isEmpty,
+      result.commitSHA?.trimmedForPublishing.nilIfEmpty == nil
+    {
+      result.commitSHA = try await verifiedPreviewBranchHead(
+        result: result, repository: repository, token: token)
+    }
     return try result.validatedForSuccess()
   }
 
@@ -96,6 +102,7 @@ extension RemoteRepositoryPublishService {
     profile: SiteProfile,
     token: String?
   ) async throws -> RemoteRepositoryRollbackResult {
+    try draft.validateRepositoryIdentity(profile: profile)
     let token = try requiredToken(token)
     let repository = try remoteRepository(from: profile)
 

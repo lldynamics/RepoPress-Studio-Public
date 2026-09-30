@@ -37,6 +37,342 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
   }
 
+  func testNonStreamingArticleAndGeneralRevocationBeforeTransportDispatch() async throws {
+    for general in [false, true] {
+      for mutation in [
+        "remote-off", "revoke", "revoke-regrant", "direct-consent", "delete-key", "rotate-key",
+        "connection", "storage",
+      ] {
+        try await exerciseNonStreamingRevocation(
+          general: general, mutation: mutation, waitingForResponse: false
+        )
+      }
+    }
+    try await exerciseNonStreamingRevocation(
+      general: false, mutation: "site-connection", waitingForResponse: false
+    )
+    try await exerciseNonStreamingRevocation(
+      general: true, mutation: "site-connection", waitingForResponse: false
+    )
+  }
+
+  func testArticleAndGeneralAcceptedEmptyReplyRequiresConfirmationBeforeRetry() async throws {
+    let acceptedEvents: [[String]] = [
+      [],
+      [#"data: {"choices":[{"delta":{"role":"assistant"}}]}"#, ""],
+      [#"data: {"choices":[{"delta":{"reasoning_content":"hidden"}}]}"#, ""],
+    ]
+    for general in [false, true] {
+      for events in acceptedEvents {
+        var decisionCount = 0
+        AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = { _ in
+          decisionCount += 1
+          return .confirm
+        }
+        let transport = ScriptedAIChatStreamingTransport(attempts: [
+          ScriptedAIChatStreamAttempt(lines: events, terminalError: .connectionLost),
+          ScriptedAIChatStreamAttempt(lines: [
+            #"data: {"choices":[{"delta":{"content":"confirmed reply"},"finish_reason":"stop"}]}"#,
+            "",
+          ]),
+        ])
+        let persistenceURL = FileManager.default.temporaryDirectory
+          .appendingPathComponent("AIChatAcceptedEmpty-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: persistenceURL) }
+        let store = WorkbenchStore(
+          persistence: WorkbenchPersistence(fileURL: persistenceURL),
+          keychainTokenStore: aiTokenStoreForTest(),
+          aiPublishingAssistantService: AIPublishingAssistantService(
+            client: AIChatCompletionClient(transport: transport)
+          ),
+          aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
+        )
+        var profile = store.activeProfile
+        profile.aiProviderConfig = streamingSupportedConfig(remoteAIConfig)
+        store.updateActiveProfile(profile)
+        let draft = try XCTUnwrap(store.selectedDraft)
+        let conversationID =
+          general ? try XCTUnwrap(store.ai.startNewGeneralChatConversation()).id : nil
+        let reply: AIPublishingChatMessage?
+        if general {
+          reply = await store.ai.sendGeneralChatMessage(
+            "accepted question", conversationID: conversationID)
+        } else {
+          reply = await store.ai.sendChatMessage("accepted question", draft: draft)
+        }
+        XCTAssertNil(reply)
+        func messages() -> [AIPublishingChatMessage] {
+          conversationID.map { id in
+            store.aiConversations.first(where: { $0.id == id })?.messages ?? []
+          } ?? store.aiChatMessages
+        }
+        XCTAssertEqual(messages().map(\.content), ["accepted question"])
+        let requiresConfirmation =
+          general
+          ? store.aiStore.aiGeneralChatManualRetryState?.requiresDuplicateChargeConfirmation
+          : store.aiChatManualRetryState?.requiresDuplicateChargeConfirmation
+        XCTAssertEqual(requiresConfirmation, true)
+        XCTAssertEqual(decisionCount, 1)
+        let firstCount = await transport.capturedRequestCount()
+        XCTAssertEqual(firstCount, 1)
+        let unconfirmed: AIPublishingChatMessage?
+        if general {
+          unconfirmed = await store.aiStore.retryLastFailedGeneralAIChatReply()
+        } else {
+          unconfirmed = await store.retryLastFailedAIChatReply(draft: draft)
+        }
+        XCTAssertNil(unconfirmed)
+        XCTAssertTrue(store.aiChatMessage?.contains("费用") == true)
+        XCTAssertFalse(store.aiChatMessage?.contains("已保留部分回复") == true)
+        XCTAssertEqual(messages().map(\.content), ["accepted question"])
+        XCTAssertEqual(decisionCount, 1)
+        let unconfirmedCount = await transport.capturedRequestCount()
+        XCTAssertEqual(unconfirmedCount, 1)
+        let confirmed: AIPublishingChatMessage?
+        if general {
+          confirmed = await store.aiStore.retryLastFailedGeneralAIChatReply(
+            confirmingPossibleDuplicateCharge: true
+          )
+        } else {
+          confirmed = await store.retryLastFailedAIChatReply(
+            confirmingPossibleDuplicateCharge: true, draft: draft
+          )
+        }
+        XCTAssertEqual(confirmed?.content, "confirmed reply")
+        XCTAssertEqual(messages().map(\.content), ["accepted question", "confirmed reply"])
+        XCTAssertEqual(decisionCount, 2)
+        let confirmedCount = await transport.capturedRequestCount()
+        XCTAssertEqual(confirmedCount, 2)
+      }
+    }
+  }
+
+  func testNonStreamingArticleAndGeneralRevocationCancelsAwaitingResponse() async throws {
+    for general in [false, true] {
+      for mutation in ["remote-off", "revoke", "revoke-regrant", "rotate-key", "connection"] {
+        try await exerciseNonStreamingRevocation(
+          general: general, mutation: mutation, waitingForResponse: true
+        )
+      }
+    }
+  }
+
+  func testNonStreamingArticleAndGeneralRevocationAfterAuthorizationBeforeDispatch() async throws {
+    for general in [false, true] {
+      for mutation in ["remote-off", "revoke", "revoke-regrant", "rotate-key", "connection"] {
+        try await exerciseNonStreamingRevocation(
+          general: general, mutation: mutation, waitingForResponse: false,
+          afterAuthorization: true
+        )
+      }
+    }
+  }
+
+  func testNonStreamingArticleAndGeneralRetryRevocationBeforeDispatchAndAwaitingResponse()
+    async throws
+  {
+    for general in [false, true] {
+      for waitingForResponse in [false, true] {
+        try await exerciseNonStreamingRevocation(
+          general: general, mutation: "revoke", waitingForResponse: waitingForResponse,
+          afterAuthorization: !waitingForResponse, retrying: true
+        )
+      }
+    }
+  }
+
+  private func exerciseNonStreamingRevocation(
+    general: Bool, mutation: String, waitingForResponse: Bool,
+    afterAuthorization: Bool = false, retrying: Bool = false
+  ) async throws {
+    var decisionCount = 0
+    AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = { _ in
+      decisionCount += 1
+      return .confirm
+    }
+    let gate = AIChatRequestBoundaryGate()
+    let transport = AIChatBoundaryCompleteTransport(
+      dispatchGate: afterAuthorization ? gate : nil,
+      responseGate: waitingForResponse ? gate : nil, initialFailure: retrying
+    )
+    var client = AIChatCompletionClient(
+      transport: transport,
+      networkRecoveryPolicy: AIChatNetworkRecoveryPolicy(
+        firstByteTimeout: 1, resourceTimeout: 2, maximumAutomaticRetryCount: 0
+      )
+    )
+    if !waitingForResponse && !afterAuthorization {
+      client = client.authorizingNonStreamingRequests { try await gate.suspend() }
+    }
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("AIChatNonStreamingBoundary-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let consent = AIDataSharingConsentStore(
+      defaults: testConsentDefaults, storageKey: UUID().uuidString
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(client: client),
+      aiDataSharingConsentStore: consent
+    )
+    var profile = store.activeProfile
+    var config = remoteAIConfig
+    config.requiresAPIKey = true
+    profile.aiProviderConfig = config
+    store.updateActiveProfile(profile)
+    consent.grant(for: config)
+    XCTAssertTrue(store.ai.saveAPIKey("boundary-key"))
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let conversationID =
+      general ? try XCTUnwrap(store.ai.startNewGeneralChatConversation()).id : nil
+    if retrying {
+      let initial: AIPublishingChatMessage?
+      if general {
+        initial = await store.ai.sendGeneralChatMessage(
+          "authorized question", conversationID: conversationID
+        )
+      } else {
+        initial = await store.ai.sendChatMessage("authorized question", draft: draft)
+      }
+      XCTAssertNil(initial)
+      let initialCount = await transport.requestCount
+      XCTAssertEqual(initialCount, 1)
+    }
+    let submission = Task {
+      if retrying {
+        if general {
+          return await store.aiStore.retryLastFailedGeneralAIChatReply(
+            confirmingPossibleDuplicateCharge: true
+          )
+        }
+        return await store.retryLastFailedAIChatReply(
+          confirmingPossibleDuplicateCharge: true, draft: draft
+        )
+      }
+      if general {
+        return await store.ai.sendGeneralChatMessage(
+          "authorized question", conversationID: conversationID)
+      }
+      return await store.ai.sendChatMessage("authorized question", draft: draft)
+    }
+    defer { submission.cancel() }
+    try await gate.waitUntilEntered()
+    switch mutation {
+    case "remote-off": store.aiStore.setRemoteAIEnabled(false)
+    case "revoke", "revoke-regrant":
+      store.aiStore.revokeAIDataSharingConsent()
+      if mutation == "revoke-regrant" { consent.grant(for: config) }
+    case "direct-consent": consent.revoke(for: config)
+    case "delete-key": store.ai.deleteAPIKey()
+    case "rotate-key": XCTAssertTrue(store.ai.saveAPIKey("changed-boundary-key"))
+    case "connection":
+      var connection = store.activeAIConnectionProfile
+      connection.config.baseURL = "https://changed.example/v1"
+      XCTAssertTrue(store.updateAIConnectionProfile(connection))
+    case "storage": store.aiStore.setAICredentialStorageMode(.session)
+    case "site-connection":
+      let connection = store.createAIConnectionProfile(named: "Other", preset: .custom)
+      XCTAssertTrue(store.selectAIConnectionProfile(connection.id))
+    default: XCTFail("Unrecognized mutation \(mutation)")
+    }
+    // Waiting-response cancellation must finish without releasing the server.
+    if !waitingForResponse { await gate.release() }
+    let reply = await submission.value
+    let shouldStop = !general || mutation != "site-connection"
+    XCTAssertEqual(reply?.content, shouldStop ? nil : "complete", "mutation=\(mutation)")
+    let count = await transport.requestCount
+    XCTAssertEqual(count, (waitingForResponse || !shouldStop ? 1 : 0) + (retrying ? 1 : 0))
+    XCTAssertEqual(decisionCount, retrying ? 2 : 1)
+    XCTAssertFalse(store.isAIChatRunning)
+    XCTAssertEqual(store.aiChatMessage, shouldStop ? "AI 回复已停止。" : "AI 已回复。")
+    let messages =
+      conversationID.map { id in
+        store.aiConversations.first(where: { $0.id == id })?.messages ?? []
+      } ?? store.aiChatMessages
+    XCTAssertEqual(
+      messages.map(\.content),
+      shouldStop ? ["authorized question"] : ["authorized question", "complete"]
+    )
+    if mutation != "direct-consent" {
+      let observedCancellation = await gate.observedCancellation
+      XCTAssertEqual(observedCancellation, shouldStop)
+    }
+  }
+
+  func testArticleAndGeneralRetainPartialReplyOnContinuationHTTPAndAuthorizationExpiry()
+    async throws
+  {
+    for general in [false, true] {
+      for status in [401, 429, 500, nil] {
+        let clock = AIChatRequestTestClock()
+        let transport = AIChatPartialFailureTransport(
+          statusCode: status, expiring: status == nil ? clock : nil
+        )
+        var client = AIChatCompletionClient(transport: transport)
+        client.requestValidationDate = { clock.now() }
+        let persistenceURL = FileManager.default.temporaryDirectory
+          .appendingPathComponent("AIChatPartialTerminal-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: persistenceURL) }
+        let store = WorkbenchStore(
+          persistence: WorkbenchPersistence(fileURL: persistenceURL),
+          keychainTokenStore: aiTokenStoreForTest(),
+          aiPublishingAssistantService: AIPublishingAssistantService(client: client),
+          aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
+        )
+        var profile = store.activeProfile
+        profile.aiProviderConfig = streamingSupportedConfig(remoteAIConfig, now: clock.now())
+        store.updateActiveProfile(profile)
+        let draft = try XCTUnwrap(store.selectedDraft)
+        let conversationID =
+          general ? try XCTUnwrap(store.ai.startNewGeneralChatConversation()).id : nil
+        let reply: AIPublishingChatMessage?
+        if general {
+          reply = await store.ai.sendGeneralChatMessage("continue", conversationID: conversationID)
+        } else {
+          reply = await store.ai.sendChatMessage("continue", draft: draft)
+        }
+        XCTAssertEqual(reply?.content, "partial")
+        let messages =
+          conversationID.map { id in
+            store.aiConversations.first(where: { $0.id == id })?.messages ?? []
+          } ?? store.aiChatMessages
+        XCTAssertEqual(messages.map(\.content), ["continue", "partial"])
+        XCTAssertTrue(store.aiChatMessage?.contains("重复计费") == true)
+        if let status {
+          XCTAssertTrue(store.aiChatMessage?.contains("HTTP \(status)") == true)
+          XCTAssertTrue(store.aiChatMessage?.contains("45 秒") == true)
+        } else {
+          XCTAssertTrue(store.aiChatMessage?.contains("授权已过期") == true)
+        }
+        let requiresConfirmation =
+          general
+          ? store.aiStore.aiGeneralChatManualRetryState?.requiresDuplicateChargeConfirmation
+          : store.aiChatManualRetryState?.requiresDuplicateChargeConfirmation
+        XCTAssertEqual(requiresConfirmation, true)
+        let expectedCount = status == nil ? 1 : 2
+        let count = await transport.requestCount
+        XCTAssertEqual(count, expectedCount)
+        let unconfirmed: AIPublishingChatMessage?
+        if general {
+          unconfirmed = await store.aiStore.retryLastFailedGeneralAIChatReply()
+        } else {
+          unconfirmed = await store.retryLastFailedAIChatReply(draft: draft)
+        }
+        XCTAssertNil(unconfirmed)
+        let afterRetryCount = await transport.requestCount
+        XCTAssertEqual(afterRetryCount, expectedCount)
+        await store.waitForPendingSave()
+        let persisted = try XCTUnwrap(WorkbenchPersistence(fileURL: persistenceURL).load())
+        XCTAssertEqual(
+          persisted.aiConversations.first(where: { $0.messages.last?.content == "partial" })?
+            .messages.last?.content,
+          "partial"
+        )
+      }
+    }
+  }
+
   func testDraftAndGeneralContinuationRejectRevokedConsentAndChangedCredentials() async throws {
     for general in [false, true] {
       for mutation in [
@@ -801,46 +1137,58 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
   }
 
   func testCredentialRotationDuringApprovalUsesOnlyCurrentCredential() async throws {
-    let (store, transport, config, consentStore, persistenceURL) =
-      makeCredentialTOCTOUArticleStore(suffix: "CredentialRotated")
-    defer {
-      consentStore.revoke(for: config)
-      try? FileManager.default.removeItem(at: persistenceURL)
-    }
-    var profile = store.activeProfile
-    profile.aiProviderConfig = config
-    store.updateActiveProfile(profile)
-    XCTAssertTrue(consentStore.grant(for: config))
-    let initialCredential = "initial-test-credential"
-    let rotatedCredential = "rotated-test-credential"
-    XCTAssertTrue(store.aiStore.saveAIAPIKey(initialCredential))
-    let draft = try XCTUnwrap(store.selectedDraft)
-    var capturedPreview: AIOutboundPayloadPreview?
-    AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = { preview in
-      capturedPreview = preview
-      XCTAssertTrue(store.aiStore.saveAIAPIKey(rotatedCredential))
-      return .confirm
-    }
+    for general in [false, true] {
+      for streaming in [false, true] {
+        let (store, transport, config, consentStore, persistenceURL) =
+          makeCredentialTOCTOUArticleStore(suffix: "CredentialRotated", streaming: streaming)
+        defer {
+          consentStore.revoke(for: config)
+          try? FileManager.default.removeItem(at: persistenceURL)
+        }
+        var profile = store.activeProfile
+        profile.aiProviderConfig = config
+        store.updateActiveProfile(profile)
+        XCTAssertTrue(consentStore.grant(for: config))
+        let initialCredential = "initial-test-credential"
+        let rotatedCredential = "rotated-test-credential"
+        XCTAssertTrue(store.aiStore.saveAIAPIKey(initialCredential))
+        let draft = try XCTUnwrap(store.selectedDraft)
+        let conversationID =
+          general ? try XCTUnwrap(store.ai.startNewGeneralChatConversation()).id : nil
+        var capturedPreview: AIOutboundPayloadPreview?
+        AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = { preview in
+          capturedPreview = preview
+          XCTAssertTrue(store.aiStore.saveAIAPIKey(rotatedCredential))
+          return .confirm
+        }
 
-    let reply = await store.sendAIChatMessage("credential rotated", draft: draft)
+        let reply: AIPublishingChatMessage?
+        if general {
+          reply = await store.ai.sendGeneralChatMessage(
+            "credential rotated", conversationID: conversationID)
+        } else {
+          reply = await store.sendAIChatMessage("credential rotated", draft: draft)
+        }
 
-    XCTAssertEqual(reply?.content, "ok")
-    let requestCount = await transport.capturedRequestCount()
-    XCTAssertEqual(requestCount, 1)
-    let recordedRequest = await transport.capturedRequest()
-    let capturedRequest = try XCTUnwrap(recordedRequest)
-    XCTAssertEqual(
-      capturedRequest.value(forHTTPHeaderField: "Authorization"),
-      "Bearer \(rotatedCredential)"
-    )
-    XCTAssertFalse(
-      capturedRequest.value(forHTTPHeaderField: "Authorization")?.contains(initialCredential)
-        == true
-    )
-    let previewData = try JSONEncoder().encode(try XCTUnwrap(capturedPreview))
-    let previewJSON = try XCTUnwrap(String(data: previewData, encoding: .utf8))
-    XCTAssertFalse(previewJSON.contains(initialCredential))
-    XCTAssertFalse(previewJSON.contains(rotatedCredential))
+        XCTAssertEqual(reply?.content, "ok")
+        let requestCount = await transport.capturedRequestCount()
+        XCTAssertEqual(requestCount, 1)
+        let recordedRequest = await transport.capturedRequest()
+        let capturedRequest = try XCTUnwrap(recordedRequest)
+        XCTAssertEqual(
+          capturedRequest.value(forHTTPHeaderField: "Authorization"),
+          "Bearer \(rotatedCredential)"
+        )
+        XCTAssertFalse(
+          capturedRequest.value(forHTTPHeaderField: "Authorization")?.contains(initialCredential)
+            == true
+        )
+        let previewData = try JSONEncoder().encode(try XCTUnwrap(capturedPreview))
+        let previewJSON = try XCTUnwrap(String(data: previewData, encoding: .utf8))
+        XCTAssertFalse(previewJSON.contains(initialCredential))
+        XCTAssertFalse(previewJSON.contains(rotatedCredential))
+      }
+    }
   }
 
   func testCapturedProfileWithChangedStoredConnectionDriftsBeforeCredentialLookup() async throws {
@@ -2065,7 +2413,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
   }
 
   private func makeCredentialTOCTOUArticleStore(
-    suffix: String
+    suffix: String, streaming: Bool = true
   ) -> (
     store: WorkbenchStore,
     transport: RecordingAIChatTransport,
@@ -2074,21 +2422,20 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     persistenceURL: URL
   ) {
     let transport = RecordingAIChatTransport(
-      data: Data(),
+      data: Data(#"{"choices":[{"message":{"role":"assistant","content":"ok"}}]}"#.utf8),
       statusCode: 200,
       streamLines: [
         #"data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}"#,
         "",
       ]
     )
-    let config = streamingSupportedConfig(
-      AIProviderConfig(
-        preset: .custom,
-        baseURL: "https://api.openai.example/v1",
-        model: "credential-toctou-model",
-        requiresAPIKey: true
-      )
+    let base = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.example/v1",
+      model: "credential-toctou-model",
+      requiresAPIKey: true
     )
+    let config = streaming ? streamingSupportedConfig(base) : base
     let consentStore = AIDataSharingConsentStore(
       defaults: testConsentDefaults,
       storageKey: "AIDataSharingConsent.CredentialTOCTOU.\(suffix).\(UUID().uuidString)"
@@ -2106,9 +2453,10 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     return (store, transport, config, consentStore, persistenceURL)
   }
 
-  private func streamingSupportedConfig(_ base: AIProviderConfig) -> AIProviderConfig {
+  private func streamingSupportedConfig(
+    _ base: AIProviderConfig, now: Date = Date()
+  ) -> AIProviderConfig {
     var config = base
-    let now = Date()
     let key = AIProviderCapabilityCacheKey(config: config)
     var evidence = config.capabilityProbeEvidence ?? [:]
     evidence[.streamingResponse] = AIProviderCapabilityProbeEvidence(

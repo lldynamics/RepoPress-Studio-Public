@@ -62,6 +62,17 @@ struct AIChatGeneralKeyAvailabilityRefreshKey: Equatable {
   let activeTokenAvailability: KeychainTokenAvailability
 }
 
+enum AIChatQuickPromptDeliveryPolicy {
+  static func isArticleComposerReady(
+    contextMode: AIPublishingChatContextMode,
+    draftID: UUID,
+    conversationID: UUID?,
+    surfaceConversationID: UUID
+  ) -> Bool {
+    contextMode == .site && surfaceConversationID == (conversationID ?? draftID)
+  }
+}
+
 struct AIChatContextInspectorView: View {
   @Environment(\.workbenchAccentColor) var workbenchAccentColor
   @Environment(\.openSettings) var openSettings
@@ -239,6 +250,7 @@ struct AIChatContextInspectorView: View {
         ensureInspectorSurfaceConversationSelection()
         synchronizeChatDraftWithSelection()
         pruneInvalidChatImageAttachmentSelection()
+        applyPendingQuickPrompt()
       }
       .onDisappear {
         handleInspectorSurfaceDisappearance()
@@ -250,11 +262,18 @@ struct AIChatContextInspectorView: View {
         ensureInspectorSurfaceConversationSelection()
         synchronizeChatDraftWithSelection()
         pruneInvalidChatImageAttachmentSelection()
+        applyPendingQuickPrompt()
       }
       .onChange(of: inspectorDraft?.attachments) { _, _ in
         pruneInvalidChatImageAttachmentSelection()
       }
-      .onChange(of: ai.pendingQuickPrompt?.id) { _, _ in
+      .onChange(of: ai.pendingQuickPromptRequest?.id) { _, _ in
+        applyPendingQuickPrompt()
+      }
+      .onChange(of: surfaceState.selectedConversationID) { _, _ in
+        applyPendingQuickPrompt()
+      }
+      .onChange(of: state.conversation?.conversationID) { _, _ in
         applyPendingQuickPrompt()
       }
       .onChange(of: isAIKeyMissing) { _, isMissing in
@@ -270,6 +289,7 @@ struct AIChatContextInspectorView: View {
         synchronizeInspectorConversationForContextMode(mode)
         pruneInvalidChatImageAttachmentSelection()
         refreshDisplayedGeneralKeyAvailability()
+        applyPendingQuickPrompt()
       }
       .onChange(of: generalKeyAvailabilityRefreshKey) { _, _ in
         refreshDisplayedGeneralKeyAvailability()

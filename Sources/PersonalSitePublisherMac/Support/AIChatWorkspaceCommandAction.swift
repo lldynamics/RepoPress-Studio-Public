@@ -10,6 +10,9 @@ struct AIChatWorkspaceCommandAction: Sendable {
       _ draftID: UUID?,
       _ quickPrompt: AIPublishingQuickPrompt?
     ) -> Void
+  var openAfterSheetDismissal: (@MainActor @Sendable (UUID?, AIPublishingQuickPrompt?) -> Void)? =
+    nil
+  var sheetDidDismiss: (@MainActor @Sendable () -> Void)? = nil
 }
 
 private struct AIChatWorkspaceCommandActionEnvironmentKey: EnvironmentKey {

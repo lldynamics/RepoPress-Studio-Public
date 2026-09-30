@@ -19,6 +19,13 @@ final class WorkbenchAccentPaletteTests: XCTestCase {
     XCTAssertEqual(WorkbenchAccentPalette.resolved(rawValue: "violet"), .violet)
   }
 
+  func testSystemPaletteLeavesSceneTintToMacOS() {
+    XCTAssertNil(WorkbenchAccentPalette.system.tint)
+    for palette in WorkbenchAccentPalette.allCases where palette != .system {
+      XCTAssertNotNil(palette.tint, "\(palette) should tint scene controls")
+    }
+  }
+
   func testSelectedPaletteReadsTheProvidedDefaultsSuite() throws {
     let suiteName = "WorkbenchAccentPaletteTests-\(UUID().uuidString)"
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

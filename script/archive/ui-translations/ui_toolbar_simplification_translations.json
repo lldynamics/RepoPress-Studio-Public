@@ -1,0 +1,14 @@
+{
+  "%lld 项正文问题": {
+    "en": {"one": "%lld body issue", "other": "%lld body issues"},
+    "zh-Hans": "%lld 项正文问题"
+  },
+  "插入代码块、表格、分隔线、视频、站内链接或组件": "Insert a code block, table, divider, video, internal link, or component",
+  "收起侧栏并在打字时淡出工具栏": "Hide the sidebar and fade the toolbar while typing",
+  "更多操作：专注模式、编辑器设置、导出、打印、分享与快捷键说明": "More actions: focus mode, editor settings, export, print, share, and keyboard shortcuts",
+  "查找、大纲、AI、专注模式、导出与快捷键": "Find, outline, AI, focus mode, export, and shortcuts",
+  "查看正文诊断": "Show body diagnostics",
+  "行内代码、引用、删除线与中英文排版": "Inline code, quote, strikethrough, and CJK spacing",
+  "行内续写（⌥\\）": "Inline continuation (⌥\\)",
+  "让光标居中并高亮当前段落": "Keep the cursor centered and highlight the current paragraph"
+}

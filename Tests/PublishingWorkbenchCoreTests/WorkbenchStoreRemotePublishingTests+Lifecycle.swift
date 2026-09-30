@@ -35,7 +35,7 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
       draftIDs: [draft.id]
     )
     store.publishingStore.confirmDirectRemotePublishLifecycle(
-      packages: [package],
+      packages: [package], profile: profile,
       result: RemoteRepositoryPublishResult(
         provider: .github,
         mode: .directCommit,
@@ -77,7 +77,7 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
     store.setDrafts([draft])
 
     store.publishingStore.confirmDirectRemotePublishLifecycle(
-      packages: [package],
+      packages: [package], profile: profile,
       result: RemoteRepositoryPublishResult(
         provider: .github,
         mode: .directCommit,
@@ -123,7 +123,7 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
     store.setDrafts([draft])
 
     store.publishingStore.confirmDirectRemotePublishLifecycle(
-      packages: [package],
+      packages: [package], profile: profile,
       result: RemoteRepositoryPublishResult(
         provider: .github,
         mode: .directCommit,

@@ -81,6 +81,9 @@ struct KnowledgeSourceListColumn: View {
 
       documentList
     }
+    // An empty library renders no list; keep the header pinned to the top
+    // instead of letting the sidebar center the remaining controls.
+    .frame(maxHeight: .infinity, alignment: .top)
     .sheet(isPresented: $isImportPresented) {
       KnowledgeImportAssistantView(knowledge: knowledge)
     }

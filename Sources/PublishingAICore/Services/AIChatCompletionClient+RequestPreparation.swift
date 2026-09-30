@@ -255,6 +255,7 @@ extension AIChatCompletionClient {
       throw CancellationError()
     }
     try Task.checkCancellation()
+    try validatePrepared(prepared, against: config, apiKey: apiKey)
     return try await selectedTransport.data(for: request)
   }
   func httpError(
@@ -502,13 +503,13 @@ extension AIChatCompletionClient {
     guard prepared.capabilityEvidenceSnapshot == (config.capabilityProbeEvidence ?? [:]) else {
       throw AIChatCompletionClientError.preparedRequestConfigurationMismatch
     }
+    let now = requestValidationDate()
     if let authorizationExpiresAt = prepared.authorizationExpiresAt,
-      Date() >= authorizationExpiresAt
+      now >= authorizationExpiresAt
     {
       throw AIChatCompletionClientError.preparedRequestAuthorizationExpired
     }
     if prepared.purpose != .capabilityProbe {
-      let now = Date()
       for evidence in prepared.capabilityEvidenceSnapshot.values {
         guard
           evidence.isCurrent(

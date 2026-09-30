@@ -6,6 +6,107 @@ import XCTest
 
 @MainActor
 final class KnowledgeNoteCloudSyncAdapterTests: XCTestCase {
+  func testRemoteReplacementRechecksEditSavedDuringApply() async throws {
+    try await assertEditSavedDuringRemoteApplyIsPreserved(tombstone: false)
+  }
+
+  func testRemoteTombstoneRechecksEditSavedDuringApplyAndRetainsAttachments() async throws {
+    try await assertEditSavedDuringRemoteApplyIsPreserved(tombstone: true)
+  }
+
+  func testSidecarFailureAfterRemoteMutationRetainsCopyAndRetryIsIdempotent() async throws {
+    for tombstone in [false, true] {
+      let (root, service, adapter) = try makeAdapter()
+      defer { try? FileManager.default.removeItem(at: root) }
+      let attachment = KnowledgeNoteAttachment(
+        id: UUID(), fileName: "keep.txt", mimeType: "text/plain", data: Data("keep".utf8))
+      let local = try service.createNote(
+        KnowledgeNote(title: "Local", markdown: "Keep local", attachments: [attachment]))
+      try await adapter.savePersistentState(
+        .init(boundAccountID: "account", initialFetchComplete: true))
+      var remote = KnowledgeNoteCloudSyncAdapter.portableNote(local)
+      remote.markdown = "Remote"
+      remote.updatedAt = local.updatedAt.addingTimeInterval(60)
+      let change: RPNoteCloudRemoteChange =
+        tombstone
+        ? .tombstone(id: local.id, deletedAt: remote.updatedAt, systemFields: Data([2]))
+        : .note(remote, sha256: try noteRevision(remote), systemFields: Data([2]))
+      let stateURL = root.appendingPathComponent("sidecar/adapter-state.json")
+      let stateData = try Data(contentsOf: stateURL)
+      try FileManager.default.removeItem(at: stateURL)
+      try FileManager.default.createDirectory(at: stateURL, withIntermediateDirectories: false)
+      do {
+        _ = try await adapter.applyRemote(change)
+        XCTFail("A blocked sidecar write must surface its failure")
+      } catch {
+        let notes = try service.notes()
+        let copy = try XCTUnwrap(notes.first { $0.id != local.id })
+        XCTAssertEqual(copy.markdown, local.markdown)
+        XCTAssertEqual(copy.attachments.first?.data, attachment.data)
+        XCTAssertEqual(notes.count, tombstone ? 1 : 2)
+        XCTAssertEqual(try service.note(documentID: local.id)?.markdown, tombstone ? nil : "Remote")
+      }
+      try FileManager.default.removeItem(at: stateURL)
+      try stateData.write(to: stateURL, options: .atomic)
+      let revisionCount = try service.revisions(documentID: local.id).count
+      _ = try await adapter.applyRemote(change)
+      let notes = try service.notes()
+      XCTAssertEqual(notes.count, tombstone ? 1 : 2)
+      XCTAssertEqual(try service.revisions(documentID: local.id).count, revisionCount)
+      XCTAssertEqual(notes.first { $0.id != local.id }?.attachments.first?.data, attachment.data)
+    }
+  }
+
+  private func assertEditSavedDuringRemoteApplyIsPreserved(tombstone: Bool) async throws {
+    let (root, service, adapter) = try makeAdapter()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let attachment = KnowledgeNoteAttachment(
+      id: UUID(), fileName: "keep.txt", mimeType: "text/plain", data: Data("keep".utf8))
+    let original = try service.createNote(
+      KnowledgeNote(title: "Local", markdown: "A", attachments: [attachment]))
+    try await adapter.savePersistentState(
+      .init(boundAccountID: "account", initialFetchComplete: true))
+    let changes = try await adapter.localChanges()
+    let baseline = try XCTUnwrap(changes.first)
+    await adapter.prepareForSend(baseline)
+    try await adapter.markSent(
+      id: original.id, revision: baseline.revision, systemFields: Data([1]))
+    var remote = KnowledgeNoteCloudSyncAdapter.portableNote(original)
+    remote.markdown = "Remote"
+    remote.updatedAt = original.updatedAt.addingTimeInterval(60)
+    let change: RPNoteCloudRemoteChange =
+      tombstone
+      ? .tombstone(id: original.id, deletedAt: remote.updatedAt, systemFields: Data([2]))
+      : .note(remote, sha256: try noteRevision(remote), systemFields: Data([2]))
+    let gate = RemoteNoteApplyGate()
+    await adapter.setBeforeRemoteApplyCommit { await gate.arriveAndWait() }
+    let applying = Task { try await adapter.applyRemote(change) }
+    await gate.waitForArrival()
+    var edited = original
+    edited.markdown = "B saved while applying"
+    _ = try await service.updateNoteAsync(
+      edited, expectedContentRevision: service.noteEditRevision(original))
+    await gate.release()
+    let result = try await applying.value
+    XCTAssertEqual(result, .keptLocalWithConflictCopy)
+    let notes = try service.notes()
+    let copy = try XCTUnwrap(notes.first { $0.id != original.id })
+    XCTAssertEqual(copy.markdown, edited.markdown)
+    XCTAssertEqual(copy.attachments.first?.data, attachment.data)
+    if tombstone {
+      XCTAssertNil(try service.note(documentID: original.id))
+      XCTAssertEqual(notes.count, 1)
+    } else {
+      XCTAssertEqual(try service.note(documentID: original.id)?.markdown, remote.markdown)
+      XCTAssertEqual(notes.count, 2)
+    }
+    await adapter.setBeforeRemoteApplyCommit(nil)
+    _ = try await adapter.applyRemote(change)
+    XCTAssertEqual(
+      try service.notes().count, notes.count, "Replaying a remote change must not duplicate copies")
+    XCTAssertEqual(try service.note(documentID: copy.id)?.attachments.first?.data, attachment.data)
+  }
+
   func testBrokenSidecarSymlinkDoesNotBecomeFreshSyncState() async throws {
     let (root, _, adapter) = try makeAdapter()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -702,5 +803,31 @@ private actor DeletionCommitPermit {
     released = true
     continuation?.resume()
     continuation = nil
+  }
+}
+
+private actor RemoteNoteApplyGate {
+  private var arrived = false
+  private var arrivalWaiters: [CheckedContinuation<Void, Never>] = []
+  private var releaseWaiter: CheckedContinuation<Void, Never>?
+  private var released = false
+
+  func arriveAndWait() async {
+    arrived = true
+    for waiter in arrivalWaiters { waiter.resume() }
+    arrivalWaiters.removeAll()
+    guard !released else { return }
+    await withCheckedContinuation { releaseWaiter = $0 }
+  }
+
+  func waitForArrival() async {
+    guard !arrived else { return }
+    await withCheckedContinuation { arrivalWaiters.append($0) }
+  }
+
+  func release() {
+    released = true
+    releaseWaiter?.resume()
+    releaseWaiter = nil
   }
 }

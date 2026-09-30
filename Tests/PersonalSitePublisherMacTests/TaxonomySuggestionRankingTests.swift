@@ -46,15 +46,16 @@ final class TaxonomySuggestionRankingTests: XCTestCase {
   }
 
   @MainActor
-  func testVisibleSuggestionsKeepEverySelectionBeforeTheAdditionalLimit() {
+  func testSelectedValuesAndAdditionalSuggestionsDoNotOverlap() {
     let additional = (1...14).map { String(format: "候选%02d", $0) }
 
-    let visible = TaxonomySuggestionField.visibleSuggestions(
+    let selected = TaxonomySuggestionField.selectedValues(["中文标签甲", "中文标签乙", "中文标签甲"])
+    let offered = TaxonomySuggestionField.additionalSuggestions(
       values: ["中文标签甲", "中文标签乙"],
-      suggestions: additional
+      suggestions: ["中文标签乙"] + additional
     )
 
-    XCTAssertEqual(Array(visible.prefix(2)), ["中文标签甲", "中文标签乙"])
-    XCTAssertEqual(Array(visible.dropFirst(2)), Array(additional.prefix(12)))
+    XCTAssertEqual(selected, ["中文标签甲", "中文标签乙"])
+    XCTAssertEqual(offered, Array(additional.prefix(12)))
   }
 }

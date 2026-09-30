@@ -19,10 +19,10 @@ struct RepositoryWorkspaceView: View {
   @AppStorage("dataManagementRequestedSection") var dataManagementRequestedSection =
     DataManagementSection.migration.rawValue
   @State var isOverviewMoreToolsExpanded = false
-  @State var isRepositoryCreationConfirmationPresented = false
+  @State var pendingRepositoryCreationTarget: SiteOperationConfirmationTarget?
   @State var createsPrivateRepository = true
   @State var repositoryCreationFailureMessage: String?
-  @State var pendingRemoteArticleImportFiles: [RepositoryChangedFile] = []
+  @State var pendingRemoteArticleImport: RemoteArticleImportConfirmation?
   @State var pendingRepositorySafeSyncConfirmation: RepositorySafeSyncConfirmation?
   @State var pendingRepositoryRebaseSyncConfirmation: RepositoryRebaseSyncConfirmation?
 
@@ -65,9 +65,10 @@ struct RepositoryWorkspaceView: View {
         .accessibilityIdentifier("repository-workspace")
       }
     }
-    .sheet(isPresented: $isRepositoryCreationConfirmationPresented) {
-      let profile = store.activeProfile
+    .sheet(item: $pendingRepositoryCreationTarget) { target in
+      let profile = target.profile
       RemoteRepositoryCreationConfirmationView(
+        siteName: profile.name,
         providerName: profile.repositoryProvider.localizedDisplayName,
         owner: profile.repoOwner,
         repositoryName: profile.repoName,
@@ -75,23 +76,26 @@ struct RepositoryWorkspaceView: View {
         isCreating: store.isRemoteRepositoryChecking,
         failureMessage: repositoryCreationFailureMessage,
         cancelAction: {
-          isRepositoryCreationConfirmationPresented = false
+          pendingRepositoryCreationTarget = nil
         },
-        createAction: createRepositoryFromConfirmation
+        createAction: { createRepositoryFromConfirmation(target) }
       )
     }
-    .sheet(isPresented: remoteArticleImportPreviewPresentation) {
+    .sheet(item: $pendingRemoteArticleImport) { confirmation in
       RemoteArticleImportPreviewView(
-        files: pendingRemoteArticleImportFiles,
+        siteName: confirmation.target.profile.name,
+        repositoryName: confirmation.target.profile.repositoryDisplayName,
+        files: confirmation.files,
         cancelAction: {
-          pendingRemoteArticleImportFiles = []
+          pendingRemoteArticleImport = nil
         },
         confirmAction: { repositoryPaths in
           let frozenPaths = repositoryPaths
-          pendingRemoteArticleImportFiles = []
+          pendingRemoteArticleImport = nil
           Task { @MainActor in
             _ = await store.importRemoteArticleDraftsFromRepository(
-              repositoryPaths: frozenPaths
+              repositoryPaths: frozenPaths,
+              expectedTarget: confirmation.target
             )
           }
         }
@@ -134,8 +138,10 @@ struct RepositoryWorkspaceView: View {
       }
     }
     .externalBrowserPreviewPresentation(coordinator: externalBrowserPreviewCoordinator)
-    .onChange(of: store.activeProfileID) {
+    .onChange(of: store.activeProfile) {
       externalBrowserPreviewCoordinator.cancelPendingOpen()
+      pendingRepositoryCreationTarget = nil
+      pendingRemoteArticleImport = nil
       pendingRepositorySafeSyncConfirmation = nil
       pendingRepositoryRebaseSyncConfirmation = nil
     }
@@ -204,35 +210,33 @@ struct RepositoryWorkspaceView: View {
     }
   }
 
-  private func createRepositoryFromConfirmation() {
+  private func createRepositoryFromConfirmation(_ target: SiteOperationConfirmationTarget) {
     let privateRepository = createsPrivateRepository
     repositoryCreationFailureMessage = nil
     Task { @MainActor in
       let result = await store.createRemoteRepositoryForActiveProfile(
-        privateRepository: privateRepository
+        privateRepository: privateRepository,
+        expectedTarget: target
       )
-      store.refreshPublishPreviewInBackground()
+      guard pendingRepositoryCreationTarget?.id == target.id else { return }
       guard result != nil else {
         repositoryCreationFailureMessage = store.publishActionMessage
         return
       }
-      isRepositoryCreationConfirmationPresented = false
+      store.refreshPublishPreviewInBackground()
+      pendingRepositoryCreationTarget = nil
     }
   }
 
-  var remoteArticleImportPreviewPresentation: Binding<Bool> {
-    Binding(
-      get: { !pendingRemoteArticleImportFiles.isEmpty },
-      set: { isPresented in
-        if !isPresented {
-          pendingRemoteArticleImportFiles = []
-        }
-      }
-    )
+  func presentRemoteArticleImportPreview(_ files: [RepositoryChangedFile]) {
+    let confirmation = RemoteArticleImportConfirmation(profile: store.activeProfile, files: files)
+    pendingRemoteArticleImport = confirmation.files.isEmpty ? nil : confirmation
   }
 
-  func presentRemoteArticleImportPreview(_ files: [RepositoryChangedFile]) {
-    pendingRemoteArticleImportFiles = files.filter { $0.kind != .deleted }
+  func presentRepositoryCreationConfirmation() {
+    createsPrivateRepository = true
+    repositoryCreationFailureMessage = nil
+    pendingRepositoryCreationTarget = SiteOperationConfirmationTarget(profile: store.activeProfile)
   }
 
   private func applyRepositorySafeSync(_ confirmation: RepositorySafeSyncConfirmation) {

@@ -127,8 +127,8 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift" \
-  ".tint(selectedAccentPalette.color)" \
-  "global navigation controls must use the selected app accent palette"
+  ".tint(selectedAccentPalette.tint)" \
+  "global navigation controls must use the selected app accent palette (nil for the macOS accent)"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
@@ -631,11 +631,10 @@ require_literal_any_file \
   "Sources/PersonalSitePublisherMac/Views/Settings/PrivacySettingsView.swift" \
   "Sources/PersonalSitePublisherMac/Views/Settings/PrivacySettingsVisibilitySection.swift"
 
-require_literal_any_file \
-  ".accessibilityLabel(\"元数据标题\")" \
-  "article inspector title field must expose a distinct metadata accessibility label" \
-  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTaskInspector.swift" \
-  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTaskInspectorSections.swift"
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
+  ".focused(\$isTitleFocused)" \
+  "title issues must be able to focus the single editor title field"
 
 require_literal_any_file \
   ".accessibilityLabel(\"图片 Alt 文本\")" \
@@ -1016,7 +1015,7 @@ require_literal \
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceQuickSearchView.swift" \
   ".accessibilityIdentifier(\"repository-sidebar-stage-navigation\")" \
-  "repository overview, changes and history navigation must remain accessible below search"
+  "repository overview, changes and history navigation must remain accessible above search"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceQuickSearchView.swift" \
@@ -1426,8 +1425,18 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownFormattingToolbar.swift" \
-  "formattingRow(items: MarkdownToolbarLayout.expandedFormattingItems)" \
-  "expanded formatting must expose the full primary row"
+  ".accessibilityIdentifier(identifier)" \
+  "grouped insert and format menus must expose stable accessibility identifiers"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
+  "MarkdownFocusModeToggles(isActive: \$isFocusModeActive)" \
+  "focus mode must remain reachable from the editor's more-actions menu"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownEditorStatusBar.swift" \
+  ".accessibilityIdentifier(\"markdown-editor-diagnostics\")" \
+  "body diagnostics must stay reachable from the editor status bar"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \

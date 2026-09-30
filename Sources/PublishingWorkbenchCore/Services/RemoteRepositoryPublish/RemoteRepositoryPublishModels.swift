@@ -204,8 +204,9 @@ public struct RemoteRepositoryPublishProgress: Codable, Hashable, Sendable {
 
   public var byteProgress: Double? {
     guard let completedByteCount,
-          let totalByteCount,
-          totalByteCount > 0 else {
+      let totalByteCount,
+      totalByteCount > 0
+    else {
       return nil
     }
     return min(1, max(0, Double(completedByteCount) / Double(totalByteCount)))
@@ -213,12 +214,14 @@ public struct RemoteRepositoryPublishProgress: Codable, Hashable, Sendable {
 
   public var byteProgressDescription: String? {
     guard let byteProgress,
-          let completedByteCount,
-          let totalByteCount else {
+      let completedByteCount,
+      let totalByteCount
+    else {
       return nil
     }
     let percentage = Int((byteProgress * 100).rounded())
-    return "\(Self.formatByteCount(completedByteCount)) / \(Self.formatByteCount(totalByteCount)) (\(percentage)%)"
+    return
+      "\(Self.formatByteCount(completedByteCount)) / \(Self.formatByteCount(totalByteCount)) (\(percentage)%)"
   }
 
   public var statusDescription: String {
@@ -338,12 +341,15 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
     )
     canRead = try container.decodeIfPresent(Bool.self, forKey: .canRead) ?? false
     canWrite = try container.decodeIfPresent(Bool.self, forKey: .canWrite) ?? false
-    permissionSummary = try container.decodeIfPresent(String.self, forKey: .permissionSummary)
+    permissionSummary =
+      try container.decodeIfPresent(String.self, forKey: .permissionSummary)
       ?? CoreL10n.text(canWrite ? "已确认写入权限。" : "未确认写入权限。")
     tokenScopeSummary = try container.decodeIfPresent(String.self, forKey: .tokenScopeSummary)
-    minimumWritePermission = try container.decodeIfPresent(String.self, forKey: .minimumWritePermission)
+    minimumWritePermission =
+      try container.decodeIfPresent(String.self, forKey: .minimumWritePermission)
       ?? CoreL10n.text("需要仓库写入权限。")
-    message = try container.decodeIfPresent(String.self, forKey: .message)
+    message =
+      try container.decodeIfPresent(String.self, forKey: .message)
       ?? CoreL10n.text(canWrite ? "Token 具备写入权限。" : "Token 未确认写入权限。")
     checkedAt = try container.decodeIfPresent(Date.self, forKey: .checkedAt)
   }
@@ -439,7 +445,8 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
   public var automaticallyAdoptedPaths: [String] {
     let changed = Set(changedPaths.map { $0.normalizedRelativePath() })
     let adopted = remoteVersionsByPath?.keys.map { $0.normalizedRelativePath() } ?? []
-    return adopted
+    return
+      adopted
       .filter { !changed.contains($0) }
       .sorted()
   }
@@ -449,6 +456,13 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
   /// cannot recover or distinguish a completed review request from a plain
   /// branch write.
   public func validatedForSuccess() throws -> Self {
+    if mode == .previewBranch {
+      guard branchName.trimmedForPublishing.nilIfEmpty != nil,
+        targetBranch.trimmedForPublishing.nilIfEmpty != nil,
+        branchName.trimmedForPublishing != targetBranch.trimmedForPublishing,
+        commitSHA?.trimmedForPublishing.nilIfEmpty != nil
+      else { throw RemoteRepositoryPublishError.invalidResponse }
+    }
     guard mode == .reviewRequest else { return self }
     let reviewURLIsUsable: Bool = {
       guard let value = reviewURL?.trimmedForPublishing.nilIfEmpty,
@@ -554,10 +568,12 @@ public struct RemoteRepositoryPublishPreflightResult: Codable, Hashable, Sendabl
     remoteVersionsByPath: [String: String] = [:]
   ) {
     self.conflicts = conflicts
-    self.remoteVersionsByPath = remoteVersionsByPath.reduce(into: [String: String]()) { result, entry in
+    self.remoteVersionsByPath = remoteVersionsByPath.reduce(into: [String: String]()) {
+      result, entry in
       let path = entry.key.normalizedRelativePath()
       guard !path.isEmpty,
-            let version = entry.value.trimmedForPublishing.nilIfEmpty else {
+        let version = entry.value.trimmedForPublishing.nilIfEmpty
+      else {
         return
       }
       result[path] = version
@@ -605,13 +621,14 @@ public struct RemoteRepositoryReviewRecoveryDraft: Codable, Hashable, Sendable {
   }
 }
 
-public extension RemoteRepositoryReviewRecoveryDraft {
-  static func make(record: ReleaseRecord) throws -> RemoteRepositoryReviewRecoveryDraft {
+extension RemoteRepositoryReviewRecoveryDraft {
+  public static func make(record: ReleaseRecord) throws -> RemoteRepositoryReviewRecoveryDraft {
     guard record.kind == .remotePublishFailure,
-          let branchName = record.branchName?.trimmedForPublishing.nilIfEmpty,
-          let targetBranch = record.targetBranch?.trimmedForPublishing.nilIfEmpty,
-          let commitSHA = record.commitSHA?.trimmedForPublishing.nilIfEmpty,
-          branchName != targetBranch else {
+      let branchName = record.branchName?.trimmedForPublishing.nilIfEmpty,
+      let targetBranch = record.targetBranch?.trimmedForPublishing.nilIfEmpty,
+      let commitSHA = record.commitSHA?.trimmedForPublishing.nilIfEmpty,
+      branchName != targetBranch
+    else {
       throw RemoteRepositoryPublishError.reviewRecoveryUnavailable(
         CoreL10n.text("记录中没有可恢复的 Review 分支、目标分支或 commit。")
       )
@@ -633,12 +650,13 @@ public extension RemoteRepositoryReviewRecoveryDraft {
       CoreL10n.format("- 发布分支：%@", branchName),
       CoreL10n.format("- Commit：%@", commitSHA),
       "",
-      CoreL10n.text("该分支的文件和 commit 已在之前的发布中写入；本次仅继续创建或获取 PR/MR，不重新上传文件。")
+      CoreL10n.text("该分支的文件和 commit 已在之前的发布中写入；本次仅继续创建或获取 PR/MR，不重新上传文件。"),
     ]
 
     if !record.batchItems.isEmpty {
       bodyLines.append(contentsOf: ["", CoreL10n.text("## 文章")])
-      bodyLines.append(contentsOf: record.batchItems.map { "- \($0.draftTitle): `\($0.markdownPath)`" })
+      bodyLines.append(
+        contentsOf: record.batchItems.map { "- \($0.draftTitle): `\($0.markdownPath)`" })
     }
     if !record.changedPaths.isEmpty {
       bodyLines.append(contentsOf: ["", CoreL10n.text("## 文件")])
@@ -654,63 +672,6 @@ public extension RemoteRepositoryReviewRecoveryDraft {
       changedPaths: record.changedPaths,
       recordedCommitSHA: commitSHA
     )
-  }
-}
-
-public struct RemoteRepositoryRollbackDraft: Codable, Hashable, Sendable {
-  public var recordID: UUID
-  public var title: String
-  public var commitMessage: String
-  public var targetBranch: String
-  public var commitSHA: String
-  public var changedPaths: [String]
-
-  public init(
-    recordID: UUID,
-    title: String,
-    commitMessage: String,
-    targetBranch: String,
-    commitSHA: String,
-    changedPaths: [String]
-  ) {
-    self.recordID = recordID
-    self.title = title
-    self.commitMessage = commitMessage
-    self.targetBranch = targetBranch
-    self.commitSHA = commitSHA
-    self.changedPaths = changedPaths
-  }
-}
-
-public struct RemoteRepositoryRollbackResult: Codable, Hashable, Sendable {
-  public var provider: RepositoryProvider
-  public var recordID: UUID
-  public var targetBranch: String
-  public var rolledBackCommitSHA: String
-  public var rollbackCommitSHA: String
-  public var changedPaths: [String]
-  public var remoteURL: String?
-
-  public init(
-    provider: RepositoryProvider,
-    recordID: UUID,
-    targetBranch: String,
-    rolledBackCommitSHA: String,
-    rollbackCommitSHA: String,
-    changedPaths: [String],
-    remoteURL: String? = nil
-  ) {
-    self.provider = provider
-    self.recordID = recordID
-    self.targetBranch = targetBranch
-    self.rolledBackCommitSHA = rolledBackCommitSHA
-    self.rollbackCommitSHA = rollbackCommitSHA
-    self.changedPaths = changedPaths
-    self.remoteURL = remoteURL
-  }
-
-  public var shortRollbackCommitSHA: String {
-    String(rollbackCommitSHA.prefix(8))
   }
 }
 
@@ -767,26 +728,26 @@ public struct RemoteRepositoryReviewWithdrawalResult: Codable, Hashable, Sendabl
   }
 }
 
-public extension RemoteRepositoryPublishResult {
-  var shortCommitSHA: String? {
+extension RemoteRepositoryPublishResult {
+  public var shortCommitSHA: String? {
     commitSHA.map { String($0.prefix(8)) }
   }
 
-  var displayTitle: String {
+  public var displayTitle: String {
     "\(provider.displayName) \(mode.displayName)"
   }
 
-  var branchSummary: String {
+  public var branchSummary: String {
     mode.usesDedicatedBranch
       ? "\(branchName) -> \(targetBranch)"
       : targetBranch
   }
 
-  var clipboardSummary: String {
+  public var clipboardSummary: String {
     var lines = [
       "\(displayTitle)",
       CoreL10n.format("分支：%@", branchSummary),
-      CoreL10n.format("文件：%@", String(changedPaths.count))
+      CoreL10n.format("文件：%@", String(changedPaths.count)),
     ]
     if let repositoryName {
       lines.insert(CoreL10n.format("仓库：%@", repositoryName), at: 1)
@@ -810,29 +771,8 @@ public extension RemoteRepositoryPublishResult {
 
 }
 
-public extension RemoteRepositoryRollbackDraft {
-  static func make(record: ReleaseRecord) throws -> RemoteRepositoryRollbackDraft {
-    guard let commitSHA = record.commitSHA?.trimmedForPublishing.nilIfEmpty else {
-      throw RemoteRepositoryPublishError.missingRollbackCommit
-    }
-    let targetBranch = record.targetBranch?.nilIfEmpty
-      ?? record.branchName?.nilIfEmpty
-      ?? "main"
-    let displayTitle = record.draftTitle ?? record.title
-    let rollbackTitle = CoreL10n.format("回滚：%@", displayTitle)
-    return RemoteRepositoryRollbackDraft(
-      recordID: record.id,
-      title: rollbackTitle,
-      commitMessage: rollbackTitle,
-      targetBranch: targetBranch,
-      commitSHA: commitSHA,
-      changedPaths: record.changedPaths
-    )
-  }
-}
-
-public extension RemoteRepositoryReviewWithdrawalDraft {
-  static func make(record: ReleaseRecord) throws -> RemoteRepositoryReviewWithdrawalDraft {
+extension RemoteRepositoryReviewWithdrawalDraft {
+  public static func make(record: ReleaseRecord) throws -> RemoteRepositoryReviewWithdrawalDraft {
     guard let reviewURL = record.reviewURL?.trimmedForPublishing.nilIfEmpty else {
       throw RemoteRepositoryPublishError.missingReviewURL
     }
@@ -855,13 +795,15 @@ public extension RemoteRepositoryReviewWithdrawalDraft {
     }
     let components = url.pathComponents
     if let pullIndex = components.firstIndex(of: "pull"),
-       components.indices.contains(components.index(after: pullIndex)),
-       let number = Int(components[components.index(after: pullIndex)]) {
+      components.indices.contains(components.index(after: pullIndex)),
+      let number = Int(components[components.index(after: pullIndex)])
+    {
       return number
     }
     if let mrIndex = components.firstIndex(of: "merge_requests"),
-       components.indices.contains(components.index(after: mrIndex)),
-       let number = Int(components[components.index(after: mrIndex)]) {
+      components.indices.contains(components.index(after: mrIndex)),
+      let number = Int(components[components.index(after: mrIndex)])
+    {
       return number
     }
     return nil

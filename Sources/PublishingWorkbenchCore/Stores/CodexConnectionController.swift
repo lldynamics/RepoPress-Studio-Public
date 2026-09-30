@@ -133,7 +133,7 @@ public final class CodexConnectionController: ObservableObject {
     phase = .checking
     failure = nil
     progress = CoreL10n.text("正在准备连接组件…")
-    preparationTask = Task {
+    preparationTask = Task { [self] in
       if let refreshTask { await refreshTask.value }
       do {
         if rollback {

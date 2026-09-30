@@ -657,12 +657,10 @@ extension PublishingStore {
       prependReleaseRecord(releaseRecord)
       finishPublishExecution(operation.id, record: releaseRecord, store: store)
       if !deferDraftLifecycleMutation {
-        confirmDirectRemotePublishLifecycle(
-          packages: publishableItems.map(\.package),
-          result: result
-        )
+        let packages = publishableItems.map(\.package)
+        confirmDirectRemotePublishLifecycle(packages: packages, profile: profile, result: result)
         if mode == .reviewRequest {
-          markRemotePublishReviewSuccess(packages: publishableItems.map(\.package))
+          markRemotePublishReviewSuccess(packages: packages, profile: profile)
         }
       }
       if mode != .previewBranch {

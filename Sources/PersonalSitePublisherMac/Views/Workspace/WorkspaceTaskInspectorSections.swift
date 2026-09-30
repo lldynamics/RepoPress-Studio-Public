@@ -3,21 +3,10 @@ import PublishingDomainContracts
 import PublishingWorkbenchCore
 import SwiftUI
 
-struct WorkspaceTaskMetadataState {
-  let siteName: String
-  let markdownPath: String
-
-  init(draft: ArticleDraft, profile: SiteProfile) {
-    siteName = profile.name
-    markdownPath = profile.markdownPath(for: draft)
-  }
-}
-
 struct WorkspaceTaskMetadataSection: View {
   @Binding var draft: ArticleDraft
   @ObservedObject private var summaryAI: WorkbenchMetadataSummaryFeatureFacade
   private let store: WorkbenchStore
-  let state: WorkspaceTaskMetadataState
   let tagSuggestions: [String]
   let categorySuggestions: [String]
   @State private var isGeneratingSummary = false
@@ -28,12 +17,15 @@ struct WorkspaceTaskMetadataSection: View {
   @State private var isAddingDraftToProject = false
   @State private var provenancePresentationCache = ArticleProvenancePresentationCache()
   @State private var slugText: String
+  @State private var isSummaryAIUnavailablePresented = false
+  @State private var isOwnershipExpanded = false
   @FocusState private var isSlugFocused: Bool
+  @Environment(\.openSettings) private var openSettings
+  @Environment(\.settingsWorkspaceCommandAction) private var settingsWorkspaceCommandAction
 
   init(
     draft: Binding<ArticleDraft>,
     store: WorkbenchStore,
-    state: WorkspaceTaskMetadataState,
     tagSuggestions: [String],
     categorySuggestions: [String]
   ) {
@@ -43,21 +35,15 @@ struct WorkspaceTaskMetadataSection: View {
       wrappedValue: WorkbenchMetadataSummaryFeatureFacade(store: store)
     )
     _slugText = State(initialValue: draft.wrappedValue.slug)
-    self.state = state
     self.tagSuggestions = tagSuggestions
     self.categorySuggestions = categorySuggestions
   }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
+      // The title is edited in the editor header; title issues focus it there.
+      // This anchor keeps unknown-field navigation landing at the form's top.
       InspectorSection("基础字段") {
-        metadataField("标题") {
-          TextField("输入文章标题", text: $draft.title)
-            .textFieldStyle(.roundedBorder)
-            .accessibilityLabel("元数据标题")
-            .accessibilityValue(draft.title.isEmpty ? String(localized: "未填写") : draft.title)
-        }
-        .id(PublishMetadataFieldAnchor.id(for: "title"))
         metadataField("固定链接（Slug）") {
           TextField("例如 my-article", text: $slugText)
             .textFieldStyle(.roundedBorder)
@@ -96,6 +82,7 @@ struct WorkspaceTaskMetadataSection: View {
         summaryField
           .id(PublishMetadataFieldAnchor.id(for: "summary"))
       }
+      .id(PublishMetadataFieldAnchor.id(for: "title"))
 
       InspectorSection("创作信息") {
         metadataField("创作来源") {
@@ -107,128 +94,104 @@ struct WorkspaceTaskMetadataSection: View {
           }
           .labelsHidden()
           .pickerStyle(.menu)
+          .help(provenanceHelpText)
           .accessibilityIdentifier("article-provenance-picker")
           .accessibilityLabel("文章创作来源")
           .accessibilityValue(selectedProvenance.localizedDisplayName)
+          .accessibilityHint(provenanceHelpText)
         }
 
-        Text(provenanceHelpText)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+        // Only AI-involved sources change the article, so only they need an
+        // always-visible explanation; the human default keeps it as a tooltip.
+        if selectedProvenance != .humanOriginal {
+          Text(provenanceHelpText)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
       }
 
       InspectorSection("标签与分类") {
         TaxonomySuggestionField(
           title: "标签",
+          addPrompt: "添加标签…",
           values: $draft.tags,
           suggestions: tagSuggestions
         )
+        // Per-draft identity drops half-typed entries when switching articles;
+        // the outer anchor keeps publish navigation able to scroll here.
+        .id(draft.id)
         .id(PublishMetadataFieldAnchor.id(for: "tags"))
 
         TaxonomySuggestionField(
           title: "分类",
+          addPrompt: "添加分类…",
           values: $draft.categories,
           suggestions: categorySuggestions
         )
+        .id(draft.id)
       }
 
-      InspectorSection("补充元数据") {
-        VStack(alignment: .leading, spacing: 14) {
-          InspectorSection("发布时间与可见性") {
-            metadataField("发布时间") {
-              DatePicker(
-                "发布时间", selection: $draft.date, displayedComponents: [.date, .hourAndMinute]
-              )
-              .labelsHidden()
-              .accessibilityLabel("文章发布时间")
-              .accessibilityValue(draft.date.formatted(date: .abbreviated, time: .shortened))
-            }
-            .id(PublishMetadataFieldAnchor.id(for: "date"))
-            metadataField("可见性") {
-              Picker("可见性", selection: $draft.visibility) {
-                ForEach(ArticleVisibility.allCases) { visibility in
-                  Label(visibility.localizedDisplayName, systemImage: visibility.systemImage)
-                    .tag(visibility)
-                }
-              }
-              .labelsHidden()
-              .accessibilityLabel("文章可见性")
-              .accessibilityValue(draft.visibility.localizedDisplayName)
-            }
-            Toggle("标记为草稿", isOn: $draft.draft)
-              .id(PublishMetadataFieldAnchor.id(for: "draft"))
-              .accessibilityLabel("草稿状态")
-              .accessibilityValue(
-                draft.draft ? String(localized: "草稿") : String(localized: "非草稿")
-              )
-          }
-
-          InspectorSection("作者") {
-            metadataField("作者") {
-              TextField("多位作者用逗号分隔", text: authorsBinding)
-                .textFieldStyle(.roundedBorder)
-                .accessibilityLabel("文章作者")
-                .accessibilityValue(
-                  draft.authors.isEmpty
-                    ? String(localized: "未填写") : draft.authors.joined(separator: "，"))
+      InspectorSection("发布") {
+        metadataField("发布时间") {
+          DatePicker(
+            "发布时间", selection: $draft.date, displayedComponents: [.date, .hourAndMinute]
+          )
+          .labelsHidden()
+          .accessibilityLabel("文章发布时间")
+          .accessibilityValue(draft.date.formatted(date: .abbreviated, time: .shortened))
+        }
+        .id(PublishMetadataFieldAnchor.id(for: "date"))
+        metadataField("可见性") {
+          Picker("可见性", selection: $draft.visibility) {
+            ForEach(ArticleVisibility.allCases) { visibility in
+              Label(visibility.localizedDisplayName, systemImage: visibility.systemImage)
+                .tag(visibility)
             }
           }
+          .labelsHidden()
+          .accessibilityLabel("文章可见性")
+          .accessibilityValue(draft.visibility.localizedDisplayName)
+        }
+        Toggle("标记为草稿", isOn: $draft.draft)
+          .id(PublishMetadataFieldAnchor.id(for: "draft"))
+          .accessibilityLabel("草稿状态")
+          .accessibilityValue(
+            draft.draft ? String(localized: "草稿") : String(localized: "非草稿")
+          )
+        metadataField("作者") {
+          TextField("多位作者用逗号分隔", text: authorsBinding)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityLabel("文章作者")
+            .accessibilityValue(
+              draft.authors.isEmpty
+                ? String(localized: "未填写") : draft.authors.joined(separator: "，"))
+        }
+      }
 
-          InspectorSection("状态与归属") {
-            InspectorStatRow(title: "站点", value: state.siteName, systemImage: "globe")
-            InspectorStatRow(
-              title: "写作阶段", value: draft.status.localizedDisplayName,
-              systemImage: draft.status.systemImage)
-            InspectorStatRow(
-              title: "站点稿件",
-              value: siteDraftStatusDescription,
-              systemImage: draft.draft ? "doc.badge.clock" : "doc.badge.checkmark"
-            )
-            InspectorStatRow(
-              title: "本地保存",
-              value: localSaveStatusDescription,
-              systemImage: localSaveStatusSystemImage
-            )
-            InspectorStatRow(
-              title: "远端同步",
-              value: remoteSyncState.localizedDisplayName,
-              systemImage: remoteSyncState.systemImage
-            )
+      if !draft.isGeneralDraft, draft.repositoryPath?.nilIfEmpty == nil {
+        addDraftToProjectButton
+      }
 
-            if let link = draft.translationLink {
-              TranslationRelationshipSection(draft: $draft, store: store, link: link)
-            }
+      // Site, save state and file path are shown in the title bar, the editor
+      // status bar and the breadcrumb, so only the remaining facts live here.
+      InspectorDisclosureSection("状态与归属", isExpanded: $isOwnershipExpanded) {
+        InspectorStatRow(
+          title: "写作阶段", value: draft.status.localizedDisplayName,
+          systemImage: draft.status.systemImage)
+        InspectorStatRow(
+          title: "站点稿件",
+          value: siteDraftStatusDescription,
+          systemImage: draft.draft ? "doc.badge.clock" : "doc.badge.checkmark"
+        )
+        InspectorStatRow(
+          title: "远端同步",
+          value: remoteSyncState.localizedDisplayName,
+          systemImage: remoteSyncState.systemImage
+        )
 
-            Text(draft.repositoryPath?.normalizedRelativePath() ?? "计划路径：\(state.markdownPath)")
-              .font(.caption.monospaced())
-              .foregroundStyle(.secondary)
-              .workbenchTruncatedIdentity(
-                draft.repositoryPath?.normalizedRelativePath() ?? state.markdownPath,
-                lineLimit: 3
-              )
-
-            if !draft.isGeneralDraft, draft.repositoryPath?.nilIfEmpty == nil {
-              Button {
-                addDraftToProject()
-              } label: {
-                if isAddingDraftToProject {
-                  HStack(spacing: 6) {
-                    ProgressView()
-                      .controlSize(.small)
-                    Text("正在加入项目")
-                  }
-                } else {
-                  Label("加入站点项目", systemImage: "folder.badge.plus")
-                }
-              }
-              .buttonStyle(.bordered)
-              .controlSize(.small)
-              .disabled(isAddingDraftToProject)
-              .help("确认后才创建项目 Markdown；以后编辑会自动保存到该文件。")
-              .accessibilityIdentifier("metadata-add-draft-to-project")
-            }
-          }
+        if let link = draft.translationLink {
+          TranslationRelationshipSection(draft: $draft, store: store, link: link)
         }
       }
     }
@@ -283,31 +246,25 @@ struct WorkspaceTaskMetadataSection: View {
       : String(localized: "正式发布候选")
   }
 
-  private var localSaveStatusDescription: String {
-    if draft.isGeneralDraft {
-      return String(localized: "已保存在软件")
+  private var addDraftToProjectButton: some View {
+    Button {
+      addDraftToProject()
+    } label: {
+      if isAddingDraftToProject {
+        HStack(spacing: 6) {
+          ProgressView()
+            .controlSize(.small)
+          Text("正在加入项目")
+        }
+      } else {
+        Label("加入站点项目", systemImage: "folder.badge.plus")
+      }
     }
-    switch store.siteDraftFileSaveStates[draft.id] {
-    case .pending:
-      return String(localized: "正在写入项目")
-    case .saved:
-      return String(localized: "已写入项目")
-    case .failed(_, let message):
-      return String(localized: "项目写入失败：\(message)")
-    case nil:
-      return draft.repositoryPath?.nilIfEmpty == nil
-        ? String(localized: "仅保存在软件")
-        : String(localized: "已绑定项目文件")
-    }
-  }
-
-  private var localSaveStatusSystemImage: String {
-    switch store.siteDraftFileSaveStates[draft.id] {
-    case .pending: return "arrow.triangle.2.circlepath"
-    case .saved: return "checkmark.circle"
-    case .failed: return "exclamationmark.triangle"
-    case nil: return draft.repositoryPath?.nilIfEmpty == nil ? "internaldrive" : "doc"
-    }
+    .buttonStyle(.bordered)
+    .controlSize(.small)
+    .disabled(isAddingDraftToProject)
+    .help("确认后才创建项目 Markdown；以后编辑会自动保存到该文件。")
+    .accessibilityIdentifier("metadata-add-draft-to-project")
   }
 
   private var remoteSyncState: DraftRepositorySyncState {
@@ -336,42 +293,33 @@ struct WorkspaceTaskMetadataSection: View {
 
         Spacer(minLength: 0)
 
-        if summaryAIAvailability.isEnabled || isGeneratingSummary {
-          Button(action: generateAISummary) {
-            if isGeneratingSummary {
-              HStack(spacing: 5) {
-                ProgressView()
-                  .controlSize(.small)
-                Text("生成中")
-              }
-            } else {
-              Label(summaryAIButtonTitle, systemImage: "sparkles")
+        Button(action: summaryAIButtonAction) {
+          if isGeneratingSummary {
+            HStack(spacing: 5) {
+              ProgressView()
+                .controlSize(.small)
+              Text("生成中")
             }
+          } else {
+            Label(summaryAIButtonTitle, systemImage: "sparkles")
           }
-          .buttonStyle(.bordered)
-          .controlSize(.small)
-          .disabled(isGeneratingSummary)
-          .help(summaryAIUnavailableReason ?? summaryAIButtonHelp)
-          .accessibilityIdentifier("metadata-summary-ai-button")
-          .accessibilityLabel(summaryAIButtonTitle)
-          .accessibilityValue(isGeneratingSummary ? String(localized: "生成中") : summaryAIButtonTitle)
-        } else {
-          // Keep the action name legible without presenting an inert button
-          // with the system's low-contrast disabled tint.
-          Label(summaryAIButtonTitle, systemImage: "sparkles")
-            .font(.callout)
-            .foregroundStyle(.primary)
-            .help(summaryAIUnavailableReason ?? summaryAIButtonHelp)
-            .accessibilityIdentifier("metadata-summary-ai-unavailable")
         }
-      }
-
-      if let summaryAIUnavailableReason {
-        Label(summaryAIUnavailableReason, systemImage: "info.circle")
-          .font(.caption)
-          .foregroundStyle(WorkbenchTheme.warning)
-          .fixedSize(horizontal: false, vertical: true)
-          .accessibilityIdentifier("metadata-summary-ai-unavailable-reason")
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .disabled(isGeneratingSummary)
+        .help(summaryAIUnavailableReason ?? summaryAIButtonHelp)
+        .accessibilityIdentifier("metadata-summary-ai-button")
+        .accessibilityLabel(summaryAIButtonTitle)
+        .accessibilityValue(
+          isGeneratingSummary
+            ? String(localized: "生成中")
+            : (summaryAIUnavailableReason ?? summaryAIButtonTitle)
+        )
+        // Explain on demand instead of showing a permanent warning under
+        // every article when AI is not set up.
+        .popover(isPresented: $isSummaryAIUnavailablePresented, arrowEdge: .bottom) {
+          summaryAIUnavailablePopover
+        }
       }
 
       TextField("输入用于列表和搜索的文章摘要", text: $draft.summary, axis: .vertical)
@@ -397,6 +345,38 @@ struct WorkspaceTaskMetadataSection: View {
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private func summaryAIButtonAction() {
+    if summaryAIAvailability.isEnabled {
+      generateAISummary()
+    } else {
+      isSummaryAIUnavailablePresented = true
+    }
+  }
+
+  private var summaryAIUnavailablePopover: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Label(
+        summaryAIUnavailableReason ?? String(localized: "AI 暂不可用"),
+        systemImage: "info.circle"
+      )
+      .font(.callout)
+      .fixedSize(horizontal: false, vertical: true)
+      .accessibilityIdentifier("metadata-summary-ai-unavailable-reason")
+      Button("前往 AI 设置") {
+        isSummaryAIUnavailablePresented = false
+        SettingsNavigation.present(
+          destination: .tab(.ai),
+          workspaceAction: settingsWorkspaceCommandAction
+        ) {
+          openSettings()
+        }
+      }
+      .accessibilityIdentifier("metadata-summary-ai-open-settings")
+    }
+    .padding(14)
+    .frame(width: 240, alignment: .leading)
   }
 
   private var summaryAIButtonTitle: String {
@@ -624,26 +604,6 @@ struct WorkspaceTaskSEOSection: View {
         )
         InspectorStatRow(title: "H1", value: "\(report.h1Count)", systemImage: "number")
 
-        VStack(alignment: .leading, spacing: 4) {
-          Toggle("提示正文 H1 与标题重复", isOn: h1DuplicateWarningBinding)
-            .toggleStyle(.checkbox)
-            .controlSize(.small)
-            .help("此站点启用时，正文 H1 与 Front Matter title 相同会显示一条非阻断建议。")
-            .accessibilityLabel("提示正文 H1 与标题重复")
-            .accessibilityValue(
-              store.profile(for: draft).resolvedWarnsWhenBodyH1DuplicatesTitle
-                ? String(localized: "已开启") : String(localized: "已关闭")
-            )
-          Text(
-            String(
-              format: String(localized: "此设置应用到“%@”的所有文章。"),
-              store.profile(for: draft).name
-            )
-          )
-          .font(.caption)
-          .foregroundStyle(.secondary)
-        }
-
         HStack {
           Button {
             store.refreshSEOSocialPreview(for: draft)
@@ -812,15 +772,6 @@ struct WorkspaceTaskSEOSection: View {
       cachedSnapshotDate: cachedSnapshot?.generatedAt,
       maintenanceSnapshotDate: seoObservation.maintenanceSnapshotDate,
       actionMessage: seoObservation.actionMessage
-    )
-  }
-
-  private var h1DuplicateWarningBinding: Binding<Bool> {
-    Binding(
-      get: { store.profile(for: draft).resolvedWarnsWhenBodyH1DuplicatesTitle },
-      set: { isEnabled in
-        store.setH1DuplicateWarning(isEnabled, forProfileID: store.profile(for: draft).id)
-      }
     )
   }
 

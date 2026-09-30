@@ -152,6 +152,9 @@ extension WorkbenchAIStore {
     let config = AIOutboundPayloadPrivacyService().sanitizedProviderConfig(
       store.aiProviderConfig(for: profile)
     )
+    bindAIChatAuthorization(
+      operationID: operationID, config: config, connectionID: profile.aiConnectionProfileID
+    )
     do {
       // Preflight availability without retaining a credential across authorization.
       _ = try aiChatAvailableAPIKey(for: profile)
@@ -229,7 +232,7 @@ extension WorkbenchAIStore {
         )
       case .nonStreaming:
         return try await generateCompleteAIChatReply(
-          transport: attempt.transport,
+          attempt: attempt,
           conversationIdentity: conversationIdentity,
           operationID: operationID,
           apiKey: token
@@ -304,7 +307,7 @@ extension WorkbenchAIStore {
     }
     let providerConfig = attempt.providerConfig
     let connectionID = attempt.connectionProfileID
-    let assistant = streamingAssistant(
+    let assistant = authorizedChatAssistant(
       operationID: operationID,
       config: providerConfig,
       connectionID: connectionID,
@@ -436,15 +439,28 @@ extension WorkbenchAIStore {
   }
 
   private func generateCompleteAIChatReply(
-    transport: AIPreparedPublishingChatTransport,
+    attempt: AIAuthorizedPublishingChatAttempt,
     conversationIdentity: AIChatConversationIdentity,
     operationID: UUID,
     apiKey: String?
   ) async throws -> AIPublishingChatMessage {
+    let transport = attempt.transport
     guard let request = transport.publishingRequest else {
       throw AIOutboundPayloadConfirmationError.drifted
     }
-    var assistantMessage = try await aiPublishingAssistantService.completePrepared(
+    let config = attempt.providerConfig
+    let connectionID = attempt.connectionProfileID
+    let assistant = authorizedChatAssistant(
+      operationID: operationID, config: config, connectionID: connectionID,
+      knowledgeBindings: attempt.knowledgeAuthorizationBindings,
+      knowledgePolicy: attempt.knowledgePolicy, apiKey: apiKey
+    ) { [weak self] in
+      guard let self else { throw CancellationError() }
+      return try self.aiChatAvailableAPIKey(
+        for: request.profile, matching: config, connectionProfileID: connectionID
+      )
+    }
+    var assistantMessage = try await assistant.completePrepared(
       transport,
       apiKey: apiKey
     )
@@ -495,48 +511,9 @@ extension WorkbenchAIStore {
     aiChatManualRetryState = AIChatManualRetryState(
       draftID: conversationIdentity.draftID,
       conversationID: conversationIdentity.conversationID,
-      requiresDuplicateChargeConfirmation: error.didReceivePartialContent,
+      requiresDuplicateChargeConfirmation: error.requiresDuplicateChargeConfirmation,
       retryAfter: error.retryAfterSeconds.map { Date().addingTimeInterval($0) }
     )
-  }
-
-  @discardableResult
-  public func openAIChatWorkspace(
-    for draftID: UUID? = nil,
-    quickPrompt: AIPublishingQuickPrompt? = nil
-  ) -> Bool {
-    if let draftID {
-      guard store.focusDraft(draftID, section: .writing) else {
-        return false
-      }
-    } else if store.selectedDraftID == nil {
-      _ = store.ensureEditableDraftSelected()
-    }
-
-    store.selectSection(.writing)
-
-    guard let draft = store.selectedDraft else {
-      pendingAIQuickPrompt = nil
-      isAIPublishingAssistantPresented = false
-      store.setInspectorPresented(false)
-      return false
-    }
-
-    pendingAIQuickPrompt = quickPrompt
-    prepareAIChat(for: draft)
-
-    // Prepare the route before asking SwiftUI to present the Inspector. This
-    // avoids briefly mounting the article Inspector and replacing it with the
-    // AI Inspector in the same presentation transaction.
-    isAIPublishingAssistantPresented = true
-    store.setInspectorPresented(true)
-    return true
-  }
-
-  public func consumePendingAIQuickPrompt() -> AIPublishingQuickPrompt? {
-    let prompt = pendingAIQuickPrompt
-    pendingAIQuickPrompt = nil
-    return prompt
   }
 
   public func hideAIPublishingAssistant() {

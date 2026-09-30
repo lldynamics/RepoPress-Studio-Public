@@ -3,12 +3,15 @@ import PublishingMarkdownCore
 import PublishingWorkbenchCore
 import SwiftUI
 
-/// Quiet status line under the writing surface. Cursor position and document
-/// statistics live here instead of in the formatting toolbar so the toolbar
-/// holds only editing commands and the text starts closer to the title.
+/// Quiet status line under the writing surface. Cursor position, body
+/// diagnostics, save state, and document statistics live here instead of in
+/// the formatting toolbar so the toolbar holds only editing commands.
 struct MacMarkdownEditorStatusBar: View {
   @Binding var draft: ArticleDraft
+  let store: WorkbenchStore
   @ObservedObject var statisticsState: MarkdownComposerStatisticsState
+  let diagnosticCount: Int
+  let onShowDiagnostics: () -> Void
   let cursorPosition: MarkdownCursorPosition?
   let fenceMatch: MarkdownFenceMatch?
   let completion: MarkdownCompletionContext?
@@ -33,7 +36,18 @@ struct MacMarkdownEditorStatusBar: View {
         onInsertCompletionTrigger: onInsertCompletionTrigger
       )
 
+      if diagnosticCount > 0 {
+        diagnosticsButton
+      }
+
       Spacer(minLength: 8)
+
+      MacMarkdownEditorSaveStatusIcon(
+        store: store,
+        draftID: draft.id,
+        isCompact: false
+      )
+      .id(draft.id)
 
       MarkdownEditorStatisticsControl(
         draft: $draft,
@@ -49,6 +63,23 @@ struct MacMarkdownEditorStatusBar: View {
     .accessibilityElement(children: .contain)
     .accessibilityLabel("编辑器状态栏")
     .accessibilityIdentifier("markdown-editor-status-bar")
+  }
+
+  /// Shown only when there is something to fix; a clean document stays quiet.
+  private var diagnosticsButton: some View {
+    Button(action: onShowDiagnostics) {
+      Label(
+        String(localized: "\(min(diagnosticCount, 99)) 项正文问题"),
+        systemImage: "exclamationmark.triangle"
+      )
+      .font(.caption)
+      .foregroundStyle(WorkbenchTheme.warning)
+    }
+    .buttonStyle(.plain)
+    .help(String(localized: "查看正文诊断"))
+    .accessibilityLabel("正文诊断")
+    .accessibilityValue(String(localized: "\(diagnosticCount) 项"))
+    .accessibilityIdentifier("markdown-editor-diagnostics")
   }
 }
 
@@ -291,5 +322,108 @@ private struct MarkdownEditorStatisticsControl: View {
     guard targetWordCount > 0 else { return statisticsSummary }
     let percent = Int((Double(writingUnitCount) / Double(targetWordCount)) * 100)
     return "\(statisticsSummary) · \(writingUnitCount)/\(targetWordCount) (\(percent)%)"
+  }
+}
+
+/// Fixed width keeps persistence transitions inside this leaf and avoids
+/// repeatedly measuring the adaptive toolbar while the user is typing.
+struct MacMarkdownEditorSaveStatusIcon: View {
+  let store: WorkbenchStore
+  let draftID: UUID
+  let isCompact: Bool
+  let accessibilityIdentifier: String
+  @StateObject private var saveStatus: WorkbenchMarkdownEditorSaveStatusFeatureFacade
+  @State private var isDetailPresented = false
+
+  init(
+    store: WorkbenchStore,
+    draftID: UUID,
+    isCompact: Bool,
+    accessibilityIdentifier: String = "markdown-editor-save-status"
+  ) {
+    self.store = store
+    self.draftID = draftID
+    self.isCompact = isCompact
+    self.accessibilityIdentifier = accessibilityIdentifier
+    _saveStatus = StateObject(
+      wrappedValue: WorkbenchMarkdownEditorSaveStatusFeatureFacade(store: store, draftID: draftID)
+    )
+  }
+
+  private var statusImage: String {
+    if saveStatus.saveFailure != nil { return "exclamationmark.triangle.fill" }
+    return saveStatus.hasUnsavedChanges ? "clock" : "checkmark.circle.fill"
+  }
+
+  var body: some View {
+    Button {
+      isDetailPresented.toggle()
+    } label: {
+      Group {
+        if isCompact {
+          Image(systemName: statusImage)
+            .frame(width: 28, height: 28)
+        } else {
+          Label(saveStatus.shortSaveStatus, systemImage: statusImage)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+        }
+      }
+      .font(.caption)
+      .foregroundStyle(
+        saveStatus.saveFailure != nil
+          ? WorkbenchTheme.warning
+          : (saveStatus.hasUnsavedChanges ? Color.secondary : WorkbenchTheme.success)
+      )
+    }
+    .buttonStyle(.borderless)
+    .frame(width: isCompact ? 30 : nil, height: isCompact ? 30 : nil)
+    .help(saveStatus.lastSaveStatus)
+    .accessibilityLabel("保存状态")
+    .accessibilityValue(saveStatus.shortSaveStatus)
+    .accessibilityIdentifier(accessibilityIdentifier)
+    .popover(isPresented: $isDetailPresented) {
+      VStack(alignment: .leading, spacing: 10) {
+        Label(saveStatus.shortSaveStatus, systemImage: statusImage)
+          .font(.headline)
+        if let failure = saveStatus.saveFailure {
+          Text(failure.message)
+            .font(.callout)
+            .textSelection(.enabled)
+          if failure.scope == .project {
+            Button(
+              saveStatus.hasProjectFileConflict
+                ? String(localized: "处理冲突…") : String(localized: "处理项目保存问题…")
+            ) {
+              isDetailPresented = false
+              if saveStatus.hasProjectFileConflict {
+                ProjectFileConflictReviewPanel.present(for: store, draftID: draftID)
+              } else {
+                ProjectFileSaveRecoveryPanel.present(for: store)
+              }
+            }
+          } else if failure.canRetry {
+            Button("重新保存") { saveStatus.retrySave() }
+          }
+        } else {
+          Text("发布进度请在“准备发布”中查看。")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
+        if let draft = store.draft(for: draftID), !draft.isGeneralDraft {
+          Text(store.profile(for: draft).markdownPath(for: draft))
+            .font(.caption.monospaced())
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+        }
+      }
+      .padding(16)
+      .frame(width: 340, alignment: .leading)
+      .accessibilityIdentifier("markdown-editor-save-details")
+    }
+    .onChange(of: draftID) { _, updatedDraftID in
+      isDetailPresented = false
+      saveStatus.trackDraft(updatedDraftID)
+    }
   }
 }

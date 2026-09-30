@@ -289,7 +289,9 @@ final class WorkbenchStoreRemotePublishingBatchTests: WorkbenchStoreRemotePublis
     try tokenStore.saveRepositoryToken("gitlab-token", for: profile)
     store.refreshRepositoryTokenAvailability()
 
-    let result = await store.createRemoteRepositoryForActiveProfile(privateRepository: true)
+    let result = await store.createRemoteRepositoryForActiveProfile(
+      privateRepository: true,
+      expectedTarget: SiteOperationConfirmationTarget(profile: store.activeProfile))
 
     XCTAssertEqual(result?.repositoryName, "group/subgroup/site")
     XCTAssertEqual(

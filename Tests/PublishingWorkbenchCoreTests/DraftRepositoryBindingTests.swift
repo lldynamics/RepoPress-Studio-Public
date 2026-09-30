@@ -115,6 +115,33 @@ final class DraftRepositoryBindingTests: XCTestCase {
     XCTAssertEqual(draft.repositorySyncState(for: profile), .synced)
   }
 
+  func testConfirmingOlderPublishedVersionPreservesLatestExactProjectBytes() {
+    let profile = SiteProfile.defaultProfile
+    var draft = ArticleDraft(
+      siteProfileID: profile.id, title: "Saved concurrently", slug: "saved-concurrently",
+      bodyMarkdown: "Version A")
+    let publishedDigest = draft.renderedRepositoryContentDigest(profile: profile)
+    draft.recordProjectFile(
+      profile: profile, repositoryPath: "content/posts/saved-concurrently.md",
+      renderedContentDigest: publishedDigest)
+    draft.bodyMarkdown = "Version B"
+    let savedDigest = draft.renderedRepositoryContentDigest(profile: profile)
+    let exactDiskDigest = ArticleDraft.repositoryDocumentDigest("Hand-formatted version B bytes")
+    draft.recordProjectFile(
+      profile: profile, repositoryPath: "content/posts/saved-concurrently.md",
+      renderedContentDigest: savedDigest, projectFileContentDigest: exactDiskDigest)
+
+    draft.confirmRepositoryBinding(
+      profile: profile, repositoryPath: "content/posts/saved-concurrently.md",
+      remoteRevision: "published-a-version", renderedContentDigest: publishedDigest)
+
+    XCTAssertEqual(draft.repositoryBinding?.renderedContentDigest, publishedDigest)
+    XCTAssertEqual(draft.repositoryBinding?.projectFileContentDigest, exactDiskDigest)
+    XCTAssertEqual(draft.repositoryBinding?.projectFileRenderedContentDigest, savedDigest)
+    XCTAssertEqual(draft.repositorySyncState(for: profile), .localChanged)
+    XCTAssertNil(draft.repositoryImportFingerprint)
+  }
+
   func testPendingReviewSurvivesSameBytesProjectWriteAndLaterEditBecomesLocalChanged() {
     var profile = SiteProfile.defaultProfile
     profile.repoOwner = "owner"

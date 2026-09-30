@@ -1617,3 +1617,259 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     return request
   }
 }
+
+@MainActor
+final class SiteOperationConfirmationTests: WorkbenchStoreRemotePublishingTestCase {
+  func testSiteKindReviewRetainsTheReviewedProfileAndTargetKind() {
+    var profile = SiteProfile.defaultProfile
+    profile.name = "Reviewed Site"
+    let confirmation = SiteKindChangeConfirmation(profile: profile, siteKind: .astro)
+    profile.name = "Edited Site"
+    profile.contentRoot = "edited-content"
+
+    XCTAssertEqual(confirmation.target.profile.name, "Reviewed Site")
+    XCTAssertEqual(confirmation.target.profile.contentRoot, "content")
+    XCTAssertEqual(confirmation.siteKind, .astro)
+    XCTAssertFalse(confirmation.target.matches(profile))
+  }
+
+  func testSiteKindConfirmationAppliesToTheUnchangedReviewedSite() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let target = SiteOperationConfirmationTarget(profile: store.activeProfile)
+
+    XCTAssertTrue(store.applySiteKindDefaults(.astro, expectedTarget: target))
+
+    XCTAssertEqual(store.activeProfileID, target.profile.id)
+    XCTAssertEqual(store.activeProfile.siteKind, .astro)
+    XCTAssertEqual(store.activeProfile.contentRoot, "src/content/blog")
+    XCTAssertEqual(store.activeProfile.repoOwner, target.profile.repoOwner)
+    XCTAssertEqual(store.activeProfile.repoName, target.profile.repoName)
+  }
+
+  func testSiteKindConfirmationDoesNotChangeAnotherSite() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let target = SiteOperationConfirmationTarget(profile: store.activeProfile)
+    let otherProfile = store.createProfile(named: "Other Site")
+
+    XCTAssertFalse(store.applySiteKindDefaults(.astro, expectedTarget: target))
+
+    XCTAssertEqual(store.activeProfile, otherProfile)
+    XCTAssertEqual(store.profiles.first { $0.id == target.profile.id }, target.profile)
+    XCTAssertEqual(store.publishActionFeedback?.status, .warning)
+  }
+
+  func testSiteKindConfirmationPreservesRulesEditedUnderTheSameProfileID() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let target = SiteOperationConfirmationTarget(profile: store.activeProfile)
+    store.updateActiveProfile { $0.contentRoot = "hand-edited-content" }
+    let editedProfile = store.activeProfile
+
+    XCTAssertFalse(store.applySiteKindDefaults(.astro, expectedTarget: target))
+
+    XCTAssertEqual(store.activeProfile, editedProfile)
+  }
+
+  func testConfirmationRejectsAReboundLocalRepositorySymlink() throws {
+    let root = try temporaryDirectoryURL()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let first = root.appendingPathComponent("first", isDirectory: true)
+    let second = root.appendingPathComponent("second", isDirectory: true)
+    let link = root.appendingPathComponent("repository", isDirectory: true)
+    for directory in [first, second] {
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: first)
+    var profile = SiteProfile.defaultProfile
+    profile.localRepositoryRootPath = link.path
+    let target = SiteOperationConfirmationTarget(profile: profile)
+    XCTAssertTrue(target.matches(profile))
+
+    try FileManager.default.removeItem(at: link)
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: second)
+
+    XCTAssertFalse(target.matches(profile))
+  }
+
+  func testRepositoryCreationRejectsAnotherSiteBeforeAnyRequest() async throws {
+    let transport = CountingRemoteRepositoryTransport()
+    let store = try makeCreationStore(transport: transport)
+    let target = SiteOperationConfirmationTarget(profile: store.activeProfile)
+    let otherProfile = store.createProfile(named: "Other Site")
+
+    let result = await store.createRemoteRepositoryForActiveProfile(expectedTarget: target)
+    let requestCount = await transport.requestCount()
+
+    XCTAssertNil(result)
+    XCTAssertEqual(requestCount, 0)
+    XCTAssertEqual(store.activeProfile, otherProfile)
+    XCTAssertNil(store.remoteRepositoryCreationResult)
+    XCTAssertFalse(store.isRemoteRepositoryChecking)
+  }
+
+  func testRepositoryCreationRejectsRepositoryEditedUnderTheSameID() async throws {
+    let transport = CountingRemoteRepositoryTransport()
+    let store = try makeCreationStore(transport: transport)
+    let target = SiteOperationConfirmationTarget(profile: store.activeProfile)
+    store.updateActiveProfile { $0.repoName = "another-repository" }
+    let editedProfile = store.activeProfile
+
+    let result = await store.createRemoteRepositoryForActiveProfile(expectedTarget: target)
+    let requestCount = await transport.requestCount()
+
+    XCTAssertNil(result)
+    XCTAssertEqual(requestCount, 0)
+    XCTAssertEqual(store.activeProfile, editedProfile)
+    XCTAssertFalse(store.isRemoteRepositoryChecking)
+  }
+
+  func testRepositoryCreationRejectsConfigurationEditedUnderTheSameID() async throws {
+    let transport = CountingRemoteRepositoryTransport()
+    let store = try makeCreationStore(transport: transport)
+    let target = SiteOperationConfirmationTarget(profile: store.activeProfile)
+    store.updateActiveProfile { $0.defaultAuthor = "Edited Author" }
+
+    let result = await store.createRemoteRepositoryForActiveProfile(expectedTarget: target)
+    let requestCount = await transport.requestCount()
+
+    XCTAssertNil(result)
+    XCTAssertEqual(requestCount, 0)
+    XCTAssertEqual(store.activeProfile.defaultAuthor, "Edited Author")
+  }
+
+  func testRepositoryCreationDiscardsFeedbackAfterConfigurationChangesInFlight() async throws {
+    let transport = SuspendedWorkbenchRemoteRepositoryTransport(
+      response: workbenchRemoteResponse(
+        json: """
+          {"login":"owner","full_name":"owner/site","default_branch":"main",
+           "ssh_url":"git@github.com:owner/site.git",
+           "clone_url":"https://github.com/owner/site.git",
+           "html_url":"https://github.com/owner/site","private":true}
+          """
+      )
+    )
+    let store = try makeCreationStore(transport: transport)
+    let target = SiteOperationConfirmationTarget(profile: store.activeProfile)
+    let creation = Task { @MainActor in
+      await store.createRemoteRepositoryForActiveProfile(expectedTarget: target)
+    }
+    await transport.waitUntilRequestArrives()
+    store.updateActiveProfile { $0.defaultAuthor = "Edited Author" }
+    await transport.resume()
+
+    let result = await creation.value
+
+    XCTAssertNil(result)
+    XCTAssertNil(store.remoteRepositoryCreationResult)
+    XCTAssertFalse(store.isRemoteRepositoryChecking)
+    XCTAssertEqual(store.activeProfile.defaultAuthor, "Edited Author")
+    XCTAssertNotEqual(store.publishActionFeedback?.status, .success)
+  }
+
+  #if DEBUG
+    func testRemoteImportRejectsAnotherSiteBeforeReadingSnapshots() async throws {
+      let store = try TestWorkbenchFactory.makeStore()
+      let target = SiteOperationConfirmationTarget(profile: store.activeProfile)
+      let otherProfile = store.createProfile(named: "Other Site")
+      let recorder = ConfirmationSnapshotReadRecorder()
+      store.repositoryStore.remoteFileSnapshotTestHook = { await recorder.record() }
+      let originalDrafts = store.drafts
+
+      let summary = await store.importRemoteArticleDraftsFromRepository(
+        repositoryPaths: ["content/posts/remote-draft.md"], expectedTarget: target)
+      let snapshotReads = await recorder.readCount()
+
+      XCTAssertEqual(summary.changedCount, 0)
+      XCTAssertEqual(snapshotReads, 0)
+      XCTAssertEqual(store.drafts, originalDrafts)
+      XCTAssertEqual(store.activeProfile, otherProfile)
+    }
+
+    func testRemoteImportRejectsSameIDRepositoryAndRuleEditsBeforeReadingSnapshots() async throws {
+      for editRepository in [true, false] {
+        let store = try TestWorkbenchFactory.makeStore()
+        let target = SiteOperationConfirmationTarget(profile: store.activeProfile)
+        store.updateActiveProfile {
+          if editRepository {
+            $0.repoName = "another-repository"
+          } else {
+            $0.contentRoot = "hand-edited-content"
+          }
+        }
+        let editedProfile = store.activeProfile
+        let recorder = ConfirmationSnapshotReadRecorder()
+        store.repositoryStore.remoteFileSnapshotTestHook = { await recorder.record() }
+        let originalDrafts = store.drafts
+
+        let summary = await store.importRemoteArticleDraftsFromRepository(
+          repositoryPaths: ["content/posts/remote-draft.md"], expectedTarget: target)
+        let snapshotReads = await recorder.readCount()
+
+        XCTAssertEqual(summary.changedCount, 0)
+        XCTAssertEqual(snapshotReads, 0)
+        XCTAssertEqual(store.drafts, originalDrafts)
+        XCTAssertEqual(store.activeProfile, editedProfile)
+      }
+    }
+
+    func testRemoteImportRejectsSameIDConfigurationChangeDuringSnapshotRead() async throws {
+      let root = try preparedGitRepositoryRoot()
+      defer { try? FileManager.default.removeItem(at: root) }
+      let store = try TestWorkbenchFactory.makeStore()
+      store.updateActiveProfile {
+        $0.rememberLocalRepositoryRoot(root)
+        $0.markdownPathPattern = "content/posts/{slug}.md"
+      }
+      let target = SiteOperationConfirmationTarget(profile: store.activeProfile)
+      store.flushDraftBodyEditorBuffers()
+      await store.waitForPendingDraftWordCountRefreshes()
+      let originalDrafts = store.drafts
+      let gate = RemoteImportTestGate()
+      store.repositoryStore.remoteFileSnapshotTestHook = { await gate.waitUntilEntered() }
+      let importTask = Task { @MainActor in
+        await store.importRemoteArticleDraftsFromRepository(
+          repositoryPaths: ["content/posts/remote-draft.md"], expectedTarget: target)
+      }
+      for _ in 0..<100 {
+        if await gate.hasEntered() { break }
+        try await Task.sleep(for: .milliseconds(10))
+      }
+      let didEnter = await gate.hasEntered()
+      XCTAssertTrue(didEnter)
+      store.updateActiveProfile { $0.contentRoot = "hand-edited-content" }
+      await gate.release()
+
+      let summary = await importTask.value
+
+      XCTAssertEqual(summary.changedCount, 0)
+      XCTAssertEqual(store.drafts, originalDrafts)
+      XCTAssertEqual(store.activeProfile.contentRoot, "hand-edited-content")
+      XCTAssertEqual(store.publishActionFeedback?.status, .warning)
+    }
+  #endif
+
+  private func makeCreationStore(
+    transport: any RemoteRepositoryHTTPTransport
+  ) throws -> WorkbenchStore {
+    let tokenStore = repositoryTokenStoreForTest()
+    let store = WorkbenchStore(
+      persistence: try TestWorkbenchFactory.persistence(),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      repositoryTokenStore: tokenStore
+    )
+    store.updateActiveProfile {
+      $0.repositoryProvider = .github
+      $0.repoOwner = "owner"
+      $0.repoName = "site"
+    }
+    try tokenStore.saveRepositoryToken("test-token", for: store.activeProfile)
+    return store
+  }
+}
+
+#if DEBUG
+  private actor ConfirmationSnapshotReadRecorder {
+    private var count = 0
+    func record() { count += 1 }
+    func readCount() -> Int { count }
+  }
+#endif

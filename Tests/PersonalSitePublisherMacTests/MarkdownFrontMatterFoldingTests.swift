@@ -6,6 +6,59 @@ import XCTest
 
 @MainActor
 final class MarkdownFrontMatterFoldingTests: MarkdownEditorAppKitInteractionTestCase {
+  func testInitialScrollExtentWaitsForViewportAndUpdatesWhenDocumentIsReplaced() throws {
+    let longBody = (0..<240).map { "第 \($0) 段：正文首次打开即可滚动。" }.joined(separator: "\n\n")
+    let scroll = MarkdownEditorScrollView(frame: .zero)
+    scroll.contentView = MarkdownFrontMatterClipView()
+    scroll.hasVerticalScroller = true
+    scroll.autohidesScrollers = true
+    let view = DroppableMarkdownTextView.makeTextKit2(
+      containerSize: NSSize(width: 1, height: CGFloat.greatestFiniteMagnitude))
+    view.string = longBody
+    view.font = NSFont.systemFont(ofSize: 16)
+    view.isVerticallyResizable = false
+    view.isHorizontallyResizable = false
+    scroll.documentView = view
+    scroll.needsLayout = true
+    scroll.layoutSubtreeIfNeeded()
+    XCTAssertNil(
+      scroll.cachedDocumentHeightForTesting, "A zero-sized viewport must not cache height.")
+
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
+      styleMask: .borderless, backing: .buffered, defer: false)
+    window.contentView = scroll
+    defer { window.orderOut(nil) }
+    for source in [longBody + "😀\n", "", "短文章😀", longBody] {
+      view.string = source
+      view.setSelectedRange(NSRange(location: 0, length: 0))
+      scroll.invalidateDocumentHeight(immediately: true)
+      scroll.layoutSubtreeIfNeeded()
+      let viewportHeight = scroll.contentView.bounds.height
+      XCTAssertGreaterThan(viewportHeight, 100)
+      if source.hasPrefix(longBody) {
+        XCTAssertGreaterThan(view.frame.height, viewportHeight * 2)
+        var proposedBounds = scroll.contentView.bounds
+        proposedBounds.origin.y = viewportHeight
+        scroll.contentView.scroll(to: scroll.contentView.constrainBoundsRect(proposedBounds).origin)
+        scroll.reflectScrolledClipView(scroll.contentView)
+        XCTAssertGreaterThan(scroll.contentView.bounds.minY, 100)
+      } else {
+        XCTAssertEqual(view.frame.height, viewportHeight, accuracy: 1)
+        XCTAssertEqual(scroll.contentView.bounds.minY, 0, accuracy: 1)
+        var proposedBounds = scroll.contentView.bounds
+        proposedBounds.origin.y = viewportHeight
+        let constrainedBounds = scroll.contentView.constrainBoundsRect(proposedBounds)
+        XCTAssertEqual(constrainedBounds.minY, 0, accuracy: 1)
+        scroll.contentView.scroll(to: constrainedBounds.origin)
+        scroll.reflectScrolledClipView(scroll.contentView)
+        XCTAssertEqual(scroll.contentView.bounds.minY, 0, accuracy: 1)
+      }
+      XCTAssertEqual(view.selectedRange(), NSRange(location: 0, length: 0))
+      XCTAssertEqual(view.string, source)
+    }
+  }
+
   func testTogglingArticleInformationPreservesAScrolledBodyAndSelection() throws {
     let prefix = "---\ntitle: 标题\ntags: [写作]\n---\n\n"
     let body = (1...100).map { "第 \($0) 段正文。" }.joined(separator: "\n\n")

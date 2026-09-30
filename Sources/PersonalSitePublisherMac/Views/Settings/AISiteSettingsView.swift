@@ -16,6 +16,7 @@ struct AISiteSettingsView: View {
   let applyWritingStylePreview: (AIWritingStyleProfilePreview) -> Bool
   let discardWritingStylePreview: () -> Void
   let openSharedConnectionSettings: () -> Void
+  let warnsWhenBodyH1DuplicatesTitle: Binding<Bool>
 
   var body: some View {
     Form {
@@ -56,6 +57,20 @@ struct AISiteSettingsView: View {
         discardPreview: discardWritingStylePreview,
         currentActionMessage: currentActionMessage
       )
+
+      Section("写作检查") {
+        Toggle("提示正文 H1 与标题重复", isOn: warnsWhenBodyH1DuplicatesTitle)
+          .help("启用后，正文 H1 与 Front Matter title 相同会在 SEO 检查中显示一条非阻断建议。")
+          .accessibilityIdentifier("site-h1-duplicate-warning")
+        Text(
+          String(
+            format: String(localized: "此设置应用到“%@”的所有文章。"),
+            activeProfile.name
+          )
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      }
     }
     .formStyle(.grouped)
     .padding(WorkbenchSpacing.content)

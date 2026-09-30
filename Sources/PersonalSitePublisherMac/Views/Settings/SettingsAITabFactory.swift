@@ -139,7 +139,16 @@ struct SettingsAITabFactory {
       },
       openSharedConnectionSettings: {
         context.selectSettingsDestination(.ai(.connection))
-      }
+      },
+      warnsWhenBodyH1DuplicatesTitle: Binding(
+        get: { context.store.activeProfile.resolvedWarnsWhenBodyH1DuplicatesTitle },
+        set: { isEnabled in
+          context.store.setH1DuplicateWarning(
+            isEnabled,
+            forProfileID: context.store.activeProfileID
+          )
+        }
+      )
     )
   }
 }

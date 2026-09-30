@@ -7,7 +7,6 @@ enum MarkdownFormattingToolbarPresentation {
 }
 
 struct MacMarkdownFormattingToolbar: View {
-  @Binding var isFocusModeActive: Bool
   let onApplyMarkdownFormatting: (MarkdownFormattingCommand) -> Void
   let onApplyAdvancedFormatting: (MarkdownAdvancedFormattingCommand) -> Void
   let onInsertCodeBlock: () -> Void
@@ -15,8 +14,6 @@ struct MacMarkdownFormattingToolbar: View {
   let onInsertHorizontalRule: () -> Void
   let onInsertInternalLink: () -> Void
   let onShowSnippets: () -> Void
-  let onShowDiagnostics: () -> Void
-  let diagnosticCount: Int
   let onInsertImage: () -> Void
   let onInsertVideo: () -> Void
   var onFormatChineseTypography: (() -> Void)? = nil
@@ -78,12 +75,9 @@ struct MacMarkdownFormattingToolbar: View {
     switch layout {
     case .automatic:
       ViewThatFits(in: .horizontal) {
-        formattingRow(items: MarkdownToolbarLayout.expandedFormattingItems)
         formattingRow(items: MarkdownToolbarLayout.primaryFormattingItems)
         scrollingFormattingRow
       }
-    case .expanded:
-      formattingRow(items: MarkdownToolbarLayout.expandedFormattingItems)
     case .compact:
       formattingRow(items: MarkdownToolbarLayout.primaryFormattingItems)
     case .scrollable:
@@ -96,26 +90,20 @@ struct MacMarkdownFormattingToolbar: View {
       ForEach(items) { item in
         formattingItem(item, showsTitle: false)
       }
-      Divider().frame(height: 18)
-      fixedTrailingControls(showsTitle: false)
     }
     .fixedSize(horizontal: true, vertical: false)
     .padding(.horizontal, 4)
   }
 
   private var scrollingFormattingRow: some View {
-    HStack(spacing: 5) {
-      ScrollView(.horizontal, showsIndicators: true) {
-        HStack(spacing: 5) {
-          ForEach(MarkdownToolbarLayout.primaryFormattingItems) { item in
-            formattingItem(item, showsTitle: false)
-          }
+    ScrollView(.horizontal, showsIndicators: true) {
+      HStack(spacing: 5) {
+        ForEach(MarkdownToolbarLayout.primaryFormattingItems) { item in
+          formattingItem(item, showsTitle: false)
         }
-        .fixedSize(horizontal: true, vertical: false)
-        .padding(.horizontal, 4)
       }
-      Divider().frame(height: 18)
-      fixedTrailingControls(showsTitle: false)
+      .fixedSize(horizontal: true, vertical: false)
+      .padding(.horizontal, 4)
     }
   }
 
@@ -145,8 +133,22 @@ struct MacMarkdownFormattingToolbar: View {
       toolbarButton(title: "插图", systemName: "photo", showsTitle: showsTitle) {
         onInsertImage()
       }
-    case .moreFormatting:
-      moreFormattingMenu(showsTitle: showsTitle)
+    case .insertMenu:
+      groupedMenu(
+        title: "插入",
+        systemName: "plus.square",
+        help: "插入代码块、表格、分隔线、视频、站内链接或组件",
+        identifier: "markdown-insert-menu",
+        items: MarkdownToolbarLayout.insertMenuItems
+      )
+    case .formatMenu:
+      groupedMenu(
+        title: "格式",
+        systemName: "bold.italic.underline",
+        help: "行内代码、引用、删除线与中英文排版",
+        identifier: "markdown-format-menu",
+        items: MarkdownToolbarLayout.formatMenuItems
+      )
     default:
       secondaryFormattingItem(item, showsTitle: showsTitle)
     }
@@ -200,66 +202,42 @@ struct MacMarkdownFormattingToolbar: View {
       toolbarButton(title: "中英文排版", systemName: "character.textbox", showsTitle: showsTitle) {
         onFormatChineseTypography?()
       }
-    case .diagnostics:
-      diagnosticButton(showsTitle: showsTitle)
     default:
       EmptyView()
     }
   }
 
-  private func moreFormattingMenu(showsTitle: Bool) -> some View {
+  /// Icon-and-title menu so the two grouped entries read differently from
+  /// the single-command icon buttons beside them.
+  private func groupedMenu(
+    title: LocalizedStringKey,
+    systemName: String,
+    help: LocalizedStringKey,
+    identifier: String,
+    items: [MarkdownToolbarFormattingItem]
+  ) -> some View {
     Menu {
-      ForEach(MarkdownToolbarLayout.moreFormattingItems) { item in
+      ForEach(items) { item in
         secondaryFormattingItem(item, showsTitle: true)
       }
     } label: {
-      toolbarLabel("更多格式", systemName: "ellipsis.circle", showsTitle: showsTitle)
+      HStack(spacing: 3) {
+        Image(systemName: systemName)
+        Text(title)
+          .font(.workbenchButtonLabel)
+        Image(systemName: "chevron.down")
+          .font(.system(size: 7, weight: .bold))
+          .foregroundStyle(.secondary)
+      }
+      .fixedSize(horizontal: true, vertical: false)
+      .padding(.horizontal, 5)
+      .frame(minHeight: 28)
     }
     .menuIndicator(.hidden)
     .foregroundStyle(.secondary)
-    .help("更多格式")
-    .accessibilityLabel("更多格式")
-    .accessibilityIdentifier("markdown-more-formatting-menu")
-  }
-
-  private func diagnosticButton(showsTitle: Bool) -> some View {
-    Button {
-      onShowDiagnostics()
-    } label: {
-      ZStack(alignment: .topTrailing) {
-        toolbarLabel(
-          "正文诊断",
-          systemName: diagnosticCount == 0 ? "checkmark.circle" : "waveform.badge.exclamationmark",
-          showsTitle: showsTitle
-        )
-        if diagnosticCount > 0 {
-          Text("\(min(diagnosticCount, 99))")
-            .font(.workbenchMetadata.weight(.bold))
-            .padding(.horizontal, 3)
-            .background(WorkbenchTheme.warningActionFill, in: Capsule())
-            .foregroundStyle(.white)
-            .offset(x: 4, y: -3)
-        }
-      }
-    }
-    .foregroundStyle(diagnosticCount == 0 ? Color.secondary : WorkbenchTheme.warning)
-    .help(
-      diagnosticCount == 0
-        ? String(localized: "正文诊断：未发现问题")
-        : String(localized: "正文诊断：\(diagnosticCount) 项")
-    )
-    .accessibilityLabel("正文诊断")
-    .accessibilityValue(
-      diagnosticCount == 0
-        ? String(localized: "没有问题")
-        : String(localized: "\(diagnosticCount) 项")
-    )
-  }
-
-  @ViewBuilder
-  private func fixedTrailingControls(showsTitle: Bool) -> some View {
-    FocusModeMenu(isActive: $isFocusModeActive, showsTitle: showsTitle)
-    MarkdownEditorComfortControl(showsTitle: showsTitle)
+    .help(help)
+    .accessibilityLabel(Text(title))
+    .accessibilityIdentifier(identifier)
   }
 
   private func headingMenuButton(showsTitle: Bool) -> some View {
@@ -349,41 +327,24 @@ struct MacMarkdownFormattingToolbar: View {
   }
 }
 
-private struct FocusModeMenu: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
+/// Focus-mode switches shown inside the editor's “更多” menu; the View menu
+/// command keeps the global shortcut.
+struct MarkdownFocusModeToggles: View {
   @Binding var isActive: Bool
   @AppStorage(MarkdownEditorComfortPreferences.paragraphFocusEnabledKey)
   private var isParagraphFocusEnabled =
     MarkdownEditorComfortPreferences.initialParagraphFocusEnabled()
-  let showsTitle: Bool
-
-  private var isAnyModeActive: Bool { isActive || isParagraphFocusEnabled }
-
-  private var accessibilitySummary: String {
-    String(
-      format: String(localized: "专注模式：%@；段落专注：%@"),
-      isActive ? String(localized: "已开启") : String(localized: "未开启"),
-      isParagraphFocusEnabled ? String(localized: "已开启") : String(localized: "未开启")
-    )
-  }
 
   var body: some View {
-    Menu {
-      Toggle("专注模式", isOn: $isActive)
-      Toggle("段落专注", isOn: $isParagraphFocusEnabled)
-    } label: {
-      if showsTitle {
-        Label("专注模式", systemImage: isAnyModeActive ? "leaf.fill" : "leaf")
-      } else {
-        Image(systemName: isAnyModeActive ? "leaf.fill" : "leaf")
-          .frame(width: 28, height: 28)
-      }
+    Toggle(isOn: $isActive) {
+      Label("专注模式", systemImage: "leaf")
     }
-    .menuIndicator(.hidden)
-    .foregroundStyle(isAnyModeActive ? workbenchAccentColor : Color.secondary)
-    .help("专注模式会收起侧栏并在打字时淡出工具栏；段落专注会让光标居中并高亮当前段落。")
-    .accessibilityLabel("专注模式与段落专注")
-    .accessibilityValue(accessibilitySummary)
-    .accessibilityIdentifier("markdown-focus-mode-menu")
+    .help("收起侧栏并在打字时淡出工具栏")
+    .accessibilityIdentifier("markdown-focus-mode-toggle")
+    Toggle(isOn: $isParagraphFocusEnabled) {
+      Label("段落专注", systemImage: "text.aligncenter")
+    }
+    .help("让光标居中并高亮当前段落")
+    .accessibilityIdentifier("markdown-paragraph-focus-toggle")
   }
 }

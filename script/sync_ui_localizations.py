@@ -283,7 +283,10 @@ def extract_compiler_localizations() -> dict[str, str]:
     ) as temporary_directory:
         export_directory = Path(temporary_directory) / "stringsdata"
         command = [
-            "swift", "build", "--disable-sandbox", "--target", "PersonalSitePublisherMac",
+            # The native driver honors this per-invocation export directory.
+            # Swift Build instead redirects stringsdata to its intermediates.
+            "swift", "build", "--build-system", "native", "--disable-sandbox",
+            "--target", "PersonalSitePublisherMac",
             "-Xswiftc", "-emit-localized-strings",
             "-Xswiftc", "-emit-localized-strings-path",
             "-Xswiftc", str(export_directory),

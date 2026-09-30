@@ -453,6 +453,11 @@ extension MacMarkdownComposerView {
       return
     }
 
+    if request.field == "title" {
+      titleFocusRequestID = request.id
+      return
+    }
+
     guard request.field == nil || request.field == "body" else {
       selectionActionMessage = "问题在 \(request.field ?? "元数据") 字段，右侧可直接处理。"
       return

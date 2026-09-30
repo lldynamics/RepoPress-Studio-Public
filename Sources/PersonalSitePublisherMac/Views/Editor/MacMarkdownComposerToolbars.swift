@@ -3,6 +3,8 @@ import SwiftUI
 
 struct MacMarkdownEditorToolbar: View {
   @Binding var title: String
+  @Binding var isFocusModeActive: Bool
+  let titleFocusRequestID: UUID?
   let store: WorkbenchStore
   let draftID: UUID
   let markdownPath: String
@@ -16,6 +18,8 @@ struct MacMarkdownEditorToolbar: View {
 
   init(
     title: Binding<String>,
+    isFocusModeActive: Binding<Bool>,
+    titleFocusRequestID: UUID? = nil,
     store: WorkbenchStore,
     draftID: UUID,
     markdownPath: String,
@@ -25,6 +29,8 @@ struct MacMarkdownEditorToolbar: View {
     formattingToolbar: MacMarkdownFormattingToolbar
   ) {
     _title = title
+    _isFocusModeActive = isFocusModeActive
+    self.titleFocusRequestID = titleFocusRequestID
     self.store = store
     self.draftID = draftID
     self.markdownPath = markdownPath
@@ -85,6 +91,7 @@ struct MacMarkdownEditorToolbar: View {
   private var titleArea: some View {
     MacMarkdownEditorTitleArea(
       title: $title,
+      focusRequestID: titleFocusRequestID,
       store: store,
       draftID: draftID,
       markdownPath: markdownPath,
@@ -94,8 +101,6 @@ struct MacMarkdownEditorToolbar: View {
 
   private var editingTools: some View {
     ViewThatFits(in: .horizontal) {
-      editingToolsRow(formattingLayout: .expanded, collapsesWritingTools: false)
-        .fixedSize(horizontal: true, vertical: false)
       editingToolsRow(formattingLayout: .compact, collapsesWritingTools: false)
         .fixedSize(horizontal: true, vertical: false)
       editingToolsRow(formattingLayout: .compact, collapsesWritingTools: true)
@@ -119,7 +124,6 @@ struct MacMarkdownEditorToolbar: View {
 
   private func writingTools(isCollapsed: Bool) -> some View {
     HStack(spacing: 4) {
-      MacMarkdownEditorSaveStatusIcon(store: store, draftID: draftID, isCompact: true)
       if isCollapsed {
         writingToolsMenu
       } else {
@@ -128,8 +132,6 @@ struct MacMarkdownEditorToolbar: View {
         imageInfoButton(showsTitle: false)
         Divider().frame(height: 18)
         aiActionsMenuButton(showsTitle: false)
-        inlineAICompletionButton(showsTitle: false)
-        Divider().frame(height: 18)
         moreActionsMenuButton(showsTitle: false)
       }
     }
@@ -146,7 +148,6 @@ struct MacMarkdownEditorToolbar: View {
       imageInfoButton(showsTitle: true)
       Divider()
       aiActionsMenuButton(showsTitle: true)
-      inlineAICompletionButton(showsTitle: true)
       Divider()
       moreActionsMenuButton(showsTitle: true)
     } label: {
@@ -154,7 +155,7 @@ struct MacMarkdownEditorToolbar: View {
     }
     .menuIndicator(.hidden)
     .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: true))
-    .help("查找、大纲、AI、导出与快捷键")
+    .help("查找、大纲、AI、专注模式、导出与快捷键")
     .accessibilityLabel("写作工具")
     .accessibilityIdentifier("markdown-writing-tools-menu")
   }
@@ -240,7 +241,7 @@ struct MacMarkdownEditorToolbar: View {
     Button {
       actions.onRequestInlineAICompletion()
     } label: {
-      editorActionLabel("续写", systemName: "text.append", showsTitle: showsTitle)
+      editorActionLabel("行内续写（⌥\\）", systemName: "text.append", showsTitle: showsTitle)
     }
     .buttonStyle(
       MarkdownEditorToolbarButtonStyle(
@@ -257,13 +258,16 @@ struct MacMarkdownEditorToolbar: View {
 
   private func moreActionsMenuButton(showsTitle: Bool) -> some View {
     Menu {
+      MarkdownFocusModeToggles(isActive: $isFocusModeActive)
+      MarkdownEditorComfortControl(showsTitle: true)
+      Divider()
       exportMenuButton(showsTitle: true)
       shortcutHelpButton(showsTitle: true)
     } label: {
       editorActionLabel("更多…", systemName: "ellipsis.circle", showsTitle: showsTitle)
     }
     .menuIndicator(.hidden)
-    .help(String(localized: "更多操作：导出、打印、分享与快捷键说明"))
+    .help(String(localized: "更多操作：专注模式、编辑器设置、导出、打印、分享与快捷键说明"))
     .accessibilityLabel(String(localized: "更多操作"))
     .accessibilityIdentifier("markdown-editor-more-actions-menu")
   }
@@ -289,6 +293,7 @@ struct MacMarkdownEditorToolbar: View {
   @ViewBuilder
   private var aiActions: some View {
     articleAIActionButton(.continueWriting, kind: .continueArticle)
+    inlineAICompletionButton(showsTitle: true)
     convergedRewriteAction
     convergedPublishAssetPackAction
 
@@ -513,19 +518,24 @@ private struct MacMarkdownPublishAssetPickerPopover: View {
 /// rebuilding and remeasuring the complete adaptive toolbar.
 private struct MacMarkdownEditorTitleArea: View {
   @Binding var title: String
+  let focusRequestID: UUID?
   let draftID: UUID
   let markdownPath: String
   let articleInformationToggle: MacMarkdownArticleInformationToggle?
   @StateObject private var saveStatus: WorkbenchMarkdownEditorSaveStatusFeatureFacade
 
+  @FocusState private var isTitleFocused: Bool
+
   init(
     title: Binding<String>,
+    focusRequestID: UUID?,
     store: WorkbenchStore,
     draftID: UUID,
     markdownPath: String,
     articleInformationToggle: MacMarkdownArticleInformationToggle?
   ) {
     _title = title
+    self.focusRequestID = focusRequestID
     self.draftID = draftID
     self.markdownPath = markdownPath
     self.articleInformationToggle = articleInformationToggle
@@ -555,6 +565,10 @@ private struct MacMarkdownEditorTitleArea: View {
       )
       .textFieldStyle(.plain)
       .labelsHidden()
+      .focused($isTitleFocused)
+      .onChange(of: focusRequestID) { _, requestID in
+        if requestID != nil { isTitleFocused = true }
+      }
       .font(.title2.weight(.semibold))
       // Unsaved state is shown by the save-status control; recoloring the
       // title duplicated it and made the heading flicker while typing.
@@ -602,106 +616,6 @@ private struct MacMarkdownEditorTitleArea: View {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .onChange(of: draftID) { _, updatedDraftID in
-      saveStatus.trackDraft(updatedDraftID)
-    }
-  }
-}
-
-/// Fixed width keeps persistence transitions inside this leaf and avoids
-/// repeatedly measuring the adaptive toolbar while the user is typing.
-struct MacMarkdownEditorSaveStatusIcon: View {
-  let store: WorkbenchStore
-  let draftID: UUID
-  let isCompact: Bool
-  let accessibilityIdentifier: String
-  @StateObject private var saveStatus: WorkbenchMarkdownEditorSaveStatusFeatureFacade
-  @State private var isDetailPresented = false
-
-  init(
-    store: WorkbenchStore,
-    draftID: UUID,
-    isCompact: Bool,
-    accessibilityIdentifier: String = "markdown-editor-save-status"
-  ) {
-    self.store = store
-    self.draftID = draftID
-    self.isCompact = isCompact
-    self.accessibilityIdentifier = accessibilityIdentifier
-    _saveStatus = StateObject(
-      wrappedValue: WorkbenchMarkdownEditorSaveStatusFeatureFacade(store: store, draftID: draftID)
-    )
-  }
-
-  private var statusImage: String {
-    if saveStatus.saveFailure != nil { return "exclamationmark.triangle.fill" }
-    return saveStatus.hasUnsavedChanges ? "clock" : "checkmark.circle.fill"
-  }
-
-  var body: some View {
-    Button {
-      isDetailPresented.toggle()
-    } label: {
-      Group {
-        if isCompact {
-          Image(systemName: statusImage)
-            .frame(width: 28, height: 28)
-        } else {
-          Label(saveStatus.shortSaveStatus, systemImage: statusImage)
-            .lineLimit(1)
-            .frame(width: 130, alignment: .leading)
-        }
-      }
-      .font(.caption)
-      .foregroundStyle(
-        saveStatus.saveFailure != nil
-          ? WorkbenchTheme.warning
-          : (saveStatus.hasUnsavedChanges ? Color.secondary : WorkbenchTheme.success)
-      )
-    }
-    .buttonStyle(.borderless)
-    .frame(width: isCompact ? 30 : 138, height: 30)
-    .help(saveStatus.lastSaveStatus)
-    .accessibilityLabel("保存状态")
-    .accessibilityValue(saveStatus.shortSaveStatus)
-    .accessibilityIdentifier(accessibilityIdentifier)
-    .popover(isPresented: $isDetailPresented) {
-      VStack(alignment: .leading, spacing: 10) {
-        Label(saveStatus.shortSaveStatus, systemImage: statusImage)
-          .font(.headline)
-        if let failure = saveStatus.saveFailure {
-          Text(failure.message)
-            .font(.callout)
-            .textSelection(.enabled)
-          if failure.scope == .project {
-            Button(saveStatus.hasProjectFileConflict ? String(localized: "处理冲突…") : String(localized: "处理项目保存问题…")) {
-              isDetailPresented = false
-              if saveStatus.hasProjectFileConflict {
-                ProjectFileConflictReviewPanel.present(for: store, draftID: draftID)
-              } else {
-                ProjectFileSaveRecoveryPanel.present(for: store)
-              }
-            }
-          } else if failure.canRetry {
-            Button("重新保存") { saveStatus.retrySave() }
-          }
-        } else {
-          Text("发布进度请在“准备发布”中查看。")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-        }
-        if let draft = store.draft(for: draftID), !draft.isGeneralDraft {
-          Text(store.profile(for: draft).markdownPath(for: draft))
-            .font(.caption.monospaced())
-            .foregroundStyle(.secondary)
-            .textSelection(.enabled)
-        }
-      }
-      .padding(16)
-      .frame(width: 340, alignment: .leading)
-      .accessibilityIdentifier("markdown-editor-save-details")
-    }
-    .onChange(of: draftID) { _, updatedDraftID in
-      isDetailPresented = false
       saveStatus.trackDraft(updatedDraftID)
     }
   }

@@ -529,10 +529,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     )
   }
 
-  public var pendingQuickPrompt: AIPublishingQuickPrompt? {
-    store.pendingAIQuickPrompt
-  }
-
   public var isAssistantPresented: Bool {
     store.isAIPublishingAssistantPresented
   }
@@ -657,14 +653,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
   public func setRemoteAIEnabled(_ enabled: Bool) {
     store.aiStore.setRemoteAIEnabled(enabled)
     store.rssListTitleTranslation.refreshAuthorizationState()
-  }
-
-  @discardableResult
-  public func openChatWorkspace(
-    for draftID: UUID? = nil,
-    quickPrompt: AIPublishingQuickPrompt? = nil
-  ) -> Bool {
-    store.openAIChatWorkspace(for: draftID, quickPrompt: quickPrompt)
   }
 
   public func hideAssistant() {
@@ -1179,10 +1167,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
       )
     )
     persistLocalFeedbackRecords(records)
-  }
-
-  public func consumePendingQuickPrompt() -> AIPublishingQuickPrompt? {
-    store.consumePendingAIQuickPrompt()
   }
 
   @discardableResult

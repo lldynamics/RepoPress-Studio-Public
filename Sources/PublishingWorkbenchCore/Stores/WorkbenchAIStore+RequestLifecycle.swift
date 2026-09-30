@@ -71,8 +71,14 @@ extension WorkbenchAIStore {
     profileID: UUID? = nil,
     revokedConfig: AIProviderConfig? = nil,
     remoteOnly: Bool = false,
-    requiresAPIKeyOnly: Bool = false
+    requiresAPIKeyOnly: Bool = false,
+    requiresCapturedCredential: Bool = false
   ) {
+    cancelStreamingAuthorization(
+      connectionID: connectionID, remoteOnly: remoteOnly, profileID: profileID,
+      revokedConfig: revokedConfig, requiresAPIKeyOnly: requiresAPIKeyOnly,
+      requiresCapturedCredential: requiresCapturedCredential
+    )
     for (lane, binding) in Array(aiRequestAuthorizationBindings) {
       guard connectionID == nil || binding.connectionID == connectionID,
         profileID == nil || binding.profileID == profileID,

@@ -51,24 +51,33 @@ struct WorkspaceQuickSearchView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      if scope != .imageResources && contentHealthFilter == nil {
-        searchField
-          .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
-          .padding(.vertical, WorkspaceSidebarMetrics.toolbarVerticalPadding)
-      }
-
       if let repositoryContextStage {
+        // Site pages lead with the same stage list as site checks, which has
+        // no search field, so switching between them never shifts the rows.
         repositoryStageNavigation(repositoryContextStage)
           .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
           .padding(.bottom, WorkspaceSidebarMetrics.toolbarVerticalPadding)
-      } else if let imageWorkbenchContextStage {
-        imageStageNavigation(imageWorkbenchContextStage)
-          .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
-          .padding(.bottom, WorkspaceSidebarMetrics.toolbarVerticalPadding)
-      } else if let contentHealthFilter {
-        contentHealthNavigation(contentHealthFilter)
-          .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
-          .padding(.bottom, WorkspaceSidebarMetrics.toolbarVerticalPadding)
+        if showsSearchField {
+          searchField
+            .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
+            .padding(.bottom, WorkspaceSidebarMetrics.toolbarVerticalPadding)
+        }
+      } else {
+        if showsSearchField {
+          searchField
+            .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
+            .padding(.vertical, WorkspaceSidebarMetrics.toolbarVerticalPadding)
+        }
+
+        if let imageWorkbenchContextStage {
+          imageStageNavigation(imageWorkbenchContextStage)
+            .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
+            .padding(.bottom, WorkspaceSidebarMetrics.toolbarVerticalPadding)
+        } else if let contentHealthFilter {
+          contentHealthNavigation(contentHealthFilter)
+            .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
+            .padding(.bottom, WorkspaceSidebarMetrics.toolbarVerticalPadding)
+        }
       }
 
       if contentHealthFilter == nil {
@@ -199,6 +208,10 @@ struct WorkspaceQuickSearchView: View {
     case .source:
       return "chevron.left.forwardslash.chevron.right"
     }
+  }
+
+  private var showsSearchField: Bool {
+    scope != .imageResources && contentHealthFilter == nil
   }
 
   private var hasSelectedRepository: Bool {

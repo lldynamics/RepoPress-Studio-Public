@@ -156,7 +156,7 @@ struct WritingDraftRowPresentation {
     // The list scope already says whether rows are general drafts, so only
     // status, privacy and the facts that differ per row are repeated here.
     // Keep variable status facts separate from the date. A narrow sidebar can
-    // wrap the former without ever clipping a year in the latter.
+    // truncate the former without ever clipping a year in the latter.
     var parts = [draft.status.localizedDisplayName]
     if draft.isPrivate { parts.append(draft.visibility.localizedDisplayName) }
     if let source = draft.externalDraftSource {
@@ -204,7 +204,7 @@ struct WritingDraftRow: View {
         .foregroundStyle(.secondary)
         .frame(width: 16)
 
-      VStack(alignment: .leading, spacing: 3) {
+      VStack(alignment: .leading, spacing: 2) {
         Text(presentation.title)
           .font(.workbenchBody.weight(.medium))
           .workbenchTruncatedIdentity(
@@ -213,22 +213,26 @@ struct WritingDraftRow: View {
             truncationMode: .tail
           )
 
-        Text(presentation.metadataDetails)
-          .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
-          .lineLimit(2)
-          .truncationMode(.tail)
-          .accessibilityLabel(presentation.help)
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+          Text(presentation.metadataDetails)
+            .font(.workbenchSupporting)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .accessibilityLabel(presentation.help)
 
-        Text(presentation.metadataDate)
-          .font(.workbenchMetadata.monospacedDigit())
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: true, vertical: false)
-          .accessibilityHidden(true)
+          Spacer(minLength: 0)
+
+          Text(presentation.metadataDate)
+            .font(.workbenchMetadata.monospacedDigit())
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: true, vertical: false)
+            .accessibilityHidden(true)
+        }
       }
     }
     .padding(.horizontal, 4)
-    .padding(.vertical, 5)
+    .padding(.vertical, 3)
     .help(presentation.help)
   }
 }
@@ -240,7 +244,7 @@ struct WritingDraftSkeletonRow: View {
         .fill(Color.secondary.opacity(0.18))
         .frame(width: 16, height: 16)
 
-      VStack(alignment: .leading, spacing: 6) {
+      VStack(alignment: .leading, spacing: 2) {
         RoundedRectangle(cornerRadius: 3, style: .continuous)
           .fill(Color.secondary.opacity(0.22))
           .frame(width: 120, height: 14)
@@ -251,7 +255,7 @@ struct WritingDraftSkeletonRow: View {
       }
     }
     .padding(.horizontal, 4)
-    .padding(.vertical, 5)
+    .padding(.vertical, 3)
     .accessibilityHidden(true)
   }
 }

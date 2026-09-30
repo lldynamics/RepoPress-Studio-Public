@@ -1,6 +1,49 @@
 import Foundation
 
 extension WorkbenchAIStore {
+  func configureGeneralManualRetry(
+    for error: AIChatCompletionClientError,
+    conversationID: UUID,
+    operationID: UUID
+  ) {
+    guard error.supportsManualRetry else {
+      aiGeneralChatManualRetryState = nil
+      return
+    }
+    aiGeneralChatManualRetryState = AIGeneralChatManualRetryState(
+      conversationID: conversationID,
+      operationID: operationID,
+      requiresDuplicateChargeConfirmation: error.requiresDuplicateChargeConfirmation,
+      retryAfter: error.retryAfterSeconds.map { Date().addingTimeInterval($0) }
+    )
+  }
+
+  func generateCompleteGeneralAIChatReply(
+    attempt: AIAuthorizedGeneralChatAttempt,
+    conversationID: UUID,
+    operationID: UUID,
+    apiKey: String?
+  ) async throws -> AIPublishingChatMessage {
+    let config = attempt.providerConfig
+    let connectionID = attempt.connectionProfileID
+    let assistant = authorizedChatAssistant(
+      operationID: operationID, config: config, connectionID: connectionID,
+      knowledgeBindings: attempt.knowledgeAuthorizationBindings,
+      knowledgePolicy: attempt.knowledgePolicy, apiKey: apiKey
+    ) { [weak self] in
+      guard let self else { throw CancellationError() }
+      return try self.currentGeneralAIChatAPIKey(
+        conversationID: conversationID, matching: config,
+        connectionProfileID: connectionID
+      )
+    }
+    let message = try await assistant.completePrepared(attempt.transport, apiKey: apiKey)
+    try checkAIChatOperation(operationID)
+    updateGeneralConversationMessages(conversationID) { $0.append(message) }
+    store.setAIChatMessage("AI 已回复。")
+    return message
+  }
+
   func generateStreamingGeneralAIChatReply(
     attempt: AIAuthorizedGeneralChatAttempt,
     conversationID: UUID,
@@ -9,7 +52,7 @@ extension WorkbenchAIStore {
   ) async throws -> AIPublishingChatMessage {
     let providerConfig = attempt.providerConfig
     let connectionID = attempt.connectionProfileID
-    let assistant = streamingAssistant(
+    let assistant = authorizedChatAssistant(
       operationID: operationID,
       config: providerConfig,
       connectionID: connectionID,

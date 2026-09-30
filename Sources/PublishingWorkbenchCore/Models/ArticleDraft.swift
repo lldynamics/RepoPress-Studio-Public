@@ -461,57 +461,18 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     renderedContentDigest: String,
     projectFileContentDigest: String? = nil
   ) {
-    let normalizedPath = repositoryPath.normalizedRelativePath()
-    let identity = DraftRepositoryIdentity(profile: profile)
-    let canRetainRemoteRevision =
-      repositoryBinding?.identity == identity
-      && self.repositoryPath?.normalizedRelativePath() == normalizedPath
-    let retainedRevision = canRetainRemoteRevision ? repositorySHA : nil
-    let retainedImportFingerprint = canRetainRemoteRevision ? repositoryImportFingerprint : nil
-    let retainedVerification =
-      canRetainRemoteRevision
-      ? (repositoryBinding?.verification ?? .legacyUnverified)
-      : .legacyUnverified
-    let recordedDigest =
-      retainedRevision == nil
-      ? renderedContentDigest
-      : repositoryBinding?.renderedContentDigest
-    let retainedPendingReviewDigest =
-      canRetainRemoteRevision
-      ? repositoryBinding?.pendingReviewContentDigest
-      : nil
-    let recordedSyncState: DraftRepositorySyncState
-    if repositoryBinding?.syncState == .awaitingReview,
-      let retainedPendingReviewDigest,
-      retainedPendingReviewDigest == renderedContentDigest
+    let binding = projectFileBinding(
+      profile: profile, repositoryPath: repositoryPath,
+      renderedContentDigest: renderedContentDigest,
+      projectFileContentDigest: projectFileContentDigest)
+    if repositoryBinding?.identity != binding.identity
+      || self.repositoryPath?.normalizedRelativePath() != binding.repositoryPath
     {
-      recordedSyncState = .awaitingReview
-    } else if retainedRevision == nil {
-      recordedSyncState = .projectSaved
-    } else if recordedDigest == renderedContentDigest {
-      // Startup reconciliation and explicit writes of identical bytes do not
-      // create a local change relative to the confirmed remote baseline.
-      recordedSyncState = .synced
-    } else {
-      recordedSyncState = .localChanged
+      repositoryImportFingerprint = nil
     }
-    self.repositoryPath = normalizedPath
-    repositorySHA = retainedRevision
-    repositoryImportFingerprint = retainedImportFingerprint
-    repositoryBinding = DraftRepositoryBinding(
-      identity: identity,
-      repositoryPath: normalizedPath,
-      remoteRevision: retainedRevision,
-      renderedContentDigest: recordedDigest,
-      projectFileContentDigest: projectFileContentDigest ?? renderedContentDigest,
-      projectFileRenderedContentDigest: renderedContentDigest,
-      pendingReviewContentDigest: recordedSyncState == .awaitingReview
-        ? retainedPendingReviewDigest
-        : nil,
-      verification: retainedVerification,
-      syncState: recordedSyncState,
-      verifiedAt: canRetainRemoteRevision ? repositoryBinding?.verifiedAt : nil
-    )
+    self.repositoryPath = binding.repositoryPath
+    repositorySHA = binding.remoteRevision
+    repositoryBinding = binding
   }
 
   public mutating func confirmRepositoryBinding(
@@ -522,22 +483,14 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     projectFileContentDigest: String? = nil,
     verifiedAt: Date = Date()
   ) {
-    let normalizedPath = repositoryPath.normalizedRelativePath()
-    let normalizedRevision = remoteRevision.trimmedForPublishing
-    self.repositoryPath = normalizedPath
-    repositorySHA = normalizedRevision
-    repositoryImportFingerprint = repositoryContentFingerprint
-    repositoryBinding = DraftRepositoryBinding(
-      identity: DraftRepositoryIdentity(profile: profile),
-      repositoryPath: normalizedPath,
-      remoteRevision: normalizedRevision,
+    let binding = confirmedRepositoryBinding(
+      profile: profile, repositoryPath: repositoryPath, remoteRevision: remoteRevision,
       renderedContentDigest: renderedContentDigest,
-      projectFileContentDigest: projectFileContentDigest ?? renderedContentDigest,
-      projectFileRenderedContentDigest: renderedContentDigest,
-      verification: .verified,
-      syncState: .synced,
-      verifiedAt: verifiedAt
-    )
+      projectFileContentDigest: projectFileContentDigest, verifiedAt: verifiedAt)
+    self.repositoryPath = binding.repositoryPath
+    repositorySHA = binding.remoteRevision
+    repositoryImportFingerprint = binding.syncState == .synced ? repositoryContentFingerprint : nil
+    repositoryBinding = binding
   }
 
   /// Records an explicitly reviewed remote baseline while preserving a local
@@ -581,10 +534,15 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     repositoryBinding = binding
   }
 
-  public mutating func markRepositoryAwaitingReview(profile: SiteProfile) {
+  public mutating func markRepositoryAwaitingReview(
+    profile: SiteProfile,
+    submittedContentDigest: String? = nil
+  ) {
     guard var binding = repositoryBinding else { return }
-    binding.pendingReviewContentDigest = renderedRepositoryContentDigest(profile: profile)
-    binding.syncState = .awaitingReview
+    let currentDigest = renderedRepositoryContentDigest(profile: profile)
+    let submittedDigest = submittedContentDigest ?? currentDigest
+    binding.pendingReviewContentDigest = submittedDigest
+    binding.syncState = submittedDigest == currentDigest ? .awaitingReview : .localChanged
     repositoryBinding = binding
   }
 

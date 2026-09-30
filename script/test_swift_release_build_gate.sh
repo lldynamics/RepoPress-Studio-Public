@@ -67,6 +67,26 @@ if RELEASE_BUILD_ARGS_FILE="$ARGS_FILE" \
   fail "gate accepted a failing Release build"
 fi
 
+# Exercise the actual packaging guard with SwiftPM native and Swift Build paths.
+python3 - "$ROOT_DIR/script/build_and_run.sh" <<'PY'
+import pathlib
+import subprocess
+import sys
+
+source = pathlib.Path(sys.argv[1]).read_text()
+start = source.index('case "$BUILD_CONFIGURATION:')
+end = source.index('\nBUILD_BINARY=', start)
+guard = source[start:end]
+for config in ('debug', 'release'):
+    for leaf in ('debug', 'Debug', 'release', 'Release', 'Debug-extra', ''):
+        result = subprocess.run(
+            ['bash', '-c', guard],
+            env={'BUILD_CONFIGURATION': config, 'BUILD_BIN_DIR': '/fixture/' + leaf},
+            capture_output=True, text=True)
+        expected = leaf in (config, config.capitalize())
+        assert (result.returncode == 0) == expected, (config, leaf, result.stderr)
+PY
+
 for path in \
   "$ROOT_DIR/Package.swift" \
   "$ROOT_DIR/script/build_and_run.sh" \

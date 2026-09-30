@@ -1,7 +1,98 @@
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class AssetResourceManagerServiceTests: XCTestCase {
+  func testFrontMatterCoversProtectAssetsAcrossFormatsAndFields() throws {
+    let root = try temporaryDirectory()
+    let posts = try makeAssetRepository(at: root)
+    let service = AssetResourceManagerService()
+    let documents = [
+      "---\ncover: \"/images/yaml.png\"\n---\nBody",
+      "---\r\nextra:\r\n  og_preview_img: '/images/zola.png'\r\n---\r\nBody",
+      "+++\n[extra]\nimage = \"/images/toml.png\"\n+++\nBody",
+      "---\nsocialImage: /images/quartz.png # cover\n---\nBody",
+      "---\ncover: [\"/images/first.png\", '/images/second.png']\n---\nBody",
+      "---\nimage: \"/images/space file.png\"\n---\nBody",
+      "---\n\"cover\": \"/images/quoted.png\"\n---\nBody",
+      "+++\n'cover' = '/images/quoted-toml.png'\n+++\nBody",
+      "---\n\"co\\u0076er\": \"/images/escaped-key.png\"\n---\nBody",
+      "+++\n\"extra\" . 'image' = '/images/dotted-key.png'\n+++\nBody",
+    ]
+    let names = [
+      "yaml.png", "zola.png", "toml.png", "quartz.png", "first.png", "second.png", "space file.png",
+      "quoted.png", "quoted-toml.png", "escaped-key.png",
+      "dotted-key.png",
+    ]
+    for name in names {
+      try Data([1]).write(to: root.appendingPathComponent("static/images/" + name))
+    }
+    for (index, document) in documents.enumerated() {
+      try document.write(
+        to: posts.appendingPathComponent("post-\(index).md"), atomically: true, encoding: .utf8)
+    }
+    let report = try service.scan(profile: profile(rootURL: root))
+    XCTAssertTrue(report.isComplete)
+    XCTAssertEqual(report.referencedAssetCount, names.count)
+    XCTAssertTrue(report.orphanedAssets.isEmpty)
+    XCTAssertTrue(report.brokenReferences.isEmpty)
+    let nested = try XCTUnwrap(report.assets.first { $0.repositoryPath.hasSuffix("zola.png") })
+    XCTAssertEqual(nested.references.first?.lineNumber, 3)
+  }
+
+  func testCoverAddedAfterReviewPreventsCleanup() throws {
+    let root = try temporaryDirectory()
+    let posts = try makeAssetRepository(at: root)
+    let asset = root.appendingPathComponent("static/images/cover.png")
+    try Data([1]).write(to: asset)
+    let profile = profile(rootURL: root)
+    let service = AssetResourceManagerService()
+    let reviewed = try service.scan(profile: profile)
+    let candidate = try XCTUnwrap(reviewed.orphanedAssets.first)
+    try "---\ncover: \"/images/cover.png\"\n---\n".write(
+      to: posts.appendingPathComponent("cover.md"), atomically: true, encoding: .utf8)
+    XCTAssertCleanupReviewChanged {
+      try service.validateOrphanedAssetsForCleanup(
+        repositoryRootURL: root, assetRoot: "static", profileID: profile.id,
+        items: [candidate], reviewedReport: reviewed)
+    }
+    XCTAssertTrue(FileManager.default.fileExists(atPath: asset.path))
+  }
+
+  func testUnsupportedCoverExpressionsCannotAuthorizeCleanup() throws {
+    let root = try temporaryDirectory()
+    let posts = try makeAssetRepository(at: root)
+    try Data([1]).write(to: root.appendingPathComponent("static/images/cover.png"))
+    let profile = profile(rootURL: root)
+    let service = AssetResourceManagerService()
+    let reviewed = try service.scan(profile: profile)
+    for expression in [
+      "*coverAlias", ">", "[images/cover.png]", "[\"/images/cover.png\", *alias]",
+      "\n  - /images/cover.png", "\n- /images/cover.png", "\n  - \"/images/cover.png\"",
+      "[\n  \"/images/cover.png\"\n]",
+      "\n  \"/images/cover.png\"", "\n  /images/cover.png", "# comment\n  /images/cover.png",
+    ] {
+      try "---\ncover: \(expression)\n---\n".write(
+        to: posts.appendingPathComponent("cover.md"), atomically: true, encoding: .utf8)
+      XCTAssertFalse(try service.scan(profile: profile).isComplete)
+      XCTAssertCleanupReviewChanged {
+        try service.validateOrphanedAssetsForCleanup(
+          repositoryRootURL: root, assetRoot: "static", profileID: profile.id,
+          items: reviewed.orphanedAssets, reviewedReport: reviewed)
+      }
+    }
+    for expression in ["\"\"\"\n/images/cover.png\n\"\"\"", "'''\n/images/cover.png\n'''"] {
+      try "+++\ncover = \(expression)\n+++\n".write(
+        to: posts.appendingPathComponent("cover.md"), atomically: true, encoding: .utf8)
+      XCTAssertFalse(try service.scan(profile: profile).isComplete)
+      XCTAssertCleanupReviewChanged {
+        try service.validateOrphanedAssetsForCleanup(
+          repositoryRootURL: root, assetRoot: "static", profileID: profile.id,
+          items: reviewed.orphanedAssets, reviewedReport: reviewed)
+      }
+    }
+  }
+
   func testEncodedFilenameDelimitersRemainReferencedAndBlockStaleCleanup() throws {
     let root = try temporaryDirectory()
     let images = root.appendingPathComponent("static/images", isDirectory: true)
@@ -12,14 +103,15 @@ final class AssetResourceManagerServiceTests: XCTestCase {
     }
     let service = AssetResourceManagerService()
     let profileID = UUID()
-    let before = try service.scan(repositoryRootURL: root, assetRoot: "static", profileID: profileID)
+    let before = try service.scan(
+      repositoryRootURL: root, assetRoot: "static", profileID: profileID)
     XCTAssertEqual(before.orphanedAssets.count, filenames.count)
     try """
-      ![hash](/images/photo%231.png?width=200#preview)
-      ![question](/images/photo%3F1.png#preview)
-      ![percent](/images/photo%25231.png)
-      ![normal](/images/normal.png?width=200#preview)
-      """.write(to: root.appendingPathComponent("post.md"), atomically: true, encoding: .utf8)
+    ![hash](/images/photo%231.png?width=200#preview)
+    ![question](/images/photo%3F1.png#preview)
+    ![percent](/images/photo%25231.png)
+    ![normal](/images/normal.png?width=200#preview)
+    """.write(to: root.appendingPathComponent("post.md"), atomically: true, encoding: .utf8)
 
     let after = try service.scan(repositoryRootURL: root, assetRoot: "static", profileID: profileID)
     XCTAssertEqual(after.referencedAssetCount, filenames.count)
@@ -31,7 +123,8 @@ final class AssetResourceManagerServiceTests: XCTestCase {
         items: before.orphanedAssets, reviewedReport: before)
     }
     for filename in filenames {
-      XCTAssertTrue(FileManager.default.fileExists(atPath: images.appendingPathComponent(filename).path))
+      XCTAssertTrue(
+        FileManager.default.fileExists(atPath: images.appendingPathComponent(filename).path))
     }
   }
 
@@ -49,26 +142,26 @@ final class AssetResourceManagerServiceTests: XCTestCase {
     try Data([4, 5]).write(to: filesURL.appendingPathComponent("report.pdf"))
     try Data([6, 7]).write(to: rootURL.appendingPathComponent("outside.png"))
     try """
-# Article
+    # Article
 
-![used](/images/used.jpg)
+    ![used](/images/used.jpg)
 
-<img src="/images/used.jpg">
+    <img src="/images/used.jpg">
 
-[report](../../static/files/report.pdf)
+    [report](../../static/files/report.pdf)
 
-![missing](/images/missing.png)
+    ![missing](/images/missing.png)
 
-[outside](../../outside.png)
+    [outside](../../outside.png)
 
-```markdown
-![fake](/images/fake.png)
-```
+    ```markdown
+    ![fake](/images/fake.png)
+    ```
 
-`![inline](/images/inline.png)`
+    `![inline](/images/inline.png)`
 
-![external](https://example.com/image.png)
-""".write(
+    ![external](https://example.com/image.png)
+    """.write(
       to: postsURL.appendingPathComponent("article.md"),
       atomically: true,
       encoding: .utf8
@@ -88,17 +181,21 @@ final class AssetResourceManagerServiceTests: XCTestCase {
     XCTAssertEqual(report.orphanedByteSize, 2)
     XCTAssertEqual(report.compressionCandidates.map(\.repositoryPath), ["static/images/used.jpg"])
 
-    let used = try XCTUnwrap(report.assets.first(where: { $0.repositoryPath == "static/images/used.jpg" }))
+    let used = try XCTUnwrap(
+      report.assets.first(where: { $0.repositoryPath == "static/images/used.jpg" }))
     XCTAssertEqual(used.references.count, 2)
-    XCTAssertTrue(used.references.allSatisfy { $0.sourceMarkdownPath == "content/posts/article.md" })
+    XCTAssertTrue(
+      used.references.allSatisfy { $0.sourceMarkdownPath == "content/posts/article.md" })
 
     XCTAssertEqual(report.brokenReferences.count, 2)
-    XCTAssertTrue(report.brokenReferences.contains { reference in
-      reference.rawPath == "/images/missing.png" && reference.kind == .missing
-    })
-    XCTAssertTrue(report.brokenReferences.contains { reference in
-      reference.rawPath == "../../outside.png" && reference.kind == .outsideAssetRoot
-    })
+    XCTAssertTrue(
+      report.brokenReferences.contains { reference in
+        reference.rawPath == "/images/missing.png" && reference.kind == .missing
+      })
+    XCTAssertTrue(
+      report.brokenReferences.contains { reference in
+        reference.rawPath == "../../outside.png" && reference.kind == .outsideAssetRoot
+      })
     XCTAssertFalse(report.brokenReferences.contains { $0.rawPath.contains("fake.png") })
     XCTAssertFalse(report.brokenReferences.contains { $0.rawPath.contains("inline.png") })
     XCTAssertEqual(report.scannedMarkdownFileCount, 1)
@@ -185,7 +282,10 @@ final class AssetResourceManagerServiceTests: XCTestCase {
         reviewedReport: report
       )
     }
-    XCTAssertTrue(report.orphanedAssets.allSatisfy { FileManager.default.fileExists(atPath: $0.absoluteFilePath) })
+    XCTAssertTrue(
+      report.orphanedAssets.allSatisfy {
+        FileManager.default.fileExists(atPath: $0.absoluteFilePath)
+      })
   }
 
   func testCleanupRejectsReferenceAddedAfterReviewWithoutChangingAssetMetadata() throws {
@@ -234,12 +334,16 @@ final class AssetResourceManagerServiceTests: XCTestCase {
     )
     let freshReport = try service.scan(profile: cleanupProfile)
     XCTAssertFalse(
-      try XCTUnwrap(freshReport.assets.first(where: { $0.repositoryPath == "static/images/first.png" }))
-        .isOrphaned
+      try XCTUnwrap(
+        freshReport.assets.first(where: { $0.repositoryPath == "static/images/first.png" })
+      )
+      .isOrphaned
     )
     XCTAssertTrue(
-      try XCTUnwrap(freshReport.assets.first(where: { $0.repositoryPath == "static/images/second.png" }))
-        .isOrphaned
+      try XCTUnwrap(
+        freshReport.assets.first(where: { $0.repositoryPath == "static/images/second.png" })
+      )
+      .isOrphaned
     )
 
     XCTAssertCleanupReviewChanged {
@@ -320,13 +424,15 @@ final class AssetResourceManagerServiceTests: XCTestCase {
     line: UInt = #line
   ) {
     XCTAssertThrowsError(try expression(), file: file, line: line) { error in
-      XCTAssertEqual(error as? AssetResourceManagerError, .cleanupReviewChanged, file: file, line: line)
+      XCTAssertEqual(
+        error as? AssetResourceManagerError, .cleanupReviewChanged, file: file, line: line)
     }
   }
 
   private func temporaryDirectory() throws -> URL {
     let url = FileManager.default.temporaryDirectory
-      .appendingPathComponent("AssetResourceManagerServiceTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "AssetResourceManagerServiceTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     addTeardownBlock { try? FileManager.default.removeItem(at: url) }
     return url

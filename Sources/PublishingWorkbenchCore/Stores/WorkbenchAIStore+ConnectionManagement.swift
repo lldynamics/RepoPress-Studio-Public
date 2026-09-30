@@ -88,8 +88,8 @@ extension WorkbenchAIStore {
         forConnectionProfileID: connection.id,
         legacyProfile: settingsLegacyProfile(for: connection)
       )
-      cancelStreamingAuthorization(connectionID: connection.id)
-      cancelNonStreamingAuthorization(connectionID: connection.id)
+      cancelStreamingAuthorization(connectionID: connection.id, requiresCapturedCredential: true)
+      cancelNonStreamingAuthorization(connectionID: connection.id, requiresCapturedCredential: true)
       refreshAIKeyAvailability()
       aiActionMessage = CoreL10n.format(
         "AI API Key 已保存到 %@。",

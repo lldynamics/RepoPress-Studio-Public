@@ -12,15 +12,17 @@ extension RemoteRepositoryPublishService {
     let targetBranch = repository.branch
     let usesDedicatedBranch = mode.usesDedicatedBranch
     let createsReview = mode.createsReview
-    let branchName: String = switch mode {
-    case .directCommit:
-      targetBranch
-    case .reviewRequest:
-      package.reviewBranchName
-    case .previewBranch:
-      package.draftPreviewBranchName
-    }
-    let reviewDraft = RemoteReviewDraftBuilder().build(package: package, profile: repository.profile)
+    let branchName: String =
+      switch mode {
+      case .directCommit:
+        targetBranch
+      case .reviewRequest:
+        package.reviewBranchName
+      case .previewBranch:
+        package.draftPreviewBranchName
+      }
+    let reviewDraft = RemoteReviewDraftBuilder().build(
+      package: package, profile: repository.profile)
     onProgress?(
       .init(
         stage: .validatingTarget,
@@ -29,7 +31,8 @@ extension RemoteRepositoryPublishService {
         detail: targetBranch
       )
     )
-    let reviewBranchExists = usesDedicatedBranch
+    let reviewBranchExists =
+      usesDedicatedBranch
       ? try await {
         onProgress?(
           .init(
@@ -41,10 +44,23 @@ extension RemoteRepositoryPublishService {
             detail: branchName
           )
         )
-        return try await gitLabBranchExists(repository: repository, branch: branchName, token: token)
+        return try await gitLabBranchExists(
+          repository: repository, branch: branchName, token: token)
       }()
       : false
-    let existenceRef = usesDedicatedBranch && reviewBranchExists ? branchName : targetBranch
+    let previewBaseCommitSHA =
+      mode == .previewBranch
+      ? try await gitLabBranchSHA(
+        repository: repository,
+        branch: reviewBranchExists ? branchName : targetBranch,
+        token: token)
+      : nil
+    if let previewBaseCommitSHA, previewBaseCommitSHA.trimmedForPublishing.nilIfEmpty == nil {
+      throw RemoteRepositoryPublishError.invalidResponse
+    }
+    let existenceRef =
+      previewBaseCommitSHA
+      ?? (usesDedicatedBranch && reviewBranchExists ? branchName : targetBranch)
 
     var actions: [GitLabCommitAction] = []
     var changedPaths: [String] = []
@@ -123,15 +139,15 @@ extension RemoteRepositoryPublishService {
             GitLabCommitAction(
               action: remoteState.exists ? "update" : "create",
               filePath: file.repositoryPath,
-              content: file.kind == .markdown ? String(data: data, encoding: .utf8) ?? "" : data.base64EncodedString(),
+              content: file.kind == .markdown
+                ? String(data: data, encoding: .utf8) ?? "" : data.base64EncodedString(),
               encoding: file.kind == .markdown ? nil : "base64",
               lastCommitID: remoteState.lastCommitID
             )
           )
           changedPaths.append(file.repositoryPath)
         }
-      } else if let lastCommitID = remoteState.lastCommitID
-      {
+      } else if let lastCommitID = remoteState.lastCommitID {
         remoteVersionsByPath[file.repositoryPath.normalizedRelativePath()] = lastCommitID
       }
 
@@ -156,6 +172,14 @@ extension RemoteRepositoryPublishService {
     }
 
     guard !actions.isEmpty else {
+      let previewHeadSHA: String?
+      if let previewBaseCommitSHA {
+        previewHeadSHA = try await confirmGitLabNoOpPreviewBranch(
+          repository: repository, branch: branchName, baseCommitSHA: previewBaseCommitSHA,
+          alreadyExists: reviewBranchExists, token: token)
+      } else {
+        previewHeadSHA = nil
+      }
       var existingReviewURL: String?
       if createsReview && reviewBranchExists {
         existingReviewURL = try await gitLabExistingMergeRequestURL(
@@ -197,7 +221,7 @@ extension RemoteRepositoryPublishService {
         branchName: branchName,
         targetBranch: targetBranch,
         changedPaths: [],
-        commitSHA: existingReviewHeadSHA,
+        commitSHA: previewHeadSHA ?? existingReviewHeadSHA,
         remoteVersionsByPath: remoteVersionsByPath.isEmpty ? nil : remoteVersionsByPath,
         reviewPendingPaths: createsReview ? reviewPendingPaths : nil,
         reviewNumber: existingReviewURL.flatMap {
@@ -235,7 +259,8 @@ extension RemoteRepositoryPublishService {
       )
     )
 
-    for file in package.files where file.operation == .upsert && changedPaths.contains(file.repositoryPath) {
+    for file in package.files
+    where file.operation == .upsert && changedPaths.contains(file.repositoryPath) {
       remoteVersionsByPath[file.repositoryPath.normalizedRelativePath()] = commit.id
     }
     var reviewURL: String?

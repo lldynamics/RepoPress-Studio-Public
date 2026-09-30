@@ -3733,6 +3733,34 @@
         }
       }
     },
+    "%lld 项正文问题": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld body issue"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld body issues"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 项正文问题"
+          }
+        }
+      }
+    },
     "%lld%": {
       "localizations": {
         "en": {
@@ -4963,6 +4991,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "AI 数据发送授权"
+          }
+        }
+      }
+    },
+    "AI 暂不可用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI is unavailable"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 暂不可用"
           }
         }
       }
@@ -17999,54 +18043,6 @@
         }
       }
     },
-    "专注模式与段落专注": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Focus Mode and Paragraph Focus"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "专注模式与段落专注"
-          }
-        }
-      }
-    },
-    "专注模式会收起侧栏并在打字时淡出工具栏；段落专注会让光标居中并高亮当前段落。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Focus Mode hides sidebars and fades the toolbar while typing; Paragraph Focus centers the cursor and highlights the current paragraph."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "专注模式会收起侧栏并在打字时淡出工具栏；段落专注会让光标居中并高亮当前段落。"
-          }
-        }
-      }
-    },
-    "专注模式：%@；段落专注：%@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Focus Mode: %@; Paragraph Focus: %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "专注模式：%@；段落专注：%@"
-          }
-        }
-      }
-    },
     "丢弃": {
       "localizations": {
         "en": {
@@ -18731,22 +18727,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "仅保存在本机 · %@"
-          }
-        }
-      }
-    },
-    "仅保存在软件": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Saved Only in App"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "仅保存在软件"
           }
         }
       }
@@ -23099,22 +23079,6 @@
         }
       }
     },
-    "元数据标题": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Metadata Title"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "元数据标题"
-          }
-        }
-      }
-    },
     "元数据没有变化": {
       "localizations": {
         "en": {
@@ -25805,6 +25769,22 @@
         }
       }
     },
+    "写作检查": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Writing checks"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "写作检查"
+          }
+        }
+      }
+    },
     "写作生成": {
       "localizations": {
         "en": {
@@ -28357,6 +28337,22 @@
         }
       }
     },
+    "前往 AI 设置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open AI settings"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "前往 AI 设置"
+          }
+        }
+      }
+    },
     "前往 ChatGPT 账户设置": {
       "localizations": {
         "en": {
@@ -29879,22 +29875,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "发布时间"
-          }
-        }
-      }
-    },
-    "发布时间与可见性": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Date and Visibility"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "发布时间与可见性"
           }
         }
       }
@@ -33635,6 +33615,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "启用 PR/MR 与部署状态自动检查"
+          }
+        }
+      }
+    },
+    "启用后，正文 H1 与 Front Matter title 相同会在 SEO 检查中显示一条非阻断建议。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When on, a body H1 that matches the front matter title shows a non-blocking suggestion in SEO checks."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启用后，正文 H1 与 Front Matter title 相同会在 SEO 检查中显示一条非阻断建议。"
           }
         }
       }
@@ -42275,22 +42271,6 @@
         }
       }
     },
-    "已保存在软件": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Saved in the app"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已保存在软件"
-          }
-        }
-      }
-    },
     "已保存的 RSS 文章中没有匹配结果。": {
       "localizations": {
         "en": {
@@ -42463,22 +42443,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "已关闭"
-          }
-        }
-      }
-    },
-    "已写入项目": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Written to Project"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已写入项目"
           }
         }
       }
@@ -44071,22 +44035,6 @@
         }
       }
     },
-    "已开启": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "On"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已开启"
-          }
-        }
-      }
-    },
     "已开启自动换行": {
       "localizations": {
         "en": {
@@ -45217,22 +45165,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "已筛选：%@"
-          }
-        }
-      }
-    },
-    "已绑定项目文件": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Project File Bound"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已绑定项目文件"
           }
         }
       }
@@ -55771,6 +55703,22 @@
         }
       }
     },
+    "插入代码块、表格、分隔线、视频、站内链接或组件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Insert a code block, table, divider, video, internal link, or component"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "插入代码块、表格、分隔线、视频、站内链接或组件"
+          }
+        }
+      }
+    },
     "插入到光标处": {
       "localizations": {
         "en": {
@@ -57299,6 +57247,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "收起 iCloud 快照"
+          }
+        }
+      }
+    },
+    "收起侧栏并在打字时淡出工具栏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide the sidebar and fade the toolbar while typing"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收起侧栏并在打字时淡出工具栏"
           }
         }
       }
@@ -59347,22 +59311,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "文章详情栏"
-          }
-        }
-      }
-    },
-    "文章详情栏主要操作": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Primary Article Inspector Actions"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "文章详情栏主要操作"
           }
         }
       }
@@ -62165,34 +62113,18 @@
         }
       }
     },
-    "更多操作：导出、打印、分享与快捷键说明": {
+    "更多操作：专注模式、编辑器设置、导出、打印、分享与快捷键说明": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "More actions: export, print, share, and keyboard shortcuts"
+            "value": "More actions: focus mode, editor settings, export, print, share, and keyboard shortcuts"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "更多操作：导出、打印、分享与快捷键说明"
-          }
-        }
-      }
-    },
-    "更多格式": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "More Formatting"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "更多格式"
+            "value": "更多操作：专注模式、编辑器设置、导出、打印、分享与快捷键说明"
           }
         }
       }
@@ -64253,22 +64185,6 @@
         }
       }
     },
-    "未开启": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Off"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "未开启"
-          }
-        }
-      }
-    },
     "未找到 Codex 运行组件": {
       "localizations": {
         "en": {
@@ -65193,22 +65109,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "本地仓库已连接"
-          }
-        }
-      }
-    },
-    "本地保存": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Local Save"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "本地保存"
           }
         }
       }
@@ -66713,18 +66613,18 @@
         }
       }
     },
-    "查找、大纲、AI、导出与快捷键": {
+    "查找、大纲、AI、专注模式、导出与快捷键": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Find, outline, AI, export, and shortcuts"
+            "value": "Find, outline, AI, focus mode, export, and shortcuts"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "查找、大纲、AI、导出与快捷键"
+            "value": "查找、大纲、AI、专注模式、导出与快捷键"
           }
         }
       }
@@ -67605,6 +67505,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "查看检查"
+          }
+        }
+      }
+    },
+    "查看正文诊断": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show body diagnostics"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看正文诊断"
           }
         }
       }
@@ -69903,22 +69819,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在写入 %lld / %lld 篇"
-          }
-        }
-      }
-    },
-    "正在写入项目": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Writing to Project"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在写入项目"
           }
         }
       }
@@ -73275,50 +73175,6 @@
         }
       }
     },
-    "正文诊断：%lld 项": {
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Content diagnostic: %lld issue"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Content diagnostics: %lld issues"
-                }
-              }
-            }
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正文诊断：%lld 项"
-          }
-        }
-      }
-    },
-    "正文诊断：未发现问题": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Content diagnostics: no issues found"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正文诊断：未发现问题"
-          }
-        }
-      }
-    },
     "正文读取失败": {
       "localizations": {
         "en": {
@@ -73683,22 +73539,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "此目的地曾获授权，但远程 AI 总闸已关闭；当前不会发送内容。"
-          }
-        }
-      }
-    },
-    "此站点启用时，正文 H1 与 Front Matter title 相同会显示一条非阻断建议。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "When enabled for this site, show a non-blocking suggestion if the body H1 matches the Front Matter title."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "此站点启用时，正文 H1 与 Front Matter title 相同会显示一条非阻断建议。"
           }
         }
       }
@@ -74927,22 +74767,6 @@
         }
       }
     },
-    "没有问题": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No Issues"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "没有问题"
-          }
-        }
-      }
-    },
     "没有需要修改的文章": {
       "localizations": {
         "en": {
@@ -75375,6 +75199,22 @@
         }
       }
     },
+    "添加“%@”": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add “%@”"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加“%@”"
+          }
+        }
+      }
+    },
     "添加于 %@": {
       "localizations": {
         "en": {
@@ -75387,6 +75227,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "添加于 %@"
+          }
+        }
+      }
+    },
+    "添加分类…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add category…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加分类…"
           }
         }
       }
@@ -75483,6 +75339,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "添加本地附件…"
+          }
+        }
+      }
+    },
+    "添加标签…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add tag…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加标签…"
           }
         }
       }
@@ -79495,6 +79367,22 @@
         }
       }
     },
+    "移除“%@”": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove “%@”"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除“%@”"
+          }
+        }
+      }
+    },
     "移除上下文 %@": {
       "localizations": {
         "en": {
@@ -82301,22 +82189,6 @@
         }
       }
     },
-    "续写": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Continue Writing"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "续写"
-          }
-        }
-      }
-    },
     "续写列表或引用": {
       "localizations": {
         "en": {
@@ -84537,6 +84409,38 @@
         }
       }
     },
+    "行内代码、引用、删除线与中英文排版": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inline code, quote, strikethrough, and CJK spacing"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "行内代码、引用、删除线与中英文排版"
+          }
+        }
+      }
+    },
+    "行内续写（⌥\\）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inline continuation (⌥\\)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "行内续写（⌥\\）"
+          }
+        }
+      }
+    },
     "行动队列": {
       "localizations": {
         "en": {
@@ -84613,22 +84517,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "行距"
-          }
-        }
-      }
-    },
-    "补充元数据": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Additional Metadata"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "补充元数据"
           }
         }
       }
@@ -84937,22 +84825,6 @@
         }
       }
     },
-    "计划路径：%@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Planned path: %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "计划路径：%@"
-          }
-        }
-      }
-    },
     "订阅": {
       "localizations": {
         "en": {
@@ -85141,6 +85013,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "让 AI 写内链段落"
+          }
+        }
+      }
+    },
+    "让光标居中并高亮当前段落": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep the cursor centered and highlight the current paragraph"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "让光标居中并高亮当前段落"
           }
         }
       }
@@ -89125,6 +89013,22 @@
         }
       }
     },
+    "输入后按回车添加，可用逗号分隔多个": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Press Return to add; separate multiple entries with commas"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入后按回车添加，可用逗号分隔多个"
+          }
+        }
+      }
+    },
     "输入左侧符号时自动补全右侧符号；可随时撤销。": {
       "localizations": {
         "en": {
@@ -89137,22 +89041,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "输入左侧符号时自动补全右侧符号；可随时撤销。"
-          }
-        }
-      }
-    },
-    "输入文章标题": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enter article title"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "输入文章标题"
           }
         }
       }
@@ -96811,22 +96699,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "项目保存失败"
-          }
-        }
-      }
-    },
-    "项目写入失败：%@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Project write failed: %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "项目写入失败：%@"
           }
         }
       }

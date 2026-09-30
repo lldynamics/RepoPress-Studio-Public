@@ -106,6 +106,28 @@ final class DraftSelectionPerformanceRegressionTests: XCTestCase {
     )
   }
 
+  func testReturningToSameDraftAfterSheetPreservesAssistantAndUnflushedBody() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
+    )
+    let draft = try XCTUnwrap(store.selectedDraft)
+    XCTAssertTrue(store.openAIChatWorkspace(for: draft.id))
+    _ = try XCTUnwrap(
+      store.stageDraftBody(
+        "弹窗期间保留的正文", for: draft.id,
+        baseRevision: store.draftBodyEditorBuffer(for: draft.id).revision)
+    )
+
+    XCTAssertEqual(store.activateDraftSelectionContext(draft.id), draft.id)
+    XCTAssertTrue(store.isAIPublishingAssistantPresented)
+    XCTAssertTrue(store.draftBodyEditorBuffer(for: draft.id).isDirty)
+    XCTAssertEqual(store.draftBodyEditorBuffer(for: draft.id).bodyMarkdown, "弹窗期间保留的正文")
+
+    // Explicit navigation still closes the assistant.
+    store.selectDraft(nil)
+    XCTAssertFalse(store.isAIPublishingAssistantPresented)
+  }
+
   func testWindowContextActivationFallsBackWhenRememberedDraftWasDeleted() throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())

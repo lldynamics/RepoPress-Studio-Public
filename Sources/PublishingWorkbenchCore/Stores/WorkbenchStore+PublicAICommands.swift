@@ -164,15 +164,30 @@ extension WorkbenchStore {
     aiStore.consumePendingAIQuickPrompt()
   }
 
+  public func consumePendingAIQuickPrompt(
+    ownerWindowID: UUID?,
+    draftID: UUID?,
+    conversationID: UUID?
+  ) -> AIPublishingQuickPrompt? {
+    aiStore.consumePendingAIQuickPrompt(
+      ownerWindowID: ownerWindowID,
+      draftID: draftID,
+      conversationID: conversationID
+    )
+  }
+
   public func hideAIPublishingAssistant() {
     aiStore.hideAIPublishingAssistant()
   }
 
   public func openAIChatWorkspace(
     for draftID: UUID? = nil,
-    quickPrompt: AIPublishingQuickPrompt? = nil
+    quickPrompt: AIPublishingQuickPrompt? = nil,
+    ownerWindowID: UUID? = nil
   ) -> Bool {
-    aiStore.openAIChatWorkspace(for: draftID, quickPrompt: quickPrompt)
+    aiStore.openAIChatWorkspace(
+      for: draftID, quickPrompt: quickPrompt, ownerWindowID: ownerWindowID
+    )
   }
 
   @discardableResult

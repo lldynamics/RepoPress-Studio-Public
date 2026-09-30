@@ -63,7 +63,9 @@ Quartz 4 静态预览的固定 Python 运行器保存在 `Sources/PublishingWork
 | `stamp_article_version.py` | 将构建 HTML 绑定到精确 UTF-8 Markdown 源的摘要和版本。 | 站点/文章构建；`test_stamp_article_version.py`。 |
 | `sync_ui_localizations.py` | 编译应用 target 导出 `stringsdata`，补充源码提取并同步应用 UI catalog、校验 Core 展示资源；清理主表时保留 App 或 Core 仍引用的译文。 | 本地化专题；`test_sync_ui_localizations.py`。默认直接维护主表；临时协作片段须在同次变更用 `--merge-reviewed-translations` 合并归档。 |
 
-本地化检查会用 SwiftPM 编译 `PersonalSitePublisherMac`，按源码逐一读取编译器导出的 `Localizable` 键；缺少任何应用源码的导出即失败。旧的 `genstrings` 和显式源码提取仅补充编译器未推断的键。编译器键保留 `%@`、`%lld` 等实际类型，再与主词典生成的中英文 catalog 比对。导出文件仅放在忽略的临时构建目录中，检查结束后移除。
+本地化检查会用 SwiftPM 的 `native` 构建驱动编译 `PersonalSitePublisherMac`，确保编译器遵循本次独立的 `stringsdata` 导出目录；Swift Build 驱动会将这些记录重定向到其共享中间目录，不能把该目录中的历史文件当作本次证据。检查按源码逐一读取编译器导出的 `Localizable` 键，缺少任何应用源码的导出即失败。旧的 `genstrings` 和显式源码提取仅补充编译器未推断的键。编译器键保留 `%@`、`%lld` 等实际类型，再与主词典生成的中英文 catalog 比对。导出文件仅放在忽略的临时构建目录中，检查结束后移除。
+
+构建启动入口校验 `--show-bin-path` 返回的配置目录，接受 native 驱动的 `debug` / `release` 及 Swift Build 驱动的 `Debug` / `Release`。返回目录必须对应本次请求的构建配置；不同配置或无法识别的目录仍会中止打包。
 
 ## 内部实现与共享组件
 
@@ -121,7 +123,7 @@ Quartz 4 静态预览的固定 Python 运行器保存在 `Sources/PublishingWork
 ## 长期契约与退役规则
 
 - `build_and_run.sh` 是唯一标准构建启动入口；发布包统一从 `package_direct_release.sh` 进入。质量检查统一从 `check_release_gate.sh` 进入：`--quick` 运行快速门，`--tooling` 运行脚本自测，`--profile direct|all` 选择发行渠道配置，`--list` 列出清单，`--check ID` 运行一个已登记检查。
-- 日常完整 Swift 测试使用 `./script/run_swift_tests.sh`，或通过门禁选择 `--check swift-tests`；保留分片进程隔离、超时和清理保护。直接 `swift test --filter ...` 仅用于定向排查；HTTP 探测仍应显式设置请求超时，请求超时不能替代进程级保护。
+- 日常完整 Swift 测试使用 `./script/run_swift_tests.sh`，或通过门禁选择 `--check swift-tests`；清单编译与全部 `--skip-build` 分片均明确使用 `native` SwiftPM 驱动，避免 Swift Build 在多个消费测试包中重复发现共享测试支持用例。清单仍拒绝重复或遗漏，保留严格并发、警告即错误、分片进程隔离、超时和清理保护。直接 `swift test --filter ...` 仅用于定向排查；HTTP 探测仍应显式设置请求超时，请求超时不能替代进程级保护。
 - 公开快照、性能、本地化等专题保留现有按需入口；它们可以被编排入口组合，但每个单项检查只负责一个类别。`test_` 文件是自测实现，不另建并行工作流入口。
 - 公开快照会自动复制本 README 作为维护文档；`export_public_snapshot.sh` 与 `test_public_snapshot_export.sh` 是开发仓专用的导出/验证工具，按公开快照边界排除，不应被误报为公开快照运行时内容。
 - 新脚本必须先说明既有模块或参数为何无法容纳，并记录职责、输入、输出、失败语义、调用者、测试和退役条件；否则应扩展现有入口或 gate。临时工具只能放在被忽略的 `.build/tmp`，完成前删除；若工具已进入 Git 历史，保留历史，不把临时文件变成活动入口。

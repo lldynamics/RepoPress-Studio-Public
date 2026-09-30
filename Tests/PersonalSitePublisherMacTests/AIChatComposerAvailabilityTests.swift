@@ -62,3 +62,54 @@ final class AIChatComposerAvailabilityTests: XCTestCase {
     }
   }
 }
+
+final class AIChatQuickPromptDeliveryPolicyTests: XCTestCase {
+  func testNewArticleComposerUsesDraftFallbackWhilePassingNilConversation() {
+    let draftID = UUID()
+    XCTAssertTrue(
+      AIChatQuickPromptDeliveryPolicy.isArticleComposerReady(
+        contextMode: .site,
+        draftID: draftID,
+        conversationID: nil,
+        surfaceConversationID: draftID
+      )
+    )
+    XCTAssertFalse(
+      AIChatQuickPromptDeliveryPolicy.isArticleComposerReady(
+        contextMode: .site,
+        draftID: draftID,
+        conversationID: nil,
+        surfaceConversationID: UUID()
+      )
+    )
+  }
+
+  func testExistingArticleConversationRequiresMatchingComposer() {
+    let draftID = UUID()
+    let conversationID = UUID()
+    XCTAssertTrue(
+      AIChatQuickPromptDeliveryPolicy.isArticleComposerReady(
+        contextMode: .site,
+        draftID: draftID,
+        conversationID: conversationID,
+        surfaceConversationID: conversationID
+      )
+    )
+    XCTAssertFalse(
+      AIChatQuickPromptDeliveryPolicy.isArticleComposerReady(
+        contextMode: .site,
+        draftID: draftID,
+        conversationID: conversationID,
+        surfaceConversationID: draftID
+      )
+    )
+    XCTAssertFalse(
+      AIChatQuickPromptDeliveryPolicy.isArticleComposerReady(
+        contextMode: .general,
+        draftID: draftID,
+        conversationID: conversationID,
+        surfaceConversationID: conversationID
+      )
+    )
+  }
+}

@@ -6,6 +6,8 @@ from pathlib import Path
 import tempfile
 from typing import Optional
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 
 
 MODULE_PATH = Path(__file__).with_name("sync_ui_localizations.py")
@@ -181,6 +183,31 @@ public enum WorkspaceCenterSurface {
             ),
             [],
         )
+
+    def test_compiler_export_uses_native_driver_with_isolated_output(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_root = root / "Sources" / "PersonalSitePublisherMac"
+            source_root.mkdir(parents=True)
+            source = source_root / "View.swift"
+            source.write_text('Text("测试")', encoding="utf-8")
+            commands = []
+
+            def compile_fixture(command, **kwargs):
+                commands.append(command)
+                output = Path(command[-1])
+                output.mkdir(parents=True)
+                (output / "View.stringsdata").write_text(json.dumps({
+                    "source": str(source), "tables": {"Localizable": [{"key": "测试"}]},
+                }), encoding="utf-8")
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+            with patch.object(SYNC, "ROOT", root), patch.object(SYNC, "SOURCE_ROOT", source_root), \
+                    patch.object(SYNC.subprocess, "run", side_effect=compile_fixture):
+                self.assertEqual(SYNC.extract_compiler_localizations(), {"测试": "测试"})
+            self.assertEqual(commands[0][2:4], ["--build-system", "native"])
+            self.assertIn("-emit-localized-strings-path", commands[0])
+            self.assertTrue(Path(commands[0][-1]).is_relative_to(root / ".build" / "tmp"))
 
     def test_compiler_export_preserves_integer_placeholder_type(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

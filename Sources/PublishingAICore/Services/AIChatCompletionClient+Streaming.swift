@@ -112,7 +112,6 @@ extension AIChatCompletionClient {
         var generatedContent = ""
         var sawToolCall = false
         var continuationReconciler: AIChatStreamContinuationReconciler?
-        var originalPartialError: AIChatCompletionClientError?
         let partialRecoveryPolicy = networkRecoveryPolicy.partialTextRecovery
 
         while !Task.isCancelled {
@@ -214,19 +213,6 @@ extension AIChatCompletionClient {
           } catch is CancellationError {
             continuation.finish(throwing: CancellationError())
             return
-          } catch let error as AIChatCompletionClientError
-            where error == .requestAuthorizationChanged
-          {
-            if responseStarted || !generatedContent.isEmpty {
-              continuation.finish(
-                throwing: AIChatCompletionClientError.streamInterruptedAfterPartialContent(
-                  error.localizedDescription
-                )
-              )
-            } else {
-              continuation.finish(throwing: error)
-            }
-            return
           } catch {
             if Task.isCancelled {
               continuation.finish(throwing: CancellationError())
@@ -236,19 +222,6 @@ extension AIChatCompletionClient {
               error,
               policy: networkRecoveryPolicy
             )
-            if case .responseTooLarge = normalizedError {
-              continuation.finish(throwing: normalizedError)
-              return
-            }
-
-            if originalPartialError == nil,
-              responseStarted || !generatedContent.isEmpty
-            {
-              originalPartialError = .streamInterruptedAfterPartialContent(
-                normalizedError.localizedDescription
-              )
-            }
-
             if isPartialTextRecoveryEligible(normalizedError),
               !generatedContent.isEmpty,
               !sawToolCall
@@ -267,16 +240,9 @@ extension AIChatCompletionClient {
               case .started:
                 continue
               case .failed(let failure):
-                switch failure {
-                case .requestContextWindowExceeded, .partialTextRecoveryContextTooLarge:
-                  continuation.finish(
-                    throwing: AIChatCompletionClientError.streamInterruptedAfterPartialContent(
-                      failure.localizedDescription
-                    )
-                  )
-                default:
-                  continuation.finish(throwing: failure)
-                }
+                continuation.finish(
+                  throwing: AIChatCompletionClientError.partialContentFailure(failure)
+                )
                 return
               case .cancelled:
                 continuation.finish(throwing: CancellationError())
@@ -286,51 +252,20 @@ extension AIChatCompletionClient {
               }
             }
 
-            if let originalPartialError {
-              // Tool calls, incompatible HTTP responses, and authorization
-              // failures are terminal for a continuation. Preserve the
-              // already-visible content boundary for ordinary interruptions
-              // once the bounded recovery policy is exhausted.
-              if isContinuationAttempt,
-                case .httpStatus = normalizedError
-              {
-                continuation.finish(throwing: normalizedError)
-              } else if case .preparedRequestAuthorizationExpired = normalizedError {
-                continuation.finish(throwing: normalizedError)
-              } else if case .requestAuthorizationChanged = normalizedError {
-                continuation.finish(throwing: normalizedError)
-              } else {
-                continuation.finish(throwing: originalPartialError)
-              }
-              return
-            }
-
-            if case .incompleteStream = normalizedError {
-              if responseStarted {
-                let partialError =
-                  AIChatCompletionClientError
-                  .streamInterruptedAfterPartialContent(normalizedError.localizedDescription)
-                originalPartialError = partialError
-                continuation.finish(throwing: partialError)
-              } else {
-                continuation.finish(throwing: normalizedError)
-              }
-              return
-            }
-            if responseStarted {
-              let partialError =
-                AIChatCompletionClientError
-                .streamInterruptedAfterPartialContent(normalizedError.localizedDescription)
-              originalPartialError = partialError
-              continuation.finish(throwing: partialError)
-              return
-            }
-
-            if receivedHTTP2xx {
+            if !generatedContent.isEmpty {
+              // Keep the final cause (including HTTP/Retry-After and expired
+              // authorization) together with the already-generated body.
               continuation.finish(
-                throwing: AIChatCompletionClientError.streamInterruptedAfterPartialContent(
-                  normalizedError.localizedDescription
-                )
+                throwing: AIChatCompletionClientError.partialContentFailure(normalizedError)
+              )
+              return
+            }
+
+            if responseStarted || receivedHTTP2xx {
+              // Empty replies can be discarded, but acceptance may already
+              // have incurred a charge. Keep confirmation mandatory for retry.
+              continuation.finish(
+                throwing: AIChatCompletionClientError.acceptedResponseFailure(normalizedError)
               )
               return
             }

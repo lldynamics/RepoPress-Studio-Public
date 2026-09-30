@@ -78,6 +78,7 @@ public struct AIChatCompletionClient: Sendable {
   var nonStreamingRequestAuthorization: (@Sendable () async throws -> Void)?
   package var streamingRequestCancellation: AIChatStreamingRequestCancellation?
   var streamingRequestAuthorization: (@Sendable () async throws -> Void)?
+  package var requestValidationDate: @Sendable () -> Date = { Date() }
 
   /// Revalidates live host authorization at every streaming send, including
   /// continuation requests. The original prepared request only seals a snapshot.
@@ -154,6 +155,7 @@ public struct AIChatCompletionClient: Sendable {
       codexAppServerRequestAuthorizer: authorizer
     )
     copy.nonStreamingRequestAuthorization = nonStreamingRequestAuthorization
+    copy.requestValidationDate = requestValidationDate
     copy.streamingRequestAuthorization = streamingRequestAuthorization
     copy.streamingRequestCancellation = streamingRequestCancellation
     return copy

@@ -238,7 +238,6 @@ extension PublishingStore {
         setPublishingActionMessage(message, status: .success)
         return .completed(message: message)
       }
-
       let payloadSnapshot: RemoteRepositoryConflictPayloadSnapshot
       let resolvedPayloadFingerprint = await remoteConflictPackageFingerprint(
         resolvedPackage,
@@ -264,7 +263,6 @@ extension PublishingStore {
         setPublishingActionMessage(message, status: .warning)
         return .failed(message: message)
       }
-
       let publishResult = await publishConflictScopeThroughReviewRequest(
         reviewedSession.publishScope,
         package: payloadSnapshot.package,
@@ -309,7 +307,6 @@ extension PublishingStore {
           ? .failed(message: message)
           : .sessionInvalidated(message: message)
       }
-
       remoteRepositoryConflictSession = nil
       guard reviewedSession.profileID == store.activeProfileID,
         reviewedSession.repositoryIdentity == DraftRepositoryIdentity(profile: store.activeProfile),
@@ -321,10 +318,13 @@ extension PublishingStore {
         setPublishingActionMessage(message, status: .warning)
         return .completed(message: message)
       }
-
       applyRemoteConflictDraftMutationPlan(mutationPlan, store: store)
       if publishResult.reviewURL != nil {
-        markRemotePublishReviewSuccess(packages: context.sourcePackages)
+        markRemotePublishReviewSuccess(
+          packages: context.sourcePackages,
+          profile: profile,
+          submittedPackage: payloadSnapshot.package
+        )
       }
       store.save()
       let message =

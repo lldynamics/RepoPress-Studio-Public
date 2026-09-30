@@ -59,7 +59,8 @@ final class WorkbenchStoreRemotePublishingImportTests: WorkbenchStoreRemotePubli
     await store.scanRepositoryAsync()
 
     let summary = await store.importRemoteArticleDraftsFromRepository(
-      repositoryPaths: ["content/posts/remote-draft.md"])
+      repositoryPaths: ["content/posts/remote-draft.md"],
+      expectedTarget: SiteOperationConfirmationTarget(profile: store.activeProfile))
 
     XCTAssertEqual(summary.insertedCount, 1)
     XCTAssertEqual(summary.updatedCount, 0)
@@ -255,7 +256,7 @@ final class WorkbenchStoreRemotePublishingImportTests: WorkbenchStoreRemotePubli
       XCTAssertEqual(summary.changedCount, 0)
       XCTAssertFalse(store.drafts.contains { $0.repositoryPath == "content/posts/remote-draft.md" })
       XCTAssertEqual(store.activeProfileID, secondaryProfile.id)
-      XCTAssertEqual(store.publishActionMessage, "当前站点已变化，未导入原站点远端文章。")
+      XCTAssertEqual(store.publishActionMessage, "站点或仓库配置已变化，请重新预览远端文章导入。")
     }
   #endif
 }

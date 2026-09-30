@@ -88,7 +88,7 @@ public final class WorkbenchAIChatFeatureFacade: ObservableObject {
     observe(aiWorkspace.$isAutomationRunning)
     observe(aiWorkspace.$automationRunRecords)
     observe(aiWorkspace.$isAIPublishingAssistantPresented)
-    observeAny(aiWorkspace.$pendingAIQuickPrompt)
+    observe(aiWorkspace.$pendingAIQuickPromptRequest)
 
     observe(store.aiStore.$aiChatManualRetryState)
     observe(store.aiStore.$aiGeneralChatManualRetryState)
@@ -152,13 +152,4 @@ public final class WorkbenchAIChatFeatureFacade: ObservableObject {
       .store(in: &cancellables)
   }
 
-  private func observeAny<P: Publisher>(_ publisher: P)
-  where P.Failure == Never {
-    publisher
-      .dropFirst()
-      .sink { [weak self] _ in
-        self?.objectWillChange.send()
-      }
-      .store(in: &cancellables)
-  }
 }

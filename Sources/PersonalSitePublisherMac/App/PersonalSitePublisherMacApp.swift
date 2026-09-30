@@ -119,7 +119,7 @@ struct PersonalSitePublisherMacApp: App {
             appDelegate.openMainWindowAction = action
           }
         )
-        .tint(selectedAccentPalette.color)
+        .tint(selectedAccentPalette.tint)
         .environment(\.workbenchAccentColor, selectedAccentPalette.color)
         .preferredColorScheme(selectedAppearanceMode.colorScheme)
         .controlSize(selectedInterfaceDensity.controlSize)
@@ -160,7 +160,7 @@ struct PersonalSitePublisherMacApp: App {
         capture: menuBarCapture,
         openWorkbench: { appDelegate.openWorkbenchFromMenuBar() }
       )
-      .tint(selectedAccentPalette.color)
+      .tint(selectedAccentPalette.tint)
       .environment(\.workbenchAccentColor, selectedAccentPalette.color)
       .preferredColorScheme(selectedAppearanceMode.colorScheme)
     }
@@ -187,7 +187,7 @@ struct PersonalSitePublisherMacApp: App {
           )
         }
       }
-      .tint(selectedAccentPalette.color)
+      .tint(selectedAccentPalette.tint)
       .environment(\.workbenchAccentColor, selectedAccentPalette.color)
       .preferredColorScheme(selectedAppearanceMode.colorScheme)
       .controlSize(selectedInterfaceDensity.controlSize)
@@ -231,7 +231,7 @@ struct PersonalSitePublisherMacApp: App {
           .workbenchSettingsWindowSize()
         }
       }
-      .tint(selectedAccentPalette.color)
+      .tint(selectedAccentPalette.tint)
       .environment(\.workbenchAccentColor, selectedAccentPalette.color)
       .preferredColorScheme(selectedAppearanceMode.colorScheme)
       .controlSize(selectedInterfaceDensity.controlSize)

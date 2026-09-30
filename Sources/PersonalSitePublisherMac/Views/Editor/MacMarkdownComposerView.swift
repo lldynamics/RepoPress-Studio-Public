@@ -34,6 +34,8 @@ struct MacMarkdownComposerView: View {
   @State var editorSessionSaveTask: Task<Void, Never>?
   @State var editorSessionSaveGeneration: UInt64 = 0
   @State var pendingInlineStructuredEditApplyRequestID: UUID?
+  /// Set when a publish check asks to fix the title; the editor header owns it.
+  @State var titleFocusRequestID: UUID?
   @State var pendingFindReplacement: MarkdownPendingFindReplacement?
   @State var pendingAttachmentInsertion: MarkdownPendingAttachmentInsertion?
   @StateObject var findMatchRefreshCoordinator = MarkdownFindMatchRefreshCoordinator()
@@ -107,39 +109,6 @@ struct MacMarkdownComposerView: View {
 
   var activeProfile: SiteProfile {
     editorState.profile(for: draft)
-  }
-
-  var markdownEditorToolbarActions: MarkdownEditorToolbarActions {
-    let aiAvailability = markdownComposerAIAvailabilitySnapshot
-    return MarkdownEditorToolbarActions(
-      onShowFindReplace: showFindReplace,
-      onShowOutline: showOutline,
-      onShowShortcutHelp: {
-        isShortcutHelpPresented = true
-      },
-      onOpenAIContextInspector: showAIContextInspector,
-      onOpenAITemplateLibrary: {
-        isAITemplateLibraryPresented = true
-      },
-      onRequestInlineAICompletion: requestInlineGhostText,
-      onExportDocument: performMarkdownDocumentExport,
-      // Menu state is render-local; action handlers below still read live state.
-      selectionAIActionAvailability: { kind in
-        aiAvailability.selectionAvailability(for: kind)
-      },
-      articleAIActionAvailability: { kind in
-        aiAvailability.articleAvailability(for: kind)
-      },
-      onPerformSelectionAIAction: performSelectionAIAction,
-      onPerformArticleAIAction: performArticleAIAction,
-      onPerformConvergedSelectionAIAction: performConvergedSelectionAIAction,
-      onPerformConvergedArticleAIAction: performConvergedArticleAIAction,
-      onPasteAIPromptToClipboard: pasteAIPromptToClipboard,
-      onFormatChineseTypography: formatChineseTypography,
-      onCopyForWeChatAndZhihu: copyForWeChatAndZhihu,
-      onShowImageInfo: activeInsertedImageMetadataBinding == nil
-        ? nil : { showWritingContextPanel(.imageInfo) }
-    )
   }
 
   var canonicalFrontMatter: String {
@@ -239,6 +208,8 @@ struct MacMarkdownComposerView: View {
     VStack(spacing: 0) {
       MacMarkdownEditorToolbar(
         title: $draft.title,
+        isFocusModeActive: $isFocusModeActive,
+        titleFocusRequestID: titleFocusRequestID,
         store: store,
         draftID: draft.id,
         markdownPath: editorState.profile(for: draft).markdownPath(for: draft),
@@ -642,20 +613,11 @@ struct MacMarkdownComposerView: View {
           }
         )
       }
-      .sheet(isPresented: $presentationState.isAITemplateLibraryPresented) {
-        AIPublishingTemplateLibraryView(
-          draft: previewDraft,
-          selectedText: selectedText(in: editorBody),
-          availabilityForAction: { kind in
-            if isSelectionAIAction(kind) {
-              selectionAIActionAvailability(kind, respectActiveAction: false)
-            } else {
-              articleAIActionAvailability(kind, respectActiveAction: false)
-            }
-          },
-          onPerformAction: performTemplateLibraryAction,
-          onUsePrompt: openTemplateLibraryPrompt
-        )
+      .sheet(
+        isPresented: $presentationState.isAITemplateLibraryPresented,
+        onDismiss: { aiChatWorkspaceCommandAction?.sheetDidDismiss?() }
+      ) {
+        aiTemplateLibrary
       }
       .onDisappear(perform: handleComposerDisappear)
   }
@@ -932,7 +894,10 @@ struct MacMarkdownComposerView: View {
       Divider()
       MacMarkdownEditorStatusBar(
         draft: $draft,
+        store: store,
         statisticsState: editorStatisticsState,
+        diagnosticCount: inlineDiagnostics.count,
+        onShowDiagnostics: showDiagnostics,
         cursorPosition: markdownCursorPosition,
         fenceMatch: activeMarkdownFenceMatch,
         completion: markdownCursorCompletion,

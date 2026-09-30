@@ -133,9 +133,7 @@ extension RepositoryWorkspaceView {
         .accessibilityHint(permissionAction.help)
 
         Button {
-          createsPrivateRepository = true
-          repositoryCreationFailureMessage = nil
-          isRepositoryCreationConfirmationPresented = true
+          presentRepositoryCreationConfirmation()
         } label: {
           Label("创建仓库", systemImage: "plus.circle")
             .frame(maxWidth: .infinity, alignment: .leading)

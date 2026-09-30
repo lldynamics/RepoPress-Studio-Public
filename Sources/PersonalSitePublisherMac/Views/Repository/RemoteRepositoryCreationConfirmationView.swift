@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RemoteRepositoryCreationConfirmationView: View {
   @Environment(\.workbenchAccentColor) private var workbenchAccentColor
+  let siteName: String
   let providerName: String
   let owner: String
   let repositoryName: String
@@ -38,6 +39,7 @@ struct RemoteRepositoryCreationConfirmationView: View {
 
       Form {
         Section {
+          LabeledContent("目标站点", value: siteName)
           LabeledContent("仓库平台") {
             Text(verbatim: providerName)
           }

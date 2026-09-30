@@ -44,4 +44,17 @@ final class UIOptimizationWorkspaceTests: XCTestCase {
     state.sheetDidDismiss()
     XCTAssertNil(state.consume(isKeyWindow: true))
   }
+
+  func testTemplateRequestSurvivesKeyRestorationBeforeDismissalAndDeliversOnce() {
+    var state = WorkspaceDeferredAIRequestState()
+    let draftID = UUID()
+    state.enqueue(draftID: draftID, quickPrompt: .frontMatterPack)
+    XCTAssertNil(state.consume(isKeyWindow: false))
+    XCTAssertNil(state.consume(isKeyWindow: true))
+    state.sheetDidDismiss()
+    let request = state.consume(isKeyWindow: true)
+    XCTAssertEqual(request?.draftID, draftID)
+    XCTAssertEqual(request?.quickPrompt, .frontMatterPack)
+    XCTAssertNil(state.consume(isKeyWindow: true))
+  }
 }

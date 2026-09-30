@@ -20,7 +20,7 @@ struct LocalSitePreviewWindowScene: Scene {
         }
       }
       .frame(minWidth: 700, minHeight: 460)
-      .tint(accentPalette.color)
+      .tint(accentPalette.tint)
       .environment(\.workbenchAccentColor, accentPalette.color)
       .preferredColorScheme(appearanceMode.colorScheme)
       .controlSize(interfaceDensity.controlSize)

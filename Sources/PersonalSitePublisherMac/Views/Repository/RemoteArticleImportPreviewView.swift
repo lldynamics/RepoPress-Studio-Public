@@ -2,6 +2,8 @@ import PublishingGitCore
 import SwiftUI
 
 struct RemoteArticleImportPreviewView: View {
+  let siteName: String
+  let repositoryName: String
   let files: [RepositoryChangedFile]
   let cancelAction: () -> Void
   let confirmAction: ([String]) -> Void
@@ -9,10 +11,14 @@ struct RemoteArticleImportPreviewView: View {
   @State private var selectedPaths: Set<String>
 
   init(
+    siteName: String,
+    repositoryName: String,
     files: [RepositoryChangedFile],
     cancelAction: @escaping () -> Void,
     confirmAction: @escaping ([String]) -> Void
   ) {
+    self.siteName = siteName
+    self.repositoryName = repositoryName
     self.files = files
     self.cancelAction = cancelAction
     self.confirmAction = confirmAction
@@ -24,6 +30,8 @@ struct RemoteArticleImportPreviewView: View {
       VStack(alignment: .leading, spacing: 6) {
         Label("预览远端文章导入", systemImage: "tray.and.arrow.down")
           .font(.title3.weight(.semibold))
+        LabeledContent("目标站点", value: siteName)
+        LabeledContent("仓库名称", value: repositoryName)
         Text("选择要导入的文章。相同仓库路径的现有草稿会先保存版本快照，再使用远端内容更新。")
           .foregroundStyle(.secondary)
       }

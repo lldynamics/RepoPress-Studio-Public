@@ -824,26 +824,6 @@ extension PublishingStore {
     }
   }
 
-  func markRemotePublishReviewSuccess(packages: [PublishPackage]) {
-    let draftIDs = Set(packages.map(\.draftID))
-    let updatedDrafts = drafts.map { draft in
-      guard draftIDs.contains(draft.id), draft.repositoryPath?.nilIfEmpty != nil else {
-        return draft
-      }
-      var updatedDraft = draft
-      updatedDraft.markRepositoryAwaitingReview(profile: profile(for: updatedDraft))
-      guard updatedDraft != draft else { return draft }
-      updatedDraft.markUpdated(at: draft.updatedAt, replacing: draft)
-      return updatedDraft
-    }
-    if updatedDrafts != drafts {
-      drafts = updatedDrafts
-    }
-    for draftID in draftIDs {
-      removeDraftPublishPreviewSnapshot(for: draftID)
-    }
-  }
-
   func markRemotePublishFailure(packages: [PublishPackage], error: Error) {
     let conflictPath: String?
     switch error {
@@ -868,60 +848,6 @@ extension PublishingStore {
       )
     } else {
       markDraftsRepositorySyncState(.failed, draftIDs: Set(packages.map(\.draftID)))
-    }
-  }
-
-  func confirmDirectRemotePublishLifecycle(
-    packages: [PublishPackage],
-    result: RemoteRepositoryPublishResult
-  ) {
-    guard result.mode == .directCommit else { return }
-    let packagesByDraftID = Dictionary(uniqueKeysWithValues: packages.map { ($0.draftID, $0) })
-    let now = Date()
-    let updatedDrafts = drafts.map { draft in
-      guard let package = packagesByDraftID[draft.id] else { return draft }
-      var updated = draft
-      updated.attachments = updated.attachments.map { attachment in
-        guard let remoteVersion = result.remoteVersion(for: attachment.repositoryPath) else {
-          return attachment
-        }
-        var confirmedAttachment = attachment
-        confirmedAttachment.repositorySHA = remoteVersion
-        return confirmedAttachment
-      }
-      let profile = profile(for: updated)
-      let confirmedPath = package.markdownPath.normalizedRelativePath()
-      let renderedDigest =
-        package.markdownFile?.content
-        .map(ArticleDraft.repositoryDocumentDigest)
-        ?? updated.renderedRepositoryContentDigest(profile: profile)
-      if let remoteVersion = result.remoteVersion(for: package.markdownPath) {
-        updated.confirmRepositoryBinding(
-          profile: profile,
-          repositoryPath: confirmedPath,
-          remoteRevision: remoteVersion,
-          renderedContentDigest: renderedDigest,
-          verifiedAt: now
-        )
-      } else {
-        // A sparse legacy result must never erase a known CAS baseline. Newer
-        // services return a version for every verified unchanged upsert.
-        updated.recordProjectFile(
-          profile: profile,
-          repositoryPath: confirmedPath,
-          renderedContentDigest: renderedDigest
-        )
-        updated.repositoryImportFingerprint = updated.repositoryContentFingerprint
-      }
-      guard updated != draft else { return draft }
-      updated.markUpdated(at: draft.updatedAt, replacing: draft)
-      return updated
-    }
-    if updatedDrafts != drafts {
-      drafts = updatedDrafts
-    }
-    for draftID in packagesByDraftID.keys {
-      removeDraftPublishPreviewSnapshot(for: draftID)
     }
   }
 

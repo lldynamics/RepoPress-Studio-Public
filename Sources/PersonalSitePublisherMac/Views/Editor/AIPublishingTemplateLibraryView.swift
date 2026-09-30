@@ -40,7 +40,8 @@ struct AIPublishingTemplateLibraryView: View {
     let visibleSections = snapshot.spotlightActionSections + snapshot.editorActionSections
     return AIPublishingQuickPromptGroup.allCases.compactMap { group in
       var seen = Set<AIPublishingActionKind>()
-      let actions = visibleSections
+      let actions =
+        visibleSections
         .filter { $0.group == group }
         .flatMap(\.actions)
         .filter { !defaults.contains($0) && seen.insert($0).inserted }
@@ -57,6 +58,7 @@ struct AIPublishingTemplateLibraryView: View {
     VStack(spacing: 0) {
       header
       Divider()
+      searchField
       scopePicker
       Divider()
 
@@ -67,8 +69,32 @@ struct AIPublishingTemplateLibraryView: View {
       }
     }
     .frame(minWidth: 760, idealWidth: 860, minHeight: 560, idealHeight: 680)
-    .searchable(text: $searchText, placement: .toolbar, prompt: "搜索动作、提示或工作流")
     .accessibilityIdentifier("ai-template-library")
+  }
+
+  private var searchField: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "magnifyingglass")
+        .foregroundStyle(.secondary)
+        .accessibilityHidden(true)
+      TextField("搜索动作、提示或工作流", text: $searchText)
+        .textFieldStyle(.plain)
+        .accessibilityLabel("搜索动作、提示或工作流")
+        .accessibilityIdentifier("ai-template-library-search")
+      if !searchText.isEmpty {
+        Button {
+          searchText = ""
+        } label: {
+          Image(systemName: "xmark.circle.fill")
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("清除搜索")
+      }
+    }
+    .padding(10)
+    .background(.quaternary, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .padding(.horizontal, 20)
+    .padding(.top, 12)
   }
 
   private var header: some View {
@@ -129,7 +155,7 @@ struct AIPublishingTemplateLibraryView: View {
         }
       }
 
-      ForEach(promptSections) { section in
+      ForEach(promptSections, id: \.templateLibraryPromptSectionID) { section in
         Section {
           ForEach(section.prompts) { prompt in
             Button {
@@ -152,7 +178,7 @@ struct AIPublishingTemplateLibraryView: View {
         }
       }
 
-      ForEach(actionSections) { section in
+      ForEach(actionSections, id: \.templateLibraryActionSectionID) { section in
         Section {
           ForEach(section.actions) { action in
             actionRow(action, group: section.group)
@@ -255,8 +281,16 @@ struct AIPublishingTemplateLibraryView: View {
   }
 }
 
-private extension AIPublishingWorkflowGuide {
-  var localizedTitle: String {
+extension AIPublishingQuickPromptSection {
+  fileprivate var templateLibraryPromptSectionID: String { "prompt:\(id)" }
+}
+
+extension AIPublishingEditorActionSection {
+  fileprivate var templateLibraryActionSectionID: String { "action:\(id)" }
+}
+
+extension AIPublishingWorkflowGuide {
+  fileprivate var localizedTitle: String {
     switch id {
     case "idea-to-draft": String(localized: "从想法到初稿")
     case "draft-to-finished-article": String(localized: "初稿补完成稿")

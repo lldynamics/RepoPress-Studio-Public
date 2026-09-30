@@ -4,6 +4,26 @@ import XCTest
 @testable import PublishingAICore
 
 final class AIChatStreamRecoveryTests: XCTestCase {
+  func testNonStreamingAuthorizationDeadlineRecheckedAfterOutboundHook() async throws {
+    let clock = AIChatRequestTestClock()
+    let transport = AIChatBoundaryCompleteTransport()
+    var client = AIChatCompletionClient(transport: transport)
+      .authorizingNonStreamingRequests { clock.advance(by: 60) }
+    client.requestValidationDate = { clock.now() }
+    let prepared = try client.prepareRequest(
+      AIChatCompletionRequest(
+        model: "model", messages: [AIChatMessage(role: "user", content: "Hello")]
+      ), config: localConfig, purpose: .interactiveChat, mode: .nonStreaming
+    ).bindingAuthorizationDeadline(clock.now().addingTimeInterval(60))
+    await XCTAssertThrowsErrorAsync(
+      try await client.completePrepared(prepared, config: localConfig, apiKey: nil)
+    ) { error in
+      XCTAssertEqual(error as? AIChatCompletionClientError, .preparedRequestAuthorizationExpired)
+    }
+    let count = await transport.requestCount
+    XCTAssertEqual(count, 0)
+  }
+
   func testRevocationAfterAuthorizationCancelsBeforeTransportDispatch() async throws {
     let transport = InterruptibleAIChatStreamingTransport(pausesBeforeSending: true)
     let cancellation = AIChatStreamingRequestCancellation()
@@ -179,28 +199,17 @@ final class AIChatStreamRecoveryTests: XCTestCase {
       _ = try await collectRecoveryContent(from: stream)
       XCTFail("Expected the tool-call stream to stop")
     } catch let error as AIChatCompletionClientError {
-      XCTAssertTrue(error.didReceivePartialContent)
+      XCTAssertFalse(error.didReceivePartialContent)
     }
     let requestCount = await transport.requestCount()
     XCTAssertEqual(requestCount, 1)
   }
 
   func testAuthorizationExpiryIsRecheckedBeforeContinuationPOST() async throws {
-    let transport = RecoveryStreamingTransport(attempts: [
-      .init(
-        lines: [
-          #"data: {"choices":[{"delta":{"content":"partial"}}]}"#,
-          "",
-        ],
-        terminalError: .connectionLost,
-        delayNanoseconds: 220_000_000
-      ),
-      .init(lines: [
-        #"data: {"choices":[{"delta":{"content":"must not be sent"},"finish_reason":"stop"}]}"#,
-        "",
-      ]),
-    ])
-    let client = makeClient(transport: transport, recoveryCount: 1)
+    let clock = AIChatRequestTestClock()
+    let transport = AIChatPartialFailureTransport(expiring: clock)
+    var client = makeClient(transport: transport, recoveryCount: 1)
+    client.requestValidationDate = { clock.now() }
     let prepared = try client.prepareRequest(
       AIChatCompletionRequest(
         model: "model",
@@ -211,7 +220,7 @@ final class AIChatStreamRecoveryTests: XCTestCase {
       mode: .streaming
     )
     let authorized = prepared.bindingAuthorizationDeadline(
-      Date(timeIntervalSinceNow: 0.08)
+      clock.now().addingTimeInterval(60)
     )
     let stream = try await client.streamPrepared(
       authorized,
@@ -219,14 +228,52 @@ final class AIChatStreamRecoveryTests: XCTestCase {
       apiKey: nil
     )
 
-    await XCTAssertThrowsErrorAsync(try await collectRecoveryContent(from: stream)) { error in
-      XCTAssertEqual(
-        error as? AIChatCompletionClientError,
-        .preparedRequestAuthorizationExpired
-      )
+    var content = ""
+    do {
+      for try await update in stream { content += update.contentDelta }
+      XCTFail("Expired continuation must terminate")
+    } catch let error as AIChatCompletionClientError {
+      XCTAssertEqual(error.underlyingFailure, .preparedRequestAuthorizationExpired)
+      XCTAssertTrue(error.didReceivePartialContent)
+      XCTAssertFalse(error.isAutomaticallyRetryable)
+      XCTAssertTrue(error.supportsManualRetry)
     }
-    let requestCount = await transport.requestCount()
+    XCTAssertEqual(content, "partial")
+    let requestCount = await transport.requestCount
     XCTAssertEqual(requestCount, 1)
+  }
+
+  func testContinuationHTTPFailurePreservesPartialCauseAndRetryAfterWithoutReplay() async throws {
+    for status in [401, 429, 500] {
+      let transport = AIChatPartialFailureTransport(statusCode: status)
+      let client = makeClient(transport: transport, recoveryCount: 1)
+      let stream = try await client.stream(
+        request: AIChatCompletionRequest(
+          model: "model", messages: [AIChatMessage(role: "user", content: "Continue.")]
+        ), config: localConfig, apiKey: nil
+      )
+      var content = ""
+      do {
+        for try await update in stream { content += update.contentDelta }
+        XCTFail("HTTP \(status) must terminate continuation")
+      } catch let error as AIChatCompletionClientError {
+        let expected = AIChatCompletionClientError.httpStatus(
+          status, #"{"error":{"message":"continuation failed"}}"#,
+          retryAfterSeconds: 45
+        )
+        XCTAssertEqual(error.underlyingFailure, expected)
+        XCTAssertEqual(error.retryAfterSeconds, 45)
+        XCTAssertEqual(error.recoverySuggestion, expected.recoverySuggestion)
+        XCTAssertTrue(error.didReceivePartialContent)
+        XCTAssertFalse(error.isAutomaticallyRetryable)
+        XCTAssertTrue(error.supportsManualRetry)
+        XCTAssertTrue(error.localizedDescription.contains("HTTP \(status)"))
+        XCTAssertTrue(error.localizedDescription.contains("重复计费"))
+      }
+      XCTAssertEqual(content, "partial")
+      let count = await transport.requestCount
+      XCTAssertEqual(count, 2)
+    }
   }
 
   func testCancellationStopsBeforeContinuationPOST() async throws {
@@ -328,7 +375,7 @@ final class AIChatStreamRecoveryTests: XCTestCase {
   }
 
   private func makeClient(
-    transport: RecoveryStreamingTransport,
+    transport: any AIChatTransport,
     recoveryCount: Int
   ) -> AIChatCompletionClient {
     AIChatCompletionClient(
@@ -399,7 +446,8 @@ private actor RecoveryStreamingTransport: AIChatStreamingTransport {
     AsyncThrowingStream<String, Error>, URLResponse
   ) {
     bodies.append(request.httpBody ?? Data())
-    let attempt = attempts.isEmpty
+    let attempt =
+      attempts.isEmpty
       ? RecoveryAttempt(lines: [], terminalError: .connectionLost)
       : attempts.removeFirst()
     let response = HTTPURLResponse(

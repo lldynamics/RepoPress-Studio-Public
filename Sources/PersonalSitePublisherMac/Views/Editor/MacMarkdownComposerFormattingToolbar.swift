@@ -7,7 +7,6 @@ extension MacMarkdownComposerView {
 
   var integratedFormattingToolbar: MacMarkdownFormattingToolbar {
     MacMarkdownFormattingToolbar(
-      isFocusModeActive: $isFocusModeActive,
       onApplyMarkdownFormatting: applyMarkdownFormatting,
       onApplyAdvancedFormatting: applyAdvancedMarkdownFormatting,
       onInsertCodeBlock: insertCodeBlock,
@@ -21,10 +20,6 @@ extension MacMarkdownComposerView {
         guard requireBodyEditingContext() else { return }
         isSnippetLibraryPresented = true
       },
-      onShowDiagnostics: {
-        showDiagnostics()
-      },
-      diagnosticCount: inlineDiagnostics.count,
       onInsertImage: {
         guard requireBodyEditingContext() else { return }
         let requestedDraftID = draft.id

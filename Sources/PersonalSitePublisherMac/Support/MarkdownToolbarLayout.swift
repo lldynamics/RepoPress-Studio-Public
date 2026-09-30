@@ -5,7 +5,8 @@ enum MarkdownToolbarFormattingItem: String, CaseIterable, Identifiable {
   case listMenu
   case link
   case image
-  case moreFormatting
+  case insertMenu
+  case formatMenu
   case inlineCode
   case blockquote
   case codeBlock
@@ -16,13 +17,13 @@ enum MarkdownToolbarFormattingItem: String, CaseIterable, Identifiable {
   case snippets
   case video
   case chineseTypography
-  case diagnostics
 
   var id: String { rawValue }
 }
 
 enum MarkdownToolbarLayout {
-  /// Common commands remain directly available when the full row does not fit.
+  /// The one row shown at every width that fits it; narrower windows scroll
+  /// the same items instead of switching to a different set.
   static let primaryFormattingItems: [MarkdownToolbarFormattingItem] = [
     .headingMenu,
     .bold,
@@ -30,31 +31,31 @@ enum MarkdownToolbarLayout {
     .listMenu,
     .link,
     .image,
-    .moreFormatting,
+    .insertMenu,
+    .formatMenu,
   ]
 
-  /// These commands are inline when space allows and move into overflow together.
-  static let moreFormattingItems: [MarkdownToolbarFormattingItem] = [
-    .inlineCode,
-    .blockquote,
+  /// Block and media insertions, grouped behind “插入”.
+  static let insertMenuItems: [MarkdownToolbarFormattingItem] = [
     .codeBlock,
-    .strikethrough,
     .table,
     .horizontalRule,
+    .video,
     .internalLink,
     .snippets,
-    .video,
-    .chineseTypography,
-    .diagnostics,
   ]
 
-  static let expandedFormattingItems =
-    primaryFormattingItems.filter { $0 != .moreFormatting } + moreFormattingItems
+  /// Less common inline and paragraph formatting, grouped behind “格式”.
+  static let formatMenuItems: [MarkdownToolbarFormattingItem] = [
+    .inlineCode,
+    .blockquote,
+    .strikethrough,
+    .chineseTypography,
+  ]
 }
 
 enum MarkdownFormattingToolbarLayout {
   case automatic
-  case expanded
   case compact
   case scrollable
 }

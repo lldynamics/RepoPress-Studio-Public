@@ -10,7 +10,7 @@ struct ContentView: View {
   @ObservedObject private var rootPresentation: WorkbenchRootPresentationFeatureFacade
   @EnvironmentObject private var launchCoordinator: WorkbenchLaunchCoordinator
   @Environment(\.scenePhase) private var scenePhase
-  @Environment(\.controlActiveState) private var controlActiveState
+  @Environment(\.controlActiveState) var controlActiveState
   @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
   @Environment(\.openSettings) private var openSettingsWindow
   @Environment(\.openWindow) private var openWindow
@@ -23,7 +23,7 @@ struct ContentView: View {
   private var rssBackgroundRefreshIntervalMinutes =
     RSSReaderUserPreferences.defaultBackgroundRefreshIntervalMinutes
   @AppStorage("didCompleteFirstRunSetup") private var didCompleteFirstRunSetup = false
-  @SceneStorage("workspace.focusMode") private var isFocusMode = false
+  @SceneStorage("workspace.focusMode") var isFocusMode = false
   @SceneStorage("workspace.sidebarPresented") private var isSidebarPresented = true
   @SceneStorage("workspace.revealInspectorInCompactWriting") private
     var revealsInspectorInCompactWorkspace = false
@@ -37,7 +37,7 @@ struct ContentView: View {
   @State private var isDraftRecoveryPresented = false
   @State private var isShortcutHelpPresented = false
   @State private var isTaskCenterPresented = false
-  @State private var modalPresentation = WorkspaceModalPresentationState()
+  @State var modalPresentation = WorkspaceModalPresentationState()
   @State private var firstRunHandoffProfile: SiteProfile?
   @State private var commandPaletteArticleRequest: DraftFullTextSearchRequest?
   @State private var deferredFullTextSearchRequest: DraftFullTextSearchRequest?
@@ -53,7 +53,7 @@ struct ContentView: View {
   @State private var articleInspectorPresentation = ArticleInspectorPresentationState()
   @State private var commandPaletteEditorCommands: MarkdownEditorCommandActions?
   @State private var commandPaletteDraftID: UUID?
-  @State private var deferredPaletteAIRequest = WorkspaceDeferredAIRequestState()
+  @State var deferredPaletteAIRequest = WorkspaceDeferredAIRequestState()
   @State private var deferredContentSearchRequest = WorkspaceDeferredContentSearchRequest()
   @State private var responsiveLayout = WorkspaceResponsiveLayoutSnapshot.initial
   @State private var repositoryContentMonitorClientID = UUID()
@@ -74,7 +74,7 @@ struct ContentView: View {
   @StateObject private var externalBrowserPreviewCoordinator: ExternalBrowserPreviewCoordinator
   @StateObject private var repositoryContentChangeMonitor: RepositoryContentChangeMonitorCoordinator
   @State private var sceneCommandRouter = WorkspaceSceneCommandRouter()
-  @StateObject private var windowSession: WorkspaceWindowSession
+  @StateObject var windowSession: WorkspaceWindowSession
   @State private var windowTitleRegistrationID = UUID()
   @State private var inspectorWidthState = WorkspaceInspectorWidthState(
     isAIAssistantPresented: false
@@ -244,15 +244,7 @@ struct ContentView: View {
       )
       .environment(
         \.aiChatWorkspaceCommandAction,
-        AIChatWorkspaceCommandAction(
-          isAvailable: canRequestInspectorInCurrentLayout,
-          unavailableReason: canRequestInspectorInCurrentLayout
-            ? nil
-            : String(localized: "扩大窗口后可使用详情栏"),
-          open: { draftID, quickPrompt in
-            openAIAssistantWorkspace(for: draftID, quickPrompt: quickPrompt)
-          }
-        )
+        aiChatWorkspaceCommandAction
       )
       .environmentObject(localSitePreviewState)
       .environmentObject(sceneCommandRouter)
@@ -1191,20 +1183,6 @@ struct ContentView: View {
     _ = openAIAssistantWorkspace(for: windowSession.selectedDraftID)
   }
 
-  @discardableResult
-  private func openAIAssistantWorkspace(
-    for draftID: UUID?,
-    quickPrompt: AIPublishingQuickPrompt? = nil
-  ) -> Bool {
-    guard prepareInspectorForUserRequest()
-    else { return false }
-    guard activateCurrentWindowSharedContext() else { return false }
-    if effectiveFocusMode {
-      isFocusMode = false
-    }
-    return store.ai.openChatWorkspace(for: draftID, quickPrompt: quickPrompt)
-  }
-
   private func handleWorkspaceSheetDismissal() {
     firstRunHandoffProfile = nil
     deferredPaletteAIRequest.sheetDidDismiss()
@@ -1228,17 +1206,6 @@ struct ContentView: View {
       selectWorkspaceSection(.rss)
       _ = rssPresentation.openContentSearchResult(articleID, in: rssStore)
     }
-  }
-
-  private func performDeferredPaletteAIRequestIfReady() {
-    guard modalPresentation.presented == nil,
-      let request = deferredPaletteAIRequest.consume(isKeyWindow: windowSession.isKeyWindow)
-    else { return }
-    if let draftID = request.draftID {
-      guard store.drafts.contains(where: { $0.id == draftID }) else { return }
-      focusWindowDraft(draftID, section: .writing)
-    }
-    _ = openAIAssistantWorkspace(for: request.draftID, quickPrompt: request.quickPrompt)
   }
 
   private var inspectorToolbarHelp: String {
@@ -1357,7 +1324,7 @@ struct ContentView: View {
     }
   }
 
-  private func focusWindowDraft(_ draftID: UUID, section: WorkspaceSection) {
+  func focusWindowDraft(_ draftID: UUID, section: WorkspaceSection) {
     var transaction = Transaction(animation: nil)
     transaction.disablesAnimations = true
     withTransaction(transaction) {
@@ -1673,7 +1640,7 @@ struct ContentView: View {
   }
 
   @discardableResult
-  private func activateCurrentWindowSharedContext() -> Bool {
+  func activateCurrentWindowSharedContext() -> Bool {
     guard controlActiveState == .key else { return false }
     let activate: (WorkspaceSection, UUID?) -> Void = { section, draftID in
       activateSharedContext(section: section, draftID: draftID)
@@ -1737,11 +1704,11 @@ struct ContentView: View {
     responsiveLayout.canManuallyRevealInspector(for: windowSession.selectedSection)
   }
 
-  private var canRequestInspectorInCurrentLayout: Bool {
+  var canRequestInspectorInCurrentLayout: Bool {
     allowsInspectorInCurrentLayout || canOverrideInspectorInCurrentLayout
   }
 
-  private var effectiveFocusMode: Bool {
+  var effectiveFocusMode: Bool {
     isFocusMode
   }
 
@@ -1776,7 +1743,7 @@ struct ContentView: View {
   }
 
   @discardableResult
-  private func prepareInspectorForUserRequest() -> Bool {
+  func prepareInspectorForUserRequest() -> Bool {
     if !allowsInspectorInCurrentLayout {
       guard canOverrideInspectorInCurrentLayout else {
         return false

@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import XCTest
 
@@ -1158,5 +1159,267 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
   ) -> [AIPublishingActionKind] {
     snapshot.spotlightActionSections.flatMap(\.actions)
       + snapshot.editorActionSections.flatMap(\.actions)
+  }
+}
+
+@MainActor
+final class WorkbenchStoreAIQuickPromptDeliveryTests: XCTestCase {
+  func testOrdinaryOpenPreservesGeneralContextForSameAndDifferentDrafts() throws {
+    let store = makeStore()
+    let first = try XCTUnwrap(store.selectedDraft)
+    let second = ArticleDraft(siteProfileID: first.siteProfileID, title: "第二篇")
+    store.setDrafts([first, second])
+    store.prepareAIChat(for: first)
+    store.setAIChatContextMode(.general)
+    let general = try XCTUnwrap(store.ai.startNewGeneralChatConversation())
+
+    XCTAssertTrue(store.ai.openChatWorkspace(for: first.id))
+    XCTAssertEqual(store.aiChatContextMode, .general)
+    XCTAssertTrue(store.ai.openChatWorkspace(for: second.id))
+    XCTAssertEqual(store.aiChatDraftID, second.id)
+    XCTAssertEqual(store.aiChatContextMode, .general)
+    XCTAssertEqual(store.ai.activeGeneralChatConversationID, general.id)
+    XCTAssertNil(store.pendingAIQuickPromptRequest)
+  }
+
+  func testArticleQuickPromptSwitchesSameDraftFromGeneralAndFreezesArticleConversation() throws {
+    let store = makeStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let owner = UUID()
+    store.prepareAIChat(for: draft)
+    store.setAIChatContextMode(.general)
+    let general = try XCTUnwrap(store.ai.startNewGeneralChatConversation())
+
+    XCTAssertTrue(
+      store.ai.openChatWorkspace(for: draft.id, quickPrompt: .outline, ownerWindowID: owner)
+    )
+
+    let request = try XCTUnwrap(store.ai.pendingQuickPromptRequest)
+    XCTAssertEqual(store.aiChatContextMode, .site)
+    XCTAssertEqual(store.aiChatDraftID, draft.id)
+    XCTAssertEqual(request.ownerWindowID, owner)
+    XCTAssertEqual(request.draftID, draft.id)
+    XCTAssertEqual(request.conversationID, store.ai.activeChatConversationID(for: draft.id))
+    XCTAssertNotEqual(request.conversationID, general.id)
+    let article = try XCTUnwrap(store.aiStore.activeAIChatConversation(for: draft.id))
+    XCTAssertEqual(article.scope, .draft(draft.id))
+    XCTAssertEqual(article.contextMode, .site)
+  }
+
+  func testArticleQuickPromptSwitchesToRequestedDraftAndSiteContext() throws {
+    let store = makeStore()
+    let first = try XCTUnwrap(store.selectedDraft)
+    let second = ArticleDraft(siteProfileID: first.siteProfileID, title: "目标文章")
+    store.setDrafts([first, second])
+    store.prepareAIChat(for: second)
+    store.setAIChatContextMode(.general)
+    store.prepareAIChat(for: first)
+    store.setAIChatContextMode(.general)
+
+    XCTAssertTrue(store.openAIChatWorkspace(for: second.id, quickPrompt: .frontMatterPack))
+
+    XCTAssertEqual(store.aiChatContextMode, .site)
+    XCTAssertEqual(store.aiChatDraftID, second.id)
+    XCTAssertEqual(store.pendingAIQuickPromptRequest?.draftID, second.id)
+    XCTAssertEqual(
+      store.aiStore.activeAIChatConversation(for: second.id)?.contextMode,
+      .site
+    )
+  }
+
+  func testWindowOwnedRequestRejectsOtherWindowDraftConversationAndLegacyConsumption() throws {
+    let store = makeStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let owner = UUID()
+    store.prepareAIChat(for: draft)
+    _ = try XCTUnwrap(store.startNewAIChatConversation(draft: draft))
+    XCTAssertTrue(
+      store.openAIChatWorkspace(
+        for: draft.id, quickPrompt: .frontMatterPack, ownerWindowID: owner
+      )
+    )
+    let request = try XCTUnwrap(store.pendingAIQuickPromptRequest)
+
+    XCTAssertNil(
+      store.consumePendingAIQuickPrompt(
+        ownerWindowID: UUID(), draftID: draft.id, conversationID: request.conversationID
+      )
+    )
+    XCTAssertNil(
+      store.consumePendingAIQuickPrompt(
+        ownerWindowID: owner, draftID: UUID(), conversationID: request.conversationID
+      )
+    )
+    XCTAssertNil(
+      store.consumePendingAIQuickPrompt(
+        ownerWindowID: owner, draftID: draft.id, conversationID: UUID()
+      )
+    )
+    XCTAssertNil(
+      store.consumePendingAIQuickPrompt(
+        ownerWindowID: owner, draftID: draft.id, conversationID: nil
+      )
+    )
+    XCTAssertNil(store.consumePendingAIQuickPrompt())
+    XCTAssertEqual(store.pendingAIQuickPromptRequest, request)
+
+    XCTAssertEqual(
+      store.ai.consumePendingQuickPrompt(
+        ownerWindowID: owner, draftID: draft.id, conversationID: request.conversationID
+      ),
+      .frontMatterPack
+    )
+    XCTAssertNil(store.pendingAIQuickPromptRequest)
+    XCTAssertNil(
+      store.ai.consumePendingQuickPrompt(
+        ownerWindowID: owner, draftID: draft.id, conversationID: request.conversationID
+      )
+    )
+  }
+
+  func testNewConversationRequestRequiresNilConversationIdentity() throws {
+    let store = makeStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let owner = UUID()
+    XCTAssertTrue(
+      store.openAIChatWorkspace(for: draft.id, quickPrompt: .outline, ownerWindowID: owner)
+    )
+    let request = try XCTUnwrap(store.pendingAIQuickPromptRequest)
+    XCTAssertNil(request.conversationID)
+    XCTAssertNil(
+      store.consumePendingAIQuickPrompt(
+        ownerWindowID: owner, draftID: draft.id, conversationID: draft.id
+      )
+    )
+    XCTAssertEqual(store.pendingAIQuickPromptRequest, request)
+    XCTAssertEqual(
+      store.consumePendingAIQuickPrompt(
+        ownerWindowID: owner, draftID: draft.id, conversationID: nil
+      ),
+      .outline
+    )
+  }
+
+  func testStandaloneRequestCannotBeConsumedByAWindow() throws {
+    let store = makeStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    XCTAssertTrue(store.openAIChatWorkspace(for: draft.id, quickPrompt: .outline))
+    let request = try XCTUnwrap(store.pendingAIQuickPromptRequest)
+
+    XCTAssertNil(
+      store.consumePendingAIQuickPrompt(
+        ownerWindowID: UUID(), draftID: draft.id, conversationID: request.conversationID
+      )
+    )
+    XCTAssertEqual(store.pendingAIQuickPromptRequest, request)
+    XCTAssertEqual(store.consumePendingAIQuickPrompt(), .outline)
+  }
+
+  func testOrdinaryOpenInAnotherWindowPreservesPendingRequest() throws {
+    let store = makeStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let owner = UUID()
+    XCTAssertTrue(
+      store.openAIChatWorkspace(for: draft.id, quickPrompt: .outline, ownerWindowID: owner)
+    )
+    let request = try XCTUnwrap(store.pendingAIQuickPromptRequest)
+
+    XCTAssertTrue(store.openAIChatWorkspace(for: draft.id, ownerWindowID: UUID()))
+
+    XCTAssertEqual(store.pendingAIQuickPromptRequest, request)
+    XCTAssertEqual(
+      store.consumePendingAIQuickPrompt(
+        ownerWindowID: owner, draftID: draft.id, conversationID: request.conversationID
+      ),
+      .outline
+    )
+  }
+
+  func testChangedConversationCannotConsumeAnOldRequestEvenWithStaleCallerIdentity() throws {
+    let store = makeStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let owner = UUID()
+    XCTAssertTrue(
+      store.openAIChatWorkspace(for: draft.id, quickPrompt: .outline, ownerWindowID: owner)
+    )
+    let request = try XCTUnwrap(store.pendingAIQuickPromptRequest)
+    let newConversation = try XCTUnwrap(store.startNewAIChatConversation(draft: draft))
+
+    for conversationID in [request.conversationID, newConversation.id] {
+      XCTAssertNil(
+        store.consumePendingAIQuickPrompt(
+          ownerWindowID: owner, draftID: draft.id, conversationID: conversationID
+        )
+      )
+    }
+    XCTAssertEqual(store.pendingAIQuickPromptRequest, request)
+  }
+
+  func testGeneralModeCannotConsumeAnArticlePrompt() throws {
+    let store = makeStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    store.prepareAIChat(for: draft)
+    _ = try XCTUnwrap(store.startNewAIChatConversation(draft: draft))
+    XCTAssertTrue(store.openAIChatWorkspace(for: draft.id, quickPrompt: .outline))
+    let request = try XCTUnwrap(store.pendingAIQuickPromptRequest)
+
+    store.setAIChatContextMode(.general)
+
+    XCTAssertNil(store.consumePendingAIQuickPrompt())
+    XCTAssertEqual(store.pendingAIQuickPromptRequest, request)
+    store.setAIChatContextMode(.site)
+    XCTAssertEqual(store.consumePendingAIQuickPrompt(), .outline)
+  }
+
+  func testRepeatedTemplateGetsNewDeliveryIdentityAndPublishesBothRequests() throws {
+    let store = makeStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let owner = UUID()
+    let facade = WorkbenchAIChatFeatureFacade(store: store, draftID: draft.id)
+    var publishedIDs: [UUID] = []
+    var facadeChanges = 0
+    let requestObservation = store.aiWorkspaceStore.$pendingAIQuickPromptRequest
+      .compactMap { $0?.id }
+      .sink { publishedIDs.append($0) }
+    let facadeObservation = facade.objectWillChange.sink { facadeChanges += 1 }
+
+    XCTAssertTrue(
+      store.openAIChatWorkspace(for: draft.id, quickPrompt: .outline, ownerWindowID: owner)
+    )
+    let first = try XCTUnwrap(store.pendingAIQuickPromptRequest)
+    let changesBeforeSecondRequest = facadeChanges
+    XCTAssertTrue(
+      store.openAIChatWorkspace(for: draft.id, quickPrompt: .outline, ownerWindowID: owner)
+    )
+    let second = try XCTUnwrap(store.pendingAIQuickPromptRequest)
+
+    XCTAssertNotEqual(first.id, second.id)
+    XCTAssertEqual(first.prompt, second.prompt)
+    XCTAssertEqual(publishedIDs, [first.id, second.id])
+    XCTAssertGreaterThan(facadeChanges, changesBeforeSecondRequest)
+    XCTAssertEqual(
+      store.consumePendingAIQuickPrompt(
+        ownerWindowID: owner, draftID: draft.id, conversationID: second.conversationID
+      ),
+      .outline
+    )
+    XCTAssertTrue(
+      store.openAIChatWorkspace(for: draft.id, quickPrompt: .outline, ownerWindowID: owner)
+    )
+    let third = try XCTUnwrap(store.pendingAIQuickPromptRequest)
+    XCTAssertNotEqual(third.id, second.id)
+    XCTAssertEqual(
+      store.consumePendingAIQuickPrompt(
+        ownerWindowID: owner, draftID: draft.id, conversationID: third.conversationID
+      ),
+      .outline
+    )
+    withExtendedLifetime((requestObservation, facadeObservation)) {}
+  }
+
+  private func makeStore() -> WorkbenchStore {
+    let fileURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ai-quick-prompt-\(UUID().uuidString).json")
+    return WorkbenchStore(persistence: WorkbenchPersistence(fileURL: fileURL))
   }
 }

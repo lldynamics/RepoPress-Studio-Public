@@ -2,10 +2,12 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct SiteKindChangeConfirmationView: View {
-  let currentProfile: SiteProfile
-  let targetKind: SiteKind
+  let confirmation: SiteKindChangeConfirmation
   let cancelAction: () -> Void
   let confirmAction: () -> Void
+
+  private var currentProfile: SiteProfile { confirmation.target.profile }
+  private var targetKind: SiteKind { confirmation.siteKind }
 
   var body: some View {
     let ruleChanges = changes
@@ -14,6 +16,7 @@ struct SiteKindChangeConfirmationView: View {
       VStack(alignment: .leading, spacing: 6) {
         Label("预览站点类型变化", systemImage: "arrow.left.arrow.right")
           .font(.title3.weight(.semibold))
+        LabeledContent("目标站点", value: currentProfile.name)
         Text("从 \(currentProfile.siteKind.localizedDisplayName) 切换到 \(targetKind.localizedDisplayName) 会更新以下发布规则。仓库、访问令牌、作者和默认标签不会改变。")
           .foregroundStyle(.secondary)
       }

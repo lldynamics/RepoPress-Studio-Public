@@ -55,11 +55,11 @@ final class WorkspaceTaskInspectorIssuePresentationTests: XCTestCase {
     )
   }
 
-  func testWritingInspectorUsesDedicatedKnowledgePage() {
-    XCTAssertEqual(ArticleInspectorTab.defaultTab(for: .writing), .knowledge)
+  func testWritingInspectorLeadsWithMetadataAndKeepsKnowledgePage() {
+    XCTAssertEqual(ArticleInspectorTab.defaultTab(for: .writing), .metadata)
     XCTAssertEqual(
       ArticleInspectorTab.availableTabs(for: .writing),
-      [.knowledge, .metadata, .seo, .images]
+      [.metadata, .seo, .images, .knowledge]
     )
     XCTAssertEqual(ArticleInspectorTab.knowledge.title, "上下文知识建议")
     XCTAssertEqual(ArticleInspectorTab.knowledge.pickerTitle, "知识建议")

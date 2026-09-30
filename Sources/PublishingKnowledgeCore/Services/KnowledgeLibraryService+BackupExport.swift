@@ -84,6 +84,11 @@ extension KnowledgeLibraryService {
   public func deleteDocument(id: UUID) throws -> KnowledgeDocumentDeletionReport {
     storageMutationLock.lock()
     defer { storageMutationLock.unlock() }
+    return try deleteDocumentAlreadyLocked(id: id)
+  }
+
+  /// The caller holds storageMutationLock; keep conflict copies and deletion indivisible.
+  func deleteDocumentAlreadyLocked(id: UUID) throws -> KnowledgeDocumentDeletionReport {
     let outcome = try database().deleteDocument(id: id)
     var removedStoredFileCount = 0
     var failedStoredFileCount = 0

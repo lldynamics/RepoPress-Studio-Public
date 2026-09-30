@@ -34,7 +34,7 @@ public final class RepositoryStore: ObservableObject {
   private static let repositoryLineDiffCacheLimit = 48
   let repositoryService: LocalRepositoryService
   private let repositoryTokenStore: KeychainTokenStore
-  private let remoteRepositoryPublishService: RemoteRepositoryPublishService
+  let remoteRepositoryPublishService: RemoteRepositoryPublishService
   private let repositorySyncCommandBuilder: RepositorySyncCommandBuilder
 
   @Published public internal(set) var repositoryReport: RepositoryScanReport?
@@ -1879,64 +1879,17 @@ public final class RepositoryStore: ObservableObject {
       == remoteRepositoryPublishService.normalizedAPIBaseURLString(profileAPIBaseURL)
   }
 
-  private func repositoryAccessToken(for profile: SiteProfile) throws -> String? {
+  func repositoryAccessToken(for profile: SiteProfile) throws -> String? {
     try repositoryTokenStore.repositoryToken(for: profile)
   }
 
-  private func repositoryTokenAvailability(for profile: SiteProfile) throws
+  func repositoryTokenAvailability(for profile: SiteProfile) throws
     -> KeychainTokenAvailability
   {
     try repositoryTokenStore.repositoryTokenAvailability(for: profile)
   }
 
-  @discardableResult
-  public func createRemoteRepositoryForActiveProfile(
-    privateRepository: Bool = true,
-    store: WorkbenchStore
-  ) async -> RemoteRepositoryCreationResult? {
-    let profile = store.activeProfile
-    guard !store.isRemoteRepositoryPublishing else {
-      store.setPublishActionMessage(
-        CoreL10n.text("已有远端仓库操作正在运行，请等待完成。"),
-        status: .warning
-      )
-      return nil
-    }
-    guard let operation = beginRemoteRepositoryCheck(profile: profile, store: store) else {
-      store.setPublishActionMessage(
-        CoreL10n.text("已有仓库权限检查或建仓任务正在运行，请等待完成。"),
-        status: .warning
-      )
-      return nil
-    }
-    defer { finishRemoteRepositoryCheck(operation) }
-    do {
-      let token = try repositoryAccessToken(for: profile)
-      let result = try await remoteRepositoryPublishService.createRepository(
-        profile: profile,
-        token: token,
-        privateRepository: privateRepository
-      )
-      guard remoteRepositoryCheckIsCurrent(operation, store: store) else { return nil }
-      remoteRepositoryCreationResult = result
-      repositoryTokenAvailability = try repositoryTokenAvailability(for: profile)
-      store.setPublishActionMessage(
-        CoreL10n.format("%@ 仓库已创建：%@。", result.provider.displayName, result.repositoryName),
-        status: .success
-      )
-      store.save()
-      return result
-    } catch {
-      guard remoteRepositoryCheckIsCurrent(operation, store: store) else { return nil }
-      store.setPublishActionMessage(
-        CoreL10n.format("远端仓库创建失败：%@", error.localizedDescription),
-        status: .failure
-      )
-      return nil
-    }
-  }
-
-  private func beginRemoteRepositoryCheck(
+  func beginRemoteRepositoryCheck(
     profile: SiteProfile,
     store: WorkbenchStore
   ) -> RemoteRepositoryOperationContext? {
@@ -1952,14 +1905,14 @@ public final class RepositoryStore: ObservableObject {
     return operation
   }
 
-  private func remoteRepositoryCheckIsCurrent(
+  func remoteRepositoryCheckIsCurrent(
     _ operation: RemoteRepositoryOperationContext,
     store: WorkbenchStore
   ) -> Bool {
     remoteRepositoryCheckContext == operation && operation.stillMatches(store.activeProfile)
   }
 
-  private func finishRemoteRepositoryCheck(_ operation: RemoteRepositoryOperationContext) {
+  func finishRemoteRepositoryCheck(_ operation: RemoteRepositoryOperationContext) {
     guard remoteRepositoryCheckContext == operation else { return }
     remoteRepositoryCheckContext = nil
     isRemoteRepositoryChecking = false

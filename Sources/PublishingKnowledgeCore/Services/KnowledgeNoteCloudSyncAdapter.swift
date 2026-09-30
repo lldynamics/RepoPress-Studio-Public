@@ -108,6 +108,7 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
   private var state: SidecarState?
   private let mutationGate = KnowledgeNoteAdapterMutationGate()
   private var remoteApplyHandler: (@Sendable () async -> Void)?
+  private var beforeRemoteApplyCommit: (@Sendable () async -> Void)?
   private var stagedAssetsPruned = false
   // Only the engine's accepted send batches register acknowledgements. A
   // local scan can run many times while a single older save is in flight.
@@ -125,6 +126,10 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
 
   public func setRemoteApplyHandler(_ handler: (@Sendable () async -> Void)?) {
     remoteApplyHandler = handler
+  }
+
+  func setBeforeRemoteApplyCommit(_ handler: (@Sendable () async -> Void)?) {
+    beforeRemoteApplyCommit = handler
   }
 
   public func loadPersistentState() async throws -> RPNoteCloudPersistentState {
@@ -301,14 +306,14 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
         return .ignoredStale
       }
 
-      let hasLocalChanges =
-        localNote != nil
-        && (entry.pendingKind != nil || entry.baselineKind != .note
-          || localRevision != entry.baselineRevision)
-      if hasLocalChanges, let localNote {
-        try await preserveConflictCopy(localNote, remoteRevision: sha256)
+      await beforeRemoteApplyCommit?()
+      let baselineRevision = entry.baselineKind == .note ? entry.baselineRevision : nil
+      let hasPendingLocalChange = entry.pendingKind != nil
+      let mutation = try await performKnowledgeLibraryIO { [service] in
+        try service.applyCloudNoteMutation(
+          id: note.id, replacement: Self.knowledgeNote(note), remoteRevision: sha256,
+          baselineRevision: baselineRevision, hasPendingLocalChange: hasPendingLocalChange)
       }
-      _ = try await service.importNotesAsync([Self.knowledgeNote(note)], mode: .replaceExisting)
       entry.baselineKind = .note
       entry.baselineRevision = sha256
       entry.baselineDeletedAt = nil
@@ -321,15 +326,13 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
       try persist(updated)
       state = updated
       await remoteApplyHandler?()
-      return hasLocalChanges ? .keptLocalWithConflictCopy : .applied
+      return mutation.preservedConflictCopy ? .keptLocalWithConflictCopy : .applied
 
     case .tombstone(let id, let deletedAt, let systemFields):
       let remoteRevision = Self.tombstoneRevision(id: id, deletedAt: deletedAt)
       var updated = state ?? SidecarState()
       let key = Self.key(id)
       var entry = updated.entries[key] ?? Entry()
-      let local = try await localNoteForSync(documentID: id).map(Self.portableNote)
-      let localRevision = try local.map(Self.revision)
 
       if entry.baselineKind == .tombstone, entry.baselineRevision == remoteRevision {
         entry.systemFields = systemFields
@@ -339,15 +342,13 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
         return .ignoredStale
       }
 
-      let hasLocalChanges =
-        local != nil
-        && (entry.pendingKind != nil || entry.baselineKind != .note
-          || localRevision != entry.baselineRevision)
-      if hasLocalChanges, let local {
-        try await preserveConflictCopy(local, remoteRevision: remoteRevision)
-      }
-      if local != nil {
-        _ = try await service.deleteDocumentAsync(id: id)
+      await beforeRemoteApplyCommit?()
+      let baselineRevision = entry.baselineKind == .note ? entry.baselineRevision : nil
+      let hasPendingLocalChange = entry.pendingKind != nil
+      let mutation = try await performKnowledgeLibraryIO { [service] in
+        try service.applyCloudNoteMutation(
+          id: id, replacement: nil, remoteRevision: remoteRevision,
+          baselineRevision: baselineRevision, hasPendingLocalChange: hasPendingLocalChange)
       }
       entry.baselineKind = .tombstone
       entry.baselineRevision = remoteRevision
@@ -360,8 +361,8 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
       updated.entries[key] = entry
       try persist(updated)
       state = updated
-      if local != nil { await remoteApplyHandler?() }
-      return hasLocalChanges ? .keptLocalWithConflictCopy : .applied
+      if mutation.hadLocalNote { await remoteApplyHandler?() }
+      return mutation.preservedConflictCopy ? .keptLocalWithConflictCopy : .applied
     }
   }
 
@@ -693,33 +694,6 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
     }
   }
 
-  private func preserveConflictCopy(_ source: RPNote, remoteRevision: String) async throws {
-    let localRevision = try Self.revision(for: source)
-    let copyID = Self.deterministicUUID(
-      namespace: source.id, name: "\(localRevision):\(remoteRevision)")
-    let existing = try await service.noteAsync(documentID: copyID)
-    var copy = source
-    copy.id = copyID
-    copy.attachments = source.attachments.map { attachment in
-      var copy = attachment
-      copy.id = Self.deterministicUUID(
-        namespace: copyID, name: attachment.id.uuidString.lowercased())
-      return copy
-    }
-    if let existing {
-      guard try Self.revision(for: Self.portableNote(existing)) == Self.revision(for: copy) else {
-        throw KnowledgeLibraryError.databaseIntegrity("iCloud 冲突副本标识已被占用，已停止覆盖。")
-      }
-      return
-    }
-    _ = try await service.importNotesAsync([Self.knowledgeNote(copy)], mode: .rejectConflict)
-  }
-
-  private static func revision(for note: RPNote) throws -> String {
-    SHA256.hash(data: try RPNoteCloudPayload.encode(note)).map { String(format: "%02x", $0) }
-      .joined()
-  }
-
   /// Used only when the package encoder rejects a note above its hard limit.
   /// Hash fields and attachment bytes incrementally so one oversized note does
   /// not prevent other notes from entering the sync queue.
@@ -768,50 +742,4 @@ public actor KnowledgeNoteCloudSyncAdapter: RPNoteCloudSyncLocalAdapter {
 
   private static func key(_ id: UUID) -> String { id.uuidString.lowercased() }
 
-  private static func deterministicUUID(namespace: UUID, name: String) -> UUID {
-    var digest = Array(
-      SHA256.hash(data: Data("\(namespace.uuidString.lowercased())|\(name)".utf8)).prefix(16))
-    digest[6] = (digest[6] & 0x0f) | 0x50
-    digest[8] = (digest[8] & 0x3f) | 0x80
-    return UUID(
-      uuid: (
-        digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7],
-        digest[8], digest[9], digest[10], digest[11], digest[12], digest[13], digest[14], digest[15]
-      ))
-  }
-
-  private static func portableNote(_ note: KnowledgeNote) -> RPNote {
-    RPNote(
-      id: note.id,
-      title: note.title,
-      tags: note.tags,
-      createdAt: note.createdAt,
-      updatedAt: note.updatedAt,
-      isArchived: note.isArchived,
-      sourceURL: note.sourceURL,
-      markdown: note.markdown,
-      attachments: note.attachments.map {
-        RPNoteAttachment(
-          id: $0.id, fileName: $0.fileName, mimeType: $0.mimeType ?? "application/octet-stream",
-          data: $0.data)
-      }
-    )
-  }
-
-  private static func knowledgeNote(_ note: RPNote) -> KnowledgeNote {
-    KnowledgeNote(
-      id: note.id,
-      title: note.title,
-      tags: note.tags,
-      createdAt: note.createdAt,
-      updatedAt: note.updatedAt,
-      isArchived: note.isArchived,
-      sourceURL: note.sourceURL,
-      markdown: note.markdown,
-      attachments: note.attachments.map {
-        KnowledgeNoteAttachment(
-          id: $0.id, fileName: $0.fileName, mimeType: $0.mimeType, data: $0.data)
-      }
-    )
-  }
 }

@@ -294,6 +294,7 @@ final class MarkdownEditorScrollView: NSScrollView {
       ? MarkdownEditorViewportAnchor.capture(in: self) : nil
     super.layout()
     guard let textView = documentView as? NSTextView else { return }
+    guard contentSize.width > 1, contentSize.height > 1 else { return }
 
     let viewportSizeChanged = previousViewportSize != contentSize
     previousViewportSize = contentSize
@@ -391,9 +392,7 @@ final class MarkdownEditorScrollView: NSScrollView {
         if let cachedTextHeight {
           return cachedTextHeight
         }
-        let measuredHeight =
-          textLayoutManager.usageBoundsForTextContainer.height
-          + textView.textContainerInset.height * 2
+        let measuredHeight = MarkdownEditorDocumentGeometry.height(in: textView) ?? contentHeight
         cachedTextHeight = measuredHeight
         return measuredHeight
       } ?? contentHeight

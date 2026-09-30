@@ -2,6 +2,39 @@ import Foundation
 import PublishingWorkbenchCore
 
 extension MacMarkdownComposerView {
+  var markdownEditorToolbarActions: MarkdownEditorToolbarActions {
+    let aiAvailability = markdownComposerAIAvailabilitySnapshot
+    return MarkdownEditorToolbarActions(
+      onShowFindReplace: showFindReplace,
+      onShowOutline: showOutline,
+      onShowShortcutHelp: {
+        isShortcutHelpPresented = true
+      },
+      onOpenAIContextInspector: showAIContextInspector,
+      onOpenAITemplateLibrary: {
+        isAITemplateLibraryPresented = true
+      },
+      onRequestInlineAICompletion: requestInlineGhostText,
+      onExportDocument: performMarkdownDocumentExport,
+      // Menu state is render-local; action handlers below still read live state.
+      selectionAIActionAvailability: { kind in
+        aiAvailability.selectionAvailability(for: kind)
+      },
+      articleAIActionAvailability: { kind in
+        aiAvailability.articleAvailability(for: kind)
+      },
+      onPerformSelectionAIAction: performSelectionAIAction,
+      onPerformArticleAIAction: performArticleAIAction,
+      onPerformConvergedSelectionAIAction: performConvergedSelectionAIAction,
+      onPerformConvergedArticleAIAction: performConvergedArticleAIAction,
+      onPasteAIPromptToClipboard: pasteAIPromptToClipboard,
+      onFormatChineseTypography: formatChineseTypography,
+      onCopyForWeChatAndZhihu: copyForWeChatAndZhihu,
+      onShowImageInfo: activeInsertedImageMetadataBinding == nil
+        ? nil : { showWritingContextPanel(.imageInfo) }
+    )
+  }
+
   var markdownCursorPosition: MarkdownCursorPosition? {
     markdownCursorContextSnapshot?.position
   }

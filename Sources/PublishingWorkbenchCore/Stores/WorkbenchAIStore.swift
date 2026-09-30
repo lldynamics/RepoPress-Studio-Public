@@ -298,8 +298,12 @@ public final class WorkbenchAIStore: ObservableObject {
   }
 
   public var pendingAIQuickPrompt: AIPublishingQuickPrompt? {
-    get { workspace.pendingAIQuickPrompt }
-    set { workspace.pendingAIQuickPrompt = newValue }
+    workspace.pendingAIQuickPrompt
+  }
+
+  public internal(set) var pendingAIQuickPromptRequest: AIPublishingQuickPromptRequest? {
+    get { workspace.pendingAIQuickPromptRequest }
+    set { workspace.pendingAIQuickPromptRequest = newValue }
   }
 
   public var aiChatMessage: String? {

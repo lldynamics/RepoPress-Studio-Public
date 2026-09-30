@@ -82,6 +82,13 @@ enum WorkbenchAccentPalette: String, CaseIterable, Identifiable {
     }
   }
 
+  /// Scene-level tint. `.system` returns nil so native controls keep the macOS
+  /// accent; tinting with a bridged `controlAccentColor` renders pop-up
+  /// indicators in the wrong color.
+  var tint: Color? {
+    self == .system ? nil : color
+  }
+
   static func resolved(rawValue: String?) -> WorkbenchAccentPalette {
     rawValue.flatMap(WorkbenchAccentPalette.init(rawValue:)) ?? .system
   }

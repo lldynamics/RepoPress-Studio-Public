@@ -22,6 +22,8 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
   case partialTextRecoveryContextTooLarge(maximumBytes: Int)
   case networkFailure(String)
   case streamInterruptedAfterPartialContent(String)
+  indirect case partialContentFailure(AIChatCompletionClientError)
+  indirect case acceptedResponseFailure(AIChatCompletionClientError)
   case unsupportedToolHistory
   case imageContentRequiresVisionCapability
   case unsupportedAnthropicStructuredOutput
@@ -80,6 +82,11 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
         "流式回复在返回部分内容后中断。已保留现有内容；自动续接不可用或未能完成，为避免继续重复生成和重复计费，已停止。请确认后再手动继续。\n%@",
         message
       )
+    case .partialContentFailure(let failure):
+      return Self.streamInterruptedAfterPartialContent(failure.localizedDescription)
+        .errorDescription
+    case .acceptedResponseFailure(let failure):
+      return failure.errorDescription
     case .unsupportedToolHistory:
       return CoreL10n.text("当前连接尚未证明支持工具调用，未发送工具历史。")
     case .imageContentRequiresVisionCapability:
@@ -93,6 +100,8 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
 
   public var recoverySuggestion: String? {
     switch self {
+    case .partialContentFailure(let failure), .acceptedResponseFailure(let failure):
+      return failure.recoverySuggestion
     case .httpStatus(let status, let body, _):
       switch status {
       case 401:
@@ -121,15 +130,39 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
   }
 
   public var retryAfterSeconds: TimeInterval? {
-    guard case .httpStatus(_, _, let retryAfterSeconds) = self else { return nil }
-    return retryAfterSeconds
+    switch self {
+    case .partialContentFailure(let failure), .acceptedResponseFailure(let failure):
+      return failure.retryAfterSeconds
+    case .httpStatus(_, _, let retryAfterSeconds): return retryAfterSeconds
+    default: return nil
+    }
   }
 
   public var didReceivePartialContent: Bool {
-    if case .streamInterruptedAfterPartialContent = self {
-      return true
+    switch self {
+    case .streamInterruptedAfterPartialContent, .partialContentFailure: return true
+    default: return false
     }
-    return false
+  }
+
+  /// A provider may accept and charge a request before returning any visible
+  /// text. Keeping that boundary separate lets stores discard an empty reply
+  /// while still requiring explicit confirmation before another attempt.
+  public var requiresDuplicateChargeConfirmation: Bool {
+    switch self {
+    case .streamInterruptedAfterPartialContent, .partialContentFailure, .acceptedResponseFailure:
+      return true
+    default: return false
+    }
+  }
+
+  /// Retains the terminal cause without allowing a partially generated answer
+  /// to be automatically replayed and charged again.
+  public var underlyingFailure: AIChatCompletionClientError? {
+    switch self {
+    case .partialContentFailure(let failure), .acceptedResponseFailure(let failure): return failure
+    default: return nil
+    }
   }
 
   public var isAutomaticallyRetryable: Bool {
@@ -145,6 +178,7 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
       .preparedRequestConfigurationMismatch, .preparedRequestCapabilityExpired,
       .preparedRequestAuthorizationExpired, .requestAuthorizationChanged,
       .streamInterruptedAfterPartialContent,
+      .partialContentFailure, .acceptedResponseFailure,
       .unsupportedToolHistory, .imageContentRequiresVisionCapability,
       .unsupportedAnthropicStructuredOutput, .emptyContent:
       return false
@@ -152,7 +186,7 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
   }
 
   public var supportsManualRetry: Bool {
-    didReceivePartialContent || isAutomaticallyRetryable
+    requiresDuplicateChargeConfirmation || isAutomaticallyRetryable
   }
 
   private static func durationText(_ seconds: TimeInterval) -> String {

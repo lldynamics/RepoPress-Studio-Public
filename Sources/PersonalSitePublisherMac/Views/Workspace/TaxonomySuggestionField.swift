@@ -1,57 +1,53 @@
 import Foundation
 import SwiftUI
 
+/// Selected values appear once, as removable chips; the text field only adds
+/// values, and unselected suggestions are offered separately.
 struct TaxonomySuggestionField: View {
   @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let title: String
+  let addPrompt: LocalizedStringKey
   @Binding var values: [String]
   let suggestions: [String]
+  @State private var entryText = ""
+  @FocusState private var isEntryFocused: Bool
 
   var body: some View {
-    let visibleSuggestions = Self.visibleSuggestions(values: values, suggestions: suggestions)
+    let selected = Self.selectedValues(values)
+    let additional = Self.additionalSuggestions(values: values, suggestions: suggestions)
 
     VStack(alignment: .leading, spacing: 6) {
       Text(LocalizedStringKey(title))
         .font(.caption)
         .foregroundStyle(.secondary)
-      TextField(LocalizedStringKey(title), text: textBinding)
+
+      if !selected.isEmpty {
+        WorkbenchFlowLayout(horizontalSpacing: 6, verticalSpacing: 6) {
+          ForEach(selected, id: \.self) { value in
+            selectedChip(value)
+          }
+        }
+      }
+
+      TextField(LocalizedStringKey(title), text: $entryText, prompt: Text(addPrompt))
         .textFieldStyle(.roundedBorder)
+        .focused($isEntryFocused)
+        .onSubmit(commitEntry)
+        .onChange(of: isEntryFocused) { _, isFocused in
+          // Typed text is kept when focus leaves, as the old free-text field did.
+          if !isFocused { commitEntry() }
+        }
         .accessibilityLabel(LocalizedStringKey(title))
         .accessibilityValue(
-          values.isEmpty ? String(localized: "未填写") : values.joined(separator: ", "))
+          values.isEmpty
+            ? String(localized: "未填写") : values.joined(separator: ", ")
+        )
+        .accessibilityHint("输入后按回车添加，可用逗号分隔多个")
 
-      if !visibleSuggestions.isEmpty {
+      if !additional.isEmpty {
         WorkbenchFlowLayout(horizontalSpacing: 6, verticalSpacing: 6) {
-          ForEach(visibleSuggestions, id: \.self) { suggestion in
-            let selected = isSelected(suggestion)
-            Button {
-              if selected {
-                remove(suggestion)
-              } else {
-                append(suggestion)
-              }
-            } label: {
-              HStack(spacing: 4) {
-                Image(systemName: selected ? "checkmark.circle.fill" : "tag")
-                  .font(.workbenchMetadata)
-                Text(suggestion)
-                  .font(.caption.weight(.medium))
-              }
-              .padding(.horizontal, 8)
-              .padding(.vertical, 4)
-              .background(
-                selected ? workbenchAccentColor.opacity(0.18) : Color.primary.opacity(0.06),
-                in: Capsule()
-              )
-              .foregroundStyle(selected ? workbenchAccentColor : Color.primary)
-              .overlay(
-                Capsule()
-                  .stroke(
-                    selected ? workbenchAccentColor.opacity(0.4) : Color.primary.opacity(0.12),
-                    lineWidth: 1)
-              )
-            }
-            .buttonStyle(.plain)
+          ForEach(additional, id: \.self) { suggestion in
+            suggestionChip(suggestion)
           }
         }
         .padding(.vertical, 2)
@@ -59,15 +55,61 @@ struct TaxonomySuggestionField: View {
     }
   }
 
-  private var textBinding: Binding<String> {
-    Binding(
-      get: { values.joined(separator: ", ") },
-      set: { values = parse($0) }
-    )
+  private func selectedChip(_ value: String) -> some View {
+    HStack(spacing: 4) {
+      Text(value)
+        .font(.caption.weight(.medium))
+      Button {
+        remove(value)
+      } label: {
+        Image(systemName: "xmark")
+          .font(.workbenchMetadata.weight(.semibold))
+      }
+      .buttonStyle(.plain)
+      .help("移除")
+      .accessibilityLabel(String(localized: "移除“\(value)”"))
+    }
+    .padding(.horizontal, 8)
+    .padding(.vertical, 4)
+    .background(workbenchAccentColor.opacity(0.18), in: Capsule())
+    .foregroundStyle(workbenchAccentColor)
+    .overlay(Capsule().stroke(workbenchAccentColor.opacity(0.4), lineWidth: 1))
+    .accessibilityElement(children: .contain)
   }
 
-  private func isSelected(_ suggestion: String) -> Bool {
-    values.contains(where: { $0.lowercased() == suggestion.lowercased() })
+  private func suggestionChip(_ suggestion: String) -> some View {
+    Button {
+      append(suggestion)
+    } label: {
+      HStack(spacing: 3) {
+        Image(systemName: "plus")
+          .font(.workbenchMetadata)
+        Text(suggestion)
+          .font(.caption)
+      }
+      .padding(.horizontal, 8)
+      .padding(.vertical, 4)
+      .foregroundStyle(.secondary)
+      .overlay(
+        Capsule()
+          .strokeBorder(
+            Color.primary.opacity(0.22),
+            style: StrokeStyle(lineWidth: 1, dash: [3, 2])
+          )
+      )
+      .contentShape(Capsule())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(String(localized: "添加“\(suggestion)”"))
+  }
+
+  private func commitEntry() {
+    let entries = parse(entryText)
+    guard !entries.isEmpty else { return }
+    for entry in entries {
+      append(entry)
+    }
+    entryText = ""
   }
 
   private func append(_ suggestion: String) {
@@ -85,13 +127,15 @@ struct TaxonomySuggestionField: View {
       .filter { !$0.isEmpty }
   }
 
-  static func visibleSuggestions(values: [String], suggestions: [String]) -> [String] {
-    let selected = TaxonomySuggestionRanking.uniqueValues(values)
-    let selectedKeys = Set(selected.map(TaxonomySuggestionRanking.key(for:)))
+  static func selectedValues(_ values: [String]) -> [String] {
+    TaxonomySuggestionRanking.uniqueValues(values)
+  }
+
+  static func additionalSuggestions(values: [String], suggestions: [String]) -> [String] {
+    let selectedKeys = Set(selectedValues(values).map(TaxonomySuggestionRanking.key(for:)))
     let additional = TaxonomySuggestionRanking.uniqueValues(suggestions)
       .filter { !selectedKeys.contains(TaxonomySuggestionRanking.key(for: $0)) }
-
-    return selected + Array(additional.prefix(TaxonomySuggestionRanking.additionalSuggestionLimit))
+    return Array(additional.prefix(TaxonomySuggestionRanking.additionalSuggestionLimit))
   }
 }
 

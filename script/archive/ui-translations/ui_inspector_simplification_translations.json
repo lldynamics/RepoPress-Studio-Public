@@ -1,0 +1,11 @@
+{
+  "AI 暂不可用": "AI is unavailable",
+  "写作检查": "Writing checks",
+  "前往 AI 设置": "Open AI settings",
+  "启用后，正文 H1 与 Front Matter title 相同会在 SEO 检查中显示一条非阻断建议。": "When on, a body H1 that matches the front matter title shows a non-blocking suggestion in SEO checks.",
+  "添加“%@”": "Add “%@”",
+  "添加分类…": "Add category…",
+  "添加标签…": "Add tag…",
+  "移除“%@”": "Remove “%@”",
+  "输入后按回车添加，可用逗号分隔多个": "Press Return to add; separate multiple entries with commas"
+}

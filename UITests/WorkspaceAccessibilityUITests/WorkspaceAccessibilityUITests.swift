@@ -417,8 +417,8 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "markdown-document-editor",
       "markdown-editor-toolbar",
       "markdown-formatting-toolbar",
-      "markdown-focus-mode-menu",
-      "markdown-editor-settings",
+      "markdown-insert-menu",
+      "markdown-format-menu",
     ]
     for identifier in requiredIdentifiers {
       assertUniqueIdentifier(identifier)
@@ -432,8 +432,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
     let hasInlineWritingTools = [
       "markdown-outline-button",
-      "markdown-inline-ai-completion",
-      "markdown-document-export-menu",
+      "markdown-editor-more-actions-menu",
     ].allSatisfy { element(identifier: $0).exists }
     XCTAssertTrue(
       element(identifier: "markdown-writing-tools-menu").exists || hasInlineWritingTools,
@@ -453,8 +452,11 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
   func testEditorAppearanceButtonOpensTheEditorSettingsPage() throws {
     launchApplication(surface: "writing")
+    let moreActions = element(identifier: "markdown-editor-more-actions-menu")
+    XCTAssertTrue(moreActions.waitForExistence(timeout: 10))
+    moreActions.click()
     let appearanceButton = element(identifier: "markdown-editor-settings")
-    XCTAssertTrue(appearanceButton.waitForExistence(timeout: 10))
+    XCTAssertTrue(appearanceButton.waitForExistence(timeout: 3))
     appearanceButton.click()
 
     assertIdentifierExists("editor-settings")

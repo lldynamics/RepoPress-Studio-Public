@@ -328,7 +328,21 @@ extension AIChatContextInspectorView {
   }
 
   func applyPendingQuickPrompt() {
-    guard let prompt = ai.consumePendingQuickPrompt() else { return }
+    guard let draft = inspectorDraft,
+      let context = state.conversation,
+      context.draft?.id == draft.id,
+      AIChatQuickPromptDeliveryPolicy.isArticleComposerReady(
+        contextMode: ai.chatContextMode,
+        draftID: draft.id,
+        conversationID: context.conversationID,
+        surfaceConversationID: inspectorSurfaceConversationID
+      ),
+      let prompt = ai.consumePendingQuickPrompt(
+        ownerWindowID: workspaceWindowSession?.windowID,
+        draftID: draft.id,
+        conversationID: context.conversationID
+      )
+    else { return }
     if trimmedInput.isEmpty {
       setInputText(prompt.prompt)
     } else if trimmedInput != prompt.prompt {

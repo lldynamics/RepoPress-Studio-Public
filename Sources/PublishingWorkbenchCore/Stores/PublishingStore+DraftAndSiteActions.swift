@@ -382,14 +382,6 @@ extension PublishingStore {
     store.scheduleMissingSiteDraftFileWrites()
   }
 
-  public func applySiteKindDefaults(_ siteKind: SiteKind, store: WorkbenchStore) {
-    var profile = store.activeProfile
-    profile.applyPublishingDefaults(for: siteKind)
-    store.updateActiveProfile(profile)
-    store.runPreflight()
-    store.save()
-  }
-
   @discardableResult
   public func createGitHubRepositoryForActiveProfile(
     privateRepository: Bool = true,

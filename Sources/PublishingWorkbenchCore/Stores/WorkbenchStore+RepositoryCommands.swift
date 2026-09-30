@@ -107,9 +107,11 @@ extension WorkbenchStore {
 
   @discardableResult
   public func createRemoteRepositoryForActiveProfile(
-    privateRepository: Bool = true
+    privateRepository: Bool = true,
+    expectedTarget: SiteOperationConfirmationTarget? = nil
   ) async -> RemoteRepositoryCreationResult? {
-    await repositoryStore.createRemoteRepositoryForActiveProfile(privateRepository: privateRepository, store: self)
+    await repositoryStore.createRemoteRepositoryForActiveProfile(
+      privateRepository: privateRepository, expectedTarget: expectedTarget, store: self)
   }
 
   public func switchActiveProfileRepositoryBranch(to branchName: String) async {

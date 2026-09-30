@@ -37,7 +37,9 @@ final class RemoteRepositoryPublishServiceRollbackAndWithdrawalTests:
       commitMessage: "Rollback: GitHub Direct",
       targetBranch: "main",
       commitSHA: "published-sha",
-      changedPaths: ["content/posts/github-direct.md"]
+      changedPaths: ["content/posts/github-direct.md"],
+      repositoryIdentity: try RemoteRepositoryRollbackDraft.normalizedRepositoryIdentity(
+        profile: profile)
     )
 
     let result = try await service.rollback(draft: draft, profile: profile, token: "github-token")
@@ -89,7 +91,9 @@ final class RemoteRepositoryPublishServiceRollbackAndWithdrawalTests:
       commitMessage: "Rollback: Moved",
       targetBranch: "main",
       commitSHA: "published-sha",
-      changedPaths: ["content/posts/moved.md"]
+      changedPaths: ["content/posts/moved.md"],
+      repositoryIdentity: try RemoteRepositoryRollbackDraft.normalizedRepositoryIdentity(
+        profile: profile)
     )
 
     do {
@@ -126,7 +130,9 @@ final class RemoteRepositoryPublishServiceRollbackAndWithdrawalTests:
       commitMessage: "Rollback: GitLab Direct",
       targetBranch: "main",
       commitSHA: "published-gitlab-sha",
-      changedPaths: ["content/posts/gitlab-direct.md"]
+      changedPaths: ["content/posts/gitlab-direct.md"],
+      repositoryIdentity: try RemoteRepositoryRollbackDraft.normalizedRepositoryIdentity(
+        profile: profile)
     )
 
     let result = try await service.rollback(draft: draft, profile: profile, token: "gitlab-token")

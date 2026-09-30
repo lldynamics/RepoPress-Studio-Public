@@ -230,6 +230,9 @@ extension WorkbenchStore {
   public var pendingAIQuickPrompt: AIPublishingQuickPrompt? {
     aiWorkspaceStore.pendingAIQuickPrompt
   }
+  public var pendingAIQuickPromptRequest: AIPublishingQuickPromptRequest? {
+    aiWorkspaceStore.pendingAIQuickPromptRequest
+  }
   public var aiChatMessage: String? { aiWorkspaceStore.aiChatMessage }
   public var isAIChatRunning: Bool { aiWorkspaceStore.isAIChatRunning }
   public var aiChatManualRetryState: AIChatManualRetryState? { aiStore.aiChatManualRetryState }

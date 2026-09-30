@@ -22,7 +22,7 @@ struct SettingsView: View {
   @AppStorage(SettingsNavigation.lastViewedTabStorageKey)
   private var lastViewedSettingsTabID = ""
   @State private var navigationSession: SettingsNavigationSession
-  @State private var pendingSiteKind: SiteKind?
+  @State private var pendingSiteKind: SiteKindChangeConfirmation?
   @State private var searchSession = SettingsSearchSession()
   @FocusState private var isSearchFocused: Bool
   @State private var subsectionAnchorFrames: [SettingsSubsection: CGRect] = [:]
@@ -90,6 +90,9 @@ struct SettingsView: View {
     .onChange(of: autoRunPreflight) { _, newValue in
       store.setAutomaticallyRefreshPreflightOnEdit(newValue)
     }
+    .onChange(of: store.activeProfile) {
+      pendingSiteKind = nil
+    }
     .task(id: searchSession.highlight?.id) {
       guard let highlightID = searchSession.highlight?.id else { return }
       do {
@@ -99,15 +102,12 @@ struct SettingsView: View {
         // A newer search result or navigation cancels the old cue.
       }
     }
-    .sheet(item: $pendingSiteKind) { siteKind in
+    .sheet(item: $pendingSiteKind) { confirmation in
       SiteKindChangeConfirmationView(
-        currentProfile: store.activeProfile,
-        targetKind: siteKind,
-        cancelAction: {
-          pendingSiteKind = nil
-        },
+        confirmation: confirmation,
+        cancelAction: { pendingSiteKind = nil },
         confirmAction: {
-          store.applySiteKindDefaults(siteKind)
+          store.applySiteKindDefaults(confirmation.siteKind, expectedTarget: confirmation.target)
           pendingSiteKind = nil
         }
       )
@@ -476,7 +476,7 @@ struct SettingsView: View {
       get: { store.activeProfile.siteKind },
       set: { kind in
         guard kind != store.activeProfile.siteKind else { return }
-        pendingSiteKind = kind
+        pendingSiteKind = SiteKindChangeConfirmation(profile: store.activeProfile, siteKind: kind)
       }
     )
   }
