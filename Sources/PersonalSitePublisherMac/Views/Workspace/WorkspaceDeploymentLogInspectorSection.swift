@@ -54,7 +54,7 @@ struct WorkspaceDeploymentLogInspectorSection: View {
               level: .error
             )
           }
-          .padding(8)
+          .padding(WorkbenchSpacing.control)
           .frame(maxWidth: .infinity, alignment: .leading)
           .background(
             WorkbenchTheme.risk.opacity(0.08),
@@ -98,7 +98,7 @@ struct WorkspaceDeploymentLogInspectorSection: View {
                 }
               }
             }
-            .padding(.top, 5)
+            .padding(.top, WorkbenchSpacing.tight)
           }
           .font(.caption)
         }
@@ -193,7 +193,7 @@ private struct DeploymentLogCodeBlock: View {
         )
       }
     }
-    .padding(6)
+    .padding(WorkbenchSpacing.icon)
     .background(
       WorkbenchBackgroundStyle.control,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
@@ -236,13 +236,13 @@ private struct DeploymentLogRow: View {
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-    .padding(.horizontal, 4)
+    .padding(.horizontal, WorkbenchSpacing.tight)
     .padding(.vertical, 1)
     .background(
       isErrorLine
         ? WorkbenchTheme.risk.opacity(0.12)
         : Color.clear,
-      in: RoundedRectangle(cornerRadius: 3)
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge)
     )
   }
 }

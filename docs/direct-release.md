@@ -21,6 +21,23 @@ RepoPress 不在应用包中携带 Git、Hugo、Zola、Codex 或 Node.js。相�
 `direct` profile 包含对既有完整签名、公证产物的 `--validate` 检查，不能作为首次生成产物前的纯预检。
 完整 profile 适用于包含维护工作流和渠道台账的开发仓；公开源码快照按其安装的 CI 工作流验证源码，阅读本指南不代表快照包含全部发行材料。
 
+## 公开源码快照
+
+公开仓的内容通过开发仓的 `script/export_public_snapshot.sh` 导出，不直接推送开发仓的
+Git 历史。准备更新已有公开仓时，传入它的独立 checkout，先检查完整远端历史再生成快照：
+
+```bash
+./script/export_public_snapshot.sh --public-repository /path/to/public-checkout /path/to/empty-snapshot
+```
+
+参数以导出器的 usage 为准。[公开边界检查器](../script/check_public_snapshot.sh)的
+`--remote-history` 模式刷新 `origin` 的全部分支与标签；浅克隆先补齐历史，标签存入独立
+本地跟踪命名空间。它不修改远端、当前分支或本地标签。无法拉取完整历史或发现私有路径
+时返回非零，导出器不会创建快照。只清理当前主分支的文件不足以通过此检查。
+
+不传公开 checkout 的导出用于离线审阅，不提供远端历史证明。历史问题须单独处理后
+重新检查；快照生成、远端推送与 GitHub CI 的结果仍分别验收。
+
 ## 一次性凭据配置
 
 首次配置 Sparkle 签名密钥和 Apple 公证凭据：

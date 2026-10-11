@@ -2,7 +2,6 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct KnowledgeRelatedChaptersSection: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @StateObject private var state: KnowledgeRelatedChaptersFeatureFacade
   var showsHeader = true
   var maximumVisibleRecommendations: Int?
@@ -115,16 +114,18 @@ struct KnowledgeRelatedChaptersSection: View {
           Text(reason.localizedDisplayName)
             .font(.workbenchMetadata.weight(.medium))
             .lineLimit(1)
-            .foregroundStyle(.tint)
-            .padding(.horizontal, 6)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, WorkbenchSpacing.icon)
             .padding(.vertical, 2)
-            .background(workbenchAccentColor.opacity(0.09), in: Capsule())
+            .background(Color.secondary.opacity(0.09), in: Capsule())
         }
       }
     }
-    .padding(10)
+    .padding(WorkbenchSpacing.card)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: 9))
+    .background(
+      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
     .contentShape(Rectangle())
     .accessibilityElement(children: .combine)
     .accessibilityLabel(

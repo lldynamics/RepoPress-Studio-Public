@@ -3,6 +3,7 @@ import SwiftUI
 
 /// Native source-list navigation for the repository image browser.
 struct RepositoryImageFolderSidebar: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let inventory: RepositoryImageInventory?
   let isLoading: Bool
   let errorMessage: String?
@@ -61,8 +62,8 @@ struct RepositoryImageFolderSidebar: View {
         .accessibilityLabel(String(localized: "清除文件夹搜索"))
       }
     }
-    .padding(.horizontal, 10)
-    .padding(.vertical, 8)
+    .padding(.horizontal, WorkbenchSpacing.control)
+    .padding(.vertical, WorkbenchSpacing.control)
   }
 
   private var shortcutsSection: some View {
@@ -91,13 +92,13 @@ struct RepositoryImageFolderSidebar: View {
         Label(errorMessage, systemImage: "exclamationmark.triangle")
           .font(.caption)
           .foregroundStyle(WorkbenchTheme.warning)
-          .padding(.vertical, 5)
+          .padding(.vertical, WorkbenchSpacing.tight)
           .accessibilityLabel(errorMessage)
       } else {
         Text(String(localized: "暂无图片目录"))
           .font(.caption)
           .foregroundStyle(.secondary)
-          .padding(.vertical, 5)
+          .padding(.vertical, WorkbenchSpacing.tight)
       }
     }
   }
@@ -144,7 +145,7 @@ struct RepositoryImageFolderSidebar: View {
         } label: {
           HStack(spacing: 7) {
             Image(systemName: "folder")
-              .foregroundStyle(WorkbenchTheme.primary)
+              .foregroundStyle(.secondary)
               .accessibilityHidden(true)
             Text(node.name)
               .lineLimit(1)
@@ -156,8 +157,8 @@ struct RepositoryImageFolderSidebar: View {
           .frame(minHeight: 28, alignment: .leading)
           .contentShape(Rectangle())
           .background(
-            selected ? WorkbenchTheme.success.opacity(0.16) : Color.clear,
-            in: RoundedRectangle(cornerRadius: 5)
+            selected ? workbenchAccentColor.opacity(0.16) : Color.clear,
+            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge)
           )
         }
         .buttonStyle(.plain)
@@ -169,7 +170,10 @@ struct RepositoryImageFolderSidebar: View {
         .accessibilityIdentifier("repository-image-folder-" + safeID(node.repositoryPath))
       }
       .padding(.leading, CGFloat(depth) * 14)
-      .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+      .listRowInsets(
+        EdgeInsets(
+          top: 0, leading: WorkbenchSpacing.control, bottom: 0, trailing: WorkbenchSpacing.control)
+      )
       .accessibilityElement(children: .contain)
   }
 
@@ -189,8 +193,8 @@ struct RepositoryImageFolderSidebar: View {
         .buttonStyle(.plain)
         .accessibilityLabel(String(localized: "刷新图片目录"))
       }
-      .padding(.horizontal, 12)
-      .padding(.bottom, 8)
+      .padding(.horizontal, WorkbenchSpacing.card)
+      .padding(.bottom, WorkbenchSpacing.control)
     }
   }
 
@@ -205,8 +209,11 @@ struct RepositoryImageFolderSidebar: View {
         .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
     }
     .buttonStyle(.plain)
-    .foregroundStyle(selected ? WorkbenchTheme.primary : .primary)
-    .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+    .foregroundStyle(selected ? workbenchAccentColor : Color.primary)
+    .listRowInsets(
+      EdgeInsets(
+        top: 0, leading: WorkbenchSpacing.control, bottom: 0, trailing: WorkbenchSpacing.control)
+    )
     .accessibilityAddTraits(selected ? .isSelected : [])
     .accessibilityIdentifier("repository-image-shortcut-" + title)
   }

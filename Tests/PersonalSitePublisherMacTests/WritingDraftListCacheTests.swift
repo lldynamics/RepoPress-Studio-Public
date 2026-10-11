@@ -14,6 +14,11 @@ final class WritingDraftListCacheTests: XCTestCase {
     let now = Date(timeIntervalSince1970: 1_758_780_000)
     let today = now.addingTimeInterval(-2 * 60 * 60)
     let previousDay = now.addingTimeInterval(-26 * 60 * 60)
+    let fourDaysAgo = now.addingTimeInterval(-4 * 24 * 60 * 60)
+    let twoWeeksAgo = now.addingTimeInterval(-14 * 24 * 60 * 60)
+    var weekday = Date.FormatStyle.dateTime.weekday(.abbreviated)
+    weekday.calendar = calendar
+    weekday.timeZone = utc
 
     XCTAssertEqual(
       writingDraftListDateText(today, now: now, calendar: calendar),
@@ -21,8 +26,32 @@ final class WritingDraftListCacheTests: XCTestCase {
     )
     XCTAssertEqual(
       writingDraftListDateText(previousDay, now: now, calendar: calendar),
-      previousDay.formatted(date: .numeric, time: .omitted)
+      String(localized: "昨天")
     )
+    XCTAssertEqual(
+      writingDraftListDateText(fourDaysAgo, now: now, calendar: calendar),
+      fourDaysAgo.formatted(weekday)
+    )
+    XCTAssertEqual(
+      writingDraftListDateText(twoWeeksAgo, now: now, calendar: calendar),
+      twoWeeksAgo.formatted(date: .numeric, time: .omitted)
+    )
+  }
+
+  func testDraftRowsKeepNeutralStatusForAccessibilityWithoutDuplicateIcons() {
+    let profile = SiteProfile.defaultProfile
+    let draft = ArticleDraft(siteProfileID: profile.id, title: "Plain draft", status: .draft)
+    let presentation = WritingDraftRowPresentation(
+      draft: draft,
+      profile: profile,
+      display: PrivateContentDisplay(title: draft.title, summary: draft.summary, isMasked: false)
+    )
+
+    XCTAssertEqual(presentation.metadataDetails, "")
+    XCTAssertEqual(presentation.metadata, presentation.metadataDate)
+    XCTAssertEqual(presentation.statusTags, [.draft])
+    XCTAssertEqual(presentation.metadataSymbolRole, .neutral)
+    XCTAssertTrue(presentation.help.contains(DraftStatus.draft.localizedDisplayName))
   }
 
   func testRowPresentationKeepsStatusAndFullDateInSeparateMetadataFields() {
@@ -32,6 +61,7 @@ final class WritingDraftListCacheTests: XCTestCase {
       siteProfileID: profile.id,
       title: "English article title",
       slug: "english-article",
+      draft: false,
       visibility: .private,
       status: .ready,
       metadataUpdatedAt: metadataUpdatedAt
@@ -48,18 +78,175 @@ final class WritingDraftListCacheTests: XCTestCase {
       display: display
     )
 
-    XCTAssertEqual(
-      presentation.metadataDetails,
-      [draft.status.localizedDisplayName, draft.visibility.localizedDisplayName]
-        .joined(separator: " · ")
-    )
+    XCTAssertEqual(presentation.metadataDetails, "")
+    XCTAssertEqual(presentation.statusTags, [.ready])
     XCTAssertEqual(
       presentation.metadataDate,
       writingDraftListDateText(metadataUpdatedAt)
     )
+    XCTAssertEqual(presentation.metadata, presentation.metadataDate)
+  }
+
+  func testRowAttentionShowsIssuesAndSyncAndInvalidatesTheCacheKey() {
+    let profile = SiteProfile.defaultProfile
+    let draft = ArticleDraft(siteProfileID: profile.id, title: "Needs work", status: .draft)
+    let display = PrivateContentDisplay(title: draft.title, summary: draft.summary, isMasked: false)
+    let attention = WritingDraftRowAttention(articleIssueCount: 2, needsSync: true)
+
+    let presentation = WritingDraftRowPresentation(
+      draft: draft, profile: profile, display: display, attention: attention
+    )
+
+    XCTAssertEqual(presentation.issueSummary, String(localized: "\(2) 项问题"))
+    XCTAssertEqual(presentation.metadataDetails, "")
+    XCTAssertEqual(presentation.statusTags, [.draft, .unsynced, .alerts(2)])
+    XCTAssertTrue(presentation.help.contains(String(localized: "同步异常")))
+    XCTAssertTrue(presentation.statusSummary.hasPrefix(String(localized: "\(2) 项问题")))
+    XCTAssertEqual(presentation.metadataSymbolRole, .warning)
+    XCTAssertNotEqual(
+      WritingDraftRowPresentationCacheKey(draft: draft, profile: profile, display: display),
+      WritingDraftRowPresentationCacheKey(
+        draft: draft, profile: profile, display: display, attention: attention)
+    )
+  }
+
+  func testCompactPrivateRowKeepsAttentionAndDoesNotExposeMaskedContent() {
+    let profile = SiteProfile.defaultProfile
+    let draft = ArticleDraft(
+      siteProfileID: profile.id, title: "Secret title", slug: "secret-path", draft: false,
+      visibility: .private, status: .ready
+    )
+    let display = PrivateContentDisplay(
+      title: "Masked title", summary: "Masked summary", isMasked: true)
+    let presentation = WritingDraftRowPresentation(
+      draft: draft, profile: profile, display: display,
+      attention: WritingDraftRowAttention(articleIssueCount: 2, needsSync: true)
+    )
+
+    XCTAssertEqual(presentation.title, display.title)
+    XCTAssertEqual(presentation.privacySystemImage, "lock.shield.fill")
+    XCTAssertTrue(presentation.statusSummary.hasPrefix(String(localized: "\(2) 项问题")))
+    XCTAssertTrue(presentation.statusSummary.contains(String(localized: "同步异常")))
+    XCTAssertTrue(presentation.statusSummary.contains(DraftStatus.ready.localizedDisplayName))
+    XCTAssertFalse(presentation.statusSummary.contains(draft.visibility.localizedDisplayName))
+    XCTAssertFalse(presentation.help.contains(draft.title))
+    XCTAssertFalse(presentation.help.contains(draft.slug))
+    XCTAssertTrue(presentation.help.contains(display.summary))
+  }
+
+  func testOrdinaryPublishedRowIsNeutralAndPublishFailureStaysProminent() {
+    let profile = SiteProfile.defaultProfile
+    for status in [DraftStatus.draft, .ready, .published, .failed] {
+      let draft = ArticleDraft(
+        siteProfileID: profile.id, title: "Article", draft: status == .draft, status: status)
+      let presentation = WritingDraftRowPresentation(
+        draft: draft, profile: profile,
+        display: PrivateContentDisplay(title: draft.title, summary: draft.summary, isMasked: false)
+      )
+      XCTAssertNil(presentation.privacySystemImage)
+      XCTAssertEqual(
+        presentation.statusSummary,
+        status == .failed
+          ? String(localized: "发布失败") + " · " + ArticleState.ready.displayName
+          : draft.articleState.displayName
+      )
+      XCTAssertEqual(presentation.metadataSymbolRole, status == .failed ? .failed : .neutral)
+      XCTAssertTrue(presentation.help.contains(draft.articleState.displayName))
+    }
+  }
+
+  func testPrivatePublishedArticlesUsePublishedFilterAndKeepTheirLock() {
+    let profile = SiteProfile.defaultProfile
+    let draft = ArticleDraft(
+      siteProfileID: profile.id, title: "Private published article", draft: false,
+      visibility: .private, status: .published
+    )
+    XCTAssertTrue(DraftListFilter.published.matches(draft, taskState: nil))
+    XCTAssertTrue(DraftListFilter.privateArticles.matches(draft, taskState: nil))
+    XCTAssertFalse(DraftListFilter.ready.matches(draft, taskState: nil))
+    for masked in [false, true] {
+      let row = WritingDraftRowPresentation(
+        draft: draft, profile: profile,
+        display: PrivateContentDisplay(title: "Visible title", summary: "", isMasked: masked)
+      )
+      XCTAssertEqual(row.statusTags, [.published])
+      XCTAssertEqual(row.privacySystemImage, masked ? "lock.shield.fill" : "lock.fill")
+    }
+  }
+
+  func testPublishFailureRemainsFirstWhenChecksAndSyncAlsoNeedAttention() {
+    let profile = SiteProfile.defaultProfile
+    let draft = ArticleDraft(siteProfileID: profile.id, title: "Failed article", status: .failed)
+    let presentation = WritingDraftRowPresentation(
+      draft: draft, profile: profile,
+      display: PrivateContentDisplay(title: draft.title, summary: draft.summary, isMasked: false),
+      attention: WritingDraftRowAttention(articleIssueCount: 12, needsSync: true)
+    )
+    XCTAssertTrue(presentation.statusSummary.hasPrefix(String(localized: "发布失败")))
+    XCTAssertEqual(presentation.metadataSymbolRole, .failed)
+    XCTAssertTrue(presentation.statusSummary.contains(String(localized: "\(12) 项问题")))
+    XCTAssertTrue(presentation.help.contains(String(localized: "同步异常")))
+  }
+
+  func testOnlyFailedOrDivergedRepositoryStatesNeedAttention() {
+    XCTAssertFalse(WritingDraftRowAttention.syncNeedsAttention(.localChanged))
+    XCTAssertTrue(WritingDraftRowAttention.syncNeedsAttention(.diverged))
+    XCTAssertTrue(WritingDraftRowAttention.syncNeedsAttention(.failed))
+    XCTAssertFalse(WritingDraftRowAttention.syncNeedsAttention(.localOnly))
+    XCTAssertFalse(WritingDraftRowAttention.syncNeedsAttention(.projectSaved))
+    XCTAssertFalse(WritingDraftRowAttention.syncNeedsAttention(.synced))
+    XCTAssertFalse(WritingDraftRowAttention.syncNeedsAttention(.awaitingReview))
+  }
+
+  func testStateFilterAndCacheFollowDraftFlagAndGeneralScope() {
+    let profile = SiteProfile.defaultProfile
+    var draft = ArticleDraft(siteProfileID: profile.id, title: "State projection", status: .ready)
+    let display = PrivateContentDisplay(title: draft.title, summary: draft.summary, isMasked: false)
+    let before = WritingDraftRowPresentationCacheKey(
+      draft: draft, profile: profile, display: display)
+    XCTAssertTrue(DraftListFilter.draft.matches(draft, taskState: nil))
+    XCTAssertFalse(DraftListFilter.ready.matches(draft, taskState: nil))
+    draft.draft = false
+    XCTAssertTrue(DraftListFilter.ready.matches(draft, taskState: nil))
+    XCTAssertNotEqual(
+      before, WritingDraftRowPresentationCacheKey(draft: draft, profile: profile, display: display))
+    draft.assignToGeneralDraft()
+    XCTAssertTrue(DraftListFilter.localOnly.matches(draft, taskState: nil))
+    XCTAssertFalse(DraftListFilter.draft.matches(draft, taskState: nil))
+    let row = WritingDraftRowPresentation(draft: draft, profile: profile, display: display)
+    XCTAssertEqual(row.statusSummary, ArticleState.localOnly.displayName)
+    XCTAssertEqual(row.statusTags, [.localOnly])
+  }
+
+  func testRecencySectionsFollowListOrderAndKeepPagingIndices() {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
+    let now = Date(timeIntervalSince1970: 1_758_780_000)
+    let profile = SiteProfile.defaultProfile
+    func draft(_ title: String, daysAgo: Double) -> ArticleDraft {
+      ArticleDraft(
+        siteProfileID: profile.id, title: title,
+        metadataUpdatedAt: now.addingTimeInterval(-daysAgo * 24 * 60 * 60 - 60)
+      )
+    }
+    let drafts = [
+      draft("a", daysAgo: 0), draft("b", daysAgo: 0), draft("c", daysAgo: 3),
+      draft("d", daysAgo: 30),
+    ]
+
+    let sections = WritingDraftRecencyGroup.sections(for: drafts, now: now, calendar: calendar)
+
+    XCTAssertEqual(sections.map(\.group), [.today, .thisWeek, .earlier])
+    XCTAssertEqual(sections.map { $0.rows.map(\.index) }, [[0, 1], [2], [3]])
     XCTAssertEqual(
-      presentation.metadata,
-      [presentation.metadataDetails, presentation.metadataDate].joined(separator: " · ")
+      WritingDraftRecencyGroup(
+        date: now.addingTimeInterval(3 * 24 * 60 * 60), now: now, calendar: calendar),
+      .future
+    )
+    XCTAssertEqual(
+      WritingDraftRecencyGroup.sections(for: drafts.reversed(), now: now, calendar: calendar)
+        .map(\.group),
+      [.earlier, .thisWeek, .today]
     )
   }
 

@@ -34,7 +34,7 @@ struct KnowledgeMetadataEditorView: View {
           .font(.headline)
         Spacer()
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
       Divider()
 
       Form {
@@ -59,13 +59,13 @@ struct KnowledgeMetadataEditorView: View {
             .accessibilityLabel("摘要")
             .frame(minHeight: 140)
             .overlay {
-              RoundedRectangle(cornerRadius: 6)
+              RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
                 .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
             }
         }
       }
       .formStyle(.grouped)
-      .padding(12)
+      .padding(WorkbenchSpacing.card)
 
       Divider()
 
@@ -78,7 +78,7 @@ struct KnowledgeMetadataEditorView: View {
           .keyboardShortcut(.defaultAction)
           .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
     }
     .frame(minWidth: 560, idealWidth: 640, minHeight: 500, idealHeight: 580)
     .accessibilityIdentifier("knowledge-metadata-editor")

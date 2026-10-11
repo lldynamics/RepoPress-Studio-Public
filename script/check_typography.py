@@ -20,6 +20,7 @@ class Finding:
 
 VIEW_OWNER_PATTERN = re.compile(r"\b(Text|Label|Image)\s*\(")
 FIXED_POINT_FONT_PATTERN = re.compile(r"\.font\(\.system\(size\s*:")
+NUMERIC_SYMBOL_SIZE_PATTERN = re.compile(r"\.system\(size\s*:\s*[0-9]")
 
 
 def nearest_view_owner(lines: list[str], font_line_index: int) -> str | None:
@@ -74,6 +75,15 @@ def scan(root: Path) -> list[Finding]:
                             line_number,
                             "TYP004",
                             "visible text uses a fixed point size; use a semantic Font role so accessibility sizing remains effective",
+                        )
+                    )
+                elif NUMERIC_SYMBOL_SIZE_PATTERN.search(line):
+                    findings.append(
+                        Finding(
+                            path,
+                            line_number,
+                            "TYP005",
+                            "icon sizes must use a WorkbenchIconSize token so the same kind of icon matches across views",
                         )
                     )
     return findings

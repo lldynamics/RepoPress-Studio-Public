@@ -139,7 +139,7 @@ struct MarkdownBatchFindReplacePanel: View {
         .accessibilityIdentifier("markdown-batch-write-progress")
       }
     }
-    .padding(16)
+    .padding(WorkbenchSpacing.content)
   }
 
   @ViewBuilder
@@ -208,7 +208,7 @@ struct MarkdownBatchFindReplacePanel: View {
           Spacer()
           Text(presentation.statusText)
             .font(.caption.monospacedDigit())
-            .foregroundStyle(preview.canApply ? WorkbenchTheme.primary : Color.secondary)
+            .foregroundStyle(preview.canApply ? WorkbenchTheme.success : Color.secondary)
         }
 
         if let sourceExcerpt = presentation.sourceExcerpt {
@@ -228,7 +228,7 @@ struct MarkdownBatchFindReplacePanel: View {
         }
       }
     }
-    .padding(.vertical, 5)
+    .padding(.vertical, WorkbenchSpacing.tight)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("markdown-batch-preview-\(preview.documentID.uuidString)")
   }
@@ -263,8 +263,8 @@ struct MarkdownBatchFindReplacePanel: View {
       .disabled(isBusy)
       .accessibilityIdentifier("markdown-batch-apply-button")
     }
-    .padding(.horizontal, 16)
-    .padding(.vertical, 12)
+    .padding(.horizontal, WorkbenchSpacing.content)
+    .padding(.vertical, WorkbenchSpacing.card)
   }
 
   private var options: MarkdownFindOptions {

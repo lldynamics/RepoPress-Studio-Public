@@ -78,7 +78,7 @@ struct EditorAIReviewBar: View {
           .tint(decision == .rejected ? .red : nil)
           .accessibilityIdentifier("editor-ai-review-reject")
         Button(action: onAccept) { Label("选择应用", systemImage: "checkmark") }
-          .tint(decision == .accepted ? WorkbenchTheme.primary : nil)
+          .tint(decision == .accepted ? WorkbenchTheme.success : nil)
           .accessibilityIdentifier("editor-ai-review-accept")
       }
       HStack {
@@ -92,9 +92,12 @@ struct EditorAIReviewBar: View {
           .accessibilityIdentifier("editor-ai-review-apply")
       }
     }
-    .padding(12)
-    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-    .overlay(RoundedRectangle(cornerRadius: 12).stroke(WorkbenchTheme.primary.opacity(0.25)))
+    .padding(WorkbenchSpacing.card)
+    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel))
+    .overlay(
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel).stroke(
+        WorkbenchTheme.success.opacity(0.25))
+    )
     .accessibilityElement(children: .contain)
     .accessibilityLabel("编辑器内 AI 修改审阅")
     .accessibilityValue(decisionLabel)
@@ -119,7 +122,7 @@ struct EditorAIReviewBar: View {
   private var decisionColor: Color {
     switch decision {
     case .pending: .secondary
-    case .accepted: WorkbenchTheme.primary
+    case .accepted: WorkbenchTheme.success
     case .rejected: .red
     }
   }

@@ -18,50 +18,6 @@ actor RSSReaderNetworkAccessState {
   }
 }
 
-public struct RSSReaderSnapshot: Codable, Sendable {
-  public static let currentSchemaVersion = 5
-
-  public var schemaVersion: Int
-  public var feeds: [RSSFeed]
-  public var articles: [RSSArticle]
-  public var highlights: [RSSArticleHighlight]
-  public var mediaAssets: [RSSMediaAsset]
-
-  public init(
-    schemaVersion: Int = RSSReaderSnapshot.currentSchemaVersion,
-    feeds: [RSSFeed] = [],
-    articles: [RSSArticle] = [],
-    highlights: [RSSArticleHighlight] = [],
-    mediaAssets: [RSSMediaAsset] = []
-  ) {
-    self.schemaVersion = schemaVersion
-    self.feeds = feeds
-    self.articles = articles
-    self.highlights = highlights
-    self.mediaAssets = mediaAssets
-  }
-
-  enum CodingKeys: String, CodingKey {
-    case schemaVersion
-    case feeds
-    case articles
-    case highlights
-    case mediaAssets
-  }
-
-  public init(from decoder: Decoder) throws {
-    let container = try decoder.container(keyedBy: CodingKeys.self)
-    self.init(
-      schemaVersion: try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1,
-      feeds: try container.decodeIfPresent([RSSFeed].self, forKey: .feeds) ?? [],
-      articles: try container.decodeIfPresent([RSSArticle].self, forKey: .articles) ?? [],
-      highlights: try container.decodeIfPresent([RSSArticleHighlight].self, forKey: .highlights)
-        ?? [],
-      mediaAssets: try container.decodeIfPresent([RSSMediaAsset].self, forKey: .mediaAssets) ?? []
-    )
-  }
-}
-
 struct RSSArticlePayloadLRU {
   let capacity: Int
   var articlesByID: [String: RSSArticle] = [:]
@@ -267,6 +223,7 @@ public final class RSSReaderStore: ObservableObject {
   @Published public internal(set) var feedBodyOfflineCacheEnabled: Bool
   @Published public internal(set) var privateNetworkAccessEnabled: Bool
   @Published public internal(set) var lastPruneSummary: RSSArticlePruneSummary?
+  @Published public internal(set) var historyBackfillProgress: RSSHistoryBackfillProgress?
 
   public let fileURL: URL
 
@@ -288,6 +245,7 @@ public final class RSSReaderStore: ObservableObject {
   var payloadCache = RSSArticlePayloadLRU(capacity: 16)
   var articleLoadTasks: [String: Task<RSSArticle?, Error>] = [:]
   var bootstrapHeaderLoadTask: Task<Void, Never>? = nil
+  var historyBackfillTask: Task<Void, Never>?
   var legacyArticles: [RSSArticle] = []
   var deletedFeedSnapshots: [DeletedFeedSnapshot] = []
   var lastBatchReadSnapshot: BatchReadSnapshot?

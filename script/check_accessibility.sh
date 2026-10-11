@@ -28,7 +28,9 @@ require_literal_count() {
   local message="$4"
   local actual_count=""
   require_file "$relative_path"
-  actual_count="$(grep -Fc "$literal" "$ROOT_DIR/$relative_path" || true)"
+  actual_count="$(
+    grep -oF "$literal" "$ROOT_DIR/$relative_path" | wc -l | tr -d '[:space:]' || true
+  )"
   [[ "$actual_count" == "$expected_count" ]] \
     || fail "$message (expected $expected_count, found $actual_count)"
 }
@@ -141,17 +143,29 @@ require_literal \
   "menu commands must consume the focused scene command router"
 
 unexpected_publish_execution_references="$(
-  grep -R -nE \
+  grep -R -n -oE \
     '(writeSelectedDraftToLocalRepository|commitSelectedDraftUsingPreferredStrategy|commitSelectedDraftDirectly|commitSelectedDraftToReviewBranch|publishSelectedDraftOnlineUsingPreferredStrategy|writeBatchReadyDraftsToLocalRepository|publishBatchReadyDraftsOnlineUsingPreferredStrategy)\(' \
     "$ROOT_DIR/Sources/PersonalSitePublisherMac" \
     --include='*.swift' \
     | grep -v '/Views/Publishing/PublishDrawerView.swift:' \
+    | grep -vE '/Views/Publishing/PublishDrawerOperations.swift:[0-9]+:publishSelectedDraftOnlineUsingPreferredStrategy\($' \
     || true
 )"
 if [[ -n "$unexpected_publish_execution_references" ]]; then
   printf '%s\n' "$unexpected_publish_execution_references" >&2
-  fail "desktop publishing mutations must remain isolated to PublishDrawerView"
+  fail "desktop publishing mutations must remain isolated to the drawer and its reviewed direct-article operation"
 fi
+
+require_literal_count \
+  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerOperations.swift" \
+  'publishSelectedDraftOnlineUsingPreferredStrategy(' \
+  "1" \
+  "the direct-article operation must have exactly one preferred-strategy publish call"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerOperations.swift" \
+  "expectedReview: review.expectation" \
+  "the direct-article operation must preserve its frozen review expectation"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftListComponents.swift" \
@@ -250,18 +264,18 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspacePublishingStatusToolbar.swift" \
-  ".accessibilityLabel(contextualStatusTitle)" \
-  "publishing status control must expose its contextual accessibility label"
+  '.accessibilityLabel(String(localized: "发布"))' \
+  "publish action must expose its own accessibility label"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspacePublishingStatusToolbar.swift" \
-  ".accessibilityValue(\"\(currentToolbarStatus.area.title)：\(currentToolbarStatus.value)\")" \
-  "publishing status control must expose its current priority status"
+  '.accessibilityValue("\(status.value)，\(status.detail)")' \
+  "publish action must expose its current readiness status and first reason"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspacePublishingStatusToolbar.swift" \
-  "点击查看状态和发布操作。" \
-  "publishing status control must explain the merged status and publishing entry"
+  "发布前需处理：" \
+  "publish action must explain the first outstanding readiness reason"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/AIChat/AIChatWorkspaceInspectorComposer.swift" \
@@ -331,6 +345,11 @@ require_literal_count \
 
 require_absent_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
+  "workspace-open-settings" \
+  "settings opens from the app menu (⌘,); the toolbar must not duplicate it"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
   "workspace-primary-toolbar-actions" \
   "workspace actions must not collapse into one accessible hit target"
 
@@ -341,8 +360,7 @@ require_literal \
 
 for toolbar_identifier in \
   "ai-assistant-toolbar-button" \
-  "workspace-inspector-toggle" \
-  "workspace-open-settings"; do
+  "workspace-inspector-toggle"; do
   require_literal_count \
     "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
     ".accessibilityIdentifier(\"${toolbar_identifier}\")" \
@@ -354,9 +372,7 @@ for top_bar_identifier in \
   "workspace-sidebar-toggle" \
   "workspace-profile-menu" \
   "workspace-command-search" \
-  "workspace-preview" \
-  "workspace-task-center-toggle" \
-  "workspace-prepare-publish"; do
+  "workspace-preview"; do
   require_literal_count \
     "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTopBarView.swift" \
     ".accessibilityIdentifier(\"${top_bar_identifier}\")" \
@@ -366,9 +382,15 @@ done
 
 require_literal_count \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspacePublishingStatusToolbar.swift" \
-  ".accessibilityIdentifier(\"workspace-publishing-status\")" \
+  ".accessibilityIdentifier(\"workspace-prepare-publish\")" \
   "1" \
-  "publishing status identifier must remain unique"
+  "merged publish action identifier must remain unique"
+
+require_literal_count \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceRailView.swift" \
+  ".accessibilityIdentifier(\"workspace-task-center-toggle\")" \
+  "1" \
+  "rail task-center identifier must remain unique"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTopBarView.swift" \
@@ -396,19 +418,39 @@ require_literal \
   "AI and Inspector requests must arbitrate with the publish drawer"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
-  "dismissPublishDrawerIfNeeded()" \
-  "Inspector preparation must dismiss an existing publish drawer"
+  "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView+PublishingPresentation.swift" \
+  "modalPresentation.present(.compactPublishInspector)" \
+  "legal narrow windows must retain a publishing entry through the compact sheet"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView+PublishingPresentation.swift" \
+  "PublishDrawerView(" \
+  "compact publishing must reuse the reviewed drawer workflow"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
-  "modalPresentation.dismiss(.publishDrawer)" \
-  "Inspector destinations must replace the publish drawer instead of opening behind it"
+  '.focusedSceneValue(\.aiChatWorkspaceCommandAction, aiChatWorkspaceCommandAction)' \
+  "AI menus must consume the current window action"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
+  "toggleAIChatWorkspaceForCommandContext" \
+  "AI shortcut must open its window tab without toggling global visibility"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/MetadataColumn.swift" \
+  ".accessibilityIdentifier(\"workspace-inspector-tabs\")" \
+  "unified inspector must expose an accessible tab picker"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/MetadataColumn.swift" \
+  ".accessibilityIdentifier(\"workspace-publish-inspector\")" \
+  "publishing must use the unified inspector content"
 
 require_literal \
   "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
-  "testPublishDrawerYieldsToToolbarInspectorDestinations" \
-  "runtime coverage must switch from the publish drawer to both toolbar inspector destinations"
+  "testUnifiedInspectorSwitchesToolbarDestinations" \
+  "runtime coverage must switch inspector tabs and toggle visibility"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
@@ -589,13 +631,13 @@ for repository_image_identifier in \
 done
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Site/ContentHealthDetailView.swift" \
-  "content-health-select-article-\(row.draftID.uuidString)" \
-  "each problem article in Checks must expose a unique selection accessibility identifier"
+  "Sources/PersonalSitePublisherMac/Views/Site/ContentHealthDetailRows.swift" \
+  "content-health-select-issue-\(row.id)" \
+  "each problem in Checks must expose a unique selection accessibility identifier"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Site/ContentHealthDetailView.swift" \
-  "content-health-open-article-\(selectedRow.draftID.uuidString)" \
+  "Sources/PersonalSitePublisherMac/Views/Site/ContentHealthDetailRows.swift" \
+  "content-health-open-article-\(article.draftID.uuidString)" \
   "each selected problem article in Checks must expose a unique open-article accessibility identifier"
 
 require_literal \
@@ -632,7 +674,7 @@ require_literal_any_file \
   "Sources/PersonalSitePublisherMac/Views/Settings/PrivacySettingsVisibilitySection.swift"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
+  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerSideViews.swift" \
   ".focused(\$isTitleFocused)" \
   "title issues must be able to focus the single editor title field"
 
@@ -820,6 +862,7 @@ for publish_drawer_identifier in \
   publish-drawer-action-save-local \
   publish-drawer-action-publish-all \
   publish-drawer-action-publish-current \
+  publish-drawer-primary-disabled-reason \
   publish-drawer-review-disclosure \
   publish-drawer-diff; do
   require_literal \
@@ -917,8 +960,8 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceRailView.swift" \
-  ".accessibilityIdentifier(\"workspace-task-navigation\")" \
-  "workspace task navigation must expose a stable accessibility identifier"
+  ".accessibilityIdentifier(\"workspace-primary-navigation-rail\")" \
+  "workspace primary navigation rail must expose a stable accessibility identifier"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceRailView.swift" \
@@ -943,14 +986,9 @@ require_literal \
   "full navigation must render visible modules in the shared primary route order"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCompactNavigationRail.swift" \
-  "moduleVisibility.primarySections" \
-  "compact navigation must render the same visible modules as the full sidebar"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCompactNavigationRail.swift" \
-  '.accessibilityIdentifier("workspace-compact-rail-\(section.rawValue)")' \
-  "compact navigation must expose each primary route as a direct icon button"
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceLayoutViews.swift" \
+  "WorkspacePrimaryNavigationRail(" \
+  "all responsive widths must render the same primary navigation rail"
 
 require_absent_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceRailView.swift" \
@@ -1295,18 +1333,13 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftColumn+Toolbar.swift" \
-  'Label("新建文章", systemImage: "doc.badge.plus")' \
-  "writing create action must keep its visible title and icon"
+  '.help(String(localized: "新建站点文章（⌘N）"))' \
+  "the icon-only writing create action must name itself and its shortcut on hover"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftColumn+Toolbar.swift" \
-  "createArticleButtonLabel(.titleAndIcon)" \
-  "writing create action must prefer its visible title and icon"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftColumn+Toolbar.swift" \
-  "ViewThatFits(in: .horizontal)" \
-  "writing create action must adapt to the sidebar width"
+  ".accessibilityIdentifier(\"writing-open-data-management\")" \
+  "draft data management must stay reachable from the writing list menu"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftColumn+Toolbar.swift" \
@@ -1423,6 +1456,12 @@ require_literal \
   "formattingRow(items: MarkdownToolbarLayout.primaryFormattingItems)" \
   "compact formatting must preserve primary actions"
 
+require_literal_count \
+  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownFormattingToolbar.swift" \
+  ".accessibilityElement(children: .ignore)" \
+  "3" \
+  "formatting menu labels must surface as one menu button each, not one per icon or text"
+
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownFormattingToolbar.swift" \
   ".accessibilityIdentifier(identifier)" \
@@ -1534,12 +1573,12 @@ require_literal \
   "knowledge collection rows must retain a pointer hover state"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Site/ContentHealthDetailView.swift" \
+  "Sources/PersonalSitePublisherMac/Views/Site/ContentHealthDetailRows.swift" \
   ".accessibilityAddTraits(isSelected ? .isSelected : [])" \
-  "content health article selection must expose selected accessibility traits"
+  "content health problem selection must expose selected accessibility traits"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Knowledge/KnowledgeLibraryDetailView.swift" \
+  "Sources/PersonalSitePublisherMac/Views/Knowledge/KnowledgeDocumentReader.swift" \
   ".accessibilityHeading(accessibilityHeadingLevel(level))" \
   "knowledge reader headings must expose semantic VoiceOver heading levels"
 

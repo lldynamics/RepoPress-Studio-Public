@@ -6,6 +6,8 @@ struct EditorCenterColumn: View {
   let store: WorkbenchStore
   let selectedSection: WorkspaceSection
   let selectedDraftID: UUID?
+  @Binding var selectedHealthIssue: ContentHealthIssueSelection?
+  let healthInspectorActions: ContentHealthInspectorActions
   @Binding var contentHealthFilter: ContentHealthContextFilter
   @Binding var imageWorkbenchContextStage: ImageWorkbenchContextStage
   let imageBrowserSession: RepositoryImageBrowserSession
@@ -23,6 +25,8 @@ struct EditorCenterColumn: View {
     selectedSection: WorkspaceSection,
     selectedDraftID: UUID?,
     contentHealthFilter: Binding<ContentHealthContextFilter>,
+    selectedHealthIssue: Binding<ContentHealthIssueSelection?>,
+    healthInspectorActions: ContentHealthInspectorActions,
     imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>,
     imageBrowserSession: RepositoryImageBrowserSession,
     repositoryContextStage: Binding<RepositoryContextStage>,
@@ -37,6 +41,8 @@ struct EditorCenterColumn: View {
     self.selectedSection = selectedSection
     self.selectedDraftID = selectedDraftID
     _contentHealthFilter = contentHealthFilter
+    _selectedHealthIssue = selectedHealthIssue
+    self.healthInspectorActions = healthInspectorActions
     _imageWorkbenchContextStage = imageWorkbenchContextStage
     self.imageBrowserSession = imageBrowserSession
     _repositoryContextStage = repositoryContextStage
@@ -93,7 +99,9 @@ struct EditorCenterColumn: View {
       ContentHealthDetailView(
         store: store,
         filter: $contentHealthFilter,
-        sidebarProjection: contentHealthSidebarProjection
+        sidebarProjection: contentHealthSidebarProjection,
+        selectedIssue: $selectedHealthIssue,
+        inspectorActions: healthInspectorActions
       )
     case .editor:
       writingEditorDetail

@@ -13,7 +13,7 @@ struct RepositoryImageBrowserView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      header.padding(20)
+      header.padding(WorkbenchSpacing.page)
       if session.isLoading && session.inventory == nil {
         ProgressView("正在读取仓库图片…")
           .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -260,7 +260,7 @@ struct RepositoryImageBrowserView: View {
             }
           }
           .scrollTargetLayout()
-          .padding(.horizontal, 20).padding(.bottom, 20)
+          .padding(.horizontal, WorkbenchSpacing.page).padding(.bottom, WorkbenchSpacing.page)
         }
         .scrollPosition(id: $session.scrollAnchor)
         .focusable().focused($galleryFocused)
@@ -333,7 +333,7 @@ struct RepositoryImageBrowserView: View {
         Image(systemName: "square.grid.2x2").foregroundStyle(.secondary)
       }
     }
-    .padding(.horizontal, 20).padding(.vertical, 10)
+    .padding(.horizontal, WorkbenchSpacing.page).padding(.vertical, WorkbenchSpacing.control)
     .background(.bar)
   }
 

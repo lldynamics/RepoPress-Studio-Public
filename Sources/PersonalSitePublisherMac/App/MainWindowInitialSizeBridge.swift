@@ -16,10 +16,8 @@ struct MainWindowOpenActionRegistration: View {
   }
 }
 
-/// Applies the current workspace default once to windows restored from an
-/// older build. SwiftUI's `defaultSize` covers new windows, while this tiny
-/// bridge migrates an existing restoration record before preserving later
-/// user resizing choices.
+/// Expands restored windows once per window lifetime so both sidebars can
+/// start open. Later user resizing survives representable recreation.
 struct MainWindowInitialSizeBridge: NSViewRepresentable {
   func makeNSView(context: Context) -> MainWindowSizingView {
     MainWindowSizingView()
@@ -30,7 +28,7 @@ struct MainWindowInitialSizeBridge: NSViewRepresentable {
 }
 
 final class MainWindowSizingView: NSView {
-  private static let migrationKey = "didMigrateMainWindowDefaultSizeV2"
+  private static let initiallySizedWindows = NSHashTable<NSWindow>.weakObjects()
   override init(frame frameRect: NSRect) {
     super.init(frame: frameRect)
   }
@@ -42,15 +40,19 @@ final class MainWindowSizingView: NSView {
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
     guard let window else { return }
-    applyMigrationIfNeeded(to: window)
+    applyInitialSizeIfNeeded(to: window)
   }
 
-  private func applyMigrationIfNeeded(to window: NSWindow) {
-    let defaults = UserDefaults.standard
-    guard !defaults.bool(forKey: Self.migrationKey) else { return }
-    // Record the migration even when the restored window is already wide. This
-    // is what preserves the user's later choice to resize it more narrowly.
-    defaults.set(true, forKey: Self.migrationKey)
+  private func applyInitialSizeIfNeeded(to window: NSWindow) {
+    #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+      // CaptureBridgeView owns the explicit fixture size; a default-size
+      // adjustment would race it and can widen a minimum-size UI test.
+      guard !ScreenshotCaptureWindowBridge.managesWorkbenchWindowSize else { return }
+    #endif
+    guard !Self.initiallySizedWindows.contains(window) else { return }
+    // Weak window identity also survives SwiftUI recreating this bridge,
+    // without retaining closed windows or carrying state across launches.
+    Self.initiallySizedWindows.add(window)
 
     guard window.contentLayoutRect.width < WorkbenchLayoutMode.defaultWindowWidth,
       let visibleFrame = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame,

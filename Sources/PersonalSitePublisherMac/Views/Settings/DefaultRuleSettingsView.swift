@@ -219,8 +219,10 @@ private struct DefaultRuleFrontMatterFocusedSection: View {
           .font(.caption.monospaced())
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(10)
-          .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+          .padding(WorkbenchSpacing.card)
+          .background(
+            Color(nsColor: .textBackgroundColor),
+            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
 
         VStack(alignment: .leading, spacing: 4) {
           Text("模拟发布路径与 URL")
@@ -231,7 +233,7 @@ private struct DefaultRuleFrontMatterFocusedSection: View {
             .font(.caption.monospaced())
           Text("URL: \(simulatedURLPath)")
             .font(.caption.monospaced())
-            .foregroundStyle(WorkbenchTheme.brand)
+            .foregroundStyle(.primary)
         }
       }
       .accessibilityIdentifier("default-rule-front-matter-preview")

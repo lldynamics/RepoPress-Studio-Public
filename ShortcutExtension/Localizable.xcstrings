@@ -1,0 +1,438 @@
+{
+  "sourceLanguage": "zh-Hans",
+  "strings": {
+    "保存文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save File"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存文件"
+          }
+        }
+      }
+    },
+    "保存文件到 RepoPress": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save File to RepoPress"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存文件到 RepoPress"
+          }
+        }
+      }
+    },
+    "保存灵感": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save Idea"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存灵感"
+          }
+        }
+      }
+    },
+    "保存灵感到 RepoPress": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save Idea to RepoPress"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存灵感到 RepoPress"
+          }
+        }
+      }
+    },
+    "保存网页": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save Webpage"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存网页"
+          }
+        }
+      }
+    },
+    "保存网页到 RepoPress": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save Webpage to RepoPress"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存网页到 RepoPress"
+          }
+        }
+      }
+    },
+    "内容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Content"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "内容"
+          }
+        }
+      }
+    },
+    "发布 RepoPress 当前文章": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publish Current RepoPress Article"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发布 RepoPress 当前文章"
+          }
+        }
+      }
+    },
+    "发布当前文章": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publish Current Article"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发布当前文章"
+          }
+        }
+      }
+    },
+    "将 ${file} 放入 RepoPress 收件箱": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add ${file} to the RepoPress inbox"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将 ${file} 放入 RepoPress 收件箱"
+          }
+        }
+      }
+    },
+    "将 ${title}：${text} 保存为 RepoPress 笔记": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save ${title}: ${text} as a RepoPress note"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将 ${title}：${text} 保存为 RepoPress 笔记"
+          }
+        }
+      }
+    },
+    "将 ${url} 放入 RepoPress 收件箱": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add ${url} to the RepoPress inbox"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将 ${url} 放入 RepoPress 收件箱"
+          }
+        }
+      }
+    },
+    "将 HTTPS 网页放入 RepoPress 资料库的待导入收件箱。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add an HTTPS webpage to the RepoPress library import inbox."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将 HTTPS 网页放入 RepoPress 资料库的待导入收件箱。"
+          }
+        }
+      }
+    },
+    "将受支持的文档或图片放入 RepoPress 资料库的待导入收件箱。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add a supported document or image to the RepoPress library import inbox."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将受支持的文档或图片放入 RepoPress 资料库的待导入收件箱。"
+          }
+        }
+      }
+    },
+    "将文本作为资料库原生笔记放入 RepoPress 的待导入收件箱。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add text to the RepoPress import inbox as a native library note."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将文本作为资料库原生笔记放入 RepoPress 的待导入收件箱。"
+          }
+        }
+      }
+    },
+    "已放入 RepoPress 待导入收件箱。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Added to the RepoPress import inbox."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已放入 RepoPress 待导入收件箱。"
+          }
+        }
+      }
+    },
+    "打开 RepoPress Studio 当前站点的检查页面。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open the checks for the current site in RepoPress Studio."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开 RepoPress Studio 当前站点的检查页面。"
+          }
+        }
+      }
+    },
+    "打开 RepoPress Studio，在当前站点创建新草稿。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open RepoPress Studio and create a draft in the current site."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开 RepoPress Studio，在当前站点创建新草稿。"
+          }
+        }
+      }
+    },
+    "打开 RepoPress 站点检查": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open RepoPress Site Checks"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开 RepoPress 站点检查"
+          }
+        }
+      }
+    },
+    "打开当前窗口所选文章的发布检查与确认界面。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open publishing checks and confirmation for the article selected in the current window."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开当前窗口所选文章的发布检查与确认界面。"
+          }
+        }
+      }
+    },
+    "新建 RepoPress 文章": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create RepoPress Article"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建 RepoPress 文章"
+          }
+        }
+      }
+    },
+    "新建文章": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Article"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建文章"
+          }
+        }
+      }
+    },
+    "无法打开 RepoPress Studio。请确认应用已安装并重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not open RepoPress Studio. Make sure the app is installed and try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法打开 RepoPress Studio。请确认应用已安装并重试。"
+          }
+        }
+      }
+    },
+    "标题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Title"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "标题"
+          }
+        }
+      }
+    },
+    "站点检查": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Site checks"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "站点检查"
+          }
+        }
+      }
+    },
+    "网页地址": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Web Page URL"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网页地址"
+          }
+        }
+      }
+    },
+    "资料文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reference File"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "资料文件"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

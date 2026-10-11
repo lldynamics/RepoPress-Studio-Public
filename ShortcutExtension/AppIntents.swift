@@ -1,4 +1,5 @@
 import AppIntents
+import AppKit
 import Foundation
 import UniformTypeIdentifiers
 
@@ -95,6 +96,21 @@ struct QueueKnowledgeNoteForRepoPressIntent: AppIntent {
 struct RepoPressShortcutProvider: AppShortcutsProvider {
   static var appShortcuts: [AppShortcut] {
     AppShortcut(
+      intent: NewRepoPressArticleIntent(),
+      phrases: ["在 \(.applicationName) 中新建文章"],
+      shortTitle: "新建文章", systemImageName: "square.and.pencil"
+    )
+    AppShortcut(
+      intent: PublishCurrentRepoPressArticleIntent(),
+      phrases: ["用 \(.applicationName) 发布当前文章"],
+      shortTitle: "发布当前文章", systemImageName: "paperplane"
+    )
+    AppShortcut(
+      intent: OpenRepoPressSiteChecksIntent(),
+      phrases: ["打开 \(.applicationName) 的站点检查"],
+      shortTitle: "站点检查", systemImageName: "checkmark.shield"
+    )
+    AppShortcut(
       intent: QueueWebpageForRepoPressIntent(),
       phrases: [
         "用 \(.applicationName) 保存网页",
@@ -124,6 +140,54 @@ struct RepoPressShortcutProvider: AppShortcutsProvider {
       systemImageName: "note.text.badge.plus"
     )
   }
+}
+
+struct NewRepoPressArticleIntent: AppIntent {
+  static let title: LocalizedStringResource = "新建 RepoPress 文章"
+  static let description = IntentDescription("打开 RepoPress Studio，在当前站点创建新草稿。")
+  static var openAppWhenRun: Bool { true }
+
+  func perform() async throws -> some IntentResult {
+    try await openWorkbenchAction(host: "new-article")
+    return .result()
+  }
+}
+
+struct PublishCurrentRepoPressArticleIntent: AppIntent {
+  static let title: LocalizedStringResource = "发布 RepoPress 当前文章"
+  static let description = IntentDescription("打开当前窗口所选文章的发布检查与确认界面。")
+  static var openAppWhenRun: Bool { true }
+
+  func perform() async throws -> some IntentResult {
+    try await openWorkbenchAction(host: "publish-current")
+    return .result()
+  }
+}
+
+struct OpenRepoPressSiteChecksIntent: AppIntent {
+  static let title: LocalizedStringResource = "打开 RepoPress 站点检查"
+  static let description = IntentDescription("打开 RepoPress Studio 当前站点的检查页面。")
+  static var openAppWhenRun: Bool { true }
+
+  func perform() async throws -> some IntentResult {
+    try await openWorkbenchAction(host: "site-checks")
+    return .result()
+  }
+}
+
+@MainActor
+private func openWorkbenchAction(host: String) throws {
+  guard NSWorkspace.shared.open(try workbenchURL(host: host)) else {
+    throw ShortcutIntakeError.workbenchUnavailable
+  }
+}
+
+private func workbenchURL(host: String) throws -> URL {
+  var components = URLComponents()
+  components.scheme = "repopress"
+  components.host = host
+  guard let url = components.url else { throw ShortcutIntakeError.invalidWebURL }
+  return url
 }
 
 private enum ShortcutIntakeStore {
@@ -326,6 +390,7 @@ private enum ShortcutIntakeError: LocalizedError {
   case invalidNote
   case invalidWebURL
   case unsupportedFile
+  case workbenchUnavailable
 
   var errorDescription: String? {
     switch self {
@@ -339,6 +404,8 @@ private enum ShortcutIntakeError: LocalizedError {
       return "只支持无账号信息且不超过 16 KB 的 HTTPS 网页地址。"
     case .unsupportedFile:
       return "仅支持 PDF、Markdown、文本、HTML 和常见图片文件。"
+    case .workbenchUnavailable:
+      return String(localized: "无法打开 RepoPress Studio。请确认应用已安装并重试。")
     }
   }
 }

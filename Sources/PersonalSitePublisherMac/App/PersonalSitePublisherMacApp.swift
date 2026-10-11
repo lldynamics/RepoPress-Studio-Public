@@ -80,7 +80,9 @@ struct PersonalSitePublisherMacApp: App {
   @ViewBuilder
   private var mainWorkbenchRoot: some View {
     #if DEBUG || SCREENSHOT_CAPTURE_BUILD
-      if let dynamicTypeSize = ScreenshotCaptureWindowBridge.dynamicTypeSizeOverride {
+      if CodexAccountOfflineFixture.isEnabled {
+        CodexAccountOfflineFixture()
+      } else if let dynamicTypeSize = ScreenshotCaptureWindowBridge.dynamicTypeSizeOverride {
         workbenchLaunchRoot
           .environment(\.dynamicTypeSize, dynamicTypeSize)
       } else {
@@ -248,11 +250,9 @@ struct PersonalSitePublisherMacApp: App {
   private var selectedAccentPalette: WorkbenchAccentPalette {
     WorkbenchAccentPalette.resolved(rawValue: accentPaletteRawValue)
   }
-
   private var selectedAppearanceMode: WorkbenchAppearanceMode {
     WorkbenchAppearanceMode.resolved(rawValue: appearanceModeRawValue)
   }
-
   private var selectedInterfaceDensity: WorkbenchInterfaceDensity {
     WorkbenchInterfaceDensity.resolved(rawValue: interfaceDensityRawValue)
   }
@@ -260,7 +260,10 @@ struct PersonalSitePublisherMacApp: App {
 
 @MainActor
 final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate {
-  var workbenchStore: WorkbenchStore?
+  var workbenchStore: WorkbenchStore? {
+    didSet { configureWorkbenchServices(cacheMemoryPressureMonitor) }
+  }
+  private let cacheMemoryPressureMonitor = WorkbenchCacheMemoryPressureMonitor()
   private var isWaitingForTerminationLedgerFlush = false
   private var didConfirmTerminationLedgerFlush = false
   var openMainWindowAction: (() -> Void)? {
@@ -280,9 +283,10 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
   private var closingMainWindowIdentifiers = Set<ObjectIdentifier>()
   private var persistentWindowCommandRequestState = PersistentWindowCommandRequestState()
   private var mainWindowRestoreRequestState = MainWindowRestoreRequestState()
-
   func applicationDidFinishLaunching(_ notification: Notification) {
+    configureWorkbenchLaunchActions()
     NSApp.setActivationPolicy(.regular)
+    cacheMemoryPressureMonitor.start()
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(windowWillClose(_:)),
@@ -300,6 +304,7 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
   }
 
   func applicationDidBecomeActive(_ notification: Notification) {
+    Task { await CodexConnectionController.shared.refreshOnForeground() }
     requestPersistentWindowCommandReconciliation()
     scheduleMainWindowRecoveryIfNeeded()
     if SharedInboxAccessPolicy.isEnabled {
@@ -366,6 +371,7 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
       return
     }
     closingMainWindowIdentifiers.remove(ObjectIdentifier(window))
+    WorkbenchShortcutWindowSelection.shared.record(window)
     mainWindowRestoreRequestState.markCompleted()
     requestPersistentWindowCommandReconciliation()
   }
@@ -375,11 +381,10 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
     case dispatchedOpenAction
     case unavailable
   }
-
   private func restoreMainWindow(in application: NSApplication) -> MainWindowRestoreAttempt {
-    if let mainWindow = application.windows.first(where: { window in
-      isLiveMainWorkbenchWindow(window)
-    }) {
+    if let mainWindow = WorkbenchShortcutWindowSelection.shared.preferredWindow(
+      in: application.windows.filter(isLiveMainWorkbenchWindow))
+    {
       if mainWindow.isMiniaturized {
         mainWindow.deminiaturize(nil)
       }
@@ -527,7 +532,6 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
       self.enqueuePersistentWindowCommandReconciliation()
     }
   }
-
   private var hasOpenMainWorkbenchWindow: Bool {
     NSApp.windows.contains { window in
       isLiveMainWorkbenchWindow(window) && (window.isVisible || window.isMiniaturized)
@@ -674,6 +678,7 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
   }
 
   func applicationWillTerminate(_ notification: Notification) {
+    cacheMemoryPressureMonitor.stop()
     workbenchStore?.stopLocalSitePreviewImmediately()
     if didConfirmTerminationLedgerFlush || workbenchStore == nil {
       WorkbenchSessionRecovery.shared.markCleanExit()
@@ -686,16 +691,6 @@ private struct ApplicationSettingsWindowView: View {
   let store: WorkbenchStore
   let rssStore: RSSReaderStore?
   @ObservedObject var launchCoordinator: WorkbenchLaunchCoordinator
-
-  init(
-    store: WorkbenchStore,
-    rssStore: RSSReaderStore?,
-    launchCoordinator: WorkbenchLaunchCoordinator
-  ) {
-    self.store = store
-    self.rssStore = rssStore
-    self.launchCoordinator = launchCoordinator
-  }
 
   var body: some View {
     SettingsView(

@@ -26,7 +26,6 @@ final class ZenModeController: ObservableObject {
   @Published private(set) var isZenModeActive: Bool = false {
     didSet { recalculateToolbarOpacity() }
   }
-  @Published var isFormattingBarVisible: Bool = true
 
   /// 标识用户在近 2 秒内是否有击键输入，用于驱动禅模式下工具栏的淡出
   @Published var isRecentlyTyped: Bool = false {

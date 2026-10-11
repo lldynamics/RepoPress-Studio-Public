@@ -48,7 +48,7 @@ struct KnowledgeNoteTransferSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
       }
     }
-    .padding(24)
+    .padding(WorkbenchSpacing.spacious)
     .frame(minWidth: 620, idealWidth: 680, minHeight: 400, idealHeight: 460)
     .interactiveDismissDisabled(isWorking)
     .sheet(item: $preview) { value in
@@ -136,7 +136,7 @@ struct KnowledgeNoteTransferSheet: View {
         }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(8)
+      .padding(WorkbenchSpacing.control)
     }
   }
 
@@ -180,7 +180,7 @@ struct KnowledgeNoteTransferSheet: View {
         }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(8)
+      .padding(WorkbenchSpacing.control)
     }
   }
 

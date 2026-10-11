@@ -253,7 +253,7 @@ struct AssetResourceManagerView: View {
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
     .background(
       WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -276,7 +276,7 @@ struct AssetResourceManagerView: View {
         }
       }
     }
-    .padding(12)
+    .padding(WorkbenchSpacing.card)
     .background(
       WorkbenchBackgroundStyle.control,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
@@ -430,7 +430,7 @@ struct AssetResourceManagerView: View {
         .accessibilityLabel(title)
       }
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
     .background(
       WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -501,7 +501,7 @@ struct AssetResourceManagerView: View {
                 }
               }
             }
-            .padding(.vertical, 3)
+            .padding(.vertical, WorkbenchSpacing.tight)
             .accessibilityElement(children: .contain)
             .accessibilityLabel("失效本地资源引用")
             .accessibilityValue(
@@ -548,7 +548,7 @@ struct AssetResourceManagerView: View {
         .accessibilityIdentifier("asset-manager-open-repair-version-history")
       }
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
     .background(
       WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -592,7 +592,7 @@ struct AssetResourceManagerView: View {
       )
     )
     .frame(maxWidth: .infinity, minHeight: 180, alignment: .leading)
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
     .background(
       WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -1109,12 +1109,12 @@ private struct ImageCompressionAchievementCard: View {
         Image(systemName: "xmark")
           .font(.caption.weight(.semibold))
           .foregroundStyle(.secondary)
-          .padding(6)
+          .padding(WorkbenchSpacing.icon)
       }
       .buttonStyle(.plain)
       .accessibilityLabel("关闭瘦身成就卡片")
     }
-    .padding(12)
+    .padding(WorkbenchSpacing.card)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       WorkbenchTheme.success.opacity(0.08),
@@ -1160,8 +1160,8 @@ private struct AssetCleanupConfirmationSheet: View {
             .font(.subheadline.weight(.medium))
             .foregroundStyle(WorkbenchTheme.success)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, WorkbenchSpacing.control)
+        .padding(.vertical, WorkbenchSpacing.tight)
         .background(
           WorkbenchTheme.success.opacity(0.12),
           in: Capsule()
@@ -1200,10 +1200,10 @@ private struct AssetCleanupConfirmationSheet: View {
                 .font(.workbenchMetadata.monospacedDigit())
                 .foregroundStyle(.secondary)
             }
-            .padding(6)
+            .padding(WorkbenchSpacing.icon)
             .background(
               WorkbenchBackgroundStyle.control,
-              in: RoundedRectangle(cornerRadius: 6)
+              in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
             )
           }
 
@@ -1216,7 +1216,7 @@ private struct AssetCleanupConfirmationSheet: View {
             )
             .font(.workbenchMetadata)
             .foregroundStyle(.tertiary)
-            .padding(.leading, 4)
+            .padding(.leading, WorkbenchSpacing.tight)
           }
         }
       }
@@ -1238,7 +1238,7 @@ private struct AssetCleanupConfirmationSheet: View {
         .workbenchProminentActionStyle()
       }
     }
-    .padding(18)
+    .padding(WorkbenchSpacing.content)
     .frame(minWidth: 480, idealWidth: 540, minHeight: 380, idealHeight: 460)
     .accessibilityLabel("孤立资源清理确认")
   }
@@ -1307,7 +1307,7 @@ private struct AssetResourceManagerRow: View {
         }
       }
     }
-    .padding(.vertical, 3)
+    .padding(.vertical, WorkbenchSpacing.tight)
     .accessibilityElement(children: .combine)
     .accessibilityLabel(item.filename)
     .accessibilityValue(

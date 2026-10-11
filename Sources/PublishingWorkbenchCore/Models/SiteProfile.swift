@@ -65,6 +65,10 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
   /// Legacy reading analytics settings are preserved when older profiles are
   /// loaded and saved. Access tokens were never serialized in this profile.
   public var siteAnalytics: SiteAnalyticsSettings?
+  /// Explicit review preferences. Missing legacy values keep all checks visible.
+  public var contentHealthSuppressions: [ContentHealthSuppression]?
+  /// Local Git execution remains isolated unless this site explicitly opts in.
+  public var gitExecutionPolicy: RepositoryGitExecutionPolicy?
 
   public init(
     id: UUID = UUID(),

@@ -3,20 +3,28 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class AIChatInspectorDensityPresentationTests: XCTestCase {
-  func testCollapsedInspectorShowsOnlyOneLineSummaryAndNoQuickActionBand() {
-    let configuration = AIChatInspectorDensityPresentation.configuration(isExpanded: false)
+  func testContextControlSummaryNamesCurrentArticleAndKnowledgePolicy() {
+    let summary = AIChatInspectorDensityPresentation.compactContextSummary(
+      mode: .site,
+      draftTitle: "  发布方案  ",
+      explicitReferenceCount: 0,
+      knowledgeTitle: "仅固定资料",
+      agentTitle: ""
+    )
 
-    XCTAssertEqual(configuration.sourcePresentation, .compactSummary)
-    XCTAssertEqual(configuration.quickActionPresentation, .hidden)
-    XCTAssertEqual(configuration.accessibilityState, "已折叠")
+    XCTAssertEqual(summary, "当前文章：发布方案 · 资料库：仅固定资料")
   }
 
-  func testExpandedInspectorRestoresFullSourcesAndQuickActionsThroughMenus() {
-    let configuration = AIChatInspectorDensityPresentation.configuration(isExpanded: true)
+  func testContextControlSummaryDoesNotInventArticleWhenNoneIsSelected() {
+    let summary = AIChatInspectorDensityPresentation.compactContextSummary(
+      mode: .site,
+      draftTitle: " \n ",
+      explicitReferenceCount: 0,
+      knowledgeTitle: "关闭资料库",
+      agentTitle: ""
+    )
 
-    XCTAssertEqual(configuration.sourcePresentation, .fullChips)
-    XCTAssertEqual(configuration.quickActionPresentation, .menu)
-    XCTAssertEqual(configuration.accessibilityState, "已展开")
+    XCTAssertEqual(summary, "当前文章：未选择文章 · 资料库：关闭资料库")
   }
 
   func testCompactSummaryKeepsGeneralChatArticleBoundaryAndManualReferenceCount() {
@@ -31,14 +39,15 @@ final class AIChatInspectorDensityPresentationTests: XCTestCase {
     XCTAssertEqual(summary, "通用聊天：不读取当前文章 · 2 项手动引用 · 资料库：自动检索")
   }
 
-  func testCollapsedAccessibilityValueExplainsHowToReachFullDetails() {
-    let configuration = AIChatInspectorDensityPresentation.configuration(isExpanded: false)
-    let value = AIChatInspectorDensityPresentation.disclosureAccessibilityValue(
-      configuration: configuration,
-      compactSummary: "当前文章：发布方案"
+  func testGeneralChatWithoutReferencesDoesNotShowAnEmptyReferenceCount() {
+    let summary = AIChatInspectorDensityPresentation.compactContextSummary(
+      mode: .general,
+      draftTitle: "不应出现的文章",
+      explicitReferenceCount: 0,
+      knowledgeTitle: "自动检索",
+      agentTitle: ""
     )
 
-    XCTAssertTrue(value.contains("已折叠"))
-    XCTAssertTrue(value.contains("展开可查看完整来源、设置和快捷提示"))
+    XCTAssertEqual(summary, "通用聊天：不读取当前文章 · 资料库：自动检索")
   }
 }

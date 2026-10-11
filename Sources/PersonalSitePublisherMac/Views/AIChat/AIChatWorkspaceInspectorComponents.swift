@@ -102,7 +102,7 @@ struct AIChatContextInspectorView: View {
   @State var pendingDataSharingConsentPresentation: AIDataSharingConsentPresentation?
   @State var isConversationPopoverPresented = false
   @State var isModelQuickSwitchPresented = false
-  @State var isAdvancedSettingsExpanded = false
+  @State var isConnectionPopoverPresented = false
   @State var generalKeyAvailabilityByConnectionID: [UUID: KeychainTokenAvailability] = [:]
   @FocusState var isComposerFocused: Bool
   @State var isHeaderTitleHovered = false
@@ -148,17 +148,12 @@ struct AIChatContextInspectorView: View {
           }
           .controlSize(.small)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 9)
+        .padding(.horizontal, WorkbenchSpacing.content)
+        .padding(.vertical, WorkbenchSpacing.control)
         .background(WorkbenchTheme.warning.opacity(0.1))
       }
 
       Divider()
-
-      if shouldShowConnectionBlocker {
-        connectionBlockerBanner
-        Divider()
-      }
 
       ScrollViewReader { proxy in
         ZStack(alignment: .bottomTrailing) {
@@ -166,13 +161,13 @@ struct AIChatContextInspectorView: View {
             AIChatContextInspectorContent(
               state: state,
               actions: actions,
-              // The header owns the single connection blocker banner. Keep
-              // the conversation surface focused on the empty/chat state so
-              // a missing key is not announced twice.
+              // The model control exposes connection blockers and recovery.
+              // Keep the conversation surface focused on the empty/chat state
+              // so a missing key is not announced twice.
               isAIKeyMissing: false,
               configureAIConnection: openAISettings
             )
-            .padding(16)
+            .padding(WorkbenchSpacing.content)
           }
           .defaultScrollAnchor(.bottom)
           .simultaneousGesture(
@@ -217,7 +212,7 @@ struct AIChatContextInspectorView: View {
             }
             .workbenchProminentActionStyle()
             .controlSize(.small)
-            .padding(16)
+            .padding(WorkbenchSpacing.content)
             .accessibilityIdentifier("ai-chat-return-to-latest")
           }
         }

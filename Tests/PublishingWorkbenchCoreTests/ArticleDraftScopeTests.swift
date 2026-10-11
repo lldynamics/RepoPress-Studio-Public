@@ -1,15 +1,30 @@
 import Foundation
+import PublishingSyncCore
 import XCTest
 @testable import PublishingWorkbenchCore
 
 final class ArticleDraftScopeTests: XCTestCase {
+  func testNewDraftBodiesAreEmptyAndGuidesHaveNoRepeatedTitleHeading() {
+    let profile = SiteProfile.defaultProfile
+    XCTAssertEqual(ArticleDraft.empty(profile: profile).bodyMarkdown, "")
+    XCTAssertEqual(ArticleDraft.emptyGeneralDraft(editingProfile: profile).bodyMarkdown, "")
+    for language in ["zh-Hans", "en"] {
+      let guides = ArticleDraft.samples(profile: profile, preferredLanguage: language)
+      XCTAssertEqual(guides.count, 6)
+      for guide in guides {
+        XCTAssertFalse(guide.bodyMarkdown.hasPrefix("# "), guide.title)
+        XCTAssertFalse(guide.bodyMarkdown.isEmpty, guide.title)
+      }
+    }
+  }
+
   func testGettingStartedGuideMatchesCurrentNavigationAndEditor() throws {
     let guide = try XCTUnwrap(
       ArticleDraft.samples(profile: .defaultProfile, preferredLanguage: "zh-Hans")
         .first { $0.softwareGuideID == "getting-started" }
     )
 
-    XCTAssertEqual(ArticleDraft.currentSoftwareGuideSeedVersion, 10)
+    XCTAssertEqual(ArticleDraft.currentSoftwareGuideSeedVersion, 11)
     XCTAssertTrue(guide.bodyMarkdown.contains("全局搜索（⇧⌘K）"))
     XCTAssertTrue(guide.bodyMarkdown.contains("五个一级入口"))
     XCTAssertTrue(guide.bodyMarkdown.contains("站点检查"))
@@ -185,5 +200,251 @@ final class WorkbenchDraftScopeTests: XCTestCase {
     XCTAssertEqual(store.draftListContentScope, .currentSite)
     XCTAssertEqual(store.selectedDraftID, copied.id)
     XCTAssertTrue(store.drafts.contains(where: { $0.id == source.id && $0.isGeneralDraft }))
+  }
+}
+
+final class ArticlePublishReminderPlanTests: XCTestCase {
+  func testOnlyFutureExplicitRemindersProduceNotificationPlans() {
+    let now = Date(timeIntervalSince1970: 1_000)
+    var future = ArticleDraft.empty(profile: .defaultProfile)
+    future.publishReminderAt = now.addingTimeInterval(60)
+    var past = future
+    past.id = UUID()
+    past.publishReminderAt = now.addingTimeInterval(-1)
+    var unscheduled = future
+    unscheduled.id = UUID()
+    unscheduled.publishReminderAt = nil
+    unscheduled.date = now.addingTimeInterval(3_600)
+    let plans = ArticlePublishReminderPlan.plans(for: [future, past, unscheduled], now: now)
+    XCTAssertEqual(plans.map(\.draftID), [future.id])
+    XCTAssertEqual(plans.first?.date, future.publishReminderAt)
+    XCTAssertEqual(future.date, past.date)
+  }
+
+  func testReminderPersistsAndDoesNotChangeRepositoryContentFingerprint() throws {
+    var draft = ArticleDraft.empty(profile: .defaultProfile)
+    let previousFingerprint = draft.repositoryContentFingerprint
+    let previousMetadata = ArticleDraftMetadataProjection(draft: draft)
+    draft.publishReminderAt = Date(timeIntervalSince1970: 5_000)
+    let decoded = try JSONDecoder().decode(ArticleDraft.self, from: JSONEncoder().encode(draft))
+    XCTAssertEqual(decoded.publishReminderAt, draft.publishReminderAt)
+    XCTAssertEqual(draft.repositoryContentFingerprint, previousFingerprint)
+    XCTAssertNotEqual(ArticleDraftMetadataProjection(draft: draft), previousMetadata)
+    var legacy = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: JSONEncoder().encode(draft)) as? [String: Any]
+    )
+    legacy.removeValue(forKey: "publishReminderAt")
+    let restored = try JSONDecoder().decode(
+      ArticleDraft.self, from: JSONSerialization.data(withJSONObject: legacy)
+    )
+    XCTAssertNil(restored.publishReminderAt)
+  }
+
+  func testWorkflowFragmentPreservesGeneratorBoundary() {
+    var profile = SiteProfile.defaultProfile
+    profile.siteKind = .hugo
+    let hugo = ScheduledPublishWorkflowTemplate(profile: profile)
+    XCTAssertTrue(hugo.supportsFutureContent)
+    XCTAssertTrue(hugo.triggerYAML.contains("17 * * * *"))
+    XCTAssertTrue(hugo.triggerYAML.contains("workflow_dispatch"))
+    profile.siteKind = .jekyll
+    XCTAssertTrue(
+      ScheduledPublishWorkflowTemplate(profile: profile).supportsFutureContent,
+      "Jekyll skips future-dated posts unless `future` is enabled")
+    profile.siteKind = .zola
+    XCTAssertFalse(ScheduledPublishWorkflowTemplate(profile: profile).supportsFutureContent)
+    profile.siteKind = .hexo
+    XCTAssertFalse(ScheduledPublishWorkflowTemplate(profile: profile).supportsFutureContent)
+  }
+
+  func testControlledSitesCannotStartAnUnsignedAutomaticRebase() {
+    var profile = SiteProfile.defaultProfile
+    profile.gitExecutionPolicy = .init(sshCommitSigningEnabled: true, sshSigningKey: "/key.pub")
+    // A missing root deliberately proves rejection happens before repository
+    // access, fetching, stash creation or history rewriting.
+    XCTAssertThrowsError(try RepositoryRebaseSyncService().prepare(profile: profile)) { error in
+      XCTAssertTrue(error is RepositoryControlledRebaseError)
+    }
+    profile.gitExecutionPolicy = nil
+    XCTAssertFalse(profile.requiresControlledCommitExecution)
+  }
+
+  func testRestoringBackupDoesNotRestoreLocalExecutionPermissions() {
+    var profile = SiteProfile.defaultProfile
+    profile.gitExecutionPolicy = .init(
+      sshCommitSigningEnabled: true, sshSigningKey: "/key.pub",
+      trustedHooksRepositoryPath: "/repo", trustedHooksGitDirectoryPath: "/repo/.git"
+    )
+    let snapshot = WorkbenchSnapshot(
+      profiles: [profile], activeProfileID: profile.id, drafts: [], releaseRecords: []
+    )
+    let restored = snapshot.removingLocalGitExecutionPermissions()
+    XCTAssertNil(restored.profiles.first?.gitExecutionPolicy)
+    XCTAssertEqual(restored.activeProfileID, profile.id)
+    XCTAssertNotNil(snapshot.profiles.first?.gitExecutionPolicy)
+  }
+}
+
+final class ArticleStateTests: XCTestCase {
+  func testStateProjectionResolvesConflictingLegacyFields() {
+    var draft = ArticleDraft(siteProfileID: UUID(), title: "Article", draft: true, status: .ready)
+    XCTAssertEqual(draft.articleState, .draft)
+    draft.draft = false
+    XCTAssertEqual(draft.articleState, .ready)
+    draft.status = .published
+    XCTAssertEqual(draft.articleState, .published)
+    draft.visibility = .private
+    XCTAssertEqual(draft.articleState, .published)
+    draft.status = .failed
+    XCTAssertEqual(draft.articleState, .ready)
+    draft.draft = true
+    XCTAssertEqual(draft.articleState, .draft)
+    draft.assignToGeneralDraft()
+    XCTAssertEqual(draft.articleState, .localOnly)
+  }
+
+  func testUnboundSiteDraftDoesNotBecomeLocalOnly() {
+    let draft = ArticleDraft(siteProfileID: UUID(), title: "Article")
+    XCTAssertNil(draft.repositoryBinding)
+    XCTAssertEqual(draft.articleState, .draft)
+  }
+
+  func testPrivateVisibilityAloneDoesNotCreatePublicationEvidence() {
+    var draft = ArticleDraft(
+      siteProfileID: UUID(), title: "Private", draft: false, visibility: .private, status: .ready)
+    XCTAssertEqual(draft.articleState, .ready)
+    draft.status = .published
+    XCTAssertEqual(draft.articleState, .published)
+    draft.draft = true
+    XCTAssertEqual(draft.articleState, .draft)
+  }
+
+  func testStateEditsKeepPrivateVisibilityAndRepositoryPath() {
+    let profile = SiteProfile.defaultProfile
+    var draft = ArticleDraft(siteProfileID: profile.id, title: "Private", visibility: .private)
+    let path = profile.markdownPath(for: draft)
+    XCTAssertTrue(draft.setArticleState(.ready))
+    XCTAssertFalse(draft.draft)
+    XCTAssertEqual(draft.status, .ready)
+    XCTAssertTrue(draft.isPrivate)
+    XCTAssertEqual(profile.markdownPath(for: draft), path)
+    XCTAssertTrue(draft.setArticleState(.draft))
+    XCTAssertTrue(draft.draft)
+    XCTAssertEqual(draft.status, .draft)
+    XCTAssertTrue(draft.isPrivate)
+    XCTAssertFalse(draft.setArticleState(.draft))
+  }
+
+  func testManualStateEditsCannotInventPublishedOrChangeOwnership() {
+    var draft = ArticleDraft(siteProfileID: UUID(), title: "Article")
+    let original = draft
+    XCTAssertFalse(draft.setArticleState(.published))
+    XCTAssertFalse(draft.setArticleState(.localOnly))
+    XCTAssertEqual(draft, original)
+    draft.assignToGeneralDraft()
+    let general = draft
+    XCTAssertFalse(draft.setArticleState(.ready))
+    XCTAssertFalse(draft.setArticleState(.draft))
+    XCTAssertEqual(draft, general)
+  }
+
+  func testDraftFlagAloneInvalidatesListMetadata() {
+    let before = ArticleDraft(siteProfileID: UUID(), title: "Article")
+    var after = before
+    after.draft = false
+    XCTAssertFalse(after.hasSameListMetadata(as: before))
+    XCTAssertNotEqual(after.listMetadataProjection, before.listMetadataProjection)
+    after.markUpdated(at: before.updatedAt.addingTimeInterval(1), replacing: before)
+    XCTAssertGreaterThan(after.metadataUpdatedAt, before.metadataUpdatedAt)
+  }
+
+  func testOnlySyncFailureAndDivergenceAreProblems() {
+    for state in [DraftRepositorySyncState.diverged, .failed] {
+      XCTAssertTrue(state.hasSyncProblem)
+    }
+    for state in [
+      DraftRepositorySyncState.localOnly, .projectSaved, .localChanged, .synced, .awaitingReview,
+    ] {
+      XCTAssertFalse(state.hasSyncProblem)
+    }
+  }
+}
+
+@MainActor
+final class WorkbenchArticleStateTests: XCTestCase {
+  func testTitleEditsPreserveExistingManualAndTimestampSlugs() throws {
+    let store = try TestWorkbenchFactory.makeStore(prefix: "ArticleTitleSlugPreservation")
+    for slug in ["manually-chosen-url", "2026-10-11-1404"] {
+      let original = ArticleDraft(
+        siteProfileID: store.activeProfile.id, title: "Before", slug: slug)
+      store.setDrafts([original])
+      var edited = original
+      edited.title = "A new article title"
+      store.updateDraftFromEditor(edited)
+      XCTAssertEqual(store.draft(for: original.id)?.title, edited.title)
+      XCTAssertEqual(store.draft(for: original.id)?.slug, slug)
+    }
+  }
+
+  func testStateCommandPersistsAndAutosavesYAMLWithoutPublishing() async throws {
+    try await assertStateCommandPersistsAndAutosaves(
+      style: .yaml, expectedDraftFlag: "draft: false")
+  }
+
+  func testStateCommandPersistsAndAutosavesTOMLWithoutPublishing() async throws {
+    try await assertStateCommandPersistsAndAutosaves(
+      style: .toml, expectedDraftFlag: "draft = false")
+  }
+
+  private func assertStateCommandPersistsAndAutosaves(
+    style: FrontMatterStyle, expectedDraftFlag: String
+  ) async throws {
+    let root = try temporaryDirectoryURL(prefix: "ArticleStatePersistence")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(
+      at: root.appendingPathComponent(".git", isDirectory: true), withIntermediateDirectories: true)
+    let fileURL = root.appendingPathComponent("app-data/workbench.json")
+    let store = try TestWorkbenchFactory.makeStore(fileURL: fileURL)
+    store.updateActiveProfile { profile in
+      profile.localRepositoryRootPath = root.path
+      profile.includeDraftFlagInFrontMatter = true
+      profile.frontMatterStyle = style
+    }
+    store.createDraft()
+    let draftID = try XCTUnwrap(store.selectedDraftID)
+    let added = await store.writeSiteDraftToProject(draftID: draftID)
+    XCTAssertTrue(added)
+    let releaseRecordCount = store.releaseRecords.count
+    store.setArticleState(.ready, for: draftID)
+    await store.waitForPendingSiteDraftFileWrites()
+    let ready = try XCTUnwrap(store.draft(for: draftID))
+    XCTAssertFalse(ready.draft)
+    XCTAssertEqual(ready.articleState, .ready)
+    let path = try XCTUnwrap(ready.repositoryPath)
+    let document = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
+    XCTAssertTrue(document.contains(expectedDraftFlag))
+    XCTAssertEqual(store.releaseRecords.count, releaseRecordCount)
+    XCTAssertTrue(store.flushPendingChanges())
+    let restored = try TestWorkbenchFactory.makeStore(fileURL: fileURL)
+    XCTAssertEqual(restored.draft(for: draftID)?.articleState, .ready)
+    XCTAssertEqual(restored.draft(for: draftID)?.status, .ready)
+    XCTAssertEqual(restored.releaseRecords.count, releaseRecordCount)
+  }
+
+  func testStateCommandEditsTheRequestedDraftAndPreservesOtherDrafts() throws {
+    let store = try TestWorkbenchFactory.makeStore(prefix: "ArticleStateCommand")
+    let first = ArticleDraft(
+      siteProfileID: store.activeProfile.id, title: "First", visibility: .private)
+    let second = ArticleDraft(siteProfileID: store.activeProfile.id, title: "Second")
+    store.setDrafts([first, second])
+    store.selectDraft(second.id)
+    store.setArticleState(.ready, for: first.id)
+    let updated = try XCTUnwrap(store.draft(for: first.id))
+    XCTAssertEqual(updated.articleState, .ready)
+    XCTAssertTrue(updated.isPrivate)
+    XCTAssertEqual(store.draft(for: second.id), second)
+    XCTAssertEqual(store.selectedDraftID, second.id)
+    store.setArticleState(.published, for: first.id)
+    XCTAssertEqual(store.draft(for: first.id), updated)
   }
 }

@@ -95,4 +95,14 @@ row = source.split("private func releaseActionRow", 1)[1].split("private func re
 assert "DisclosureGroup" not in row, "the main release record row must not be folded"
 PY
 if grep -Fq 'repositoryActionsMenu' "$VIEWS/Repository/RepositoryWorkspaceOverviewSections.swift" || grep -Fq 'Menu {' "$VIEWS/Repository/RepositoryWorkspaceOverviewSections.swift"; then fail "repository primary actions returned to a hidden menu"; fi
+# Every view domain uses WorkbenchSpacing / WorkbenchCornerRadius tokens (or
+# token sums) for paddings and corner radii; only 1-2pt hairline paddings may
+# stay numeric. One-off shapes use a named constant that explains them.
+offgrid="$(grep -rnE --include='*.swift' \
+  -e '\.padding\((\.[a-zA-Z]+, |\[[^]]*\], )?([3-9]|[1-9][0-9]+)(\.[0-9]+)?\)' \
+  -e 'cornerRadius: [0-9]' \
+  -e 'EdgeInsets\([^)]*: ([3-9]|[1-9][0-9]+)' \
+  "$VIEWS" || true)"
+[[ -z "$offgrid" ]] || fail "views must use WorkbenchSpacing / WorkbenchCornerRadius tokens for paddings and corner radii:
+$offgrid"
 echo "ui product-contract gate: source UI contracts passed (not a real UI smoke test)"

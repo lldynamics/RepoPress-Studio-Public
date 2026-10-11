@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-private struct WorkbenchAdaptiveColor {
+struct WorkbenchAdaptiveColor {
   typealias Components = (red: CGFloat, green: CGFloat, blue: CGFloat)
 
   let light: Components
@@ -197,11 +197,35 @@ enum WorkbenchWritingSurface {
   }
 }
 
+/// SF Symbol point sizes for icons that sit outside text. Text uses the
+/// semantic workbench fonts instead; the typography gate rejects fixed sizes.
+enum WorkbenchIconSize {
+  /// List bullets drawn as symbols.
+  static let bullet: CGFloat = 5
+  /// Disclosure chevrons and tiny clear marks beside menu labels.
+  static let indicator: CGFloat = 8
+  /// Inline icons beside body text.
+  static let inline: CGFloat = 13
+  /// Sidebar and panel header buttons.
+  static let toolbar: CGFloat = 15
+  /// Thumbnails' fallback symbols and drop-target badges.
+  static let prominent: CGFloat = 18
+  /// Dialog headers and in-panel empty states.
+  static let section: CGFloat = 24
+  /// Page-level empty, onboarding and failure states.
+  static let hero: CGFloat = 36
+}
+
 enum WorkbenchCornerRadius {
   static let chartBar: CGFloat = 3
+  /// Small badges, pills and hover/selection highlights.
+  static let badge: CGFloat = 4
   static let control: CGFloat = 6
-  static let searchBar: CGFloat = 7
   static let card: CGFloat = 8
+  /// Floating panels, popovers and overlay cards.
+  static let panel: CGFloat = 10
+  /// Chat message bubbles.
+  static let bubble: CGFloat = 14
 }
 
 enum WorkbenchPageMetrics {
@@ -218,15 +242,15 @@ enum WorkbenchPageMetrics {
 
 /// 共享空间节奏；名称描述布局角色，而不是单个调用点。
 enum WorkbenchSpacing {
+  /// 徽标、标签块和紧凑行的内边距。
+  static let tight: CGFloat = 4
   /// 图标与紧密元素间距
   static let icon: CGFloat = 6
   /// 密集控件内容、紧凑行和小间距。
   static let control: CGFloat = 8
   /// 卡片内容和成组表单控件。
   static let card: CGFloat = 12
-  /// 分区节奏和需要更多留白的编辑器边框。
-  static let section: CGFloat = 14
-  /// 标准内容内边距和分栏布局间距。
+  /// 标准内容、分区节奏和分栏布局间距。
   static let content: CGFloat = 16
   /// 页面级内边距。
   static let page: CGFloat = 20
@@ -286,12 +310,6 @@ enum WorkbenchMotion {
     }
   }
 
-  static func drawerTransition(reduceMotion: Bool) -> AnyTransition {
-    WorkbenchMotionPolicy(reduceMotion: reduceMotion).style(for: .drawerPresentation) == .none
-      ? .identity
-      : .move(edge: .trailing).combined(with: .opacity)
-  }
-
   static func statusTransition(reduceMotion: Bool) -> AnyTransition {
     WorkbenchMotionPolicy(reduceMotion: reduceMotion).style(for: .statusChange) == .none
       ? .identity
@@ -339,16 +357,11 @@ enum WorkbenchSettingsMetrics {
 }
 
 enum WorkbenchOpacity {
-  static let controlBackground = 0.45
-  static let badgeBackground = 0.55
   static let selectionBackground = 0.12
   static let accentBackground = 0.16
   static let noticeBackground = 0.10
   static let warningBackground = 0.08
   static let separator = 0.70
-  static let chartSecondary = 0.28
-  static let chartPrimary = 0.60
-  static let chartEmphasis = 0.70
 }
 
 enum WorkbenchBackgroundStyle {
@@ -359,7 +372,7 @@ enum WorkbenchBackgroundStyle {
 
   /// 主要卡片使用的唯一抬升内容表面。
   static var card: AnyShapeStyle {
-    surface(opacity: 0.05)
+    AnyShapeStyle(WorkbenchSurface.groupedCard)
   }
 
   /// 交互控件和紧凑徽标使用最强的中性表面。
@@ -523,39 +536,6 @@ struct WorkbenchFocusRingButtonStyle: ButtonStyle {
   }
 }
 
-struct WorkbenchOperationalSplitLayout<Primary: View, Context: View>: View {
-  let usesSplitLayout: Bool
-  private let primary: Primary
-  private let context: Context
-
-  init(
-    usesSplitLayout: Bool,
-    @ViewBuilder primary: () -> Primary,
-    @ViewBuilder context: () -> Context
-  ) {
-    self.usesSplitLayout = usesSplitLayout
-    self.primary = primary()
-    self.context = context()
-  }
-
-  @ViewBuilder
-  var body: some View {
-    if usesSplitLayout {
-      HStack(alignment: .top, spacing: WorkbenchSpacing.content) {
-        primary
-          .frame(maxWidth: .infinity, alignment: .topLeading)
-        context
-          .frame(width: WorkbenchPageMetrics.operationalContextWidth, alignment: .topLeading)
-      }
-    } else {
-      VStack(alignment: .leading, spacing: WorkbenchSpacing.content) {
-        context
-        primary
-      }
-    }
-  }
-}
-
 extension Font {
   /// 稳定的语义角色保持页面层级一致，同时保留用户的 macOS 字体大小和辅助功能设置。
   static let workbenchPageTitle: Font = .title2.weight(.semibold)
@@ -609,72 +589,5 @@ extension View {
   ) -> some View {
     buttonStyle(.borderedProminent)
       .tint(tint)
-  }
-}
-
-/// Left-aligned wrapping layout for chips and tags. Wrapping keeps every
-/// option visible in narrow panes instead of hiding them behind a horizontal
-/// scroller.
-struct WorkbenchFlowLayout: Layout {
-  var horizontalSpacing: CGFloat = WorkbenchSpacing.icon
-  var verticalSpacing: CGFloat = WorkbenchSpacing.icon
-
-  func sizeThatFits(
-    proposal: ProposedViewSize,
-    subviews: Subviews,
-    cache: inout ()
-  ) -> CGSize {
-    let rows = rows(for: subviews, maxWidth: proposal.width ?? .infinity)
-    let width = rows.map(\.width).max() ?? 0
-    let gaps = verticalSpacing * CGFloat(max(rows.count - 1, 0))
-    let height = rows.map(\.height).reduce(0, +) + gaps
-    return CGSize(width: proposal.width ?? width, height: height)
-  }
-
-  func placeSubviews(
-    in bounds: CGRect,
-    proposal: ProposedViewSize,
-    subviews: Subviews,
-    cache: inout ()
-  ) {
-    var y = bounds.minY
-    for row in rows(for: subviews, maxWidth: bounds.width) {
-      var x = bounds.minX
-      for index in row.indices {
-        let size = subviews[index].sizeThatFits(.unspecified)
-        subviews[index].place(
-          at: CGPoint(x: x, y: y),
-          proposal: ProposedViewSize(size)
-        )
-        x += size.width + horizontalSpacing
-      }
-      y += row.height + verticalSpacing
-    }
-  }
-
-  private struct Row {
-    var indices: [Int] = []
-    var width: CGFloat = 0
-    var height: CGFloat = 0
-  }
-
-  private func rows(for subviews: Subviews, maxWidth: CGFloat) -> [Row] {
-    var rows: [Row] = []
-    var current = Row()
-    for index in subviews.indices {
-      let size = subviews[index].sizeThatFits(.unspecified)
-      let proposedWidth =
-        current.indices.isEmpty ? size.width : current.width + horizontalSpacing + size.width
-      if !current.indices.isEmpty, proposedWidth > maxWidth {
-        rows.append(current)
-        current = Row()
-      }
-      current.width =
-        current.indices.isEmpty ? size.width : current.width + horizontalSpacing + size.width
-      current.height = max(current.height, size.height)
-      current.indices.append(index)
-    }
-    if !current.indices.isEmpty { rows.append(current) }
-    return rows
   }
 }

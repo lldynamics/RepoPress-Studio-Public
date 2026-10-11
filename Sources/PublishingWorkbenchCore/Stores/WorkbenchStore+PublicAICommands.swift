@@ -15,6 +15,12 @@ extension WorkbenchStore {
     aiStore.setAICredentialStorageMode(mode)
   }
 
+  public func setAICredentialStorageMode(
+    _ mode: AICredentialStorageMode, connectionProfileID: UUID
+  ) {
+    aiStore.setAICredentialStorageMode(mode, connectionProfileID: connectionProfileID)
+  }
+
   public func prepareSEOSocialPreview(for draft: ArticleDraft) {
     aiStore.prepareSEOSocialPreview(for: draft)
   }

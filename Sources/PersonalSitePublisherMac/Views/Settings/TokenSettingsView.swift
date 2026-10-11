@@ -113,6 +113,7 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
     )
 
     TokenRepositoryDefaultsSection(
+      gitExecutionPolicy: activeProfileBinding.gitExecutionPolicy,
       localRepositoryPath: localRepositoryPath,
       chooseLocalRepository: chooseLocalRepository,
       repositoryProviderBinding: repositoryProviderBinding,
@@ -172,6 +173,7 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
     }
 
     TokenRepositoryAutomationSection(automationSettings: automationSettings)
+    ScheduledPublishTemplateSection(profile: activeProfile)
   }
 
   @ViewBuilder

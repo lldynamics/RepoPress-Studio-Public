@@ -82,7 +82,7 @@ struct KnowledgeCollectionNavigationView: View {
         Spacer()
         Button(action: onCreateFolder) {
           Image(systemName: "folder.badge.plus")
-            .font(.system(size: 15, weight: .medium))
+            .font(.system(size: WorkbenchIconSize.toolbar, weight: .medium))
             .frame(width: 28, height: 28)
             .contentShape(Rectangle())
         }
@@ -93,7 +93,7 @@ struct KnowledgeCollectionNavigationView: View {
           isCollectionBuilderPresented = true
         } label: {
           Image(systemName: "line.3.horizontal.decrease.circle")
-            .font(.system(size: 15, weight: .medium))
+            .font(.system(size: WorkbenchIconSize.toolbar, weight: .medium))
             .frame(width: 28, height: 28)
             .contentShape(Rectangle())
         }
@@ -101,7 +101,7 @@ struct KnowledgeCollectionNavigationView: View {
         .help("保存组合智能集合")
         .accessibilityLabel("新建组合智能集合")
       }
-      .padding(.horizontal, 10)
+      .padding(.horizontal, WorkbenchSpacing.control)
 
       if isNavigationExpanded {
         ScrollView(.vertical, showsIndicators: true) {
@@ -153,13 +153,13 @@ struct KnowledgeCollectionNavigationView: View {
                       .font(.body)
                       .foregroundStyle(.secondary)
                   }
-                  .padding(.horizontal, 10)
+                  .padding(.horizontal, WorkbenchSpacing.control)
                   .padding(.vertical, 2)
                 }
               }
             }
           }
-          .padding(.vertical, 4)
+          .padding(.vertical, WorkbenchSpacing.tight)
         }
       }
     }
@@ -182,8 +182,8 @@ struct KnowledgeCollectionNavigationView: View {
     Label(title, systemImage: systemImage)
       .font(.caption.weight(.semibold))
       .foregroundStyle(.tertiary)
-      .padding(.horizontal, 10)
-      .padding(.top, 5)
+      .padding(.horizontal, WorkbenchSpacing.control)
+      .padding(.top, WorkbenchSpacing.tight)
       .accessibilityAddTraits(.isHeader)
   }
 
@@ -200,7 +200,7 @@ struct KnowledgeCollectionNavigationView: View {
     } label: {
       HStack(spacing: 7) {
         Image(systemName: item.systemImage)
-          .font(.system(size: 14, weight: .medium))
+          .font(.system(size: WorkbenchIconSize.inline, weight: .medium))
           .foregroundStyle(
             knowledge.folderScope == item.scope ? workbenchAccentColor : Color.secondary
           )
@@ -221,12 +221,12 @@ struct KnowledgeCollectionNavigationView: View {
         }
       }
       .padding(.leading, isIndented ? 14 : 0)
-      .padding(.horizontal, 8)
+      .padding(.horizontal, WorkbenchSpacing.control)
       .padding(.vertical, KnowledgeSidebarMetrics.collectionRowVerticalPadding)
       .frame(minHeight: KnowledgeSidebarMetrics.collectionRowMinimumHeight)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background {
-        RoundedRectangle(cornerRadius: 6)
+        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
           .fill(
             knowledge.folderScope == item.scope
               ? workbenchAccentColor.opacity(0.12)
@@ -432,7 +432,7 @@ private struct KnowledgeSavedCollectionBuilderView: View {
           .font(.headline)
         Spacer()
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
       Divider()
 
       VStack(alignment: .leading, spacing: 14) {
@@ -478,7 +478,7 @@ private struct KnowledgeSavedCollectionBuilderView: View {
           .font(.caption)
           .foregroundStyle(.secondary)
       }
-      .padding(18)
+      .padding(WorkbenchSpacing.content)
 
       Divider()
       HStack {
@@ -495,7 +495,7 @@ private struct KnowledgeSavedCollectionBuilderView: View {
         .disabled(
           name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedRuleIDs.isEmpty)
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
     }
     .frame(minWidth: 560, idealWidth: 680, minHeight: 520, idealHeight: 650)
     .accessibilityIdentifier("knowledge-saved-collection-builder")

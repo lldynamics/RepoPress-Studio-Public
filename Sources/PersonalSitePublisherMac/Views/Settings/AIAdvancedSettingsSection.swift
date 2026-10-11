@@ -143,7 +143,7 @@ struct AIAdvancedSettingsSection: View {
       TextEditor(text: systemPromptBinding)
         .font(.body)
         .frame(minHeight: 72, maxHeight: 120)
-        .padding(5)
+        .padding(WorkbenchSpacing.tight)
         .background(
           Color.primary.opacity(0.035),
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)

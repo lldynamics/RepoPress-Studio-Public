@@ -137,14 +137,6 @@ public struct RepositoryScanReport: Codable, Hashable, Sendable {
     )
   }
 
-  public func remoteChangeQueueSections(contentRoot: String, assetRoot: String) -> [RepositoryChangeQueueSection] {
-    RepositoryChangedFileRole.allCases.compactMap { role in
-      let files = remoteChangedFilesForRole(role: role, contentRoot: contentRoot, assetRoot: assetRoot)
-      guard !files.isEmpty else { return nil }
-      return RepositoryChangeQueueSection(role: role, files: files)
-    }
-  }
-
   private static func role(
     for path: String,
     contentRoot: String,

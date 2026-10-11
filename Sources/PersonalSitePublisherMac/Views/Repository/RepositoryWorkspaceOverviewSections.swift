@@ -72,7 +72,7 @@ extension RepositoryWorkspaceView {
           repositoryOverviewSyncPlanSection
           pathRules
         }
-        .padding(.top, 8)
+        .padding(.top, WorkbenchSpacing.control)
       } label: {
         Label("更多信息与工具", systemImage: "slider.horizontal.3")
           .font(.workbenchSectionTitle)
@@ -491,7 +491,7 @@ extension RepositoryWorkspaceView {
         systemImage: "list.bullet.clipboard",
         density: .inline
       )
-      .padding(.vertical, 8)
+      .padding(.vertical, WorkbenchSpacing.control)
     }
   }
 

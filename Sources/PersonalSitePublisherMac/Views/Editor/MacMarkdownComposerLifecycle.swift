@@ -9,6 +9,35 @@ extension MacMarkdownComposerView {
     workspaceWindowSession?.windowID ?? sceneCommandOwnerID
   }
 
+  func handleComposerDraftChange(from oldDraftID: UUID) {
+    pendingInlineStructuredEditApplyRequestID = nil
+    pendingFindReplacement = nil
+    pendingDuplicateTitleRemoval = nil
+    // Review state is application-scoped and draft-keyed. Switching one
+    // window must not destroy a review still visible in another window; the
+    // destination composer simply hides sessions for other draft IDs.
+    selectionBubblePresentationState.reset()
+    cancelFindMatchRefresh()
+    editorStatisticsState.update(.empty)
+    editorState.trackDraft(draft.id)
+    flushEditorSessionSave(for: oldDraftID)
+    cancelAttachmentImport()
+    dismissInsertedImageMetadata()
+    cancelSelectionAIAction()
+    cancelInlineGhostText()
+    activeWritingContextPanel = nil
+    cancelAIPromptClipboardTask()
+    editorEditRequest = nil
+    markdownTextFocusRequest = nil
+    store.flushDraftBodyEditorBuffer(for: oldDraftID)
+    syncEditorBodyFromStore(force: true)
+    resetEditorDocumentFromDraft()
+    restoreEditorSession(for: draft.id)
+    applyEditorFocusRequest()
+    syncActiveEditorSelection()
+    scheduleMarkdownAnalysis(isAutomatic: true)
+  }
+
   func handleComposerDisappear() {
     let recoveryOwnerID = frontMatterRecoveryOwnerID
     let windowID = workspaceWindowSession?.windowID

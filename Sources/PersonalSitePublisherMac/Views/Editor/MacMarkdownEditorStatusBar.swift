@@ -1,11 +1,11 @@
+import Combine
 import PublishingDomainContracts
 import PublishingMarkdownCore
 import PublishingWorkbenchCore
 import SwiftUI
 
-/// Quiet status line under the writing surface. Cursor position, body
-/// diagnostics, save state, and document statistics live here instead of in
-/// the formatting toolbar so the toolbar holds only editing commands.
+/// Save state and writing progress stay visible. Pointer hover reveals the
+/// secondary cursor, branch, and diagnostic controls without removing their shortcuts.
 struct MacMarkdownEditorStatusBar: View {
   @Binding var draft: ArticleDraft
   let store: WorkbenchStore
@@ -21,9 +21,63 @@ struct MacMarkdownEditorStatusBar: View {
   let onInsertCompletionTrigger: (MarkdownCompletionTrigger) -> Void
   var onFormatChineseTypography: (() -> Void)? = nil
   var onCopyForWeChatAndZhihu: (() -> Void)? = nil
+  @State private var showsContextDetails = false
 
   var body: some View {
-    HStack(spacing: 8) {
+    GeometryReader { geometry in
+      // Keep every workflow reachable even when a fence, completion, or long
+      // localized status makes the row wider than the writing column.
+      ScrollView(.horizontal) {
+        HStack(spacing: WorkbenchSpacing.content) {
+          MacMarkdownEditorSaveStatusIcon(
+            store: store,
+            draftID: draft.id,
+            isCompact: false
+          )
+          .id(draft.id)
+          .fixedSize(horizontal: true, vertical: false)
+
+          Spacer(minLength: WorkbenchSpacing.content)
+
+          HStack(spacing: WorkbenchSpacing.card) {
+            contextDetails
+              // Keep the controls mounted so ⌘L works before the first hover.
+              .opacity(showsContextDetails ? 1 : 0)
+              .frame(width: showsContextDetails ? nil : 0)
+              .clipped()
+              .allowsHitTesting(showsContextDetails)
+              .accessibilityHidden(!showsContextDetails)
+
+            MarkdownEditorStatisticsControl(
+              draft: $draft,
+              statisticsState: statisticsState,
+              onFormatChineseTypography: onFormatChineseTypography,
+              onCopyForWeChatAndZhihu: onCopyForWeChatAndZhihu
+            )
+
+          }
+          .fixedSize(horizontal: true, vertical: false)
+        }
+        .frame(
+          minWidth: max(0, geometry.size.width - WorkbenchSpacing.content * 2),
+          minHeight: WorkbenchSpacing.page + WorkbenchSpacing.control
+        )
+        .padding(.horizontal, WorkbenchSpacing.content)
+      }
+    }
+    .controlSize(.small)
+    .frame(height: WorkbenchSpacing.page + WorkbenchSpacing.control)
+    .background(.bar)
+    .onHover { showsContextDetails = $0 }
+    .onChange(of: draft.id) { _, _ in showsContextDetails = false }
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("编辑器状态栏")
+    .accessibilityIdentifier("markdown-editor-status-bar")
+  }
+
+  private var contextDetails: some View {
+    HStack(spacing: WorkbenchSpacing.card) {
+      if diagnosticCount > 0 { diagnosticsButton }
       MarkdownCursorWorkflowControls(
         position: cursorPosition,
         lineCount: statisticsState.value.lineCount,
@@ -35,41 +89,16 @@ struct MacMarkdownEditorStatusBar: View {
         onApplyCompletion: onApplyCompletion,
         onInsertCompletionTrigger: onInsertCompletionTrigger
       )
-
-      if diagnosticCount > 0 {
-        diagnosticsButton
-      }
-
-      Spacer(minLength: 8)
-
-      MacMarkdownEditorSaveStatusIcon(
-        store: store,
-        draftID: draft.id,
-        isCompact: false
-      )
-      .id(draft.id)
-
-      MarkdownEditorStatisticsControl(
-        draft: $draft,
-        statisticsState: statisticsState,
-        onFormatChineseTypography: onFormatChineseTypography,
-        onCopyForWeChatAndZhihu: onCopyForWeChatAndZhihu
-      )
+      MarkdownEditorBranchLabel(store: store, profileID: draft.scope.siteProfileID)
+        .id(draft.scope)
     }
-    .controlSize(.small)
-    .padding(.horizontal, 12)
-    .frame(height: 26)
-    .background(.bar)
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("编辑器状态栏")
-    .accessibilityIdentifier("markdown-editor-status-bar")
   }
 
   /// Shown only when there is something to fix; a clean document stays quiet.
   private var diagnosticsButton: some View {
     Button(action: onShowDiagnostics) {
       Label(
-        String(localized: "\(min(diagnosticCount, 99)) 项正文问题"),
+        MarkdownEditorStatusBarPresentation.diagnosticsTitle(count: diagnosticCount),
         systemImage: "exclamationmark.triangle"
       )
       .font(.caption)
@@ -80,6 +109,101 @@ struct MacMarkdownEditorStatusBar: View {
     .accessibilityLabel("正文诊断")
     .accessibilityValue(String(localized: "\(diagnosticCount) 项"))
     .accessibilityIdentifier("markdown-editor-diagnostics")
+  }
+}
+
+enum MarkdownEditorStatusBarPresentation {
+  static func writingProgressSummary(writingUnitCount: Int, targetWordCount: Int) -> String {
+    let count = max(0, writingUnitCount)
+    guard targetWordCount > 0 else {
+      return String(format: String(localized: "%lld 字/词"), locale: .current, Int64(count))
+    }
+    let percent = Int(Double(count) / Double(targetWordCount) * 100)
+    return String(
+      format: String(localized: "%lld / %lld 字/词 · %lld%%"), locale: .current,
+      Int64(count), Int64(targetWordCount), Int64(percent)
+    )
+  }
+
+  static func diagnosticsTitle(count: Int) -> String {
+    String(
+      format: String(localized: "%lld 项正文问题"), locale: .current, Int64(max(0, count))
+    )
+  }
+
+  static func statisticsSummary(writingUnitCount: Int, readingMinutes: Int) -> String {
+    String(
+      format: String(localized: "%lld 字/词 · 约 %lld 分钟"),
+      locale: .current,
+      Int64(writingUnitCount),
+      Int64(readingMinutes)
+    )
+  }
+}
+
+/// Observe only repository and profile changes in this leaf. Typing, chat
+/// streaming, and save transitions do not recompute the branch projection.
+@MainActor
+final class MarkdownEditorBranchState: ObservableObject {
+  @Published private(set) var branchName: String?
+  private unowned let store: WorkbenchStore
+  private let profileID: UUID?
+  private var cancellables = Set<AnyCancellable>()
+
+  init(store: WorkbenchStore, profileID: UUID?) {
+    self.store = store
+    self.profileID = profileID
+    branchName = Self.branchName(in: store, profileID: profileID)
+
+    // The public publishing-status boundary follows repository/profile
+    // changes without forwarding body autosaves or AI token streams.
+    store.publishStatus.objectWillChange
+      .receive(on: RunLoop.main)
+      .sink { [weak self] _ in self?.refresh() }
+      .store(in: &cancellables)
+  }
+
+  private static func branchName(in store: WorkbenchStore, profileID: UUID?) -> String? {
+    guard let profileID,
+      let profile = store.profiles.first(where: { $0.id == profileID }),
+      let report = store.repositoryReport(for: profile),
+      report.hasGitDirectory,
+      let status = report.branchStatus,
+      !status.isDetached
+    else { return nil }
+    let branch = status.branchName?.trimmingCharacters(in: .whitespacesAndNewlines)
+    return branch?.isEmpty == false ? branch : nil
+  }
+
+  private func refresh() {
+    let updatedBranch = Self.branchName(in: store, profileID: profileID)
+    guard branchName != updatedBranch else { return }
+    branchName = updatedBranch
+  }
+}
+
+private struct MarkdownEditorBranchLabel: View {
+  @StateObject private var state: MarkdownEditorBranchState
+
+  init(store: WorkbenchStore, profileID: UUID?) {
+    _state = StateObject(
+      wrappedValue: MarkdownEditorBranchState(store: store, profileID: profileID))
+  }
+
+  var body: some View {
+    if let branchName = state.branchName {
+      Label(branchName, systemImage: "arrow.triangle.branch")
+        .font(.caption.monospaced())
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .truncationMode(.middle)
+        .frame(maxWidth: 140)
+        .help(branchName)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("当前分支")
+        .accessibilityValue(branchName)
+        .accessibilityIdentifier("markdown-editor-branch")
+    }
   }
 }
 
@@ -116,30 +240,16 @@ private struct MarkdownEditorStatisticsControl: View {
       customGoalText = draft.targetWordCount.map(String.init) ?? ""
       isStatsPopoverPresented.toggle()
     } label: {
-      HStack(spacing: 5) {
-        if targetWordCount > 0 {
-          let ratio = min(1.0, Double(writingUnitCount) / Double(targetWordCount))
-          let percent = Int((Double(writingUnitCount) / Double(targetWordCount)) * 100)
-          ProgressView(value: ratio)
-            .progressViewStyle(.linear)
-            .frame(width: 36)
-            .tint(ratio >= 1.0 ? WorkbenchTheme.success : WorkbenchTheme.primary)
-          Text("\(writingUnitCount)/\(targetWordCount) (\(percent)%)")
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(ratio >= 1.0 ? WorkbenchTheme.success : .primary)
-        } else {
-          Label(statisticsSummary, systemImage: "timer")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
-        }
-      }
-      .padding(.horizontal, 4)
-      .padding(.vertical, 2)
-      .background(
-        RoundedRectangle(cornerRadius: 4)
-          .fill(isStatsPopoverPresented ? Color.secondary.opacity(0.12) : Color.clear)
-      )
+      Label(statisticsSummary, systemImage: "timer")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .monospacedDigit()
+        .padding(.horizontal, WorkbenchSpacing.tight)
+        .padding(.vertical, 2)
+        .background(
+          RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge)
+            .fill(isStatsPopoverPresented ? Color.secondary.opacity(0.12) : Color.clear)
+        )
     }
     .buttonStyle(.plain)
     .help("点击查看详细统计与设定目标字数")
@@ -197,7 +307,7 @@ private struct MarkdownEditorStatisticsControl: View {
             let percent = Int(ratio * 100)
             Text("\(percent)%")
               .font(.caption.monospacedDigit().weight(.semibold))
-              .foregroundStyle(ratio >= 1.0 ? WorkbenchTheme.success : WorkbenchTheme.primary)
+              .foregroundStyle(ratio >= 1.0 ? WorkbenchTheme.success : WorkbenchTheme.progress)
           }
         }
 
@@ -205,7 +315,7 @@ private struct MarkdownEditorStatisticsControl: View {
           let ratio = min(1.0, Double(writingUnitCount) / Double(targetWordCount))
           ProgressView(value: ratio)
             .progressViewStyle(.linear)
-            .tint(ratio >= 1.0 ? WorkbenchTheme.success : WorkbenchTheme.primary)
+            .tint(ratio >= 1.0 ? WorkbenchTheme.success : WorkbenchTheme.progress)
 
           if writingUnitCount >= targetWordCount {
             Text("🎉 已达成目标字数！（超出 \(writingUnitCount - targetWordCount) 字）")
@@ -225,10 +335,10 @@ private struct MarkdownEditorStatisticsControl: View {
             } label: {
               Text(goal == 0 ? "无" : "\(goal)")
                 .font(.workbenchMetadata)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
+                .padding(.horizontal, WorkbenchSpacing.icon)
+                .padding(.vertical, WorkbenchSpacing.tight)
                 .background(
-                  RoundedRectangle(cornerRadius: 4)
+                  RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge)
                     .fill(
                       targetWordCount == goal
                         ? workbenchAccentColor.opacity(0.18) : Color.secondary.opacity(0.08))
@@ -278,7 +388,7 @@ private struct MarkdownEditorStatisticsControl: View {
         }
       }
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
     .frame(width: 270)
   }
 
@@ -306,11 +416,8 @@ private struct MarkdownEditorStatisticsControl: View {
   // Explicit %lld templates keep the catalog key identical to the runtime
   // key; interpolating an Int extracted as %@ and never matched in English.
   private var statisticsSummary: String {
-    String(
-      format: String(localized: "约 %lld 分钟 · %lld 字/词"),
-      locale: .current,
-      Int64(readingMinutes),
-      Int64(writingUnitCount)
+    MarkdownEditorStatusBarPresentation.writingProgressSummary(
+      writingUnitCount: writingUnitCount, targetWordCount: targetWordCount
     )
   }
 
@@ -319,9 +426,7 @@ private struct MarkdownEditorStatisticsControl: View {
   }
 
   private var statisticsAccessibilityValue: String {
-    guard targetWordCount > 0 else { return statisticsSummary }
-    let percent = Int((Double(writingUnitCount) / Double(targetWordCount)) * 100)
-    return "\(statisticsSummary) · \(writingUnitCount)/\(targetWordCount) (\(percent)%)"
+    "\(statisticsSummary) · \(readingTimeSummary)"
   }
 }
 
@@ -406,7 +511,7 @@ struct MacMarkdownEditorSaveStatusIcon: View {
             Button("重新保存") { saveStatus.retrySave() }
           }
         } else {
-          Text("发布进度请在“准备发布”中查看。")
+          Text("发布进度请在右侧“发布检查”中查看。")
             .font(.callout)
             .foregroundStyle(.secondary)
         }
@@ -417,7 +522,7 @@ struct MacMarkdownEditorSaveStatusIcon: View {
             .textSelection(.enabled)
         }
       }
-      .padding(16)
+      .padding(WorkbenchSpacing.content)
       .frame(width: 340, alignment: .leading)
       .accessibilityIdentifier("markdown-editor-save-details")
     }

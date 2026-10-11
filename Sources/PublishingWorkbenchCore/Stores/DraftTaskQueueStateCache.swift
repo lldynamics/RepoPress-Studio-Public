@@ -49,15 +49,20 @@ public struct DraftTaskQueueState: Equatable {
   public var signature: Signature
   public var hasPreflightErrors: Bool
   public var hasImageIssues: Bool
+  /// Errors about the article itself, excluding site-wide repository and path
+  /// setup problems that would otherwise flag every article in the list.
+  public var articleErrorCount: Int
 
   public init(
     draftID: UUID,
     signature: Signature,
     hasPreflightErrors: Bool,
-    hasImageIssues: Bool
+    hasImageIssues: Bool,
+    articleErrorCount: Int = 0
   ) {
     self.draftID = draftID
     self.signature = signature
+    self.articleErrorCount = articleErrorCount
     self.hasPreflightErrors = hasPreflightErrors
     self.hasImageIssues = hasImageIssues
   }

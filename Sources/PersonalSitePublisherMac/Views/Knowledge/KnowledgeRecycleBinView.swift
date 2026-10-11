@@ -17,7 +17,7 @@ struct KnowledgeRecycleBinView: View {
           .foregroundStyle(.secondary)
         Spacer()
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
 
       Divider()
 
@@ -58,7 +58,7 @@ struct KnowledgeRecycleBinView: View {
           .foregroundStyle(.secondary)
         Spacer()
       }
-      .padding(12)
+      .padding(WorkbenchSpacing.card)
 
       Divider()
 
@@ -78,7 +78,7 @@ struct KnowledgeRecycleBinView: View {
           .keyboardShortcut(.defaultAction)
           .disabled(selection.isEmpty || knowledge.isBusy)
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
     }
     .frame(minWidth: 680, idealWidth: 780, minHeight: 480, idealHeight: 620)
     .confirmationDialog(
@@ -110,10 +110,12 @@ struct KnowledgeRecycleBinView: View {
         .foregroundStyle(.secondary)
       }
       Spacer()
-      Text(ByteCountFormatter.string(
-        fromByteCount: recycled.document.sourceByteCount,
-        countStyle: .file
-      ))
+      Text(
+        ByteCountFormatter.string(
+          fromByteCount: recycled.document.sourceByteCount,
+          countStyle: .file
+        )
+      )
       .font(.caption.monospacedDigit())
       .foregroundStyle(.secondary)
     }

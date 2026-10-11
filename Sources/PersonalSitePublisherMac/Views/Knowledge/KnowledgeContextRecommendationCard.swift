@@ -100,7 +100,7 @@ struct KnowledgeContextRecommendationCard: View {
                 }
               }
             }
-            .padding(.top, 4)
+            .padding(.top, WorkbenchSpacing.tight)
           }
           .font(.workbenchMetadata)
         }
@@ -114,7 +114,7 @@ struct KnowledgeContextRecommendationCard: View {
         }
       }
     }
-    .padding(12)
+    .padding(WorkbenchSpacing.card)
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .overlay {
       RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -158,7 +158,7 @@ struct KnowledgeContextRecommendationCard: View {
       } else if semanticRecommendationCount > 0 {
         Text("本机语义 \(semanticRecommendationCount)")
           .font(.workbenchMetadata.weight(.medium))
-          .foregroundStyle(.tint)
+          .foregroundStyle(WorkbenchTheme.info)
       } else {
         Text("自动")
           .font(.workbenchMetadata)
@@ -229,7 +229,7 @@ struct KnowledgeContextRecommendationCard: View {
               )
             }
           }
-          .padding(.top, 4)
+          .padding(.top, WorkbenchSpacing.tight)
         }
         .font(.workbenchMetadata)
       }
@@ -245,9 +245,11 @@ struct KnowledgeContextRecommendationCard: View {
         .help(String(localized: "只隐藏本次查询中的这份资料，不会影响其他文章或查询。"))
       }
     }
-    .padding(9)
+    .padding(WorkbenchSpacing.control)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: 9))
+    .background(
+      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
     .accessibilityElement(children: .contain)
     .accessibilityLabel(String(localized: "\(card.document.title)。推荐原因：\(card.reason)"))
   }
@@ -286,10 +288,10 @@ struct KnowledgeContextRecommendationCard: View {
         if result.signals.contains(.semantic) {
           Text("语义")
             .font(.workbenchMetadata.weight(.medium))
-            .foregroundStyle(WorkbenchTheme.info)
-            .padding(.horizontal, 6)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, WorkbenchSpacing.icon)
             .padding(.vertical, 2)
-            .background(WorkbenchTheme.info.opacity(0.1), in: Capsule())
+            .background(Color.secondary.opacity(0.1), in: Capsule())
         }
         if let location = hit.locationLabel {
           Text(location)

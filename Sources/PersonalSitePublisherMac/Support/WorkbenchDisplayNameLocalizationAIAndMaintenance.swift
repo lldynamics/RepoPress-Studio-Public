@@ -101,10 +101,6 @@ extension AIPublishingChatQuickAction {
     }
   }
 
-  var localizedCompactDisplayNameKey: LocalizedStringKey {
-    LocalizedStringKey(compactWorkbenchDisplayNameSemanticKey)
-  }
-
   var fallbackDisplayName: String { displayName }
 
   var workbenchPromptSemanticKey: String {

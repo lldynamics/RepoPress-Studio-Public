@@ -115,7 +115,7 @@ struct SettingsTaskShortcutsView: View {
         HStack(alignment: .center, spacing: WorkbenchSpacing.control) {
           Image(systemName: shortcut.systemImage)
             .font(.body.weight(.semibold))
-            .foregroundStyle(WorkbenchTheme.primary)
+            .foregroundStyle(.secondary)
             .frame(width: 22)
             .accessibilityHidden(true)
 
@@ -146,7 +146,7 @@ struct SettingsTaskShortcutsView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
         .padding(.horizontal, WorkbenchSpacing.control)
-        .padding(.vertical, 8)
+        .padding(.vertical, WorkbenchSpacing.control)
         .background(
           Color.primary.opacity(0.035),
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)

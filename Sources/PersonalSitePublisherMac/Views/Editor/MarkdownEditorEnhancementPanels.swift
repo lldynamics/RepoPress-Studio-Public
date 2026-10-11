@@ -25,7 +25,7 @@ struct MarkdownInternalLinkPicker: View {
           .focused($isQueryFocused)
           .accessibilityLabel("搜索标题、Slug、标签或摘要")
       }
-      .padding(12)
+      .padding(WorkbenchSpacing.card)
       Divider()
 
       HSplitView {
@@ -62,7 +62,7 @@ struct MarkdownInternalLinkPicker: View {
             .listStyle(.inset)
           }
         }
-        .padding(12)
+        .padding(WorkbenchSpacing.card)
         .frame(minWidth: 360)
 
         VStack(alignment: .leading, spacing: 10) {
@@ -93,7 +93,7 @@ struct MarkdownInternalLinkPicker: View {
             Label("插入外部链接模板", systemImage: "globe")
           }
         }
-        .padding(WorkbenchSpacing.section)
+        .padding(WorkbenchSpacing.content)
         .frame(minWidth: 220, maxWidth: 280, maxHeight: .infinity, alignment: .topLeading)
       }
     }
@@ -122,7 +122,7 @@ struct MarkdownInternalLinkPicker: View {
       Spacer()
       Button("完成") { dismiss() }
     }
-    .padding(WorkbenchSpacing.section)
+    .padding(WorkbenchSpacing.content)
   }
 }
 
@@ -144,7 +144,7 @@ struct MarkdownDiagnosticsPanel: View {
           .foregroundStyle(.secondary)
         Button("完成") { dismiss() }
       }
-      .padding(WorkbenchSpacing.section)
+      .padding(WorkbenchSpacing.content)
       Divider()
 
       if diagnostics.isEmpty {
@@ -185,7 +185,7 @@ struct MarkdownDiagnosticsPanel: View {
             }
             .controlSize(.small)
           }
-          .padding(.vertical, 5)
+          .padding(.vertical, WorkbenchSpacing.tight)
         }
       }
     }
@@ -262,7 +262,7 @@ struct MarkdownSnippetLibraryPanel: View {
         .accessibilityLabel("新建当前站点片段")
         Button("完成") { dismiss() }
       }
-      .padding(WorkbenchSpacing.section)
+      .padding(WorkbenchSpacing.content)
       Divider()
       HStack(spacing: 10) {
         TextField("搜索模板或片段", text: $query)
@@ -282,7 +282,7 @@ struct MarkdownSnippetLibraryPanel: View {
         }
         .frame(width: 120)
       }
-      .padding(12)
+      .padding(WorkbenchSpacing.card)
       Divider()
 
       List {
@@ -298,7 +298,7 @@ struct MarkdownSnippetLibraryPanel: View {
               ForEach(visibleDefinitions) { definition in
                 HStack(spacing: 12) {
                   Image(systemName: "curlybraces.square")
-                    .foregroundStyle(WorkbenchTheme.primary)
+                    .foregroundStyle(.secondary)
                   VStack(alignment: .leading, spacing: 3) {
                     Text(definition.name).font(.callout.weight(.medium))
                     Text(shortcodeParameterHint(definition))
@@ -333,7 +333,7 @@ struct MarkdownSnippetLibraryPanel: View {
               Image(systemName: snippet.systemImage)
                 .font(.title3)
                 .frame(width: 28)
-                .foregroundStyle(WorkbenchTheme.primary)
+                .foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 3) {
               Text(snippet.title)
@@ -353,7 +353,7 @@ struct MarkdownSnippetLibraryPanel: View {
               if let shortcut = snippet.shortcut {
                 Label("/\(shortcut)", systemImage: "keyboard")
                   .font(.caption)
-                  .foregroundStyle(WorkbenchTheme.primary)
+                  .foregroundStyle(.secondary)
               }
             }
             Spacer()
@@ -380,7 +380,7 @@ struct MarkdownSnippetLibraryPanel: View {
               .accessibilityLabel("管理片段：\(snippet.title)")
             }
           }
-          .padding(.vertical, 5)
+          .padding(.vertical, WorkbenchSpacing.tight)
         }
       }
     }
@@ -546,7 +546,7 @@ private struct MarkdownCustomSnippetEditorPanel: View {
           .font(.headline)
         Spacer()
       }
-      .padding(WorkbenchSpacing.section)
+      .padding(WorkbenchSpacing.content)
       Divider()
 
       Form {
@@ -589,7 +589,7 @@ private struct MarkdownCustomSnippetEditorPanel: View {
           .keyboardShortcut(.defaultAction)
           .disabled(!canSave)
       }
-      .padding(WorkbenchSpacing.section)
+      .padding(WorkbenchSpacing.content)
     }
     .frame(width: 560, height: 520)
     .onAppear { isTitleFocused = true }
@@ -603,16 +603,16 @@ private struct MarkdownCustomSnippetEditorPanel: View {
 
   private func save() {
     guard let saved = MarkdownSnippetLibraryService.savingCustomSnippet(
-      id: snippet?.id,
-      title: title,
-      detail: detail,
-      kind: kind,
-      markdown: markdown,
-      siteProfileID: siteProfileID,
-      shortcut: shortcut,
-      previewKind: snippet?.previewKind,
-      selectionToken: snippet?.selectionToken,
-      in: []
+        id: snippet?.id,
+        title: title,
+        detail: detail,
+        kind: kind,
+        markdown: markdown,
+        siteProfileID: siteProfileID,
+        shortcut: shortcut,
+        previewKind: snippet?.previewKind,
+        selectionToken: snippet?.selectionToken,
+        in: []
     ).first else {
       return
     }

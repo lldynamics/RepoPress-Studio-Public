@@ -69,8 +69,8 @@ struct TaxonomySuggestionField: View {
       .help("移除")
       .accessibilityLabel(String(localized: "移除“\(value)”"))
     }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 4)
+    .padding(.horizontal, WorkbenchSpacing.control)
+    .padding(.vertical, WorkbenchSpacing.tight)
     .background(workbenchAccentColor.opacity(0.18), in: Capsule())
     .foregroundStyle(workbenchAccentColor)
     .overlay(Capsule().stroke(workbenchAccentColor.opacity(0.4), lineWidth: 1))
@@ -87,8 +87,8 @@ struct TaxonomySuggestionField: View {
         Text(suggestion)
           .font(.caption)
       }
-      .padding(.horizontal, 8)
-      .padding(.vertical, 4)
+      .padding(.horizontal, WorkbenchSpacing.control)
+      .padding(.vertical, WorkbenchSpacing.tight)
       .foregroundStyle(.secondary)
       .overlay(
         Capsule()

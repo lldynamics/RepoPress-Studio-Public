@@ -91,10 +91,10 @@ struct AIPublishingTemplateLibraryView: View {
         .accessibilityLabel("清除搜索")
       }
     }
-    .padding(10)
+    .padding(WorkbenchSpacing.card)
     .background(.quaternary, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
-    .padding(.horizontal, 20)
-    .padding(.top, 12)
+    .padding(.horizontal, WorkbenchSpacing.page)
+    .padding(.top, WorkbenchSpacing.card)
   }
 
   private var header: some View {
@@ -125,7 +125,7 @@ struct AIPublishingTemplateLibraryView: View {
       .keyboardShortcut(.cancelAction)
       .accessibilityIdentifier("ai-template-library-close")
     }
-    .padding(20)
+    .padding(WorkbenchSpacing.page)
   }
 
   private var scopePicker: some View {
@@ -137,8 +137,8 @@ struct AIPublishingTemplateLibraryView: View {
     }
     .pickerStyle(.segmented)
     .labelsHidden()
-    .padding(.horizontal, 20)
-    .padding(.vertical, 12)
+    .padding(.horizontal, WorkbenchSpacing.page)
+    .padding(.vertical, WorkbenchSpacing.card)
     .accessibilityLabel("模板范围")
     .accessibilityIdentifier("ai-template-library-scope")
   }
@@ -246,7 +246,7 @@ struct AIPublishingTemplateLibraryView: View {
   ) -> some View {
     HStack(spacing: 12) {
       Image(systemName: systemImage)
-        .font(.system(size: 14, weight: .medium))
+        .font(.system(size: WorkbenchIconSize.inline, weight: .medium))
         .foregroundStyle(workbenchAccentColor)
         .frame(width: 28, height: 28)
         .background(
@@ -268,7 +268,7 @@ struct AIPublishingTemplateLibraryView: View {
       Spacer(minLength: 12)
     }
     .contentShape(Rectangle())
-    .padding(.vertical, 3)
+    .padding(.vertical, WorkbenchSpacing.tight)
   }
 
   private func librarySectionHeader(_ title: String, count: Int) -> some View {

@@ -62,7 +62,7 @@ struct AIChatConversationPicker: View {
 
             if !filteredArchivedConversations.isEmpty {
               Divider()
-                .padding(.vertical, 4)
+                .padding(.vertical, WorkbenchSpacing.tight)
 
               HStack {
                 Label(String(localized: "已归档"), systemImage: "archivebox")
@@ -73,7 +73,7 @@ struct AIChatConversationPicker: View {
                   .font(.caption.monospacedDigit())
                   .foregroundStyle(.tertiary)
               }
-              .padding(.horizontal, 8)
+              .padding(.horizontal, WorkbenchSpacing.control)
 
               ForEach(filteredArchivedConversations) { conversation in
                 conversationRow(conversation)
@@ -89,11 +89,11 @@ struct AIChatConversationPicker: View {
         String(localized: "对话内容保存在本机；API Key 使用你在设置中选择的独立保存位置。"),
         systemImage: "lock"
       )
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
     .frame(width: 360)
     .sheet(item: $conversationPendingRename) { conversation in
       renameSheet(conversation)
@@ -157,8 +157,10 @@ struct AIChatConversationPicker: View {
               ? "archivebox"
               : (conversation.id == activeConversationID ? "checkmark.circle.fill" : "bubble.left")
           )
-            .foregroundStyle(conversation.id == activeConversationID ? WorkbenchTheme.primary : .secondary)
-            .frame(width: 16)
+          .foregroundStyle(
+            conversation.id == activeConversationID ? WorkbenchTheme.primary : .secondary
+          )
+          .frame(width: 16)
 
           VStack(alignment: .leading, spacing: 3) {
             Text(verbatim: title(for: conversation))
@@ -172,7 +174,9 @@ struct AIChatConversationPicker: View {
               .lineLimit(1)
 
             HStack(spacing: 5) {
-              Text(conversation.updatedAt.formatted(.relative(presentation: .named, unitsStyle: .abbreviated)))
+              Text(
+                conversation.updatedAt.formatted(
+                  .relative(presentation: .named, unitsStyle: .abbreviated)))
 
               if !conversation.selectedModel.trimmedForPublishing.isEmpty {
                 Text("·")
@@ -198,11 +202,9 @@ struct AIChatConversationPicker: View {
       .accessibilityValue(
         conversation.isArchived
           ? String(localized: "已归档")
-          : (
-            conversation.id == activeConversationID
-              ? String(localized: "当前对话")
-              : preview(for: conversation)
-          )
+          : (conversation.id == activeConversationID
+            ? String(localized: "当前对话")
+            : preview(for: conversation))
       )
 
       Menu {
@@ -246,8 +248,8 @@ struct AIChatConversationPicker: View {
         )
       )
     }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 7)
+    .padding(.horizontal, WorkbenchSpacing.control)
+    .padding(.vertical, WorkbenchSpacing.control)
     .background {
       RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
         .fill(
@@ -287,13 +289,14 @@ struct AIChatConversationPicker: View {
         .disabled(renameText.trimmedForPublishing.isEmpty)
       }
     }
-    .padding(20)
+    .padding(WorkbenchSpacing.page)
     .frame(width: 360)
   }
 
   private func title(for conversation: AIConversation) -> String {
     if conversation.title?.trimmedForPublishing.nilIfEmpty == nil,
-       !conversation.messages.contains(where: { $0.role == .user }) {
+      !conversation.messages.contains(where: { $0.role == .user })
+    {
       return String(localized: "新对话")
     }
     if let draft {
@@ -306,7 +309,8 @@ struct AIChatConversationPicker: View {
     }
     if let firstUserMessage = conversation.messages.first(where: { $0.role == .user }) {
       return AIPublishingChatConversationPresentation.title(
-        fromUserText: AIPublishingChatMessageCompositionService.displayContent(for: firstUserMessage),
+        fromUserText: AIPublishingChatMessageCompositionService.displayContent(
+          for: firstUserMessage),
         fallbackTitle: String(localized: "通用 AI 对话")
       )
     }

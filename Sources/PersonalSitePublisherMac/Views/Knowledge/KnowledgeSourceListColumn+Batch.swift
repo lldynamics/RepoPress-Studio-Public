@@ -104,8 +104,8 @@ extension KnowledgeSourceListColumn {
       .help("移到回收站")
       .accessibilityLabel("将所选资料移到回收站")
     }
-    .padding(.horizontal, 10)
-    .padding(.vertical, 7)
+    .padding(.horizontal, WorkbenchSpacing.control)
+    .padding(.vertical, WorkbenchSpacing.control)
     .background(workbenchAccentColor.opacity(0.06))
     .accessibilityElement(children: .contain)
     .accessibilityLabel("批量操作，已选择 \(selectedDocumentIDs.count) 条资料")

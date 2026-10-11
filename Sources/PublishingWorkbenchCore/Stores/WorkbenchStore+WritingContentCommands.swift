@@ -1,6 +1,6 @@
 import Foundation
-import PublishingPreviewCore
 import PublishingDomainContracts
+import PublishingPreviewCore
 
 extension WorkbenchStore {
   public func makeVideoAttachment(
@@ -97,7 +97,7 @@ extension WorkbenchStore {
     }
 
     guard selectedDraftID == draftID,
-      let selectedDraft = drafts.first(where: { $0.id == draftID })
+      drafts.contains(where: { $0.id == draftID })
     else {
       preflightRefreshTask = nil
       if selectedDraftID == draftID {
@@ -106,96 +106,20 @@ extension WorkbenchStore {
       return
     }
 
-    let selectedDraftSnapshot = selectedDraft
-    let profileSnapshot = profile(for: selectedDraft)
-    let sameSiteDraftsSnapshot = drafts.filter {
-      $0.belongs(toSiteProfileID: selectedDraft.siteProfileID)
-    }
-    let repositoryReportSnapshot = repositoryReport(for: selectedDraft)
-    let preflightService = publishingStore.preflightService
-    let generalDraftPublishingIssue = publishingStore.generalDraftPublishingIssue
     preflightRefreshTask = Task { [weak self] in
-      let calculationTask: Task<[PreflightIssue]?, Never> = Task.detached(
-        priority: .userInitiated
-      ) {
-        guard !Task.isCancelled else { return nil }
-        if selectedDraftSnapshot.isGeneralDraft {
-          return [generalDraftPublishingIssue]
-        }
-        let duplicateIndex = PreflightDuplicateIndex(
-          drafts: sameSiteDraftsSnapshot,
-          profile: profileSnapshot
-        )
-        let baseIssues = preflightService.run(
-          draft: selectedDraftSnapshot,
-          allDrafts: sameSiteDraftsSnapshot,
-          profile: profileSnapshot,
-          repositoryReport: repositoryReportSnapshot,
-          includeRepositoryReadiness: true,
-          duplicateIndex: duplicateIndex
-        )
-        return baseIssues
-      }
-      let linkAuditTask: Task<SiteLinkAuditReport?, Never>?
-      if selectedDraftSnapshot.isGeneralDraft {
-        linkAuditTask = nil
-      } else {
-        linkAuditTask = Task { [weak self] in
-          guard let self else { return nil }
-          do {
-            return try await self.localSiteLinkAuditReportAsync(
-              drafts: sameSiteDraftsSnapshot,
-              profile: profileSnapshot
-            )
-          } catch is CancellationError {
-            return nil
-          } catch {
-            return nil
-          }
-        }
-      }
-      let calculation = await withTaskCancellationHandler(
-        operation: {
-          await calculationTask.value
-        },
-        onCancel: {
-          calculationTask.cancel()
-          linkAuditTask?.cancel()
-        })
-      let linkAuditReport = await linkAuditTask?.value
-
-      guard !Task.isCancelled,
-        let calculation,
-        let self,
+      guard let self else { return }
+      let result = await self.ensurePreflight(for: draftID, flushEditorBuffer: false)
+      guard !Task.isCancelled, let result,
         self.preflightRefreshGeneration == generation,
-        self.selectedDraftID == draftID,
-        let currentDraft = self.drafts.first(where: { $0.id == draftID }),
-        currentDraft.hasSamePreflightInput(as: selectedDraftSnapshot),
-        self.profile(for: currentDraft) == profileSnapshot,
-        self.drafts.filter({
-          $0.belongs(toSiteProfileID: currentDraft.siteProfileID)
-        }).count == sameSiteDraftsSnapshot.count,
-        zip(
-          self.drafts.filter({
-            $0.belongs(toSiteProfileID: currentDraft.siteProfileID)
-          }),
-          sameSiteDraftsSnapshot
-        ).allSatisfy({ current, snapshot in
-          current.id == snapshot.id && current.hasSamePreflightInput(as: snapshot)
-        }),
-        self.repositoryReport(for: currentDraft) == repositoryReportSnapshot
+        self.selectedDraftID == draftID
       else {
-        if let self, self.preflightRefreshGeneration == generation {
+        if self.preflightRefreshGeneration == generation {
           self.preflightRefreshTask = nil
         }
         return
       }
 
-      self.publishingStore.preflightIssues =
-        linkAuditReport?.mergingPreflightIssues(
-          calculation,
-          for: selectedDraftSnapshot
-        ) ?? calculation
+      self.publishingStore.preflightIssues = result.issues
       self.preflightRefreshTask = nil
     }
   }
@@ -375,10 +299,6 @@ extension WorkbenchStore {
   public func cachedRemotePublishPreview(for draft: ArticleDraft) -> RemoteRepositoryPublishPreview?
   {
     publishingStore.draftPublishPreviewSnapshot(for: draft.id)?.remotePublishPreview
-  }
-
-  public func cachedRemoteReviewDraft(for draft: ArticleDraft) -> RemoteReviewDraft? {
-    publishingStore.draftPublishPreviewSnapshot(for: draft.id)?.remoteReviewDraft
   }
 
   public func cachedDraftPublishPreviewSnapshot(

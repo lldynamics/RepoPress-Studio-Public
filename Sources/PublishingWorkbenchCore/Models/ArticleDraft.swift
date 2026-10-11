@@ -29,6 +29,8 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   private var pendingSlugRedirectPathsStorage: [String]?
   /// A framework-provided route override such as Quartz `permalink`.
   public var permalink: String?
+  /// Optional Hugo linkage; absent keys preserve legacy repository fingerprints.
+  public var translationKey: String?
   public var draft: Bool
   public var visibility: ArticleVisibility
   public var summary: String
@@ -75,6 +77,8 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   /// Present only on a translated article. Optional for older snapshots and
   /// independent of repository content fingerprints.
   public var translationLink: AITranslationDraftLink?
+  /// Optional local reminder, independent from the article's public date.
+  public var publishReminderAt: Date?
   /// Stable identity for built-in software guides. This is intentionally
   /// independent from the editable title and slug so user content with the
   /// same slug is never mistaken for an installed guide.
@@ -98,6 +102,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     aliases: [String] = [],
     pendingSlugRedirectPaths: [String] = [],
     permalink: String? = nil,
+    translationKey: String? = nil,
     draft: Bool = true,
     visibility: ArticleVisibility = .public,
     summary: String = "",
@@ -139,6 +144,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       ? nil
       : pendingSlugRedirectPaths
     self.permalink = permalink?.trimmedForPublishing.nilIfEmpty
+    self.translationKey = translationKey?.trimmedForPublishing.nilIfEmpty
     self.draft = draft
     self.visibility = visibility
     self.summary = summary
@@ -220,6 +226,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       && tags == other.tags
       && categories == other.categories
       && summary == other.summary
+      && draft == other.draft
       && visibility == other.visibility
       && status == other.status
   }
@@ -229,17 +236,6 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   /// not invalidate an editor's optimistic metadata revision.
   public func hasSameEditorMetadata(as other: ArticleDraft) -> Bool {
     metadataProjection == other.metadataProjection
-  }
-
-  /// Whether two values differ only in body/derived-count/content timestamp.
-  /// This is the change-kind discriminator used by the editor autosave path.
-  public func hasSameMetadata(as other: ArticleDraft) -> Bool {
-    metadataProjection == other.metadataProjection
-      && repositorySHA == other.repositorySHA
-      && repositoryImportFingerprint == other.repositoryImportFingerprint
-      && repositoryBinding == other.repositoryBinding
-      && externalDraftSource == other.externalDraftSource
-      && reusedFromSourceSnapshot == other.reusedFromSourceSnapshot
   }
 
   /// Records a metadata mutation.  `updatedAt` remains the content-write
@@ -374,16 +370,6 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     return true
   }
 
-  public static func validGeneralDraftFolderName(_ name: String?) -> String? {
-    guard let name else { return nil }
-    let value = name.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !value.isEmpty, value != ".", value != "..", value.count <= 80,
-      !value.contains("/"), !value.contains("\\"),
-      value.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) })
-    else { return nil }
-    return value
-  }
-
   public func belongs(toSiteProfileID profileID: UUID) -> Bool {
     scope == .site(profileID)
   }
@@ -496,7 +482,8 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   /// Records an explicitly reviewed remote baseline while preserving a local
   /// document that may still need publication. This is the atomic state used
   /// after visual conflict resolution; it never pretends a merged/local
-  /// document is already present on the target branch.
+  /// document is already present on the target branch. The local disk baseline
+  /// stays independent until a conditional project write actually succeeds.
   public mutating func adoptReviewedRemoteBaseline(
     profile: SiteProfile,
     repositoryPath: String,
@@ -507,17 +494,22 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   ) {
     let normalizedPath = repositoryPath.normalizedRelativePath()
     let normalizedRevision = remoteRevision.trimmedForPublishing
+    let identity = DraftRepositoryIdentity(profile: profile)
+    let projectBinding = repositoryBinding.flatMap { binding in
+      binding.identity == identity && binding.repositoryPath == normalizedPath ? binding : nil
+    }
     let remoteDigest = Self.repositoryDocumentDigest(remoteDocument)
     let localDigest = Self.repositoryDocumentDigest(localDocument)
     let isSynced = remoteDigest == localDigest
     self.repositoryPath = normalizedPath
     repositorySHA = normalizedRevision
     repositoryBinding = DraftRepositoryBinding(
-      identity: DraftRepositoryIdentity(profile: profile),
+      identity: identity,
       repositoryPath: normalizedPath,
       remoteRevision: normalizedRevision,
       renderedContentDigest: remoteDigest,
-      projectFileContentDigest: nil,
+      projectFileContentDigest: projectBinding?.projectFileContentDigest,
+      projectFileRenderedContentDigest: projectBinding?.projectFileRenderedContentDigest,
       verification: .verified,
       syncState: isSynced ? .synced : .localChanged,
       verifiedAt: verifiedAt
@@ -572,41 +564,6 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     repositoryBinding = binding
   }
 
-  public func repositorySyncState(for profile: SiteProfile) -> DraftRepositorySyncState {
-    guard let binding = repositoryBinding else { return .localOnly }
-    guard binding.identity == nil || binding.identity == DraftRepositoryIdentity(profile: profile)
-    else { return .diverged }
-    switch binding.syncState {
-    case .diverged, .failed:
-      return binding.syncState
-    case .awaitingReview:
-      guard let pendingDigest = binding.pendingReviewContentDigest else {
-        return .awaitingReview
-      }
-      return pendingDigest == renderedRepositoryContentDigest(profile: profile)
-        ? .awaitingReview
-        : .localChanged
-    case .localOnly:
-      return .localOnly
-    case .projectSaved:
-      return .projectSaved
-    case .localChanged:
-      // This state is set by a successful local project write while a remote
-      // revision is retained. It is authoritative until a verified remote
-      // operation establishes a new baseline.
-      return .localChanged
-    case .synced:
-      guard binding.remoteRevision != nil else { return .projectSaved }
-      guard let baseline = binding.renderedContentDigest else { return .localChanged }
-      return baseline == renderedRepositoryContentDigest(profile: profile) ? .synced : .localChanged
-    }
-  }
-
-  public func renderedRepositoryContentDigest(profile: SiteProfile) -> String {
-    let document = FrontMatterRenderer().renderDocument(draft: self, profile: profile)
-    return Self.repositoryDocumentDigest(document)
-  }
-
   public static func repositoryDocumentDigest(_ document: String) -> String {
     SHA256.hash(data: Data(document.utf8))
       .map { String(format: "%02x", $0) }
@@ -650,6 +607,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       authors: authors,
       aliases: aliases,
       permalink: permalink,
+      translationKey: translationKey,
       draft: draft,
       visibility: visibility,
       summary: summary,
@@ -674,14 +632,6 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     }
     return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
   }
-
-  /// Advances only the general content timestamp. Prefer
-  /// `markMetadataUpdated` or `markBodyUpdated` when the mutation kind is
-  /// known so list ordering and editor concurrency remain explicit.
-  public mutating func touch() {
-    markBodyUpdated()
-  }
-
 }
 
 private struct RepositoryContentFingerprintSnapshot: Encodable {
@@ -693,6 +643,7 @@ private struct RepositoryContentFingerprintSnapshot: Encodable {
   var authors: [String]
   var aliases: [String]
   var permalink: String?
+  var translationKey: String?
   var draft: Bool
   var visibility: ArticleVisibility
   var summary: String

@@ -70,13 +70,16 @@ public struct MarkdownFrontMatterEditingService: Sendable {
     _ source: String,
     profile: SiteProfile
   ) -> MarkdownFrontMatterDocumentParts? {
-    let expectedDelimiter: FrontMatterDelimiter = profile.frontMatterStyle == .yaml
+    let expectedDelimiter: FrontMatterDelimiter =
+      profile.frontMatterStyle == .yaml
       ? .yaml
       : .toml
-    guard let document = DelimitedFrontMatterParser().split(
-      source,
-      expectedDelimiter: expectedDelimiter
-    ) else { return nil }
+    guard
+      let document = DelimitedFrontMatterParser().split(
+        source,
+        expectedDelimiter: expectedDelimiter
+      )
+    else { return nil }
     return MarkdownFrontMatterDocumentParts(
       frontMatter: document.frontMatter,
       bodyMarkdown: document.body,
@@ -99,9 +102,9 @@ public struct MarkdownFrontMatterEditingService: Sendable {
 
     let values: [String: [String]]
     switch parsed {
-    case let .success(parsedValues):
+    case .success(let parsedValues):
       values = parsedValues
-    case let .failure(issue):
+    case .failure(let issue):
       return MarkdownFrontMatterEditingResult(draft: draft, issue: issue)
     }
 
@@ -133,25 +136,32 @@ public struct MarkdownFrontMatterEditingService: Sendable {
       guard let isPrivate = parsedBool(privateText) else {
         return MarkdownFrontMatterEditingResult(draft: draft, issue: .invalidVisibility)
       }
-      visibilityText = isPrivate
+      visibilityText =
+        isPrivate
         ? ArticleVisibility.private.rawValue
         : ArticleVisibility.public.rawValue
     } else {
       visibilityText = ArticleVisibility.public.rawValue
     }
-    guard let visibility = ArticleVisibility(rawValue: visibilityText.trimmedForPublishing.lowercased()) else {
+    guard
+      let visibility = ArticleVisibility(rawValue: visibilityText.trimmedForPublishing.lowercased())
+    else {
       return MarkdownFrontMatterEditingResult(draft: draft, issue: .invalidVisibility)
     }
 
     updated.title = values["title"]?.first ?? ""
     updated.slug = values["slug"]?.first ?? ""
-    updated.summary = values["description"]?.first
+    updated.summary =
+      values["description"]?.first
       ?? values["summary"]?.first
       ?? values["excerpt"]?.first
       ?? ""
     updated.authors = values["authors"] ?? values["author"] ?? []
     updated.aliases = values["aliases"] ?? values["alias"] ?? []
     updated.permalink = values["permalink"]?.first?.trimmedForPublishing.nilIfEmpty
+    if profile.siteKind == .hugo {
+      updated.translationKey = values["translationkey"]?.first?.trimmedForPublishing.nilIfEmpty
+    }
     updated.tags = values["tags"] ?? []
     updated.categories = values["categories"] ?? []
     updated.visibility = visibility
@@ -170,7 +180,8 @@ public struct MarkdownFrontMatterEditingService: Sendable {
     separator: Character,
     style: ParsingStyle
   ) -> Result<[String: [String]], MarkdownFrontMatterEditingIssue> {
-    var lines = source
+    var lines =
+      source
       .replacingOccurrences(of: "\r\n", with: "\n")
       .replacingOccurrences(of: "\r", with: "\n")
       .components(separatedBy: "\n")
@@ -183,8 +194,9 @@ public struct MarkdownFrontMatterEditingService: Sendable {
     }
 
     guard lines.count >= 2,
-          lines.first?.trimmedForPublishing == delimiter,
-          lines.last?.trimmedForPublishing == delimiter else {
+      lines.first?.trimmedForPublishing == delimiter,
+      lines.last?.trimmedForPublishing == delimiter
+    else {
       return .failure(.invalidDelimiter)
     }
 
@@ -249,6 +261,9 @@ public struct MarkdownFrontMatterEditingService: Sendable {
     if let permalink = draft.permalink?.trimmedForPublishing.nilIfEmpty {
       lines.append("permalink: \(quotedString(permalink))")
     }
+    if profile.siteKind == .hugo, let key = draft.translationKey?.trimmedForPublishing.nilIfEmpty {
+      lines.append("translationKey: \(quotedString(key))")
+    }
     lines.append(contentsOf: [
       "tags: \(array(draft.tags))",
       "categories: \(array(draft.categories))",
@@ -273,6 +288,9 @@ public struct MarkdownFrontMatterEditingService: Sendable {
     }
     if let permalink = draft.permalink?.trimmedForPublishing.nilIfEmpty {
       lines.append("permalink = \(quotedString(permalink))")
+    }
+    if profile.siteKind == .hugo, let key = draft.translationKey?.trimmedForPublishing.nilIfEmpty {
+      lines.append("translationKey = \(quotedString(key))")
     }
     lines.append(contentsOf: [
       "tags = \(array(draft.tags))",
@@ -316,7 +334,8 @@ public struct MarkdownFrontMatterEditingService: Sendable {
   }
 
   private func quotedString(_ value: String) -> String {
-    "\"" + value
+    "\""
+      + value
       .replacingOccurrences(of: "\\", with: "\\\\")
       .replacingOccurrences(of: "\"", with: "\\\"")
       .replacingOccurrences(of: "\n", with: "\\n") + "\""
@@ -375,8 +394,9 @@ public struct MarkdownFrontMatterEditingService: Sendable {
   private func cleanScalar(_ value: String) -> String {
     let trimmed = value.trimmedForPublishing
     if trimmed.hasPrefix("\""), trimmed.hasSuffix("\""),
-       let data = trimmed.data(using: .utf8),
-       let decoded = try? JSONDecoder().decode(String.self, from: data) {
+      let data = trimmed.data(using: .utf8),
+      let decoded = try? JSONDecoder().decode(String.self, from: data)
+    {
       return decoded.trimmedForPublishing
     }
     if trimmed.hasPrefix("'"), trimmed.hasSuffix("'") {

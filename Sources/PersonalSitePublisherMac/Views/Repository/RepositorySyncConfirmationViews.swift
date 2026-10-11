@@ -263,7 +263,7 @@ struct RepositoryRebaseSyncConfirmationView: View {
       Text(verbatim: "\(number)")
         .font(.caption.weight(.bold).monospacedDigit())
         .frame(width: 22, height: 22)
-        .background(WorkbenchTheme.primary.opacity(0.12), in: Circle())
+        .background(Color.secondary.opacity(0.12), in: Circle())
       Text(title).font(.callout)
     }
     .accessibilityElement(children: .combine)
@@ -278,7 +278,7 @@ private func confirmationHeader(
   HStack(alignment: .top, spacing: 12) {
     Image(systemName: systemImage)
       .font(.title2)
-      .foregroundStyle(WorkbenchTheme.primary)
+      .foregroundStyle(.secondary)
       .accessibilityHidden(true)
     VStack(alignment: .leading, spacing: 4) {
       Text(title).font(.headline)
@@ -296,7 +296,7 @@ private func syncCard<Content: View>(
   @ViewBuilder content: () -> Content
 ) -> some View {
   VStack(alignment: .leading, spacing: 9, content: content)
-    .padding(WorkbenchSpacing.section)
+    .padding(WorkbenchSpacing.content)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       WorkbenchBackgroundStyle.card,

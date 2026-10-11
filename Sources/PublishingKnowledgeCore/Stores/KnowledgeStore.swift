@@ -5,6 +5,15 @@ import PublishingCoreSupport
 @MainActor
 public final class KnowledgeStore: ObservableObject {
   let service: KnowledgeLibraryService
+
+  public func setCacheRetentionEnabled(_ isEnabled: Bool, generation: UInt64) async {
+    // Opening a database may hold its initialization lock; never wait for it on AppKit's thread.
+    let service = service
+    await Task.detached(priority: .utility) {
+      service.setCacheRetentionEnabled(isEnabled, generation: generation)
+    }.value
+  }
+
   let noteCloudSyncAdapter: KnowledgeNoteCloudSyncAdapter
   let noteCloudSyncEngine: RPNoteCloudSyncEngine
   private let operationEventRecorder: (@MainActor @Sendable (KnowledgeImportEvent) -> Void)?

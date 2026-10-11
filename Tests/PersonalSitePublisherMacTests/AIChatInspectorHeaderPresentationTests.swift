@@ -95,6 +95,41 @@ final class AIChatInspectorHeaderPresentationTests: XCTestCase {
     )
   }
 
+  func testCompactModelTitleKeepsModelIdentityWithoutRepeatingProvider() {
+    let config = AIProviderConfig(preset: .custom)
+
+    XCTAssertEqual(
+      AIChatInspectorHeaderPresentation.compactModelTitle(
+        for: config,
+        activeModel: "  custom-review-model  "
+      ),
+      "custom-review-model"
+    )
+    XCTAssertEqual(
+      AIChatInspectorHeaderPresentation.compactModelTitle(for: config, activeModel: " \n "),
+      "选择模型"
+    )
+  }
+
+  func testCompactCodexModelTitleReplacesTransportSentinelAndKeepsConcreteModel() {
+    let config = AIProviderConfig(preset: .codexAppServer)
+
+    XCTAssertEqual(
+      AIChatInspectorHeaderPresentation.compactModelTitle(
+        for: config,
+        activeModel: AIProviderPreset.codexDefaultModel
+      ),
+      "账户默认模型"
+    )
+    XCTAssertEqual(
+      AIChatInspectorHeaderPresentation.compactModelTitle(
+        for: config,
+        activeModel: "gpt-5-codex"
+      ),
+      "gpt-5-codex"
+    )
+  }
+
   func testCodexProviderHidesInternalTransportSentinels() {
     var config = AIProviderConfig(preset: .codexAppServer)
     config.applyPresetDefaults()

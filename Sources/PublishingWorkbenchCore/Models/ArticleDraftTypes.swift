@@ -1,6 +1,11 @@
 import Foundation
 import PublishingDomainContracts
 
+extension ArticleDraft {
+  /// Advances the content timestamp. Prefer metadata/body-specific edits
+  /// when the mutation kind is known so editor concurrency stays explicit.
+  public mutating func touch() { markBodyUpdated() }
+}
 public enum DraftStatus: String, Codable, CaseIterable, Identifiable, Sendable {
   case draft
   case ready
@@ -135,6 +140,8 @@ public struct ArticleDraftMetadataProjection: Equatable, Hashable, Sendable {
   public let aliases: [String]
   public let pendingSlugRedirectPaths: [String]
   public let permalink: String?
+  public let translationKey: String?
+  public let publishReminderAt: Date?
   public let draft: Bool
   public let visibility: ArticleVisibility
   public let summary: String
@@ -161,6 +168,8 @@ public struct ArticleDraftMetadataProjection: Equatable, Hashable, Sendable {
     aliases = draft.aliases
     pendingSlugRedirectPaths = draft.pendingSlugRedirectPaths
     permalink = draft.permalink
+    translationKey = draft.translationKey
+    publishReminderAt = draft.publishReminderAt
     self.draft = draft.draft
     visibility = draft.visibility
     summary = draft.summary
@@ -206,6 +215,7 @@ public struct ArticleDraftListMetadataProjection: Equatable, Hashable, Sendable 
   public let tags: [String]
   public let categories: [String]
   public let summary: String
+  public let draft: Bool
   public let visibility: ArticleVisibility
   public let status: DraftStatus
   public let metadataUpdatedAt: Date
@@ -221,8 +231,21 @@ public struct ArticleDraftListMetadataProjection: Equatable, Hashable, Sendable 
     tags = draft.tags
     categories = draft.categories
     summary = draft.summary
+    self.draft = draft.draft
     visibility = draft.visibility
     status = draft.status
     metadataUpdatedAt = draft.metadataUpdatedAt
+  }
+}
+
+extension ArticleDraft {
+  public static func validGeneralDraftFolderName(_ name: String?) -> String? {
+    guard let name else { return nil }
+    let value = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !value.isEmpty, value != ".", value != "..", value.count <= 80,
+      !value.contains("/"), !value.contains("\\"),
+      value.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) })
+    else { return nil }
+    return value
   }
 }

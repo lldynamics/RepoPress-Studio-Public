@@ -164,6 +164,33 @@ final class DraftAISuggestionStateTests: XCTestCase {
     XCTAssertFalse(store.aiStore.aiMetadataSuggestionRunningDraftIDs.contains(drafts[0].id))
   }
 
+  func testLateFailureFinalizerPreservesNewRequestLoadingAndAuthorization() async throws {
+    let transport = NonCooperativeSuggestionTransport()
+    let (store, drafts) = try makeStore(transport: transport, remote: true)
+    let retainedMessage = store.aiActionMessage
+    let olderTask = Task { await generateMetadataSuggestion(store, draft: drafts[0]) }
+    await transport.waitForRequest(1)
+    let newerTask = Task { await generateMetadataSuggestion(store, draft: drafts[0]) }
+    await transport.waitForRequest(2)
+
+    await transport.complete(1, with: .httpFailure(statusCode: 500, message: "stale failure"))
+    let olderResult = await olderTask.value
+    XCTAssertNil(olderResult)
+    XCTAssertTrue(store.isAIActionRunning)
+    XCTAssertTrue(store.isAIMetadataSuggestionRunning)
+    XCTAssertEqual(store.aiActionMessage, retainedMessage)
+
+    // Revocation must still find and invalidate the new request after the old
+    // request's finalizer has run; a late success cannot reinstall its result.
+    store.aiStore.revokeAIDataSharingConsent()
+    XCTAssertFalse(store.isAIActionRunning)
+    XCTAssertFalse(store.isAIMetadataSuggestionRunning)
+    await transport.complete(2, with: .success("TITLE: revoked new request"))
+    let newerResult = await newerTask.value
+    XCTAssertNil(newerResult)
+    XCTAssertNil(store.aiMetadataSuggestion(for: drafts[0].id))
+  }
+
   func testOlderNonMetadataActionCannotReplaceNewerResultOrMessage() async throws {
     let transport = NonCooperativeSuggestionTransport()
     let (store, drafts) = try makeStore(transport: transport)
@@ -350,9 +377,10 @@ final class DraftAISuggestionStateTests: XCTestCase {
     XCTAssertNil(store.aiMetadataSuggestionDraftID)
     XCTAssertNil(store.aiMetadataSuggestion)
     XCTAssertFalse(store.isAIMetadataSuggestionRunning)
-    XCTAssertFalse(store.aiStore.aiMetadataSuggestionsByDraftID.keys.contains(drafts[0].id))
     XCTAssertFalse(
-      store.aiStore.aiMetadataSuggestionGenerationsByDraftID.keys.contains(drafts[0].id))
+      store.aiStore.installAIMetadataSuggestion(
+        metadataA, for: drafts[0].id, generation: metadataGenerationA)
+    )
   }
 
   func testReconcileCancelsDeletedDraftMetadataRequestAndPreventsReinstall() async throws {
@@ -373,11 +401,62 @@ final class DraftAISuggestionStateTests: XCTestCase {
     XCTAssertEqual(cancellationCount, 1)
     XCTAssertFalse(store.aiStore.aiMetadataSuggestionRunningDraftIDs.contains(drafts[0].id))
     XCTAssertNil(store.aiMetadataSuggestion(for: drafts[0].id))
-    XCTAssertFalse(store.aiStore.aiMetadataSuggestionsByDraftID.keys.contains(drafts[0].id))
-    XCTAssertFalse(store.aiStore.aiMetadataSuggestionBaselinesByDraftID.keys.contains(drafts[0].id))
-    XCTAssertFalse(store.aiStore.aiMetadataSuggestionProfilesByDraftID.keys.contains(drafts[0].id))
-    XCTAssertFalse(
-      store.aiStore.aiMetadataSuggestionGenerationsByDraftID.keys.contains(drafts[0].id))
+    XCTAssertNil(store.aiStore.currentAIRequestGeneration(.metadata(drafts[0].id)))
+  }
+
+  func testDeletingOneDraftCancelsOnlyItsIndependentRequest() async throws {
+    let transport = NonCooperativeSuggestionTransport()
+    let (store, drafts) = try makeStore(transport: transport)
+    let aiStore = store.aiStore
+    let deletedLane = AIGenerationLane.metadata(drafts[0].id)
+    let retainedLane = AIGenerationLane.metadata(drafts[1].id)
+    let deletedGeneration = aiStore.beginAIRequest(deletedLane, showsActionLoading: true)
+    let retainedGeneration = aiStore.beginAIRequest(retainedLane, showsActionLoading: true)
+    for (lane, draft) in [(deletedLane, drafts[0]), (retainedLane, drafts[1])] {
+      let baseline = try XCTUnwrap(store.draftOperationBaseline(for: draft.id))
+      aiStore.bindAIRequest(lane, baseline: baseline, profile: store.activeProfile)
+    }
+    let request = URLRequest(url: URL(string: "http://127.0.0.1:11434/v1")!)
+    let deletedTask = Task {
+      defer { aiStore.finishAIRequest(deletedLane, generation: deletedGeneration) }
+      return try await aiStore.awaitAIRequest(deletedLane, generation: deletedGeneration) {
+        let (data, _) = try await transport.data(for: request)
+        return data
+      }
+    }
+    await transport.waitForRequest(1)
+    let retainedTask = Task {
+      defer { aiStore.finishAIRequest(retainedLane, generation: retainedGeneration) }
+      return try await aiStore.awaitAIRequest(retainedLane, generation: retainedGeneration) {
+        let (data, _) = try await transport.data(for: request)
+        return data
+      }
+    }
+    await transport.waitForRequest(2)
+
+    store.setDrafts([drafts[1]])
+    // Draft collection reconciliation is delivered on the main run loop.
+    for _ in 0..<100 where aiStore.aiMetadataSuggestionRunningDraftIDs.contains(drafts[0].id) {
+      try await Task.sleep(for: .milliseconds(5))
+    }
+    XCTAssertFalse(aiStore.aiMetadataSuggestionRunningDraftIDs.contains(drafts[0].id))
+    XCTAssertTrue(aiStore.aiMetadataSuggestionRunningDraftIDs.contains(drafts[1].id))
+    XCTAssertTrue(store.isAIActionRunning)
+    await transport.complete(1, with: .success("TITLE: deleted late completion"))
+    do {
+      _ = try await deletedTask.value
+      XCTFail("The deleted draft's request unexpectedly completed")
+    } catch {
+      XCTAssertTrue(error is CancellationError)
+    }
+    XCTAssertTrue(aiStore.aiMetadataSuggestionRunningDraftIDs.contains(drafts[1].id))
+    XCTAssertTrue(store.isAIActionRunning)
+
+    await transport.complete(2, with: .success("TITLE: retained completion"))
+    let retainedData = try await retainedTask.value
+    XCTAssertTrue(String(decoding: retainedData, as: UTF8.self).contains("retained completion"))
+    XCTAssertFalse(store.isAIMetadataSuggestionRunning)
+    XCTAssertFalse(store.isAIActionRunning)
   }
 
   func testReconcileCancelsOnlyDeletedDraftWhileOtherDraftFinishes() async throws {
@@ -541,7 +620,9 @@ final class DraftAISuggestionStateTests: XCTestCase {
     let (store, drafts) = try makeStore(transport: DraftSuggestionTransport(responses: []))
     let retained = AIPublishingMetadataSuggestion(
       titles: ["AI 标题"],
-      summary: "AI 生成的摘要可单独保留，供作者选择应用。"
+      slugs: ["ai-title"],
+      summary: "AI 生成的摘要可单独保留，供作者选择应用。",
+      tags: ["AI", "写作"]
     )
     installMetadataSuggestion(retained, for: drafts[0], store: store)
 
@@ -555,7 +636,8 @@ final class DraftAISuggestionStateTests: XCTestCase {
     XCTAssertEqual(titleRecord.fields, [.title])
     XCTAssertEqual(
       store.aiMetadataSuggestion(for: updated.id),
-      AIPublishingMetadataSuggestion(summary: retained.summary)
+      AIPublishingMetadataSuggestion(
+        slugs: retained.slugs, summary: retained.summary, tags: retained.tags)
     )
 
     let summaryApplied = try XCTUnwrap(
@@ -566,11 +648,32 @@ final class DraftAISuggestionStateTests: XCTestCase {
       )
     )
     XCTAssertEqual(summaryApplied.summary, retained.summary)
-    XCTAssertNil(store.aiMetadataSuggestion(for: summaryApplied.id))
+    XCTAssertEqual(
+      store.aiMetadataSuggestion(for: summaryApplied.id),
+      AIPublishingMetadataSuggestion(slugs: retained.slugs, tags: retained.tags)
+    )
 
     let summaryRecord = try XCTUnwrap(
       store.aiStore.aiMetadataApplicationRecords.first { $0.draftID == summaryApplied.id })
     XCTAssertEqual(summaryRecord.fields, [.summary])
+
+    let slugApplied = try XCTUnwrap(
+      store.applyAIMetadataSuggestion(field: .slug, value: "ai-title", draft: summaryApplied)
+    )
+    XCTAssertEqual(slugApplied.slug, "ai-title")
+    XCTAssertEqual(
+      store.aiMetadataSuggestion(for: slugApplied.id),
+      AIPublishingMetadataSuggestion(tags: retained.tags)
+    )
+    let tagsApplied = try XCTUnwrap(
+      store.applyAIMetadataSuggestion(field: .tags, value: "AI, 写作", draft: slugApplied)
+    )
+    XCTAssertEqual(tagsApplied.tags, retained.tags)
+    XCTAssertNil(store.aiMetadataSuggestion(for: tagsApplied.id))
+    let fieldRecords = store.aiStore.aiMetadataApplicationRecords.filter {
+      $0.draftID == updated.id
+    }
+    XCTAssertEqual(fieldRecords.map(\.fields), [[.tags], [.slug], [.summary], [.title]])
   }
 
   func testTrackedEditorFacadesReadOnlyTheirDraftSuggestion() throws {

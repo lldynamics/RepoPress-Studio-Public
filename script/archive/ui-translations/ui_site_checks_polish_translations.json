@@ -1,0 +1,8 @@
+{
+  "%lld 个发布条件未满足": {
+    "en": {"one": "%lld publish condition not met", "other": "%lld publish conditions not met"},
+    "zh-Hans": "%lld 个发布条件未满足"
+  },
+  "内容阻断": "Content blockers",
+  "维护事项按优先级显示。": "Maintenance items are shown by priority."
+}

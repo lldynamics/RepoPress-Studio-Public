@@ -1,14 +1,13 @@
 import SwiftUI
 
 struct WorkbenchDataRootSetupView: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @ObservedObject var coordinator: WorkbenchLaunchCoordinator
 
   var body: some View {
     VStack(spacing: 22) {
       Image(systemName: "externaldrive.fill.badge.plus")
-        .font(.system(size: 42, weight: .medium))
-        .foregroundStyle(workbenchAccentColor)
+        .font(.system(size: WorkbenchIconSize.hero, weight: .medium))
+        .foregroundStyle(.secondary)
         .accessibilityHidden(true)
 
       VStack(spacing: 8) {
@@ -28,9 +27,11 @@ struct WorkbenchDataRootSetupView: View {
           announcesNonUrgentStatus: true
         )
         .font(.callout)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, WorkbenchSpacing.content)
+        .padding(.vertical, WorkbenchSpacing.control)
+        .background(
+          .secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel)
+        )
         .frame(maxWidth: 560)
       }
 
@@ -85,7 +86,7 @@ struct WorkbenchDataRootSetupView: View {
         .font(.caption)
         .foregroundStyle(.tertiary)
     }
-    .padding(36)
+    .padding(WorkbenchSpacing.spacious + WorkbenchSpacing.card)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .accessibilityIdentifier("workbench-data-root-setup")
   }

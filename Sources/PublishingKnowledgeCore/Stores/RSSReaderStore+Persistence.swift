@@ -2,6 +2,50 @@ import Combine
 import Foundation
 import PublishingCoreSupport
 
+public struct RSSReaderSnapshot: Codable, Sendable {
+  public static let currentSchemaVersion = 5
+
+  public var schemaVersion: Int
+  public var feeds: [RSSFeed]
+  public var articles: [RSSArticle]
+  public var highlights: [RSSArticleHighlight]
+  public var mediaAssets: [RSSMediaAsset]
+
+  public init(
+    schemaVersion: Int = RSSReaderSnapshot.currentSchemaVersion,
+    feeds: [RSSFeed] = [],
+    articles: [RSSArticle] = [],
+    highlights: [RSSArticleHighlight] = [],
+    mediaAssets: [RSSMediaAsset] = []
+  ) {
+    self.schemaVersion = schemaVersion
+    self.feeds = feeds
+    self.articles = articles
+    self.highlights = highlights
+    self.mediaAssets = mediaAssets
+  }
+
+  enum CodingKeys: String, CodingKey {
+    case schemaVersion
+    case feeds
+    case articles
+    case highlights
+    case mediaAssets
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    self.init(
+      schemaVersion: try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1,
+      feeds: try container.decodeIfPresent([RSSFeed].self, forKey: .feeds) ?? [],
+      articles: try container.decodeIfPresent([RSSArticle].self, forKey: .articles) ?? [],
+      highlights: try container.decodeIfPresent([RSSArticleHighlight].self, forKey: .highlights)
+        ?? [],
+      mediaAssets: try container.decodeIfPresent([RSSMediaAsset].self, forKey: .mediaAssets) ?? []
+    )
+  }
+}
+
 extension RSSReaderStore {
   @discardableResult
   func load() -> Bool {

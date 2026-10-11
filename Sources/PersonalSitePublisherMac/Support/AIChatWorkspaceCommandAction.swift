@@ -15,6 +15,17 @@ struct AIChatWorkspaceCommandAction: Sendable {
   var sheetDidDismiss: (@MainActor @Sendable () -> Void)? = nil
 }
 
+private struct AIChatWorkspaceCommandActionKey: FocusedValueKey {
+  typealias Value = AIChatWorkspaceCommandAction
+}
+
+extension FocusedValues {
+  var aiChatWorkspaceCommandAction: AIChatWorkspaceCommandAction? {
+    get { self[AIChatWorkspaceCommandActionKey.self] }
+    set { self[AIChatWorkspaceCommandActionKey.self] = newValue }
+  }
+}
+
 private struct AIChatWorkspaceCommandActionEnvironmentKey: EnvironmentKey {
   static let defaultValue: AIChatWorkspaceCommandAction? = nil
 }

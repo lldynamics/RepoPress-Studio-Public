@@ -59,7 +59,7 @@ struct KnowledgeNoteImportPreviewSheet: View {
           .disabled(isWorking || preview.blockedCount > 0)
       }
     }
-    .padding(24)
+    .padding(WorkbenchSpacing.spacious)
     .frame(minWidth: 480, minHeight: 220)
     .interactiveDismissDisabled(isWorking)
     .overlay {

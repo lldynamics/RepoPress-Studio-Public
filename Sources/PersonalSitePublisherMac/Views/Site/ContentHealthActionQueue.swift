@@ -85,8 +85,6 @@ enum ContentHealthArticleGroupKind: Equatable, Sendable {
   case highestRisk
   case automaticFix
   case suggestion
-
-  var isActionQueue: Bool { self != .standard }
 }
 
 struct ContentHealthArticleGroup: Identifiable, Sendable {
@@ -307,6 +305,22 @@ enum ContentHealthLayoutMetrics {
   }
 }
 
+/// Whether the site has nothing left to review. An unloaded maintenance
+/// snapshot is not "clear" yet, so the full page stays until it arrives.
+enum ContentHealthAllClear {
+  static func isAllClear(
+    errorCount: Int,
+    warningCount: Int,
+    siteIssueCount: Int,
+    aiFixCount: Int,
+    maintenanceItemCount: Int?
+  ) -> Bool {
+    guard let maintenanceItemCount else { return false }
+    return errorCount == 0 && warningCount == 0 && siteIssueCount == 0 && aiFixCount == 0
+      && maintenanceItemCount == 0
+  }
+}
+
 struct ContentHealthVisibleSummary {
   let errorCount: Int
   let warningCount: Int
@@ -331,5 +345,25 @@ struct ContentHealthVisibleSummary {
       }.count
     self.passingDraftCount = passingDraftCount
     maintenanceCount = maintenanceItems.count
+  }
+}
+
+/// Count cards describe the entire scanned site. List filters must never be
+/// inputs here, and a retained maintenance report from another site is ignored.
+struct ContentHealthSiteSummary: Equatable {
+  let errorCount: Int
+  let warningCount: Int
+  let maintenanceCount: Int
+  let passingDraftCount: Int
+
+  var issueCount: Int { errorCount + warningCount }
+
+  init(snapshot: ContentHealthSnapshot, maintenanceSnapshot: SiteMaintenanceSnapshot?) {
+    errorCount = snapshot.errorCount
+    warningCount = snapshot.warningCount
+    passingDraftCount = snapshot.passingDraftCount
+    maintenanceCount =
+      maintenanceSnapshot?.profileID == snapshot.profileID
+      ? maintenanceSnapshot?.report.actionItems.count ?? 0 : 0
   }
 }

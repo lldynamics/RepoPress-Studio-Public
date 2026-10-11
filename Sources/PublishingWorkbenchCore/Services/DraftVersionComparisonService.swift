@@ -9,6 +9,7 @@ public enum DraftVersionEditableField: String, CaseIterable, Sendable {
   case authors
   case aliases
   case permalink
+  case translationKey
   case draftState
   case visibility
   case summary
@@ -67,6 +68,7 @@ public struct DraftVersionLineDiff: Identifiable, Hashable, Sendable {
 public struct DraftVersionComparison: Hashable, Sendable {
   public var fieldChanges: [DraftVersionFieldChange]
   public var bodyLineDiffs: [DraftVersionLineDiff]
+  public var alignedBodyRows: [DraftVersionAlignedRow]
   public var addedLineCount: Int
   public var removedLineCount: Int
 
@@ -74,10 +76,12 @@ public struct DraftVersionComparison: Hashable, Sendable {
     fieldChanges: [DraftVersionFieldChange],
     bodyLineDiffs: [DraftVersionLineDiff],
     addedLineCount: Int,
-    removedLineCount: Int
+    removedLineCount: Int,
+    alignedBodyRows: [DraftVersionAlignedRow] = []
   ) {
     self.fieldChanges = fieldChanges
     self.bodyLineDiffs = bodyLineDiffs
+    self.alignedBodyRows = alignedBodyRows
     self.addedLineCount = addedLineCount
     self.removedLineCount = removedLineCount
   }
@@ -93,7 +97,8 @@ public struct DraftVersionComparisonService: Sendable {
   public func compare(
     previous: ArticleDraft,
     current: ArticleDraft,
-    contextLineCount: Int = 3
+    contextLineCount: Int = 3,
+    includeAlignedBodyRows: Bool = false
   ) -> DraftVersionComparison {
     let fieldChanges = editableFieldChanges(previous: previous, current: current)
     let allBodyLines = bodyLineDiff(previous: previous.bodyMarkdown, current: current.bodyMarkdown)
@@ -107,7 +112,13 @@ public struct DraftVersionComparisonService: Sendable {
         contextLineCount: max(0, contextLineCount)
       ),
       addedLineCount: addedLineCount,
-      removedLineCount: removedLineCount
+      removedLineCount: removedLineCount,
+      alignedBodyRows: includeAlignedBodyRows
+        ? DraftVersionAlignedDiff.rows(
+          from: allBodyLines,
+          previousBody: previous.bodyMarkdown,
+          currentBody: current.bodyMarkdown
+        ) : []
     )
   }
 
@@ -129,6 +140,7 @@ public struct DraftVersionComparisonService: Sendable {
     restored.aliases = snapshot.aliases
     restored.pendingSlugRedirectPaths = snapshot.pendingSlugRedirectPaths
     restored.permalink = snapshot.permalink
+    restored.translationKey = snapshot.translationKey
     restored.draft = snapshot.draft
     restored.visibility = snapshot.visibility
     restored.summary = snapshot.summary
@@ -157,9 +169,12 @@ public struct DraftVersionComparisonService: Sendable {
     )
     appendChange(.slug, previous.slug, current.slug, to: &changes)
     appendChange(.tags, listValue(previous.tags), listValue(current.tags), to: &changes)
-    appendChange(.categories, listValue(previous.categories), listValue(current.categories), to: &changes)
+    appendChange(
+      .categories, listValue(previous.categories), listValue(current.categories), to: &changes)
     appendChange(.authors, listValue(previous.authors), listValue(current.authors), to: &changes)
     appendChange(.aliases, listValue(previous.aliases), listValue(current.aliases), to: &changes)
+    appendChange(
+      .translationKey, previous.translationKey ?? "", current.translationKey ?? "", to: &changes)
     appendChange(
       .permalink,
       previous.permalink ?? "",
@@ -201,11 +216,12 @@ public struct DraftVersionComparisonService: Sendable {
     to changes: inout [DraftVersionFieldChange]
   ) {
     guard previousValue != currentValue else { return }
-    changes.append(DraftVersionFieldChange(
-      field: field,
-      previousValue: displayValue(previousValue),
-      currentValue: displayValue(currentValue)
-    ))
+    changes.append(
+      DraftVersionFieldChange(
+        field: field,
+        previousValue: displayValue(previousValue),
+        currentValue: displayValue(currentValue)
+      ))
   }
 
   private func displayValue(_ value: String) -> String {
@@ -221,7 +237,7 @@ public struct DraftVersionComparisonService: Sendable {
 
   private func coverValue(for draft: ArticleDraft) -> String {
     guard let coverID = draft.coverAttachmentID,
-          let attachment = draft.attachments.first(where: { $0.id == coverID })
+      let attachment = draft.attachments.first(where: { $0.id == coverID })
     else {
       return ""
     }
@@ -242,54 +258,62 @@ public struct DraftVersionComparisonService: Sendable {
   }
 
   private func bodyLineDiff(previous: String, current: String) -> [DraftVersionLineDiff] {
-    let previousLines = previous.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-    let currentLines = current.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+    // Split on the LF scalar, retaining any CR in its line. Character-based
+    // splitting treats CRLF as one grapheme and misses its LF separator.
+    let previousLines = previous.components(separatedBy: "\n")
+    let currentLines = current.components(separatedBy: "\n")
     let difference = currentLines.difference(from: previousLines)
-    let removedOffsets = Set(difference.removals.compactMap { change -> Int? in
-      guard case .remove(let offset, _, _) = change else { return nil }
-      return offset
-    })
-    let addedOffsets = Set(difference.insertions.compactMap { change -> Int? in
-      guard case .insert(let offset, _, _) = change else { return nil }
-      return offset
-    })
+    let removedOffsets = Set(
+      difference.removals.compactMap { change -> Int? in
+        guard case .remove(let offset, _, _) = change else { return nil }
+        return offset
+      })
+    let addedOffsets = Set(
+      difference.insertions.compactMap { change -> Int? in
+        guard case .insert(let offset, _, _) = change else { return nil }
+        return offset
+      })
     var previousIndex = 0
     var currentIndex = 0
     var entries: [DraftVersionLineDiff] = []
 
     while previousIndex < previousLines.count || currentIndex < currentLines.count {
       if previousIndex < previousLines.count, removedOffsets.contains(previousIndex) {
-        entries.append(DraftVersionLineDiff(
-          id: entries.count,
-          kind: .removed,
-          text: previousLines[previousIndex],
-          previousLineNumber: previousIndex + 1
-        ))
+        entries.append(
+          DraftVersionLineDiff(
+            id: entries.count,
+            kind: .removed,
+            text: previousLines[previousIndex],
+            previousLineNumber: previousIndex + 1
+          ))
         previousIndex += 1
         continue
       }
 
       if currentIndex < currentLines.count, addedOffsets.contains(currentIndex) {
-        entries.append(DraftVersionLineDiff(
-          id: entries.count,
-          kind: .added,
-          text: currentLines[currentIndex],
-          currentLineNumber: currentIndex + 1
-        ))
+        entries.append(
+          DraftVersionLineDiff(
+            id: entries.count,
+            kind: .added,
+            text: currentLines[currentIndex],
+            currentLineNumber: currentIndex + 1
+          ))
         currentIndex += 1
         continue
       }
 
       if previousIndex < previousLines.count,
-         currentIndex < currentLines.count,
-         previousLines[previousIndex] == currentLines[currentIndex] {
-        entries.append(DraftVersionLineDiff(
-          id: entries.count,
-          kind: .unchanged,
-          text: previousLines[previousIndex],
-          previousLineNumber: previousIndex + 1,
-          currentLineNumber: currentIndex + 1
-        ))
+        currentIndex < currentLines.count,
+        previousLines[previousIndex] == currentLines[currentIndex]
+      {
+        entries.append(
+          DraftVersionLineDiff(
+            id: entries.count,
+            kind: .unchanged,
+            text: previousLines[previousIndex],
+            previousLineNumber: previousIndex + 1,
+            currentLineNumber: currentIndex + 1
+          ))
         previousIndex += 1
         currentIndex += 1
         continue
@@ -298,20 +322,22 @@ public struct DraftVersionComparisonService: Sendable {
       // Defensive progress for malformed or future CollectionDifference
       // representations. Normal replacements are handled by remove + insert.
       if previousIndex < previousLines.count {
-        entries.append(DraftVersionLineDiff(
-          id: entries.count,
-          kind: .removed,
-          text: previousLines[previousIndex],
-          previousLineNumber: previousIndex + 1
-        ))
+        entries.append(
+          DraftVersionLineDiff(
+            id: entries.count,
+            kind: .removed,
+            text: previousLines[previousIndex],
+            previousLineNumber: previousIndex + 1
+          ))
         previousIndex += 1
       } else if currentIndex < currentLines.count {
-        entries.append(DraftVersionLineDiff(
-          id: entries.count,
-          kind: .added,
-          text: currentLines[currentIndex],
-          currentLineNumber: currentIndex + 1
-        ))
+        entries.append(
+          DraftVersionLineDiff(
+            id: entries.count,
+            kind: .added,
+            text: currentLines[currentIndex],
+            currentLineNumber: currentIndex + 1
+          ))
         currentIndex += 1
       }
     }
@@ -340,12 +366,13 @@ public struct DraftVersionComparisonService: Sendable {
         continue
       }
       if skippedLineCount > 0 {
-        collapsedLines.append(DraftVersionLineDiff(
-          id: collapsedLines.count,
-          kind: .skipped,
-          text: "",
-          skippedLineCount: skippedLineCount
-        ))
+        collapsedLines.append(
+          DraftVersionLineDiff(
+            id: collapsedLines.count,
+            kind: .skipped,
+            text: "",
+            skippedLineCount: skippedLineCount
+          ))
         skippedLineCount = 0
       }
       var line = lines[index]
@@ -353,12 +380,13 @@ public struct DraftVersionComparisonService: Sendable {
       collapsedLines.append(line)
     }
     if skippedLineCount > 0 {
-      collapsedLines.append(DraftVersionLineDiff(
-        id: collapsedLines.count,
-        kind: .skipped,
-        text: "",
-        skippedLineCount: skippedLineCount
-      ))
+      collapsedLines.append(
+        DraftVersionLineDiff(
+          id: collapsedLines.count,
+          kind: .skipped,
+          text: "",
+          skippedLineCount: skippedLineCount
+        ))
     }
     return collapsedLines
   }

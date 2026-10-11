@@ -73,6 +73,7 @@ extension PublishingStore {
   func createDraft(store: WorkbenchStore, selectCreatedDraft: Bool) -> UUID {
     let draft = ArticleDraft.empty(profile: store.activeProfile)
     drafts.insert(draft, at: 0)
+    editorFocusRequest = EditorFocusRequest(draftID: draft.id, field: "title")
     if selectCreatedDraft {
       draftListContentScope = .currentSite
       draftNavigationHistory.recordVisit(draft.id)
@@ -95,6 +96,7 @@ extension PublishingStore {
     draftNavigationHistory.recordVisit(draft.id)
     selectedDraftID = draft.id
     selectedSection = .writing
+    editorFocusRequest = EditorFocusRequest(draftID: draft.id, field: "title")
     store.setAIPublishingAssistantPresented(false)
     store.restoreSEOSocialPreviewSnapshotForCurrentSelection()
     store.runPreflight()
@@ -103,9 +105,7 @@ extension PublishingStore {
     store.scheduleDraftWordCountRefresh(for: draft.id, bodyMarkdown: draft.bodyMarkdown)
   }
 
-  /// Creates one complete draft from an article template.  The draft is only
-  /// inserted after the template has been validated and expanded, so a
-  /// cancelled picker or an invalid snippet can never leave an empty draft.
+  /// Inserts a complete, validated article template; cancellation never leaves an empty draft.
   @discardableResult
   public func createDraft(
     from snippet: MarkdownSnippet,
@@ -268,7 +268,7 @@ extension PublishingStore {
     guard draft.wordCountNeedsRefresh,
       draft.storeWordCount(count, for: bodyMarkdown)
     else { return }
-    drafts[index] = draft
+    publishSession.withDerivedWordCountPublication { drafts[index] = draft }
     store.scheduleAutosave()
   }
 

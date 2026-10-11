@@ -21,10 +21,14 @@ public struct RepositoryWorktreePublishService: Sendable {
     let path: String
   }
 
-  private let git: GitCommandRunner
+  let git: GitCommandRunner
   private let safetyAnalyzer: RepositoryPublishSafetyAnalyzer
   private let sitePreflightService: RepositoryPublishPreflightService
   private let testingAfterCompareAndSwap: (@Sendable () -> Void)?
+
+  private var executionPolicyService: RepositoryGitExecutionPolicyService {
+    RepositoryGitExecutionPolicyService(gitCommandRunner: git)
+  }
 
   private var transitionCoordinator: RepositoryWorktreePublishTransitionCoordinator {
     RepositoryWorktreePublishTransitionCoordinator(gitCommandRunner: git)
@@ -68,6 +72,7 @@ public struct RepositoryWorktreePublishService: Sendable {
     guard let root = profile.localRepositoryRootURL else {
       throw RepositoryWorktreePublishError.missingRepositoryRoot
     }
+    try executionPolicyService.validate(policy: profile.gitExecutionPolicy, rootURL: root)
     try transitionCoordinator.recoverIfNeeded(profile: profile, root: root)
     let snapshot = try inspect(profile: profile, root: root)
     let safetyReport = try validatedSafetyReport(snapshot: snapshot, profile: profile)
@@ -88,7 +93,8 @@ public struct RepositoryWorktreePublishService: Sendable {
       safetyReport: safetyReport,
       sitePreflightResult: sitePreflightResult,
       articleVerificationTarget: articleTarget,
-      fileReviews: fileReviews
+      fileReviews: fileReviews,
+      executionPolicy: profile.gitExecutionPolicy
     )
   }
 
@@ -98,9 +104,14 @@ public struct RepositoryWorktreePublishService: Sendable {
     profile: SiteProfile,
     confirmation: RepositoryWorktreePublishConfirmation
   ) throws -> RepositoryWorktreePublishResult {
-    guard RepositoryWorktreeFileReview.isComplete(
-      entries: confirmation.snapshot.entries, reviews: confirmation.fileReviews
-    ) else { throw RepositoryWorktreePublishError.incompleteReview }
+    guard profile.gitExecutionPolicy == confirmation.executionPolicy else {
+      throw RepositoryWorktreePublishError.snapshotDrift
+    }
+    guard
+      RepositoryWorktreeFileReview.isComplete(
+        entries: confirmation.snapshot.entries, reviews: confirmation.fileReviews
+      )
+    else { throw RepositoryWorktreePublishError.incompleteReview }
     guard let root = profile.localRepositoryRootURL else {
       throw RepositoryWorktreePublishError.missingRepositoryRoot
     }
@@ -139,7 +150,8 @@ public struct RepositoryWorktreePublishService: Sendable {
     let temporaryIndex = temporaryDirectory.appendingPathComponent("index")
     let realIndexFingerprint = try indexFingerprint(root: root)
 
-    _ = try output(["read-tree", confirmation.snapshot.headSHA], root: root, indexURL: temporaryIndex)
+    _ = try output(
+      ["read-tree", confirmation.snapshot.headSHA], root: root, indexURL: temporaryIndex)
     _ = try output(["add", "-A", "--", "."], root: root, indexURL: temporaryIndex)
     guard try stagedIndexMatches(confirmation.snapshot, root: root, indexURL: temporaryIndex),
       try worktreeHasNoChangesBeyondIndex(root: root, indexURL: temporaryIndex)
@@ -151,11 +163,19 @@ public struct RepositoryWorktreePublishService: Sendable {
     guard !stagedTree.isEmpty else {
       throw RepositoryWorktreePublishError.stagedVerificationFailed
     }
-    let commitSHA = try output(
-      ["commit-tree", stagedTree, "-p", confirmation.snapshot.headSHA, "-m", confirmation.commitMessage],
-      root: root,
-      indexURL: temporaryIndex
-    ).trimmedForPublishing
+    let execution = RepositoryWorktreeGitExecutionPolicyService(git: git)
+    let commitSHA = try execution.commit(
+      confirmation: confirmation, tree: stagedTree, root: root, index: temporaryIndex,
+      temporaryDirectory: temporaryDirectory
+    ) {
+      guard try inspect(profile: profile, root: root) == confirmation.snapshot,
+        try indexFingerprint(root: root) == realIndexFingerprint,
+        try stagedIndexMatches(confirmation.snapshot, root: root, indexURL: temporaryIndex),
+        try worktreeHasNoChangesBeyondIndex(root: root, indexURL: temporaryIndex),
+        try output(["write-tree"], root: root, indexURL: temporaryIndex).trimmedForPublishing
+          == stagedTree
+      else { throw RepositoryGitExecutionPolicyError.reviewedContentChanged }
+    }
     guard !commitSHA.isEmpty else {
       throw RepositoryWorktreePublishError.stagedVerificationFailed
     }
@@ -188,7 +208,10 @@ public struct RepositoryWorktreePublishService: Sendable {
         throw RepositoryWorktreePublishError.snapshotDrift
       }
       _ = try output(
-        ["update-ref", "refs/heads/\(confirmation.snapshot.branch)", commitSHA, confirmation.snapshot.headSHA],
+        [
+          "update-ref", "refs/heads/\(confirmation.snapshot.branch)", commitSHA,
+          confirmation.snapshot.headSHA,
+        ],
         root: root
       )
       didMoveHead = true
@@ -232,6 +255,8 @@ public struct RepositoryWorktreePublishService: Sendable {
       throw error
     }
 
+    try execution.postCommit(policy: confirmation.executionPolicy, root: root, commitSHA: commitSHA)
+
     guard try worktreeIsClean(root: root) else {
       throw RepositoryWorktreePublishError.commitSucceededButPushFailed(
         commitSHA: commitSHA,
@@ -250,6 +275,17 @@ public struct RepositoryWorktreePublishService: Sendable {
       let pushOriginBeforePush = try validatedPushOrigin(profile: profile, root: root)
       guard pushOriginBeforePush == confirmation.snapshot.pushOriginURL else {
         throw RepositoryWorktreePublishError.snapshotDrift
+      }
+      try execution.prePush(
+        policy: confirmation.executionPolicy, branch: confirmation.snapshot.branch,
+        root: root, commitSHA: commitSHA, remoteSHA: remoteBeforePush, origin: pushOriginBeforePush,
+        temporaryDirectory: temporaryDirectory
+      ) {
+        guard try worktreeIsClean(root: root),
+          try validatedPushOrigin(profile: profile, root: root) == pushOriginBeforePush,
+          try requiredRemoteSHA(branch: confirmation.snapshot.branch, root: root)
+            == remoteBeforePush
+        else { throw RepositoryGitExecutionPolicyError.reviewedContentChanged }
       }
       _ = try output(
         [
@@ -594,17 +630,6 @@ public struct RepositoryWorktreePublishService: Sendable {
     try output(["ls-files", "--stage", "-z"], root: root)
   }
 
-  private func repositoryIndexURL(root: URL) throws -> URL {
-    let value = try output(["rev-parse", "--git-path", "index"], root: root)
-      .trimmedForPublishing
-    guard !value.isEmpty else {
-      throw RepositoryWorktreePublishError.invalidRepository(
-        "无法定位 Git index。"
-      )
-    }
-    return URL(fileURLWithPath: value, relativeTo: root).standardizedFileURL
-  }
-
   private func validatedOrigin(
     _ rawOrigin: String,
     profile: SiteProfile,
@@ -828,39 +853,6 @@ public struct RepositoryWorktreePublishService: Sendable {
     if status.contains("T") { return .typeChanged }
     if status == "??" || status.contains("A") { return .added }
     return .modified
-  }
-
-  private func output(_ arguments: [String], root: URL, indexURL: URL? = nil) throws -> String {
-    let result = git.run(
-      arguments,
-      rootURL: root,
-      preserveStandardOutputWhitespace: true,
-      environmentOverrides: indexURL.map { ["GIT_INDEX_FILE": $0.path] } ?? [:]
-    )
-    guard result.terminationStatus == 0,
-      !result.didTimeOut,
-      !result.wasOutputTruncated
-    else {
-      throw gitFailure(arguments: arguments, result: result)
-    }
-    return result.standardOutput
-  }
-
-  private func gitFailure(
-    arguments: [String],
-    result: GitCommandResult
-  ) -> RepositoryWorktreePublishError {
-    var diagnostic = result.output
-    if result.didTimeOut {
-      diagnostic = "Git 命令超时。\n" + diagnostic
-    }
-    if result.wasOutputTruncated {
-      diagnostic = "Git 输出超过安全上限。\n" + diagnostic
-    }
-    return .gitFailed(
-      command: GitCommandRunner.redactedCommandDescription(arguments),
-      output: diagnostic.trimmedForPublishing
-    )
   }
 
 }

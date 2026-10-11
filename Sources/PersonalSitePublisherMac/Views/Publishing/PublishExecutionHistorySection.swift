@@ -51,7 +51,7 @@ struct PublishExecutionHistorySection: View {
         }
       }
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
     .background(
       WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -116,7 +116,7 @@ struct PublishExecutionHistorySection: View {
       frozenPlanEvidence(record)
       eventEvidence(record)
     }
-    .padding(12)
+    .padding(WorkbenchSpacing.card)
     .background(.quaternary, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
     .accessibilityElement(children: .contain)
     .accessibilityLabel(Text("发布执行：\(record.plan.package.title)"))
@@ -192,13 +192,13 @@ struct PublishExecutionHistorySection: View {
           Text(String(localized: "文件列表"))
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
-            .padding(.top, 4)
+            .padding(.top, WorkbenchSpacing.tight)
           ForEach(record.plan.package.files.map(\.repositoryPath), id: \.self) { path in
             WorkbenchPathIdentity(path: path)
           }
         }
       }
-      .padding(.top, 6)
+      .padding(.top, WorkbenchSpacing.icon)
     }
     .font(.caption)
     .accessibilityIdentifier("publish-execution-plan-\(record.id)")
@@ -222,7 +222,7 @@ struct PublishExecutionHistorySection: View {
           }
         }
       }
-      .padding(.top, 6)
+      .padding(.top, WorkbenchSpacing.icon)
     }
     .font(.caption)
     .accessibilityIdentifier("publish-execution-events-\(record.id)")

@@ -39,17 +39,38 @@ extension WorkbenchAIStore {
     // claim; all transport-sensitive values must come from the applied
     // connection profile that also owns the credential.
     let boundConfig = currentConnection.config
+    let lane = AIGenerationLane.modelDiscovery(connectionProfileID)
+    // Model lists own their view state. Discovery must not take presentation
+    // away from an article action, writing-style extraction or connection test.
+    let generation = beginAIRequest(lane, updatesPresentation: false)
+    defer { finishAIRequest(lane, generation: generation) }
+    aiRequests[lane]?.authorization = AINonStreamingAuthorizationBinding(
+      profileID: store.activeProfileID, connectionID: connectionProfileID, config: boundConfig
+    )
     guard aiDataSharingConsentStore.presentation(for: boundConfig).isGranted else {
       throw AIModelDiscoveryError.authorizationChanged
     }
     let apiKey = try settingsAPIKey(for: currentConnection)
     try Task.checkCancellation()
-    let models = try await service.discoverModels(
-      for: boundConfig,
-      apiKey: apiKey,
-      forceRefresh: forceRefresh
-    )
-    try Task.checkCancellation()
+    let models: [AIModelDescriptor]
+    do {
+      models = try await awaitAIRequest(lane, generation: generation) {
+        try await service.discoverModels(
+          for: boundConfig,
+          apiKey: apiKey,
+          forceRefresh: forceRefresh
+        )
+      }
+    } catch {
+      // Preserve the established actionable drift error when a config edit
+      // cancels discovery; source switches and explicit cancellation stay
+      // cancellation errors and cannot publish a late model list.
+      guard store.aiConnectionProfile(for: connectionProfileID)?.config == boundConfig else {
+        throw AIModelDiscoveryError.configurationChanged
+      }
+      throw error
+    }
+    try checkAIRequest(lane, generation: generation)
     guard let latestConnection = store.aiConnectionProfile(for: connectionProfileID),
       latestConnection.config.dataSharingConsentIdentifier
         == boundConfig.dataSharingConsentIdentifier,

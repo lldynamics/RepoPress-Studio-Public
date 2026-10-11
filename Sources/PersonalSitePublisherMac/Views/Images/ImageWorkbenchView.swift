@@ -30,7 +30,7 @@ struct ImageWorkbenchView: View {
     VStack(spacing: 0) {
       if stage == .resources, session.resourceMode == .repository {
         if imageWorkbench.actionMessage != nil || imageWorkbench.batchProgress != nil {
-          batchStatus.padding(12)
+          batchStatus.padding(WorkbenchSpacing.card)
         }
         RepositoryImageBrowserView(
           session: session, isWorking: imageWorkbench.isProcessingBatch || isPreparingSelection,
@@ -267,7 +267,7 @@ struct ImageWorkbenchView: View {
       }
 
     }
-    .padding(WorkbenchSpacing.section)
+    .padding(WorkbenchSpacing.content)
     .background(
       WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -292,7 +292,7 @@ struct ImageWorkbenchView: View {
         }
       }
     }
-    .padding(WorkbenchSpacing.section)
+    .padding(WorkbenchSpacing.content)
     .background(
       WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -347,7 +347,7 @@ struct ImageWorkbenchView: View {
       )
     )
     .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
-    .padding(WorkbenchSpacing.section)
+    .padding(WorkbenchSpacing.content)
     .background(
       WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -366,7 +366,7 @@ struct ImageWorkbenchView: View {
       )
     )
     .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(WorkbenchSpacing.section)
+    .padding(WorkbenchSpacing.content)
     .background(
       WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)

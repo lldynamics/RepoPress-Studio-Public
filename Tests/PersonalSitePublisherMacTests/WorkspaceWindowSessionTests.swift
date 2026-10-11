@@ -7,6 +7,120 @@ import XCTest
 
 @MainActor
 final class WorkspaceWindowSessionTests: XCTestCase {
+  func testCompactInspectorRevealIsTransientPerWindow() {
+    let first = WorkspaceWindowSession(selectedSection: .writing)
+    let second = WorkspaceWindowSession(selectedSection: .writing)
+    let storedValues = first.storageValues
+
+    first.revealsInspectorInCompactWorkspace = true
+    XCTAssertTrue(first.revealsInspectorInCompactWorkspace)
+    XCTAssertFalse(second.revealsInspectorInCompactWorkspace)
+    XCTAssertEqual(first.storageValues, storedValues)
+
+    let reopened = WorkspaceWindowSession(selectedSection: .writing)
+    _ = reopened.restoreStorageIfNeeded(
+      windowIDRawValue: storedValues.windowIDRawValue,
+      selectedSectionRawValue: storedValues.selectedSectionRawValue,
+      fallbackSection: .writing,
+      selectedDraftIDRawValue: storedValues.selectedDraftIDRawValue,
+      fallbackDraftID: nil
+    )
+    XCTAssertFalse(reopened.revealsInspectorInCompactWorkspace)
+  }
+
+  func testBodyEditingOnlyCollapsesTheActiveMatchingWindowInspector() {
+    let draftID = UUID()
+    let active = WorkspaceWindowSession(selectedSection: .writing, selectedDraftID: draftID)
+    let background = WorkspaceWindowSession(selectedSection: .writing, selectedDraftID: draftID)
+    active.setKeyWindow(true) { _, _ in }
+
+    active.collapseInspectorForBodyEditing(draftID: UUID())
+    XCTAssertFalse(active.isInspectorCollapsedForEditing)
+    background.collapseInspectorForBodyEditing(draftID: draftID)
+    XCTAssertFalse(background.isInspectorCollapsedForEditing)
+
+    active.collapseInspectorForBodyEditing(draftID: draftID)
+    XCTAssertTrue(active.isInspectorCollapsedForEditing)
+    active.selectSection(.sync) { _ in }
+    XCTAssertFalse(active.isInspectorCollapsedForEditing)
+    active.selectSection(.writing) { _ in }
+    XCTAssertTrue(active.isInspectorCollapsedForEditing)
+    XCTAssertFalse(background.isInspectorCollapsedForEditing)
+    active.revealInspectorForUserRequest()
+    XCTAssertFalse(active.isInspectorCollapsedForEditing)
+    active.collapseInspectorForBodyEditing(draftID: draftID)
+    XCTAssertTrue(active.isInspectorCollapsedForEditing)
+  }
+
+  func testNonWritingEditorCannotCollapseWorkspaceInspector() {
+    let draftID = UUID()
+    let session = WorkspaceWindowSession(selectedSection: .sync, selectedDraftID: draftID)
+    session.setKeyWindow(true) { _, _ in }
+    session.collapseInspectorForBodyEditing(draftID: draftID)
+    XCTAssertFalse(session.isInspectorCollapsedForEditing)
+  }
+
+  func testEditorHistoryKeepsItsArticleWhenAnotherWindowChangesSharedSelection() {
+    let store = makeHistoryStore()
+    let first = ArticleDraft(siteProfileID: store.activeProfileID, title: "窗口 A")
+    let second = ArticleDraft(siteProfileID: store.activeProfileID, title: "窗口 B")
+    store.setDrafts([first, second])
+    XCTAssertTrue(store.createManualVersion(for: first.id))
+    XCTAssertTrue(store.createManualVersion(for: second.id))
+    let history = DraftLifecycleCenterView(
+      store: store, presentation: .articleHistory(draftID: first.id))
+
+    store.selectDraft(second.id)
+    XCTAssertEqual(history.selectedDraft?.id, first.id)
+    XCTAssertEqual(history.selectedDraftVersions.map(\.draftID), [first.id])
+
+    store.setSelectedDraftID(nil)
+    XCTAssertEqual(history.selectedDraft?.id, first.id)
+    XCTAssertEqual(history.selectedDraftVersions.map(\.draftID), [first.id])
+  }
+
+  func testMissingEditorArticleDoesNotFallBackToAnotherSelectedArticle() {
+    let store = makeHistoryStore()
+    let remaining = ArticleDraft(siteProfileID: store.activeProfileID, title: "其他文章")
+    store.setDrafts([remaining])
+    store.selectDraft(remaining.id)
+    let history = DraftLifecycleCenterView(
+      store: store, presentation: .articleHistory(draftID: UUID()))
+
+    XCTAssertNil(history.selectedDraft)
+    XCTAssertTrue(history.selectedDraftVersions.isEmpty)
+  }
+
+  func testExistingLifecycleEntryContinuesFollowingSharedSelectionAndEmptyState() {
+    let store = makeHistoryStore()
+    let draft = ArticleDraft(siteProfileID: store.activeProfileID, title: "原入口")
+    store.setDrafts([draft])
+    store.selectDraft(draft.id)
+    XCTAssertTrue(store.createManualVersion(for: draft.id))
+    let history = DraftLifecycleCenterView(store: store, presentation: .embedded)
+    XCTAssertEqual(history.selectedDraft?.id, draft.id)
+    XCTAssertEqual(history.selectedDraftVersions.map(\.draftID), [draft.id])
+
+    store.setSelectedDraftID(nil)
+    XCTAssertEqual(history.selectedDraft?.id, draft.id)
+    XCTAssertTrue(history.selectedDraftVersions.isEmpty)
+
+    store.setDrafts([])
+    store.setSelectedDraftID(nil)
+    XCTAssertNil(history.selectedDraft)
+    XCTAssertTrue(history.selectedDraftVersions.isEmpty)
+  }
+
+  private func makeHistoryStore() -> WorkbenchStore {
+    WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: FileManager.default.temporaryDirectory
+          .appendingPathComponent("draft-history-scope-\(UUID().uuidString).json")
+      ),
+      safeMode: true
+    )
+  }
+
   func testWritingListRestorationKeepsFiltersAndFolderExpansionPerWindow() {
     let firstListState = WritingListWindowPresentationState()
     let secondListState = WritingListWindowPresentationState()
@@ -354,6 +468,60 @@ final class WorkspaceWindowSessionTests: XCTestCase {
     XCTAssertEqual(activatedDraftID, fallbackDraftID)
   }
 
+  func testUnifiedInspectorTabSelectionIsWindowLocalAndKeepsDraftIdentity() {
+    let firstID = UUID()
+    let secondID = UUID()
+    let first = WorkspaceWindowSession(selectedSection: .writing, selectedDraftID: firstID)
+    let second = WorkspaceWindowSession(selectedSection: .writing, selectedDraftID: secondID)
+    first.inspectorTab = .assistant
+    second.inspectorTab = .publish
+    XCTAssertEqual(first.inspectorTab, .assistant)
+    XCTAssertEqual(second.inspectorTab, .publish)
+    first.closeAssistantInspector()
+    XCTAssertEqual(first.inspectorTab, .information)
+    second.closeAssistantInspector()
+    XCTAssertEqual(second.inspectorTab, .publish)
+    XCTAssertEqual(first.selectedDraftID, firstID)
+    XCTAssertEqual(second.selectedDraftID, secondID)
+    XCTAssertEqual(first.storageValues.selectedDraftIDRawValue, firstID.uuidString)
+  }
+
+  func testImageFocusRevealsInformationOnlyForTheOwningActiveWindow() {
+    let draftID = UUID()
+    let window = WorkspaceWindowSession(selectedSection: .writing, selectedDraftID: draftID)
+    window.setKeyWindow(true) { _, _ in }
+    let request = ImageInspectorFocusRequest(draftID: draftID, attachmentID: UUID())
+    for tab in [WorkspaceInspectorTab.assistant, .publish] {
+      window.inspectorTab = tab
+      XCTAssertTrue(window.revealImageInspector(for: request))
+      XCTAssertEqual(window.inspectorTab, .information)
+    }
+    window.inspectorTab = .publish
+    XCTAssertFalse(
+      window.revealImageInspector(
+        for: ImageInspectorFocusRequest(
+          draftID: UUID(), attachmentID: UUID()
+        )))
+    XCTAssertEqual(window.inspectorTab, .publish)
+    window.setKeyWindow(false) { _, _ in }
+    XCTAssertFalse(window.revealImageInspector(for: request))
+    XCTAssertEqual(window.inspectorTab, .publish)
+  }
+
+  func testSiteIssueSelectionIsIndependentInEachWindow() {
+    let first = WorkspaceWindowSession(selectedSection: .contentHealth)
+    let second = WorkspaceWindowSession(selectedSection: .contentHealth)
+    let issue = ContentHealthIssueSelection(
+      id: "error:title", section: .errors, title: "Missing title", detail: "Add title",
+      subgroup: nil, articles: [], siteIssues: [], maintenanceItems: []
+    )
+    first.selectedContentHealthIssue = issue
+    XCTAssertEqual(first.selectedContentHealthIssue?.id, issue.id)
+    XCTAssertNil(second.selectedContentHealthIssue)
+    second.inspectorTab = .assistant
+    XCTAssertEqual(first.selectedContentHealthIssue?.id, issue.id)
+  }
+
   func testAIInspectorDraftResolverKeepsEachWindowSelectionIndependent() {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(
@@ -538,4 +706,5 @@ final class WorkspaceModuleRoutingTests: XCTestCase {
     XCTAssertEqual(disabled.resolvedSettingsRoute(.tab(.dataManagement)), .tab(.dataManagement))
     XCTAssertTrue(disabled.allowsSettingsTab(.appearance))
   }
+
 }

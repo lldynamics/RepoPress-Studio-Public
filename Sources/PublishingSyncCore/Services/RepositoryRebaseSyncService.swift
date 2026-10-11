@@ -22,10 +22,8 @@ public struct RepositoryRebaseSyncService: Sendable {
     let mode: String
     let blobOID: String
   }
-
   private let git: GitCommandRunner
   private let recoveryRecorder: (@Sendable (RepositoryRebaseRecoveryContext) throws -> Void)?
-
   public init(
     gitCommandRunner: GitCommandRunner = GitCommandRunner(timeout: 120),
     recoveryRecorder: (@Sendable (RepositoryRebaseRecoveryContext) throws -> Void)? = nil
@@ -36,6 +34,7 @@ public struct RepositoryRebaseSyncService: Sendable {
 
   public func prepare(profile: any RepositorySyncProfile) throws -> RepositoryRebaseSyncPreparation
   {
+    try profile.requireAutomaticRebaseAllowed()
     let root = try requiredRoot(profile)
     let context = try validateContext(profile: profile, root: root)
     try requireNoOperationInProgress(context: context)
@@ -62,6 +61,7 @@ public struct RepositoryRebaseSyncService: Sendable {
     profile: any RepositorySyncProfile,
     confirmation: RepositoryRebaseSyncConfirmation
   ) throws -> RepositoryRebaseSyncResult {
+    try profile.requireAutomaticRebaseAllowed()
     let root = try requiredRoot(profile)
     let context = try validateContext(profile: profile, root: root)
     try requireNoOperationInProgress(context: context)

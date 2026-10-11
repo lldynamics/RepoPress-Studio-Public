@@ -1,6 +1,5 @@
 import AppKit
 import PublishingAICore
-import PublishingWorkbenchCore
 import SwiftUI
 
 /// The model catalog is owned by the authenticated App Server account. This
@@ -477,10 +476,19 @@ struct CodexAppServerAccountSetupSteps: View {
 
 struct CodexAppServerDeviceCodeContent: View {
   let login: CodexAppServerDeviceCodeLoginResult
+  let openURL: @MainActor @Sendable (URL) -> Bool
+  let copyCode: @MainActor @Sendable (String) -> Void
   let onCopy: () -> Void
 
-  init(_ login: CodexAppServerDeviceCodeLoginResult, onCopy: @escaping () -> Void) {
+  init(
+    _ login: CodexAppServerDeviceCodeLoginResult,
+    openURL: @escaping @MainActor @Sendable (URL) -> Bool,
+    copyCode: @escaping @MainActor @Sendable (String) -> Void,
+    onCopy: @escaping () -> Void
+  ) {
     self.login = login
+    self.openURL = openURL
+    self.copyCode = copyCode
     self.onCopy = onCopy
   }
 
@@ -491,20 +499,23 @@ struct CodexAppServerDeviceCodeContent: View {
       Text(login.userCode)
         .font(.title3.monospaced().weight(.semibold))
         .textSelection(.enabled)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("设备码 \(login.userCode)")
+        .accessibilityIdentifier("settings-ai-codex-device-code-value")
       HStack(spacing: 10) {
         Button("复制设备码") {
-          NSPasteboard.general.clearContents()
-          NSPasteboard.general.setString(login.userCode, forType: .string)
+          copyCode(login.userCode)
           onCopy()
         }
         Button("打开验证页面") {
-          _ = NSWorkspace.shared.open(login.verificationURL)
+          _ = openURL(login.verificationURL)
         }
       }
     }
-    .padding(10)
-    .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+    .padding(WorkbenchSpacing.card)
+    .background(
+      Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("settings-ai-codex-device-code")
   }

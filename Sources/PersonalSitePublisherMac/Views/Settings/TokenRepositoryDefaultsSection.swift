@@ -1,7 +1,9 @@
+import PublishingDomainContracts
 import PublishingGitCore
 import SwiftUI
 
 struct TokenRepositoryDefaultsSection: View {
+  let gitExecutionPolicy: Binding<RepositoryGitExecutionPolicy?>
   let localRepositoryPath: String
   let chooseLocalRepository: () -> Void
   let repositoryProviderBinding: Binding<RepositoryProvider>
@@ -91,6 +93,11 @@ struct TokenRepositoryDefaultsSection: View {
         .font(.caption)
         .foregroundStyle(.secondary)
     }
+    GitExecutionPolicySection(
+      executionPolicy: gitExecutionPolicy,
+      repositoryRootURL: localRepositoryPath.trimmedForPublishing.isEmpty
+        ? nil : URL(fileURLWithPath: localRepositoryPath, isDirectory: true)
+    )
   }
 
   private var localRepositoryDisplayValue: String {

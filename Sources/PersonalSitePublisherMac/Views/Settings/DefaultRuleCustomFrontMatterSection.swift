@@ -19,7 +19,7 @@ struct DefaultRuleCustomFrontMatterSection: View {
         .frame(minHeight: 90)
         .accessibilityLabel("自定义 Front-matter 预设字段")
         .overlay(
-          RoundedRectangle(cornerRadius: 6)
+          RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
             .stroke(Color.primary.opacity(0.15), lineWidth: 1)
         )
 
@@ -45,6 +45,6 @@ struct DefaultRuleCustomFrontMatterSection: View {
         .foregroundStyle(.secondary)
       }
     }
-    .padding(.vertical, 4)
+    .padding(.vertical, WorkbenchSpacing.tight)
   }
 }

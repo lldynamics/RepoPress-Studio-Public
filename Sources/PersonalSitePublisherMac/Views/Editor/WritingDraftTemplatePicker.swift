@@ -58,7 +58,7 @@ struct WritingDraftTemplatePicker: View {
             .font(.caption)
             .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, WorkbenchSpacing.tight)
         .tag(Optional(template.id))
       }
       .listStyle(.inset)
@@ -98,7 +98,7 @@ struct WritingDraftTemplatePicker: View {
         .accessibilityIdentifier("writing-template-create")
       }
     }
-    .padding(20)
+    .padding(WorkbenchSpacing.page)
     .frame(minWidth: 480, minHeight: 420)
     .onAppear {
       selectedTemplateID = templates.first?.id

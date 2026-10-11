@@ -90,7 +90,7 @@ struct KnowledgeNoteEditorView: View {
           .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
       Divider()
 
       Form {
@@ -116,7 +116,7 @@ struct KnowledgeNoteEditorView: View {
             .accessibilityLabel("笔记 Markdown 正文")
             .frame(minHeight: 300)
             .overlay {
-              RoundedRectangle(cornerRadius: 6)
+              RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
                 .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
             }
         }
@@ -129,8 +129,11 @@ struct KnowledgeNoteEditorView: View {
               HStack {
                 Label(attachment.fileName, systemImage: "paperclip")
                 Spacer()
-                Text(ByteCountFormatter.string(fromByteCount: Int64(attachment.data.count), countStyle: .file))
-                  .foregroundStyle(.secondary)
+                Text(
+                  ByteCountFormatter.string(
+                    fromByteCount: Int64(attachment.data.count), countStyle: .file)
+                )
+                .foregroundStyle(.secondary)
                 Button("移除", role: .destructive) {
                   attachments.removeAll { $0.id == attachment.id }
                 }
@@ -148,16 +151,16 @@ struct KnowledgeNoteEditorView: View {
         }
       }
       .formStyle(.grouped)
-      .padding(12)
+      .padding(WorkbenchSpacing.card)
       .disabled(isSaving)
 
       Divider()
       if isUnprotectedConflict {
         Label("原笔记已更新；你的输入尚未写入副本。请重试保存副本后再关闭。", systemImage: "exclamationmark.triangle.fill")
           .foregroundStyle(.orange)
-          .padding(.horizontal, 14)
+          .padding(.horizontal, WorkbenchSpacing.content)
         Button("重试保存为冲突副本") { persistConflictCopy() }
-          .padding(.horizontal, 14)
+          .padding(.horizontal, WorkbenchSpacing.content)
       }
       HStack {
         Button("取消") { requestClose() }
@@ -173,11 +176,11 @@ struct KnowledgeNoteEditorView: View {
             Text("保存")
           }
         }
-          .workbenchProminentActionStyle()
-          .disabled(isSaving)
-          .keyboardShortcut(.defaultAction)
+        .workbenchProminentActionStyle()
+        .disabled(isSaving)
+        .keyboardShortcut(.defaultAction)
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
     }
     .frame(minWidth: 680, idealWidth: 820, minHeight: 560, idealHeight: 720)
     .accessibilityIdentifier("knowledge-note-editor")
@@ -189,10 +192,13 @@ struct KnowledgeNoteEditorView: View {
         save: save
       )
     )
-    .alert("无法添加附件", isPresented: Binding(
-      get: { attachmentErrorMessage != nil },
-      set: { if !$0 { attachmentErrorMessage = nil } }
-    )) {
+    .alert(
+      "无法添加附件",
+      isPresented: Binding(
+        get: { attachmentErrorMessage != nil },
+        set: { if !$0 { attachmentErrorMessage = nil } }
+      )
+    ) {
       Button("好", role: .cancel) {}
     } message: {
       Text(attachmentErrorMessage ?? "")
@@ -209,10 +215,13 @@ struct KnowledgeNoteEditorView: View {
     } message: {
       Text("关闭后，本次尚未保存的笔记更改将丢失。")
     }
-    .alert(isStaleConflict ? "笔记已在其他设备更新" : "保存笔记失败", isPresented: Binding(
-      get: { saveErrorMessage != nil },
-      set: { if !$0 { saveErrorMessage = nil } }
-    )) {
+    .alert(
+      isStaleConflict ? "笔记已在其他设备更新" : "保存笔记失败",
+      isPresented: Binding(
+        get: { saveErrorMessage != nil },
+        set: { if !$0 { saveErrorMessage = nil } }
+      )
+    ) {
       if isStaleConflict, conflictCopy != nil {
         Button("保存副本并关闭") { dismiss() }
         Button("继续编辑副本") { saveErrorMessage = nil }
@@ -395,7 +404,8 @@ struct KnowledgeNoteEditorView: View {
       throw KnowledgeLibraryError.sourceLimitExceeded("笔记附件超过 128 MB。")
     }
     let data = try Data(contentsOf: url, options: .mappedIfSafe)
-    let mimeType = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
+    let mimeType =
+      UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
       ?? "application/octet-stream"
     return KnowledgeNoteAttachment(
       fileName: url.lastPathComponent,

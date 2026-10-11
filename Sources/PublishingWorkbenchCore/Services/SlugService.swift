@@ -8,6 +8,15 @@ public enum SlugService {
     return formatter.string(from: date)
   }
 
+  /// Recognizes the timestamp format used for a new article's provisional URL.
+  /// This is only a presentation hint; a matching slug remains valid and is never replaced implicitly.
+  public static func isFallbackSlug(_ slug: String) -> Bool {
+    slug.trimmedForPublishing.range(
+      of: #"^[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}$"#,
+      options: .regularExpression
+    ) != nil
+  }
+
   public static func slug(from text: String) -> String {
     let trimmed = text
       .folding(options: [.diacriticInsensitive, .widthInsensitive], locale: .current)

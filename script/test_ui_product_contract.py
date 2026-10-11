@@ -61,7 +61,7 @@ class UIProductContractTests(unittest.TestCase):
         inspector_tabs = (
             ROOT
             / "Sources/PersonalSitePublisherMac/Views/Workspace"
-            / "WorkspaceTaskInspectorSectionsExtra.swift"
+            / "ArticleInspectorPresentationState.swift"
         ).read_text()
 
         self.assertIn("public enum ArticlePublishRepairRoutePolicy", core_policy)
@@ -76,7 +76,7 @@ class UIProductContractTests(unittest.TestCase):
         self.assertIn("section: .writing", content_view)
         self.assertIn("article-publish-repair-return", repair_bar)
         self.assertIn("重新生成当前文章的发布预览，不会自动发布", repair_bar)
-        self.assertIn("return [.knowledge, .metadata, .seo, .images]", inspector_tabs)
+        self.assertIn("return [.metadata, .seo, .images, .knowledge]", inspector_tabs)
 
     def test_workspace_navigation_keeps_five_direct_primary_routes(self):
         core_models = (
@@ -92,28 +92,32 @@ class UIProductContractTests(unittest.TestCase):
             / "Sources/PersonalSitePublisherMac/Views/Workspace"
             / "WorkspaceRailView.swift"
         ).read_text()
-        compact_rail = (
-            ROOT
-            / "Sources/PersonalSitePublisherMac/Views/Workspace"
-            / "WorkspaceCompactNavigationRail.swift"
-        ).read_text()
         localizations = json.loads(
             (ROOT / "Sources/PersonalSitePublisherMac/Resources/Localizable.xcstrings").read_text()
         )["strings"]
 
         self.assertIn("public enum WorkspaceSection", core_models)
-        self.assertIn("WorkspaceVisibilityPolicy.commandMenuPrimarySections", descriptor)
         self.assertIn("static let primarySections", descriptor)
         visibility = (
             ROOT / "Sources/PersonalSitePublisherMac/Support/WorkspaceModuleVisibility.swift"
         ).read_text()
         self.assertIn("WorkspaceNavigationRouteDescriptor.primarySections.filter(allows)", visibility)
         self.assertIn("ForEach(moduleVisibility.primarySections)", full_rail)
-        self.assertIn("ForEach(moduleVisibility.primarySections)", compact_rail)
-        self.assertIn("Button {", compact_rail)
         self.assertIn(
-            '.accessibilityIdentifier("workspace-compact-rail-\\(section.rawValue)")',
-            compact_rail,
+            '.accessibilityIdentifier("workspace-sidebar-\\(section.rawValue)")',
+            full_rail,
+        )
+        layout_mode = (
+            ROOT / "Sources/PersonalSitePublisherMac/Support/WorkbenchLayoutMode.swift"
+        ).read_text()
+        self.assertIn("primaryNavigationRailWidth: CGFloat = 62", layout_mode)
+        self.assertIn("WorkbenchLayoutMode.primaryNavigationRailWidth", full_rail)
+        self.assertFalse(
+            (
+                ROOT
+                / "Sources/PersonalSitePublisherMac/Views/Workspace"
+                / "WorkspaceCompactNavigationRail.swift"
+            ).exists()
         )
         self.assertNotIn("WorkspaceArea", descriptor)
         self.assertNotIn("workspace-sidebar-area-", full_rail)

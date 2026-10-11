@@ -32,7 +32,7 @@ struct ContentHealthSkeletonLoadingView: View {
             .controlSize(.small)
             .accessibilityIdentifier("content-health-loading-cancel")
         }
-        .padding(10)
+        .padding(WorkbenchSpacing.card)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
           WorkbenchBackgroundStyle.card,
@@ -46,7 +46,7 @@ struct ContentHealthSkeletonLoadingView: View {
             skeletonBar(width: 60, height: 12)
             skeletonBar(width: 40, height: 20)
           }
-          .padding(12)
+          .padding(WorkbenchSpacing.card)
           .frame(maxWidth: .infinity, alignment: .leading)
           .background(
             WorkbenchBackgroundStyle.card,
@@ -68,7 +68,7 @@ struct ContentHealthSkeletonLoadingView: View {
             Spacer()
             skeletonBar(width: 50, height: 14)
           }
-          .padding(12)
+          .padding(WorkbenchSpacing.card)
           .background(
             WorkbenchBackgroundStyle.card,
             in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -83,7 +83,7 @@ struct ContentHealthSkeletonLoadingView: View {
   }
 
   private func skeletonBar(width: CGFloat, height: CGFloat) -> some View {
-    RoundedRectangle(cornerRadius: 4)
+    RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge)
       .fill(Color.primary.opacity(0.08))
       .frame(width: width, height: height)
   }

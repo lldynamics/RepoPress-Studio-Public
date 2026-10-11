@@ -1091,13 +1091,15 @@ extension MacMarkdownTextView.Coordinator {
     preservingExisting: Bool,
     documentRevision: UInt64
   ) {
-    if preservingExisting, inlineAttachmentDrawingApplicationTask != nil {
-      return
-    }
+    guard !preservingExisting || inlineAttachmentDrawingApplicationTask == nil else { return }
     cancelPendingInlineAttachmentDrawingApplication()
     let generation = inlineAttachmentDrawingApplicationGeneration
     inlineAttachmentDrawingApplicationTask = Task { @MainActor [weak self, weak textView] in
-      await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
+      // Defer layout in common modes so newly visible formulas do not remain
+      // source until the user's scroll tracking session returns to default mode.
+      await withCheckedContinuation { continuation in
+        RunLoop.main.perform(inModes: [.common]) { continuation.resume() }
+      }
       guard let self else { return }
       defer {
         if self.inlineAttachmentDrawingApplicationGeneration == generation {
@@ -1107,9 +1109,7 @@ extension MacMarkdownTextView.Coordinator {
       guard let textView, !Task.isCancelled,
         self.inlineAttachmentDrawingApplicationGeneration == generation,
         self.syntaxDocumentRevision == documentRevision
-      else {
-        return
-      }
+      else { return }
       let currentVisibleRange =
         MarkdownTextKit2RangeAdapter.visibleRange(in: textView)
         ?? applicationRange

@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 
 public struct RepositoryWorktreePushRetryCommitReview: Hashable, Sendable, Identifiable {
   public let commitSHA: String
@@ -83,6 +84,7 @@ public struct RepositoryWorktreePushRetryConfirmation: Hashable, Sendable, Ident
   public let safetyReport: RepositoryPublishSafetyReport
   public let sitePreflightResult: RepositoryPublishPreflightResult?
   public let fileReviews: [RepositoryWorktreeFileReview]
+  public let executionPolicy: RepositoryGitExecutionPolicy?
 
   public var id: String {
     [
@@ -91,6 +93,7 @@ public struct RepositoryWorktreePushRetryConfirmation: Hashable, Sendable, Ident
       snapshot.remoteBranchSHA,
       snapshot.localHeadSHA,
       snapshot.localTreeSHA,
+      executionPolicy.map { String(describing: $0) } ?? "",
     ].joined(separator: "\u{1E}")
   }
 
@@ -98,11 +101,13 @@ public struct RepositoryWorktreePushRetryConfirmation: Hashable, Sendable, Ident
     snapshot: RepositoryWorktreePushRetrySnapshot,
     safetyReport: RepositoryPublishSafetyReport = RepositoryPublishSafetyReport(),
     sitePreflightResult: RepositoryPublishPreflightResult? = nil,
-    fileReviews: [RepositoryWorktreeFileReview] = []
+    fileReviews: [RepositoryWorktreeFileReview] = [],
+    executionPolicy: RepositoryGitExecutionPolicy? = nil
   ) {
     self.snapshot = snapshot
     self.safetyReport = safetyReport
     self.sitePreflightResult = sitePreflightResult
     self.fileReviews = fileReviews
+    self.executionPolicy = executionPolicy
   }
 }

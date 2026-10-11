@@ -22,7 +22,7 @@ extension PublishingStore {
     publishSession.executionRecords.insert(PublishExecutionRecord(id: id, plan: plan), at: 0)
     publishSession.executionRecords = PublishExecutionRecord.retained(
       publishSession.executionRecords)
-    guard store.flushPendingChanges() else {
+    guard store.saveCurrentStateSynchronously(), !store.hasUnsavedChanges else {
       // No remote request has been made. Keep this fact in memory for a later
       // successful save, and never cross the write boundary on a save failure.
       updatePublishExecution(
@@ -62,15 +62,30 @@ extension PublishingStore {
     }
   }
 
-  func finishPublishExecution(_ id: UUID, record: ReleaseRecord, store: WorkbenchStore) {
-    updatePublishExecution(
-      id, state: .remoteAccepted, message: CoreL10n.text("远端已返回成功结果。"), releaseRecordID: record.id)
-    if !store.flushPendingChanges() {
+  @discardableResult
+  func finishPublishExecution(
+    _ id: UUID, record: ReleaseRecord, store: WorkbenchStore
+  ) -> PublishExecutionPersistenceOutcome {
+    finishPublishExecutions([id], record: record, store: store)
+  }
+
+  func finishPublishExecutions(
+    _ ids: [UUID], record: ReleaseRecord, store: WorkbenchStore
+  ) -> PublishExecutionPersistenceOutcome {
+    for id in ids {
       updatePublishExecution(
-        id, state: .needsVerification,
-        message: CoreL10n.text("远端已返回结果，本地记录保存失败。重新打开后请核对远端。"), releaseRecordID: record.id)
-      setPublishingActionMessage(CoreL10n.text("远端已返回结果，本地记录保存失败。请保留当前窗口并重试保存。"), status: .warning)
+        id, state: .remoteAccepted, message: CoreL10n.text("远端已返回成功结果。"), releaseRecordID: record.id
+      )
     }
+    guard store.saveCurrentStateSynchronously(), !store.hasUnsavedChanges else {
+      for id in ids {
+        updatePublishExecution(
+          id, state: .needsVerification,
+          message: CoreL10n.text("远端已返回结果，本地记录保存失败。重新打开后请核对远端。"), releaseRecordID: record.id)
+      }
+      return .requiresLocalRecovery
+    }
+    return .saved
   }
 
   func failPublishExecution(_ id: UUID, error: Error, store: WorkbenchStore) {
@@ -80,7 +95,7 @@ extension PublishingStore {
       })
     else { return }
     updatePublishExecution(id, state: .needsVerification, message: error.localizedDescription)
-    _ = store.flushPendingChanges()
+    _ = store.saveCurrentStateSynchronously()
   }
 
   /// Explicit user action from the history view; verification issues GETs only.
@@ -145,12 +160,23 @@ extension PublishingStore {
         // it does not rewrite the live document or mark it published.
         setPublishingActionMessage(message, status: pendingReview ? .warning : .success)
       }
-      _ = store.flushPendingChanges()
+      persistPublishVerification(id, store: store)
     } catch {
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return }
       updatePublishExecution(id, state: .needsVerification, message: error.localizedDescription)
       setPublishingActionMessage(error.localizedDescription, status: .warning)
-      _ = store.flushPendingChanges()
+      persistPublishVerification(id, store: store)
     }
+  }
+
+  private func persistPublishVerification(_ id: UUID, store: WorkbenchStore) {
+    let saved = store.saveCurrentStateSynchronously() && !store.hasUnsavedChanges
+    guard !saved, let remoteFeedback = publishDrawerFeedback else { return }
+    let outcome = RemotePublishCompletionOutcome(
+      persistence: .requiresLocalRecovery, remoteFeedback: remoteFeedback,
+      remoteProgressMessage: remoteFeedback.message)
+    updatePublishExecution(id, state: .needsVerification, message: outcome.feedback.message)
+    setPublishingActionMessage(outcome.feedback.message, status: outcome.feedback.status)
+    store.save()
   }
 }

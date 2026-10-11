@@ -83,7 +83,7 @@ struct SelectiveWorkspaceBackupPreviewSheet: View {
             Text("将替换本机该类别")
               .font(.caption)
               .foregroundStyle(.orange)
-              .padding(.leading, 24)
+              .padding(.leading, WorkbenchSpacing.spacious)
           }
         }
       }

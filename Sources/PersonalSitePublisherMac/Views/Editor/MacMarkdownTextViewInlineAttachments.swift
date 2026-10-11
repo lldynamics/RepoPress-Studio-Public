@@ -1,15 +1,14 @@
 import AppKit
 import ImageIO
+import PublishingCoreSupport
 import PublishingDomainContracts
-import PublishingWorkbenchCore
+import PublishingMarkdownCore
 import UniformTypeIdentifiers
 
 /// Paint-only state for an editable Markdown inline attachment.
-///
-/// The source Markdown remains authoritative. This value only describes the
-/// derived card that the text view paints for one visible source range. Keeping
-/// the stable key and image value here lets viewport reconciliation reuse the
-/// same presentation without creating an AppKit child view per attachment.
+/// The source Markdown remains authoritative. The stable key and image describe
+/// the derived card for one visible source range and let viewport reconciliation
+/// reuse its presentation without creating an AppKit child view per attachment.
 struct MarkdownInlineAttachmentDrawing: Equatable {
   struct RenderingAttributesSnapshot {
     let range: NSRange
@@ -104,79 +103,6 @@ final class MarkdownInlineAttachmentAccessibilityElement: NSAccessibilityElement
       setAccessibilityRole(.staticText)
       setAccessibilityLabel("数学公式")
       setAccessibilityValue(source)
-    }
-  }
-}
-
-enum MarkdownInlineAttachmentDrawingLayoutMode {
-  case block
-  case inline
-}
-
-enum MarkdownInlineAttachmentDrawingLayout {
-  static func frame(
-    sourceRect: NSRect,
-    textViewBounds: NSRect,
-    horizontalInset: CGFloat,
-    mode: MarkdownInlineAttachmentDrawingLayoutMode,
-    preferredWidth: CGFloat?,
-    preferredHeight: CGFloat
-  ) -> NSRect? {
-    let bounds = textViewBounds.standardized
-    guard bounds.width > 0, bounds.height > 0 else { return nil }
-
-    // A narrow editor window must never produce a frame wider than the text
-    // container. Keep at least one point for the content area while clamping
-    // the inset itself when the window is narrower than the normal gutter.
-    let safeInset = min(
-      max(0, horizontalInset),
-      max(0, (bounds.width - 1) / 2)
-    )
-    let contentMinX = bounds.minX + safeInset
-    let contentMaxX = bounds.maxX - safeInset
-    let availableWidth = max(1, contentMaxX - contentMinX)
-
-    switch mode {
-    case .block:
-      let height = max(preferredHeight, sourceRect.height - 12)
-      return NSRect(
-        x: contentMinX,
-        y: sourceRect.midY - (height / 2),
-        width: availableWidth,
-        height: height
-      )
-    case .inline:
-      let sourceWidth = sourceRect.width
-      guard sourceWidth > 0 else { return nil }
-
-      // Inline drawings are painted above the Markdown source. If their
-      // presentation needs more width than the source span reserved by
-      // TextKit, extending the frame would cover the next glyph. Returning
-      // nil makes the caller restore the source instead of obscuring text.
-      let requestedWidth = max(1, preferredWidth ?? sourceWidth)
-      let tolerance: CGFloat = 0.5
-      guard requestedWidth <= sourceWidth + tolerance else { return nil }
-
-      let x = min(max(contentMinX, sourceRect.minX), contentMaxX)
-      let availableInlineWidth = max(0, contentMaxX - x)
-      let visibleSourceWidth = max(0, sourceRect.maxX - x)
-      guard requestedWidth <= availableInlineWidth + tolerance,
-        requestedWidth <= visibleSourceWidth + tolerance
-      else {
-        // A partially visible or narrow source span cannot safely host the
-        // complete formula presentation. Keep the Markdown source visible.
-        return nil
-      }
-
-      let width = min(requestedWidth, min(availableInlineWidth, visibleSourceWidth))
-      guard width > 0 else { return nil }
-      let height = max(preferredHeight, sourceRect.height + 4)
-      return NSRect(
-        x: x,
-        y: sourceRect.midY - (height / 2),
-        width: width,
-        height: height
-      )
     }
   }
 }
@@ -302,21 +228,21 @@ extension MacMarkdownTextView.Coordinator {
     }
     let document = textView.string as NSString
     guard bodyUTF16Offset >= 0, bodyUTF16Offset <= document.length else { return }
-    guard
-      let rangeResolver = MarkdownTextKit2RangeAdapter.rangeResolver(
-        for: applicationRange,
-        in: textView
-      )
-    else {
-      return
-    }
     let plan = cachedInlineAttachmentPlan(in: document)
+    let visibleItems = visibleInlineAttachmentItems(in: plan, applicationRange: applicationRange)
+    // Include complete source spans of cards crossing either viewport edge.
+    let layoutRange = visibleItems.reduce(applicationRange) {
+      NSUnionRange(
+        $0, NSRange(location: bodyUTF16Offset + $1.range.location, length: $1.range.length))
+    }
+    let rangeResolver = MarkdownTextKit2RangeAdapter.rangeResolver(
+      for: layoutRange, in: textView)
+    guard let rangeResolver else { return }
     reconcileInlineAttachmentGeometryReservations(
       in: document,
       plan: plan,
       textView: textView
     )
-
     let selection = textView.selectedRange()
     restoreSelectedInlineAttachmentGeometry(
       for: selection,
@@ -327,7 +253,7 @@ extension MacMarkdownTextView.Coordinator {
     let attachmentByReference = attachmentReferenceLookup()
     var desiredCandidates: [String: MarkdownInlineAttachmentDrawingCandidate] = [:]
     var desiredKeys = Set<String>()
-    for item in visibleInlineAttachmentItems(in: plan, applicationRange: applicationRange) {
+    for item in visibleItems {
       let documentRange = NSRange(
         location: bodyUTF16Offset + item.range.location,
         length: item.range.length
@@ -366,16 +292,38 @@ extension MacMarkdownTextView.Coordinator {
             minimumLineHeight: 180
           )
       case .formula(let source, let displayMode):
-        let isMultiline = source.contains("\n") || source.contains("\r")
         let fontSize =
           displayMode == .inline
           ? syntaxHighlightPalette.baseFont.pointSize
           : max(19, syntaxHighlightPalette.baseFont.pointSize)
-        let renderedSize = MarkdownInlineFormulaPresentation.attributedString(
+        let containerWidth = textView.textContainer?.containerSize.width ?? 0
+        let viewWidth = textView.bounds.width > 0 ? textView.bounds.width : containerWidth
+        let availableWidth = max(1, viewWidth - 2 * (textView.textContainerInset.width + 6))
+        let presentationSize = MarkdownInlineFormulaPresentation.size(
           for: source,
-          fontSize: fontSize
-        ).size()
+          displayMode: displayMode,
+          fontSize: fontSize,
+          availableWidth: availableWidth
+        )
         let isInline = displayMode == .inline
+        let sourceText = document.substring(with: documentRange)
+        let minimumLineHeight =
+          isInline
+          ? presentationSize.height + 2
+          : MarkdownInlineAttachmentDrawingLayout.formulaMinimumLineHeight(
+            presentationHeight: presentationSize.height,
+            sourceText: sourceText,
+            laidOutSourceLineCount: inlineAttachmentSourceLineCount(
+              for: documentRange, using: rangeResolver)
+          )
+        let inlineWidth =
+          isInline
+          ? ceil(
+            MarkdownInlineFormulaPresentation.attributedString(
+              for: source, fontSize: fontSize
+            ).size().width
+          ) + MarkdownInlineAttachmentPresentationStyle.formulaHorizontalInset * 2
+          : nil
         desiredKeys.insert(key)
         desiredCandidates[key] =
           MarkdownInlineAttachmentDrawingCandidate(
@@ -387,13 +335,9 @@ extension MacMarkdownTextView.Coordinator {
             sourceURL: nil,
             documentRange: documentRange,
             layout: isInline ? .inline : .block,
-            preferredWidth: isInline ? ceil(renderedSize.width) + 24 : nil,
-            preferredHeight: isInline
-              ? max(28, ceil(renderedSize.height) + 8)
-              : (isMultiline ? 68 : max(52, ceil(renderedSize.height) + 12)),
-            minimumLineHeight: isInline
-              ? max(32, ceil(renderedSize.height) + 10)
-              : (isMultiline ? 24 : 64)
+            preferredWidth: inlineWidth,
+            preferredHeight: presentationSize.height,
+            minimumLineHeight: minimumLineHeight
           )
       }
     }
@@ -403,6 +347,7 @@ extension MacMarkdownTextView.Coordinator {
         let current = inlineAttachmentDrawingDescriptors[key]
       else { return !desiredKeys.contains(key) }
       return current.content != desired.content || current.documentRange != desired.documentRange
+        || current.minimumLineHeight != desired.minimumLineHeight
     }
     for key in obsoleteKeys {
       let currentRange =
@@ -776,6 +721,24 @@ extension MacMarkdownTextView.Coordinator {
       preferredWidth: candidate.preferredWidth,
       preferredHeight: candidate.preferredHeight
     )
+  }
+
+  private func inlineAttachmentSourceLineCount(
+    for range: NSRange,
+    using resolver: MarkdownTextKit2RangeAdapter.RangeResolver
+  ) -> Int {
+    guard let textRange = resolver.textRange(for: range) else { return 0 }
+    resolver.manager.ensureLayout(for: textRange)
+    var lineOrigins: [CGFloat] = []
+    resolver.manager.enumerateTextSegments(in: textRange, type: .standard, options: []) {
+      _, rect, _, _ in
+      guard !rect.isEmpty else { return true }
+      if !lineOrigins.contains(where: { abs($0 - rect.minY) < 0.5 }) {
+        lineOrigins.append(rect.minY)
+      }
+      return true
+    }
+    return lineOrigins.count
   }
 
   private func captureRenderingAttributes(

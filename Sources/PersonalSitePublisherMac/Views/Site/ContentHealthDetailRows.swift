@@ -2,176 +2,6 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 extension ContentHealthDetailView {
-  func healthSummaryBadge(
-    title: LocalizedStringKey,
-    value: Int,
-    systemImage: String,
-    color: Color,
-    action: (() -> Void)? = nil,
-    help: String? = nil
-  ) -> some View {
-    let badge = HStack(spacing: 5) {
-      Image(systemName: systemImage)
-        .accessibilityHidden(true)
-      // Longer localized labels shrink slightly instead of wrapping the pill.
-      Text(title)
-        .lineLimit(1)
-        .minimumScaleFactor(0.8)
-      Text("\(value)")
-        .fontWeight(.semibold)
-        .monospacedDigit()
-      if action != nil {
-        Image(systemName: "line.3.horizontal.decrease.circle")
-          .font(.caption)
-          .accessibilityHidden(true)
-      }
-    }
-    .font(.callout.weight(.medium))
-    .foregroundStyle(value > 0 ? color : Color.secondary)
-    .padding(.horizontal, 9)
-    .padding(.vertical, 6)
-    .frame(maxWidth: .infinity, alignment: .center)
-    .background(
-      action == nil
-        ? AnyShapeStyle(Color.clear)
-        : value > 0
-          ? AnyShapeStyle(color.opacity(WorkbenchOpacity.noticeBackground))
-          : WorkbenchBackgroundStyle.control,
-      in: Capsule()
-    )
-    return Group {
-      if let action {
-        Button(action: action) {
-          badge
-        }
-        .buttonStyle(.plain)
-        .help(help ?? String(localized: "点击后按此项筛选检查问题。"))
-        .accessibilityHint(String(localized: "点击以应用对应的检查筛选。"))
-      } else {
-        if let help {
-          badge.help(help)
-        } else {
-          badge
-        }
-      }
-    }
-  }
-
-  func articleSummaryRow(
-    _ row: ContentHealthArticleRowModel,
-    isSelected: Bool,
-    hasDuplicatePath: Bool
-  ) -> some View {
-    ViewThatFits(in: .horizontal) {
-      HStack(alignment: .firstTextBaseline, spacing: 10) {
-        articleRowIdentity(row)
-          .frame(minWidth: 240, maxWidth: .infinity, alignment: .leading)
-        Spacer(minLength: 12)
-        articleRowBadges(
-          row,
-          isSelected: isSelected,
-          hasDuplicatePath: hasDuplicatePath
-        )
-        .fixedSize(horizontal: true, vertical: false)
-      }
-
-      VStack(alignment: .leading, spacing: 8) {
-        articleRowIdentity(row)
-        articleRowBadges(
-          row,
-          isSelected: isSelected,
-          hasDuplicatePath: hasDuplicatePath
-        )
-      }
-    }
-    .padding(10)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background {
-      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-        .fill(
-          isSelected
-            ? AnyShapeStyle(
-              workbenchAccentColor.opacity(WorkbenchOpacity.selectionBackground))
-            : WorkbenchBackgroundStyle.card
-        )
-    }
-  }
-
-  private func articleRowIdentity(
-    _ row: ContentHealthArticleRowModel
-  ) -> some View {
-    VStack(alignment: .leading, spacing: 3) {
-      Text(row.draftTitle)
-        .font(.workbenchItemTitle)
-        .workbenchTruncatedIdentity(row.draftTitle)
-      Text(row.markdownPath)
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
-        .workbenchTruncatedIdentity(row.markdownPath)
-    }
-  }
-
-  private func articleRowBadges(
-    _ row: ContentHealthArticleRowModel,
-    isSelected: Bool,
-    hasDuplicatePath: Bool
-  ) -> some View {
-    HStack(spacing: 8) {
-      healthIssueCountBadge(
-        count: row.errorCount,
-        systemImage: "xmark.octagon",
-        color: WorkbenchTheme.risk,
-        label: "错误"
-      )
-      if hasDuplicatePath {
-        Label("路径重复", systemImage: "arrow.triangle.branch")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(WorkbenchTheme.warning)
-          .help("多篇文章映射到了同一仓库路径")
-      }
-      healthIssueCountBadge(
-        count: row.warningCount,
-        systemImage: "exclamationmark.triangle",
-        color: WorkbenchTheme.warning,
-        label: "警告"
-      )
-      if row.aiFixItem != nil {
-        Label("AI 修复", systemImage: "sparkles")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(WorkbenchTheme.inventoryForeground)
-          .help(String(localized: "可使用 AI 协助修复"))
-      }
-      if isSelected {
-        Image(systemName: "sidebar.right")
-          .foregroundStyle(workbenchAccentColor)
-          .font(.caption.weight(.semibold))
-          .accessibilityHidden(true)
-      }
-    }
-  }
-
-  private func healthIssueCountBadge(
-    count: Int,
-    systemImage: String,
-    color: Color,
-    label: LocalizedStringKey
-  ) -> some View {
-    Label("\(count)", systemImage: systemImage)
-      .font(.caption.weight(.semibold))
-      .monospacedDigit()
-      .foregroundStyle(count > 0 ? color : Color.secondary)
-      .padding(.horizontal, 6)
-      .padding(.vertical, 4)
-      .background(
-        count > 0
-          ? AnyShapeStyle(color.opacity(WorkbenchOpacity.noticeBackground))
-          : WorkbenchBackgroundStyle.control,
-        in: Capsule()
-      )
-      .accessibilityLabel(label)
-      .accessibilityValue("\(count)")
-  }
-
   func runAIFixQueueItem(_ item: AIPublishingFixQueueItem) {
     guard let draft = store.publishing.visibleDrafts.first(where: { $0.id == item.draftID }) else {
       return
@@ -213,42 +43,6 @@ extension ContentHealthDetailView {
     }
   }
 
-  func contentHealthSummaryAccessibilityValue(
-    _ snapshot: ContentHealthSnapshot
-  ) -> String {
-    var parts = [
-      "\(snapshot.errorCount) 个错误",
-      "\(snapshot.warningCount) 个警告",
-    ]
-    parts.append("\(snapshot.aiFixQueueItems.count) 项可用 AI 修复")
-    parts.append("\(snapshot.passingDraftCount) 篇文章通过")
-    return parts.joined(separator: "，")
-  }
-
-  func siteIssuesSection(_ issues: [PreflightIssue]) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack {
-        Text("站点级问题")
-          .font(.headline)
-        Spacer()
-        Text("\(issues.count) 项")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-
-      if issues.isEmpty {
-        Label("站点路径和仓库状态没有阻塞问题。", systemImage: "checkmark.circle")
-          .foregroundStyle(.secondary)
-      } else {
-        ForEach(issues) { issue in
-          ContentHealthIssueCard(issue: issue)
-        }
-      }
-    }
-    .padding(14)
-    .background(
-      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
-  }
 }
 
 extension ContentHealthDetailView {
@@ -261,5 +55,487 @@ extension ContentHealthDetailView {
         draft.aliases.map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "/")) })
       return normalized.contains(slug) || !aliases.isDisjoint(with: normalized)
     }
+  }
+}
+
+struct ContentHealthIssueListView: View {
+  let rows: [ContentHealthIssueSelection]
+  @Binding var selection: ContentHealthIssueSelection?
+  let locate: (PreflightIssue, UUID) -> Void
+  let runAIFix: (AIPublishingFixQueueItem) -> Void
+  let isAIRunning: Bool
+  let openMaintenanceDraft: (UUID) -> Void
+  let copyMaintenance: (MaintenanceActionItem) -> Void
+  let recordMaintenance: (MaintenanceActionItem) -> Void
+  let sendMaintenanceToAI: (MaintenanceActionItem) -> Void
+  let suppress: (PreflightIssue, UUID, ContentHealthSuppressionMode) -> Void
+  @FocusState private var isListFocused: Bool
+  @Environment(\.workbenchAccentColor) private var accentColor
+
+  var body: some View {
+    ScrollViewReader { proxy in
+      LazyVStack(alignment: .leading, spacing: 0) {
+        ForEach(ContentHealthIssueSection.allCases, id: \.self) { section in
+          let sectionRows = rows.filter { $0.section == section }
+          if !sectionRows.isEmpty {
+            HStack(spacing: WorkbenchSpacing.control) {
+              Text(section.title)
+                .font(.workbenchSectionTitle)
+              Text("\(sectionRows.reduce(0) { $0 + $1.occurrenceCount }) 项")
+                .font(.workbenchMetadata.monospacedDigit())
+                .foregroundStyle(.secondary)
+            }
+            .padding(WorkbenchSpacing.card)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityIdentifier("content-health-group-\(section.rawValue)")
+
+            ForEach(sectionRows) { row in
+              Divider()
+              issueRow(row)
+                .id(row.id)
+            }
+          }
+        }
+      }
+      .background(
+        WorkbenchBackgroundStyle.card,
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+      )
+      .clipShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+      .focusable()
+      .focusEffectDisabled()
+      .focused($isListFocused)
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel("问题列表")
+      .accessibilityIdentifier("content-health-issue-list")
+      .accessibilityHint("点击问题后，可使用上下箭头选择问题")
+      .onKeyPress(.upArrow) {
+        moveSelection(by: -1)
+        return .handled
+      }
+      .onKeyPress(.downArrow) {
+        moveSelection(by: 1)
+        return .handled
+      }
+      .onChange(of: rows, initial: true) { _, current in
+        selection = ContentHealthIssueListProjection.reconciled(selection, rows: current)
+      }
+      .onChange(of: selection?.id) { _, id in
+        if let id { proxy.scrollTo(id) }
+      }
+    }
+  }
+
+  private func issueRow(_ row: ContentHealthIssueSelection) -> some View {
+    let isSelected = selection?.id == row.id
+    return HStack(spacing: WorkbenchSpacing.card) {
+      Button {
+        selection = row
+        isListFocused = true
+      } label: {
+        HStack(spacing: WorkbenchSpacing.card) {
+          Image(systemName: row.section.systemImage)
+            .foregroundStyle(row.section.color)
+            .font(.system(size: WorkbenchIconSize.inline))
+            .accessibilityHidden(true)
+          VStack(alignment: .leading, spacing: WorkbenchSpacing.tight) {
+            Text(row.title)
+              .font(.workbenchItemTitle)
+              .workbenchTruncatedIdentity(row.title)
+            Text(description(row))
+              .font(.workbenchMetadata)
+              .foregroundStyle(.secondary)
+              .lineLimit(1)
+              .help(description(row))
+          }
+          Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(WorkbenchFocusRingButtonStyle())
+      .accessibilityLabel("选择问题：\(row.title)")
+      .accessibilityValue(description(row))
+      .accessibilityAddTraits(isSelected ? .isSelected : [])
+      .accessibilityIdentifier("content-health-select-issue-\(row.id)")
+
+      ContentHealthSuppressionMenu(row: row, suppress: suppress)
+        .controlSize(.small)
+      rowActions(row)
+        .controlSize(.small)
+        .fixedSize()
+    }
+    .padding(.horizontal, WorkbenchSpacing.card)
+    .padding(.vertical, WorkbenchSpacing.control)
+    .background(
+      isSelected ? accentColor.opacity(WorkbenchOpacity.selectionBackground) : Color.clear)
+  }
+
+  /// Task data, not UI copy: joined outside the `Section` call so the
+  /// separator is never extracted as a localization key.
+  private func maintenanceMenuTitle(_ item: MaintenanceActionItem) -> String {
+    [item.title, item.contentHealthActionTarget].joined(separator: " · ")
+  }
+
+  @ViewBuilder
+  private func rowActions(_ row: ContentHealthIssueSelection) -> some View {
+    if !row.maintenanceItems.isEmpty {
+      Menu {
+        ForEach(row.maintenanceItems) { item in
+          Section(maintenanceMenuTitle(item)) {
+            if let draftID = item.draftID {
+              Button("打开草稿") { openMaintenanceDraft(draftID) }
+            }
+            Button("记录处理：\(item.contentHealthActionTarget)") { recordMaintenance(item) }
+            Button("复制任务：\(item.contentHealthActionTarget)") { copyMaintenance(item) }
+            if item.draftID != nil {
+              Button("AI 修复：\(item.contentHealthActionTarget)") { sendMaintenanceToAI(item) }
+                .disabled(isAIRunning)
+            }
+          }
+        }
+      } label: {
+        if row.affectedArticleCount > 1 {
+          Text("\(row.affectedArticleCount) 篇")
+        } else {
+          Text("处理")
+        }
+      }
+      .accessibilityLabel("处理维护事项：\(row.title)")
+    } else if row.articles.count == 1, let article = row.articles.first,
+      let issue = article.issues.first
+    {
+      Button("定位") {
+        selection = row
+        locate(issue, article.draftID)
+      }
+      .accessibilityLabel("定位问题：\(row.title)")
+      .contextMenu { articleActions(article, selection: row) }
+    } else if !row.articles.isEmpty {
+      Menu {
+        ForEach(row.articles) { article in
+          Section(article.draftTitle) { articleActions(article, selection: row) }
+        }
+      } label: {
+        Text("\(row.affectedArticleCount) 篇")
+      }
+      .accessibilityLabel("受影响的文章：\(row.title)")
+    } else {
+      Text("\(row.occurrenceCount) 项")
+        .font(.workbenchMetadata.monospacedDigit())
+        .foregroundStyle(.secondary)
+    }
+  }
+
+  @ViewBuilder
+  private func articleActions(
+    _ article: ContentHealthArticleRowModel, selection row: ContentHealthIssueSelection
+  ) -> some View {
+    ForEach(article.issues) { issue in
+      Button(issue.message) {
+        selection = row
+        locate(issue, article.draftID)
+      }
+    }
+    if let item = article.aiFixItem {
+      Button("AI 修复") { runAIFix(item) }
+        .disabled(isAIRunning)
+    }
+  }
+
+  private func description(_ row: ContentHealthIssueSelection) -> String {
+    var parts: [String] = []
+    if let subgroup = row.subgroup { parts.append(subgroup) }
+    if let item = row.maintenanceItems.first {
+      parts.append(String(localized: "\(row.maintenanceItems.count) 项"))
+      parts.append(
+        String.localizedStringWithFormat(
+          String(localized: "优先级：%@"), item.priority.localizedDisplayName))
+    }
+    if row.affectedArticleCount > 1 {
+      parts.append(String(localized: "\(row.affectedArticleCount) 篇文章"))
+    } else if let article = row.articles.first {
+      parts.append(article.draftTitle)
+    }
+    parts.append(row.detail)
+    return parts.joined(separator: " · ")
+  }
+
+  private func moveSelection(by offset: Int) {
+    selection = ContentHealthIssueListProjection.moved(selection, offset: offset, rows: rows)
+  }
+}
+
+/// The unified inspector renders only the selected issue. Actions return to
+/// the mounted health page, which continues to own tasks and approval sheets.
+struct ContentHealthSelectedIssueInspector: View {
+  let selectedIssue: ContentHealthIssueSelection?
+  @ObservedObject var actions: ContentHealthInspectorActions
+  @Environment(\.openSettings) private var openSettings
+  @Environment(\.settingsWorkspaceCommandAction) private var settingsWorkspaceAction
+
+  var body: some View {
+    VStack(spacing: 0) {
+      ScrollView {
+        VStack(alignment: .leading, spacing: WorkbenchSpacing.content) {
+          if let selectedIssue {
+            header(selectedIssue)
+            Text(selectedIssue.detail)
+              .font(.workbenchSupporting)
+              .foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+            if !selectedIssue.articles.isEmpty {
+              Label("受影响的文章", systemImage: "doc.text")
+                .font(.workbenchSectionTitle)
+              ForEach(selectedIssue.articles) { article in
+                articleCard(article)
+              }
+            }
+            ForEach(selectedIssue.siteIssues) { issue in
+              ContentHealthIssueCard(issue: issue)
+            }
+            ForEach(selectedIssue.maintenanceItems) { item in
+              maintenanceCard(item)
+            }
+          } else {
+            Label("问题详情", systemImage: "sidebar.right")
+              .font(.workbenchSectionTitle)
+            Text("选择一个问题以查看详情。")
+              .font(.workbenchSupporting)
+              .foregroundStyle(.secondary)
+          }
+        }
+        .padding(WorkbenchSpacing.content)
+        .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      Divider()
+      rulesFooter
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("问题详情")
+    .accessibilityIdentifier("content-health-selected-issue-inspector")
+  }
+
+  private func header(_ selection: ContentHealthIssueSelection) -> some View {
+    VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
+      HStack(spacing: WorkbenchSpacing.icon) {
+        Label(selection.section.title, systemImage: selection.section.systemImage)
+          .foregroundStyle(selection.section.color)
+        Text(sourceTitle(selection))
+          .foregroundStyle(.secondary)
+      }
+      .font(.workbenchMetadata)
+      Text(selection.title)
+        .font(.workbenchCardTitle)
+        .fixedSize(horizontal: false, vertical: true)
+      if selection.affectedArticleCount > 0 {
+        Text("\(selection.affectedArticleCount) 篇文章")
+          .font(.workbenchMetadata)
+          .foregroundStyle(.secondary)
+      }
+      if let generatedAt = actions.generatedAt {
+        Text("上次扫描 \(generatedAt.workbenchShortText)")
+          .font(.workbenchMetadata)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .accessibilityElement(children: .combine)
+    .accessibilityIdentifier("content-health-selected-issue-heading")
+  }
+
+  private func sourceTitle(_ selection: ContentHealthIssueSelection) -> String {
+    if !selection.articles.isEmpty { return ContentHealthSourceFilter.articles.title }
+    if !selection.siteIssues.isEmpty { return ContentHealthSourceFilter.site.title }
+    return ContentHealthSourceFilter.maintenance.title
+  }
+
+  private func articleCard(_ article: ContentHealthArticleRowModel) -> some View {
+    VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
+      Text(article.draftTitle)
+        .font(.workbenchItemTitle)
+        .workbenchTruncatedIdentity(article.draftTitle)
+      Text(article.markdownPath)
+        .font(.workbenchMetadata.monospaced())
+        .foregroundStyle(.secondary)
+        .workbenchTruncatedIdentity(article.markdownPath)
+      Button("前往写作") { actions.openMaintenanceDraft(article.draftID) }
+        .buttonStyle(.link)
+        .accessibilityIdentifier("content-health-open-article-\(article.draftID.uuidString)")
+      ForEach(article.issues) { issue in
+        ContentHealthIssueCard(issue: issue) {
+          actions.locate(issue, draftID: article.draftID)
+        }
+      }
+      if let resolution = actions.slugResolution(for: article.draftID) {
+        resolution
+      }
+      if let item = article.aiFixItem {
+        Divider()
+        Text("修复建议生成后先审阅，再选择要应用的字段。")
+          .font(.workbenchSupporting)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+        Button {
+          actions.runAIFix(item)
+        } label: {
+          Label("AI 修复", systemImage: "sparkles")
+        }
+        .workbenchProminentActionStyle()
+        .disabled(actions.isAIRunning)
+        .accessibilityLabel("AI 修复：\(article.draftTitle)")
+        .accessibilityIdentifier("content-health-inspector-ai-fix-\(article.draftID.uuidString)")
+      }
+    }
+    .padding(WorkbenchSpacing.card)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .disabled(!actions.isAvailable)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("content-health-inspector-article-\(article.draftID.uuidString)")
+  }
+
+  private func maintenanceCard(_ item: MaintenanceActionItem) -> some View {
+    VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
+      Text(item.title)
+        .font(.workbenchItemTitle)
+        .fixedSize(horizontal: false, vertical: true)
+      Text(item.contentHealthActionTarget)
+        .font(.workbenchSupporting)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      Text(
+        String.localizedStringWithFormat(
+          String(localized: "优先级：%@"), item.priority.localizedDisplayName)
+      )
+      .font(.workbenchMetadata)
+      .foregroundStyle(.secondary)
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: WorkbenchSpacing.control) { maintenanceButtons(item) }
+        VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
+          maintenanceButtons(item)
+        }
+      }
+      .controlSize(.small)
+    }
+    .padding(WorkbenchSpacing.card)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .disabled(!actions.isAvailable)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("content-health-inspector-maintenance-\(item.id)")
+  }
+
+  @ViewBuilder
+  private func maintenanceButtons(_ item: MaintenanceActionItem) -> some View {
+    if let draftID = item.draftID {
+      Button("打开草稿") { actions.openMaintenanceDraft(draftID) }
+      Button("AI 修复") { actions.sendMaintenanceToAI(item) }
+        .disabled(actions.isAIRunning)
+    }
+    Button("记录处理") { actions.recordMaintenance(item) }
+    Button("复制任务") { actions.copyMaintenance(item) }
+  }
+
+  private var rulesFooter: some View {
+    VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
+      Button("检查规则") {
+        SettingsNavigation.present(
+          destination: .tab(.siteAI), workspaceAction: settingsWorkspaceAction,
+          openSettings: { openSettings() })
+      }
+      .buttonStyle(.link)
+      .accessibilityIdentifier("content-health-inspector-rules")
+      Text("可选内容警告和提示可在问题列表中忽略；页面上的已忽略设置可恢复检查。")
+        .font(.workbenchMetadata)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .padding(WorkbenchSpacing.content)
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+extension ContentHealthDetailView {
+  static func preferredSource(
+    for filter: ContentHealthContextFilter
+  ) -> ContentHealthSourceFilter {
+    switch filter {
+    case .overview: .all
+    case .publicRisks, .aiFixes: .articles
+    case .siteIssues: .site
+    case .maintenance: .maintenance
+    }
+  }
+
+  static func preferredAIFixFilter(
+    for filter: ContentHealthContextFilter
+  ) -> ContentHealthAIFixFilter {
+    filter == .aiFixes ? .fixable : .all
+  }
+
+  static func preferredGrouping(
+    for filter: ContentHealthContextFilter
+  ) -> ContentHealthArticleGrouping {
+    switch filter {
+    case .overview, .publicRisks:
+      return .actionQueue
+    case .aiFixes:
+      return .automaticFix
+    case .siteIssues:
+      return .site
+    case .maintenance:
+      return .actionQueue
+    }
+  }
+
+  func focusContentHealthIssue(_ issue: PreflightIssue, draftID: UUID) {
+    switch issue.structuredField {
+    case .body:
+      _ = store.focusDraft(draftID, section: .writing)
+      store.setInspectorPresented(true)
+      store.requestEditorFocus(
+        draftID: draftID,
+        field: issue.field,
+        query: issue.editorQuery
+      )
+    case .attachments, .cover, .coverAlt:
+      _ = store.focusDraft(draftID, section: .images)
+    default:
+      _ = store.focusDraft(draftID, section: .writing)
+      store.setInspectorPresented(true)
+    }
+  }
+
+  func applySelectedAIFixFields(
+    _ fields: [FrontMatterFixFieldItem],
+    for preview: ContentHealthAIFixResultPreview
+  ) -> ContentHealthAIFixApplyFeedback {
+    guard let draftID = preview.draftID,
+      var draft = store.publishing.visibleDrafts.first(where: { $0.id == draftID })
+    else {
+      return .failed(String(localized: "未能找到原文章，未应用任何字段。"))
+    }
+
+    let result = ContentHealthAIFixFieldPolicy.apply(
+      fields,
+      to: &draft,
+      baseline: preview.metadataBaseline
+    )
+    guard result.didApplyChanges else {
+      if result.conflictCount > 0 {
+        return .applied(result)
+      }
+      return .failed(String(localized: "所选字段当前不能应用，文章未更改。"))
+    }
+
+    store.updateDraft(draft)
+    refreshContentHealthSnapshot()
+    return .applied(result)
   }
 }

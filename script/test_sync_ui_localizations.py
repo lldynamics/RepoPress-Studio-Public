@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
 import importlib.util
+import copy
+import contextlib
+import io
 import json
 from pathlib import Path
 import tempfile
@@ -746,6 +749,164 @@ public enum WorkspaceCenterSurface {
                 SYNC.synchronize(catalog, {key: key})
         finally:
             SYNC.load_reviewed_translations = original_loader
+
+
+class ShortcutLocalizationTests(unittest.TestCase):
+    def fixture(self):
+        localizable = {"保存网页": "保存网页"}
+        phrases = {"用 ${applicationName} 保存网页": [
+            "用 ${applicationName} 保存网页", "保存网页到 ${applicationName}",
+        ]}
+        translations = {
+            "保存网页": "Save Webpage",
+            "用 ${applicationName} 保存网页": "Save a webpage with ${applicationName}",
+            "保存网页到 ${applicationName}": "Save a webpage to ${applicationName}",
+        }
+        catalogs = {table: {"sourceLanguage": "zh-Hans", "strings": {}, "version": "1.0"}
+                    for table in ("Localizable", "AppShortcuts")}
+        return catalogs, localizable, phrases, translations
+
+    def extract(self, source):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "AppIntents.swift").write_text(source, encoding="utf-8")
+            with patch.object(SYNC, "SHORTCUT_SOURCE_ROOT", root):
+                return SYNC.extract_shortcut_localizations()
+
+    def test_extracts_titles_descriptions_parameters_summary_dialog_and_phrase_groups(self):
+        source = r'''
+    static let title: LocalizedStringResource = "保存网页"
+    static let description = IntentDescription("网页说明")
+    @Parameter(title: "地址", description: "参数说明") var url: URL
+    Summary("将 \(\.$url) 放入收件箱")
+    .result(dialog: "已保存")
+    let error = String(localized: "无效地址")
+    AppShortcut(intent: Action(), phrases: [
+      "用 \(.applicationName) 保存网页", "保存网页到 \(.applicationName)",
+    ], shortTitle: "存网页", systemImageName: "safari")
+    let unsupported = Metadata(title: "普通元数据")
+    // IntentDescription("注释不是文案")
+    /* @Parameter(title: "另一注释") */
+    '''
+        localizable, phrases = self.extract(source)
+        self.assertEqual(set(localizable), {"保存网页", "网页说明", "地址", "参数说明",
+            "将 ${url} 放入收件箱", "已保存", "无效地址", "存网页"})
+        self.assertEqual(phrases, {"用 ${applicationName} 保存网页": [
+            "用 ${applicationName} 保存网页", "保存网页到 ${applicationName}"]})
+        self.assertNotIn("safari", localizable)
+
+    def test_summary_retains_parameter_names_and_order(self):
+        localizable, _ = self.extract(r'Summary("将 \(\.$title)：\(\.$text) 保存为笔记")')
+        self.assertEqual(localizable, {"将 ${title}：${text} 保存为笔记": "将 ${title}：${text} 保存为笔记"})
+        self.assertEqual(SYNC.placeholders("${title} ${text} %@"), ["%@", "${title}", "${text}"])
+
+    def test_invalid_or_duplicate_invocation_phrase_is_rejected(self):
+        for source in [
+            'AppShortcut(phrases: ["保存网页"])',
+            r'AppShortcut(phrases: ["用 \(.applicationName)", "用 \(.applicationName)"])',
+            r'AppShortcut(phrases: ["用 \(someValue) 保存网页"])',
+        ]:
+            with self.subTest(source=source), self.assertRaises(RuntimeError):
+                self.extract(source)
+
+    def test_catalogs_use_apple_string_sets_and_keep_existing_comments(self):
+        catalogs, localizable, phrases, translations = self.fixture()
+        key = next(iter(phrases))
+        catalogs["AppShortcuts"]["strings"][key] = {"comment": "Preserve reviewer context"}
+        result = SYNC.synchronize_shortcut_catalogs(catalogs, localizable, phrases, translations)
+        entry = result["AppShortcuts"]["strings"][key]
+        self.assertEqual(entry["comment"], "Preserve reviewer context")
+        self.assertEqual(entry["extractionState"], "extracted_with_value")
+        self.assertEqual(entry["localizations"]["en"], {"stringSet": {
+            "state": "translated", "values": [translations[phrase] for phrase in phrases[key]],
+        }})
+        self.assertEqual(SYNC.validate_shortcut_catalogs(result, localizable, phrases, translations), [])
+
+    def test_extension_requires_master_even_when_catalog_values_are_valid(self):
+        catalogs, localizable, phrases, translations = self.fixture()
+        SYNC.synchronize_shortcut_catalogs(catalogs, localizable, phrases, translations)
+        before = copy.deepcopy(catalogs)
+        translations.pop("保存网页")
+        with self.assertRaisesRegex(RuntimeError, "missing reviewed shortcut translation"):
+            SYNC.synchronize_shortcut_catalogs(catalogs, localizable, phrases, translations)
+        self.assertEqual(catalogs, before)
+        self.assertTrue(any("missing reviewed shortcut translation" in error
+            for error in SYNC.validate_shortcut_catalogs(catalogs, localizable, phrases, translations)))
+
+    def test_master_wrong_named_placeholder_rejects_sync_before_mutating_catalogs(self):
+        catalogs, localizable, phrases, translations = self.fixture()
+        before = copy.deepcopy(catalogs)
+        translations[next(iter(phrases))] = "Save a webpage with %@"
+        with self.assertRaisesRegex(RuntimeError, "shortcut placeholders differ"):
+            SYNC.synchronize_shortcut_catalogs(catalogs, localizable, phrases, translations)
+        self.assertEqual(catalogs, before)
+
+    def test_missing_key_wrong_placeholder_and_unreviewed_drift_are_rejected(self):
+        catalogs, localizable, phrases, translations = self.fixture()
+        SYNC.synchronize_shortcut_catalogs(catalogs, localizable, phrases, translations)
+        catalogs["Localizable"]["strings"].pop("保存网页")
+        self.assertTrue(any("missing zh-Hans/en value" in error
+            for error in SYNC.validate_shortcut_catalogs(catalogs, localizable, phrases, translations)))
+        SYNC.synchronize_shortcut_catalogs(catalogs, localizable, phrases, translations)
+        key = next(iter(phrases))
+        values = catalogs["AppShortcuts"]["strings"][key]["localizations"]["en"]["stringSet"]["values"]
+        values[1] = "Save a webpage to ${wrongName}"
+        failures = SYNC.validate_shortcut_catalogs(catalogs, localizable, phrases, translations)
+        self.assertTrue(any("shortcut placeholders differ" in error for error in failures))
+        values[1] = "A different phrase with ${applicationName}"
+        failures = SYNC.validate_shortcut_catalogs(catalogs, localizable, phrases, translations)
+        self.assertTrue(any("differs from reviewed shortcut translation" in error for error in failures))
+        SYNC.synchronize_shortcut_catalogs(catalogs, localizable, phrases, translations)
+        self.assertEqual(SYNC.validate_shortcut_catalogs(catalogs, localizable, phrases, translations), [])
+
+    def test_shortcut_phrase_state_count_and_stale_entries_are_rejected(self):
+        catalogs, localizable, phrases, translations = self.fixture()
+        SYNC.synchronize_shortcut_catalogs(catalogs, localizable, phrases, translations)
+        key = next(iter(phrases))
+        string_set = catalogs["AppShortcuts"]["strings"][key]["localizations"]["en"]["stringSet"]
+        string_set["state"] = "needs_review"
+        string_set["values"].pop()
+        catalogs["AppShortcuts"]["strings"]["obsolete"] = {}
+        failures = SYNC.validate_shortcut_catalogs(catalogs, localizable, phrases, translations)
+        for expected in ("state must be translated", "phrase count differs", "stale catalog key"):
+            self.assertTrue(any(expected in error for error in failures))
+
+    def test_same_main_entrypoint_syncs_checks_and_prunes_extension_without_second_master(self):
+        catalogs, localizable, phrases, translations = self.fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            app_catalog = root / "App.xcstrings"
+            app_catalog.write_text(json.dumps({"strings": {}}), encoding="utf-8")
+            paths = {table: root / f"{table}.xcstrings" for table in catalogs}
+            for table, path in paths.items():
+                path.write_text(json.dumps(catalogs[table]), encoding="utf-8")
+            master = root / "translations.json"
+            master.write_text(json.dumps({**translations, "obsolete": "Old"}), encoding="utf-8")
+            with patch.multiple(SYNC,
+                CATALOG_PATH=app_catalog, SHORTCUT_CATALOG_PATHS=paths, TRANSLATION_PATHS=(master,),
+                direct_display_name_localization_gaps=lambda: [],
+                extract_compiler_localizations=lambda: {}, extract_swiftui_strings=lambda: {},
+                extract_literal_localization_calls=lambda: {}, extract_component_localization_keys=lambda: {},
+                extract_workspace_navigation_keys=lambda: {}, extract_display_name_semantic_keys=lambda: {},
+                load_dynamic_key_allowlist=lambda: {"runtime": set(), "sourceLiterals": set()},
+                extract_normalized_source_literals=lambda: set(), extract_core_localization_keys=lambda: {},
+                validate_core_localizations=lambda _: [],
+                extract_shortcut_localizations=lambda: (localizable, phrases)), \
+                patch.object(SYNC.subprocess, "run", side_effect=AssertionError("no build allowed")), \
+                contextlib.redirect_stdout(io.StringIO()):
+                with patch("sys.argv", ["sync_ui_localizations.py", "--check"]):
+                    self.assertEqual(SYNC.main(), 1)
+                with patch("sys.argv", ["sync_ui_localizations.py", "--prune-stale"]):
+                    self.assertEqual(SYNC.main(), 0)
+                self.assertEqual(json.loads(master.read_text()), translations)
+                with patch("sys.argv", ["sync_ui_localizations.py", "--check"]):
+                    self.assertEqual(SYNC.main(), 0)
+                result = json.loads(paths["AppShortcuts"].read_text())
+                first = next(iter(phrases))
+                result["strings"][first]["localizations"]["en"]["stringSet"]["values"][0] = "drift"
+                paths["AppShortcuts"].write_text(json.dumps(result), encoding="utf-8")
+                with patch("sys.argv", ["sync_ui_localizations.py", "--check"]):
+                    self.assertEqual(SYNC.main(), 1)
 
 
 if __name__ == "__main__":

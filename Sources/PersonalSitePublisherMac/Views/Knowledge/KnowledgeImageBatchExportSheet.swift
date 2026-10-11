@@ -110,7 +110,7 @@ struct KnowledgeImageBatchExportSheet: View {
         .accessibilityIdentifier("knowledge-image-export-confirm")
       }
     }
-    .padding(24)
+    .padding(WorkbenchSpacing.spacious)
     .frame(minWidth: 560, idealWidth: 620)
     .accessibilityIdentifier("knowledge-image-batch-export-sheet")
   }
@@ -158,8 +158,11 @@ struct KnowledgeImageBatchExportSheet: View {
         .frame(maxHeight: 160)
       }
     }
-    .padding(12)
-    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 8))
+    .padding(WorkbenchSpacing.card)
+    .background(
+      WorkbenchBackgroundStyle.control,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
     .accessibilityIdentifier("knowledge-image-export-result")
   }
 

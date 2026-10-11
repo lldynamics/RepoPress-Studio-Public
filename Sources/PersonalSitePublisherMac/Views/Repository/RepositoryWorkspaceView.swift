@@ -48,8 +48,8 @@ struct RepositoryWorkspaceView: View {
     VStack(spacing: 0) {
       if stage == .history || stage == .source, hasPendingRepositoryRecovery {
         repositoryWorkflowBanner
-          .padding(.horizontal, 20)
-          .padding(.top, 12)
+          .padding(.horizontal, WorkbenchSpacing.page)
+          .padding(.top, WorkbenchSpacing.card)
       }
       if stage == .history {
         ReleaseHistoryDetailView(store: store)

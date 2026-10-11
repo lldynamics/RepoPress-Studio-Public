@@ -25,15 +25,6 @@ enum WorkspaceBackupSelectionPanel {
   }
 
   @MainActor
-  static func chooseSelectiveBackupDestination() async -> URL? {
-    await chooseBackupDestination(
-      title: String(localized: "备份所选类别"),
-      message: String(localized: "仅保存所选的数据类别；API Key 和 AI 服务凭据不会写入。可在系统面板中选择保存位置。"),
-      filename: String(localized: "所选工作区备份")
-    )
-  }
-
-  @MainActor
   private static func chooseBackupDestination(
     title: String, message: String, filename: String, directoryURL: URL? = nil
   )

@@ -13,7 +13,7 @@ struct KnowledgeLibraryRestorePreviewView: View {
     VStack(alignment: .leading, spacing: 18) {
       HStack(alignment: .top, spacing: 12) {
         Image(systemName: "checkmark.shield.fill")
-          .font(.system(size: 30))
+          .font(.system(size: WorkbenchIconSize.hero))
           .foregroundStyle(WorkbenchTheme.success)
         VStack(alignment: .leading, spacing: 4) {
           Text("备份完整性校验通过")
@@ -54,8 +54,10 @@ struct KnowledgeLibraryRestorePreviewView: View {
         Image(systemName: "exclamationmark.triangle.fill")
           .foregroundStyle(WorkbenchTheme.warning)
       }
-      .padding(12)
-      .background(WorkbenchTheme.warning.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+      .padding(WorkbenchSpacing.card)
+      .background(
+        WorkbenchTheme.warning.opacity(0.1),
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel))
 
       if let lastError = knowledge.lastError {
         Text(lastError)
@@ -76,7 +78,7 @@ struct KnowledgeLibraryRestorePreviewView: View {
         .disabled(isRestoring)
       }
     }
-    .padding(24)
+    .padding(WorkbenchSpacing.spacious)
     .frame(width: 520)
     .accessibilityIdentifier("knowledge-restore-preview")
   }

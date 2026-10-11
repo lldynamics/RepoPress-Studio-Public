@@ -1,0 +1,22 @@
+{
+  "本段已处理，可以继续发现下一段历史链接。": {
+    "zh-Hans": "本段已处理，可以继续发现下一段历史链接。",
+    "en": "This segment is processed. Continue to discover the next segment of historical links."
+  },
+  "已达到本段发现上限，续查位置已保存。": {
+    "zh-Hans": "已达到本段发现上限，续查位置已保存。",
+    "en": "This segment reached the discovery limit. The continuation position is saved."
+  },
+  "已达到目录页面上限；请选择更具体的公开目录。": {
+    "zh-Hans": "已达到目录页面上限；请选择更具体的公开目录。",
+    "en": "The directory page limit is reached. Select a more specific public directory."
+  },
+  "目录内容已改变，续查已停止；请重新发现历史链接。": {
+    "zh-Hans": "目录内容已改变，续查已停止；请重新发现历史链接。",
+    "en": "The directory changed, so continuation stopped. Rediscover the historical links."
+  },
+  "仅读取该订阅网站内明确标记的文章目录、下一页与网站公布的 sitemap，不跟随其他网站。已有文章、阅读状态与写作草稿会保留。": {
+    "zh-Hans": "仅读取该订阅网站内明确标记的文章目录、下一页与网站公布的 sitemap，不跟随其他网站。已有文章、阅读状态与写作草稿会保留。",
+    "en": "Read only marked article directories, next pages, and published sitemaps on this subscription’s website. Existing articles, reading state, and writing drafts are preserved."
+  }
+}

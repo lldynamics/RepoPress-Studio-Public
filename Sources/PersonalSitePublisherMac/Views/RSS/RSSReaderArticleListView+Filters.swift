@@ -1,6 +1,6 @@
+import PublishingCoreSupport
 import Foundation
 import PublishingKnowledgeCore
-import PublishingWorkbenchCore
 import SwiftUI
 
 extension RSSArticleList {

@@ -1,12 +1,11 @@
+import PublishingCoreSupport
 import AppKit
 import PublishingAICore
 import PublishingKnowledgeCore
-import PublishingWorkbenchCore
 import SwiftUI
 
 struct RSSArticleReader: View {
   @WorkspaceModuleVisibilityStorage private var moduleVisibility
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let articleHeader: RSSArticleHeader?
   let article: RSSArticle?
   let isLoading: Bool
@@ -230,7 +229,7 @@ struct RSSArticleReader: View {
                   speechController.toggle(article: article)
                 }
               )
-              .padding(.top, 12)
+              .padding(.top, WorkbenchSpacing.card)
               .zIndex(3)
             }
           }
@@ -261,8 +260,8 @@ struct RSSArticleReader: View {
     .background(.thinMaterial)
     .frame(maxWidth: 900)
     .frame(maxWidth: .infinity)
-    .padding(.horizontal, 8)
-    .padding(.top, 6)
+    .padding(.horizontal, WorkbenchSpacing.control)
+    .padding(.top, WorkbenchSpacing.icon)
     .accessibilityIdentifier("rss-reader-top-chrome")
   }
 
@@ -278,9 +277,12 @@ struct RSSArticleReader: View {
           .buttonStyle(.bordered)
           .controlSize(.small)
       }
-      .padding(.horizontal, 8)
-      .padding(.vertical, 5)
-      .background(workbenchAccentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+      .padding(.horizontal, WorkbenchSpacing.control)
+      .padding(.vertical, WorkbenchSpacing.tight)
+      .background(
+        WorkbenchTheme.info.opacity(0.08),
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+      )
       .frame(maxWidth: .infinity, alignment: .leading)
       .accessibilityElement(children: .contain)
       .accessibilityLabel("当前文章不在筛选结果中")
@@ -338,13 +340,13 @@ struct RSSArticleReader: View {
         Capsule()
           .fill(Color.primary.opacity(0.12))
         LinearGradient(
-          colors: [workbenchAccentColor.opacity(0.85), workbenchAccentColor],
+          colors: [WorkbenchTheme.progress.opacity(0.85), WorkbenchTheme.progress],
           startPoint: .leading,
           endPoint: .trailing
         )
         .clipShape(Capsule())
         .frame(width: geometry.size.width * normalizedReadingProgress)
-        .shadow(color: workbenchAccentColor.opacity(0.4), radius: 2, x: 0, y: 1)
+        .shadow(color: WorkbenchTheme.progress.opacity(0.4), radius: 2, x: 0, y: 1)
       }
     }
     .frame(height: 3)
@@ -363,7 +365,7 @@ struct RSSArticleReader: View {
   private var readingProgressLabel: some View {
     Text("已读 \(readingProgressPercentage)%")
       .font(.caption.weight(.medium))
-      .foregroundStyle(workbenchAccentColor)
+      .foregroundStyle(WorkbenchTheme.progress)
       .help("阅读进度：已读 \(readingProgressPercentage)%")
       .accessibilityElement(children: .ignore)
       .accessibilityLabel("阅读进度")
@@ -387,8 +389,8 @@ struct RSSArticleReader: View {
           .font(.caption)
           .foregroundStyle(.secondary)
       }
-      .padding(.horizontal, 8)
-      .padding(.vertical, 4)
+      .padding(.horizontal, WorkbenchSpacing.control)
+      .padding(.vertical, WorkbenchSpacing.tight)
       .frame(maxWidth: .infinity, alignment: .leading)
     } else if let error = fullTextError {
       VStack(alignment: .leading, spacing: 6) {
@@ -418,11 +420,14 @@ struct RSSArticleReader: View {
           .font(.workbenchMetadata)
           .foregroundStyle(.secondary)
       }
-      .padding(.horizontal, 10)
-      .padding(.vertical, 6)
-      .background(WorkbenchTheme.risk.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+      .padding(.horizontal, WorkbenchSpacing.control)
+      .padding(.vertical, WorkbenchSpacing.icon)
+      .background(
+        WorkbenchTheme.risk.opacity(0.08),
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+      )
       .overlay {
-        RoundedRectangle(cornerRadius: 7)
+        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
           .stroke(WorkbenchTheme.risk.opacity(0.2), lineWidth: 1)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -441,9 +446,12 @@ struct RSSArticleReader: View {
         .workbenchProminentActionStyle()
         .controlSize(.small)
       }
-      .padding(.horizontal, 8)
-      .padding(.vertical, 4)
-      .background(workbenchAccentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+      .padding(.horizontal, WorkbenchSpacing.control)
+      .padding(.vertical, WorkbenchSpacing.tight)
+      .background(
+        WorkbenchTheme.info.opacity(0.08),
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+      )
       .frame(maxWidth: .infinity, alignment: .leading)
     } else if isShowingFullText {
       HStack(spacing: 6) {
@@ -460,8 +468,8 @@ struct RSSArticleReader: View {
           .buttonStyle(.borderless)
           .font(.caption)
       }
-      .padding(.horizontal, 8)
-      .padding(.vertical, 3)
+      .padding(.horizontal, WorkbenchSpacing.control)
+      .padding(.vertical, WorkbenchSpacing.tight)
       .frame(maxWidth: .infinity, alignment: .leading)
     }
   }
@@ -548,7 +556,7 @@ struct RSSArticleReader: View {
         }
       }
       .frame(width: 20, height: 20)
-      .clipShape(RoundedRectangle(cornerRadius: 4))
+      .clipShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge))
       .accessibilityLabel("来源图标")
     }
   }
@@ -586,7 +594,7 @@ struct RSSArticleReader: View {
   }
 
   @ViewBuilder
-  private func readerToolbar(
+  func readerToolbar(
     for article: RSSArticle,
     speechArticle: RSSArticle
   ) -> some View {
@@ -595,11 +603,11 @@ struct RSSArticleReader: View {
       readerToolbarMediumContent(for: article, speechArticle: speechArticle)
       readerToolbarCompactContent(for: article, speechArticle: speechArticle)
     }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 4)
-    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9))
+    .padding(.horizontal, WorkbenchSpacing.control)
+    .padding(.vertical, WorkbenchSpacing.tight)
+    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .overlay {
-      RoundedRectangle(cornerRadius: 9)
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
         .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1152,97 +1160,3 @@ struct RSSArticleReader: View {
     }
   }
 }
-
-#if DEBUG
-  extension RSSArticleReader {
-    struct ToolbarPreviewHost: View {
-      private let article = RSSArticle(
-        id: "preview-rss-article",
-        feedID: UUID(),
-        title: "预览：阅读器工具栏",
-        link: URL(string: "https://example.com/articles/preview"),
-        author: "RepoPress",
-        publishedAt: Date(),
-        summaryHTML: "<p>检查宽窗口与窄窗口下的工具栏降级。</p>",
-        contentHTML: "<p>阅读器工具栏的核心动作应保持可发现，其余动作收纳到更多菜单。</p>"
-      )
-
-      var body: some View {
-        RSSArticleReader(
-          articleHeader: nil,
-          article: article,
-          isLoading: false,
-          loadError: nil,
-          feedTitle: "RepoPress RSS",
-          feedIconURL: nil,
-          highlights: [],
-          hasRenderableBody: true,
-          readingMinutes: 1,
-          allowRemoteImages: .constant(true),
-          selectedText: .constant(""),
-          readingFontSize: .constant(RSSReadingComfortConfiguration.defaultFontSize),
-          readingLineSpacing: .constant(RSSReadingComfortConfiguration.defaultLineSpacing),
-          readingParagraphSpacing: .constant(
-            ReaderTypographyConfiguration.defaultParagraphSpacing
-          ),
-          readingFontFamily: .constant(ReaderTypographyConfiguration.defaultFontFamily),
-          readingTextAlignment: .constant(ReaderTypographyConfiguration.defaultTextAlignment),
-          readingCodeHighlightTheme: .constant(
-            ReaderTypographyConfiguration.defaultCodeHighlightTheme
-          ),
-          readingTheme: .constant(.system),
-          readingProgress: 0.42,
-          onReadingProgress: { _ in },
-          onBack: {},
-          onRetryLoad: {},
-          onOpenOriginal: {},
-          onToggleStarred: {},
-          onToggleRead: {},
-          onNavigationError: { _ in },
-          onBeginHighlight: {},
-          onBeginNote: {},
-          onEditTags: {},
-          onDeleteHighlight: { _ in },
-          onSaveToKnowledge: { _ in },
-          onAddExcerptNote: { _ in },
-          onInsertReference: { _ in },
-          onCreateInspirationDraft: { _ in },
-          translation: nil,
-          translationBackend: .constant(.apple),
-          translationTargetCode: .constant("zh-Hans"),
-          translationCustomLanguage: .constant(""),
-          automaticTranslation: .constant(false),
-          isAppleTranslationAvailable: true,
-          translationIsRunning: false,
-          translationError: nil,
-          dataSharingConsent: AIDataSharingConsentPresentation(
-            providerName: "预览",
-            destination: "本机",
-            destinationState: .local,
-            isGranted: true
-          ),
-          onTranslate: { _ in },
-          onClearTranslation: {},
-          onOpenAISettings: {},
-          workflowIsBusy: false,
-          isTruncatedCandidate: false,
-          isShowingFullText: false,
-          isFetchingFullText: false,
-          fullTextError: nil,
-          isOutsideFilteredResults: false,
-          onReturnToResults: {},
-          automaticFullTextExtraction: nil,
-          onToggleFullText: {},
-          onRefreshFullText: {}
-        )
-        .readerToolbar(for: article, speechArticle: article)
-      }
-    }
-  }
-
-  #Preview("RSS Reader Toolbar") {
-    RSSArticleReader.ToolbarPreviewHost()
-      .frame(width: 560, height: 72)
-      .padding()
-  }
-#endif

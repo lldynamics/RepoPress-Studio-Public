@@ -33,8 +33,8 @@ struct FindReplaceBar: View {
       wideLayout
       compactLayout
     }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 7)
+    .padding(.horizontal, WorkbenchSpacing.content)
+    .padding(.vertical, WorkbenchSpacing.control)
     .background(.bar)
     .onAppear {
       isFindFieldFocused = true
@@ -247,7 +247,7 @@ struct MarkdownFindReplacePreviewSheet: View {
           .disabled(preview.replacementCount == 0)
       }
     }
-    .padding(20)
+    .padding(WorkbenchSpacing.page)
     .frame(minWidth: 640, idealWidth: 760, minHeight: 420)
     .accessibilityIdentifier("markdown-find-replace-preview")
   }
@@ -261,9 +261,9 @@ struct MarkdownFindReplacePreviewSheet: View {
           .font(.system(.body, design: .monospaced))
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(10)
+          .padding(WorkbenchSpacing.card)
       }
-      .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+      .background(.quaternary, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
   }

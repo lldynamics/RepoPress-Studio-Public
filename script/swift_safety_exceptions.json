@@ -257,6 +257,11 @@
       "rationale": "The factory generation counter is protected by its NSLock before transports are created across client tasks."
     },
     {
+      "file": "Tests/PublishingWorkbenchCoreTests/CodexAppServerLoginLifecycleTests.swift",
+      "declaration": "LoginTransportFactory",
+      "rationale": "The test-only factory reads and mutates its transport array and generation count only under one NSLock; each selected transport is an actor."
+    },
+    {
       "file": "Tests/PublishingWorkbenchCoreTests/KnowledgeLibraryServiceTests.swift",
       "declaration": "ControlledDenseProvider",
       "rationale": "The test provider only shares its passage-enabled fixture flag; every read and write of that mutable flag is serialized by its NSLock."
@@ -370,6 +375,11 @@
       "file": "Tests/PublishingKnowledgeCoreTests/KnowledgeNoteSnapshotBackupTests.swift",
       "declaration": "SnapshotTestCounter",
       "rationale": "The test-only counter protects its sole mutable Int with NSLock on every read and increment."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/CodexAppServerAccountEventTests.swift",
+      "declaration": "AccountEventTransportFactory",
+      "rationale": "The test-only factory reads and mutates its transport queue and generation count only inside one NSLock; each selected transport is an actor."
     }
   ],
   "forcedOperations": [

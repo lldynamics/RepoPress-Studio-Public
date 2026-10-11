@@ -1,9 +1,15 @@
 import PublishingAICore
-import PublishingWorkbenchCore
 import SwiftUI
 
+enum LocalAIConfigurationApplicationResult {
+  case applied
+  case pendingConfirmation
+  case failed
+}
+
 struct LocalAIEngineDiscoverySection: View {
-  let applyConfiguration: (_ baseURL: String, _ model: String) -> Bool
+  let applyConfiguration:
+    (_ baseURL: String, _ model: String) -> LocalAIConfigurationApplicationResult
 
   @State private var results: [LocalAIEngineDiscoveryResult] = []
   @State private var selectedModels: [String: String] = [:]
@@ -122,12 +128,15 @@ struct LocalAIEngineDiscoverySection: View {
           Spacer(minLength: 8)
 
           Button("应用到当前连接") {
-            if applyConfiguration(result.baseURL, selectedModel(for: result)) {
+            switch applyConfiguration(result.baseURL, selectedModel(for: result)) {
+            case .applied:
               statusMessage = String(
                 format: String(localized: "已将 %@ 应用到当前连接。"),
                 result.kind.localizedTitle
               )
-            } else {
+            case .pendingConfirmation:
+              statusMessage = nil
+            case .failed:
               statusMessage = String(localized: "连接未更新，请检查 Keychain 权限后重试。")
             }
           }
@@ -145,7 +154,7 @@ struct LocalAIEngineDiscoverySection: View {
         engineSetupControls(for: result)
       }
     }
-    .padding(.vertical, 4)
+    .padding(.vertical, WorkbenchSpacing.tight)
     .accessibilityElement(children: .contain)
   }
 

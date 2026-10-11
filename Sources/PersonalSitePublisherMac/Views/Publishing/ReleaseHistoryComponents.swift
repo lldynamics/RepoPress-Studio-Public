@@ -122,7 +122,7 @@ struct DeploymentStatusTrendChart: View {
         trendLegend("未知", color: .secondary)
       }
     }
-    .padding(8)
+    .padding(WorkbenchSpacing.control)
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 

@@ -4,6 +4,24 @@ import XCTest
 
 @MainActor
 final class UIOptimizationWindowPresentationTests: XCTestCase {
+  func testInitialPresentationOpensInspectorWithoutOverridingLaterUserChoice() throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("UIOptimizationWindow-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: directory.appendingPathComponent("workspace.json"))
+    )
+    let presentation = store.rootPresentation
+    store.setInspectorPresented(false)
+
+    presentation.prepareInitialWindowPresentation()
+    XCTAssertTrue(presentation.isInspectorPresented)
+
+    store.setInspectorPresented(false)
+    presentation.prepareInitialWindowPresentation()
+    XCTAssertFalse(presentation.isInspectorPresented)
+  }
+
   func testOpeningAnotherWindowDoesNotResetExplicitAssistantVisibility() throws {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent("UIOptimizationWindow-\(UUID())")

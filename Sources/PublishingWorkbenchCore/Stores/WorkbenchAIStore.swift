@@ -85,25 +85,11 @@ public final class WorkbenchAIStore: ObservableObject {
   @Published public internal(set) var aiMetadataSuggestionRunningDraftIDs: Set<UUID> = []
   @Published public internal(set) var aiDraftSuggestionStateRevision: UInt64 = 0
 
-  var aiMetadataSuggestionsByDraftID: [UUID: AIPublishingMetadataSuggestion] = [:]
-  var aiMetadataSuggestionBaselinesByDraftID: [UUID: DraftOperationBaseline] = [:]
-  var aiMetadataSuggestionProfilesByDraftID: [UUID: SiteProfile] = [:]
-  var aiMetadataSuggestionGenerationsByDraftID: [UUID: UInt64] = [:]
-  /// Type-erased cancellation hooks keep the suggestion request shapes
-  /// (publishing action and metadata helper) on one draft-scoped lane without storing incompatible Task result types.
-  /// The hooks are installed only while the matching generation is awaiting
-  /// the network child task.
-  var aiMetadataSuggestionCancellationHandlersByDraftID: [UUID: () -> Void] = [:]
+  var aiDraftSuggestionEntries: [UUID: AIDraftSuggestionEntry] = [:]
   var aiActionOperationIDs: Set<UUID> = []
   var aiRequestGeneration: UInt64 = 0
   var aiRequestPresentationGeneration: UInt64?
-  var aiRequestGenerations: [AIGenerationLane: UInt64] = [:]
-  var aiRequestCancellations: [AIGenerationLane: () -> Void] = [:]
-  var aiRequestActionOperations: [AIGenerationLane: UUID] = [:]
-  var aiRequestBaselines: [AIGenerationLane: DraftOperationBaseline] = [:]
-  var aiRequestProfiles: [AIGenerationLane: SiteProfile] = [:]
-  var aiRequestContextChecks: [AIGenerationLane: () -> Bool] = [:]
-  var aiRequestAuthorizationBindings: [AIGenerationLane: AINonStreamingAuthorizationBinding] = [:]
+  var aiRequests: [AIGenerationLane: AINonStreamingRequestRecord] = [:]
   var aiPublishingActionRequest: (lane: AIGenerationLane, generation: UInt64)?
 
   init(
@@ -145,9 +131,11 @@ public final class WorkbenchAIStore: ObservableObject {
       let suggestion = workspace.aiMetadataSuggestion,
       let baseline = context.draftOperationBaseline(for: draftID)
     {
-      aiMetadataSuggestionsByDraftID[draftID] = suggestion
-      aiMetadataSuggestionBaselinesByDraftID[draftID] = baseline
-      aiMetadataSuggestionProfilesByDraftID[draftID] = context.profile(for: baseline.draft)
+      aiDraftSuggestionEntries[draftID] = AIDraftSuggestionEntry(
+        suggestion: suggestion,
+        baseline: baseline,
+        profile: context.profile(for: baseline.draft)
+      )
     }
   }
 
@@ -334,10 +322,6 @@ public final class WorkbenchAIStore: ObservableObject {
   public var isAIPublishingAssistantPresented: Bool {
     get { workspace.isAIPublishingAssistantPresented }
     set { workspace.isAIPublishingAssistantPresented = newValue }
-  }
-
-  public func aiActionStateChanged() {
-    refreshAIKeyAvailability()
   }
 
   public func restoreSEOSocialPreviewSnapshotForCurrentSelection() {

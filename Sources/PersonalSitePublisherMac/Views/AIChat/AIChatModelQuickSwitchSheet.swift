@@ -31,8 +31,8 @@ struct AIChatModelQuickSwitchSheet: View {
         .buttonStyle(.plain)
         .accessibilityLabel(String(localized: "关闭 AI 快捷切换"))
       }
-      .padding(.horizontal, 18)
-      .padding(.vertical, 14)
+      .padding(.horizontal, WorkbenchSpacing.content)
+      .padding(.vertical, WorkbenchSpacing.content)
 
       Divider()
 
@@ -52,7 +52,7 @@ struct AIChatModelQuickSwitchSheet: View {
             modelSection
           }
         }
-        .padding(18)
+        .padding(WorkbenchSpacing.content)
       }
 
       Divider()
@@ -81,8 +81,8 @@ struct AIChatModelQuickSwitchSheet: View {
         .keyboardShortcut(.defaultAction)
       }
       .controlSize(.small)
-      .padding(.horizontal, 18)
-      .padding(.vertical, 12)
+      .padding(.horizontal, WorkbenchSpacing.content)
+      .padding(.vertical, WorkbenchSpacing.card)
     }
     .frame(minWidth: 470, minHeight: 520)
     .workbenchGlassContainer(material: .regularMaterial)
@@ -213,10 +213,13 @@ struct AIChatModelQuickSwitchSheet: View {
         .lineLimit(connectionReport == nil ? 2 : 4)
         .textSelection(.enabled)
     }
-    .padding(12)
-    .background(connectionStatusColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+    .padding(WorkbenchSpacing.card)
+    .background(
+      connectionStatusColor.opacity(0.08),
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel)
+    )
     .overlay(
-      RoundedRectangle(cornerRadius: 10, style: .continuous)
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel, style: .continuous)
         .stroke(connectionStatusColor.opacity(0.18), lineWidth: 1)
     )
   }
@@ -249,15 +252,17 @@ struct AIChatModelQuickSwitchSheet: View {
         .accessibilityLabel(String(localized: "清空搜索"))
       }
     }
-    .padding(.horizontal, 10)
-    .padding(.vertical, 7)
-    .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+    .padding(.horizontal, WorkbenchSpacing.control)
+    .padding(.vertical, WorkbenchSpacing.control)
+    .background(
+      Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
     .overlay(
-      RoundedRectangle(cornerRadius: 8)
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
         .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
     )
-    .padding(.horizontal, 18)
-    .padding(.top, 12)
+    .padding(.horizontal, WorkbenchSpacing.content)
+    .padding(.top, WorkbenchSpacing.card)
     .padding(.bottom, 2)
   }
 
@@ -274,10 +279,10 @@ struct AIChatModelQuickSwitchSheet: View {
       }
       .buttonStyle(.borderless)
       .controlSize(.small)
-      .padding(.top, 4)
+      .padding(.top, WorkbenchSpacing.tight)
     }
     .frame(maxWidth: .infinity)
-    .padding(.vertical, 24)
+    .padding(.vertical, WorkbenchSpacing.spacious)
   }
 
   var filteredProfiles: [AIConnectionProfile] {
@@ -435,7 +440,7 @@ struct AIChatModelQuickSwitchSheet: View {
                   Text(AIChatRequestTokenBudget.formattedContextWindow(forModel: candidate.model))
                     .font(.workbenchMetadata.weight(.medium).monospaced())
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 5)
+                    .padding(.horizontal, WorkbenchSpacing.tight)
                     .padding(.vertical, 1.5)
                     .background(Color.secondary.opacity(0.12), in: Capsule())
                 }
@@ -454,7 +459,9 @@ struct AIChatModelQuickSwitchSheet: View {
         .buttonStyle(.plain)
       }
 
-      if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || "自定义模型".contains(searchText.lowercased()) {
+      if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        || "自定义模型".contains(searchText.lowercased())
+      {
         Button {
           synchronizeCustomModelInput()
           if isGeneralMode {
@@ -490,7 +497,7 @@ struct AIChatModelQuickSwitchSheet: View {
             Text(AIChatRequestTokenBudget.formattedContextWindow(forModel: customModelInput))
               .font(.workbenchMetadata.weight(.medium).monospaced())
               .foregroundStyle(.secondary)
-              .padding(.horizontal, 5)
+              .padding(.horizontal, WorkbenchSpacing.tight)
               .padding(.vertical, 2)
               .background(Color.secondary.opacity(0.12), in: Capsule())
           }
@@ -532,10 +539,12 @@ struct AIChatModelQuickSwitchSheet: View {
     connectionTestTask = Task {
       let report = await ai.testConnection()
       guard !Task.isCancelled else { return }
-      guard connectionTestRequestState.finish(
-        request,
-        whileCurrentIdentityIs: currentConnectionTestIdentity
-      ) else { return }
+      guard
+        connectionTestRequestState.finish(
+          request,
+          whileCurrentIdentityIs: currentConnectionTestIdentity
+        )
+      else { return }
       connectionReport = report
     }
   }

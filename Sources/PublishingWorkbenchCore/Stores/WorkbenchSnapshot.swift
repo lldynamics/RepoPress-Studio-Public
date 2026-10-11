@@ -4,10 +4,6 @@ import PublishingDomainContracts
 public struct WorkbenchSnapshot: Codable, Equatable, Sendable {
   /// Bump this only together with a backwards-compatible decode migration.
   public static let currentFormatVersion = 17
-  public static let maximumAIConversationsPerDraft =
-    AIConversationRetentionPolicy.maximumConversationsPerDraft
-  public static let maximumAIConversationCount =
-    AIConversationRetentionPolicy.maximumConversationCount
 
   public var formatVersion: Int
   public var profiles: [SiteProfile]

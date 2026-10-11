@@ -1,0 +1,11 @@
+{
+  "%lld 篇文章没有发现错误或警告，也没有待处理的维护事项。": {
+    "en": {
+      "one": "%lld article has no errors or warnings, and there is no maintenance to do.",
+      "other": "%lld articles have no errors or warnings, and there is no maintenance to do."
+    },
+    "zh-Hans": "%lld 篇文章没有发现错误或警告，也没有待处理的维护事项。"
+  },
+  "全部通过": "All clear",
+  "正在发布，完成后可再次发布。": "Publishing is in progress. You can publish again when it finishes."
+}

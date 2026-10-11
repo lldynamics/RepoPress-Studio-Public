@@ -27,13 +27,21 @@ final class RepositoryWorktreePublishPresentationTests: XCTestCase {
       source.components(separatedBy: "publish-drawer-action-retry-push").count - 1,
       1
     )
-    XCTAssertTrue(source.contains("guard let confirmation = await store.prepareRepositoryWorktreePublish()"))
+    XCTAssertTrue(
+      source.contains("guard let confirmation = await store.prepareRepositoryWorktreePublish()"))
     XCTAssertTrue(source.contains("await store.publishRepositoryWorktree(confirmation)"))
     XCTAssertTrue(source.contains("await store.prepareRepositoryWorktreePushRetry()"))
     XCTAssertTrue(source.contains("await store.retryRepositoryWorktreePush(confirmation)"))
-    XCTAssertTrue(
-      source.contains("仍可发布图片、配置、主题、CSS/脚本等仓库变更")
-    )
+    XCTAssertTrue(source.contains("Text(\"全部变更\").tag(PublishScope.repository)"))
+    let footer = try XCTUnwrap(
+      source.components(separatedBy: "private var footerPrimaryAction:").last)
+    let repositoryCase = try XCTUnwrap(
+      footer.components(separatedBy: "case .repository:").dropFirst().first?
+        .components(separatedBy: "case .managedArticles:").first)
+    XCTAssertTrue(repositoryCase.contains("return repositoryFooterAction(isBusy: isBusy)"))
+    XCTAssertFalse(
+      repositoryCase.contains("currentDraft"),
+      "Repository changes must remain reviewable without a selected article.")
     XCTAssertTrue(source.contains(".disabled(store.isRemoteRepositoryPublishing)"))
   }
 

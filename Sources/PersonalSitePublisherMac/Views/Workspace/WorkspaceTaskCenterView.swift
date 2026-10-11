@@ -39,7 +39,7 @@ struct WorkspaceTaskCenterView: View {
         )
         .tabItem { Label("活动记录", systemImage: "clock.arrow.circlepath") }
       }
-      .padding([.horizontal, .bottom], 12)
+      .padding([.horizontal, .bottom], WorkbenchSpacing.card)
     }
     .frame(minWidth: 800, idealWidth: 900, minHeight: 580, idealHeight: 640)
     .onExitCommand { dismiss() }
@@ -96,8 +96,8 @@ struct WorkspaceTaskCenterView: View {
       Button("关闭") { dismiss() }
         .keyboardShortcut(.cancelAction)
     }
-    .padding(.horizontal, 16)
-    .padding(.vertical, 13)
+    .padding(.horizontal, WorkbenchSpacing.content)
+    .padding(.vertical, WorkbenchSpacing.card)
   }
 
   private var headerDetail: String {
@@ -120,7 +120,7 @@ struct WorkspaceTaskCenterView: View {
           .font(.caption)
           .foregroundStyle(.secondary)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(16)
+          .padding(WorkbenchSpacing.content)
           .accessibilityIdentifier("workspace-task-action-feedback")
       }
       ScrollView {
@@ -147,7 +147,7 @@ struct WorkspaceTaskCenterView: View {
               )
             }
           }
-          .padding(16)
+          .padding(WorkbenchSpacing.content)
         }
       }
     }
@@ -240,7 +240,7 @@ private struct WorkspaceTaskCenterRow: View {
     VStack(alignment: .leading, spacing: 9) {
       HStack(alignment: .top, spacing: 10) {
         Image(systemName: task.kind.systemImage)
-          .font(.system(size: 15, weight: .semibold))
+          .font(.system(size: WorkbenchIconSize.toolbar, weight: .semibold))
           .foregroundStyle(statusColor)
           .frame(width: 22, height: 22)
 
@@ -333,12 +333,15 @@ private struct WorkspaceTaskCenterRow: View {
           .font(.system(.caption, design: .monospaced))
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(8)
-          .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 6))
+          .padding(WorkbenchSpacing.control)
+          .background(
+            WorkbenchBackgroundStyle.control,
+            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+          )
           .accessibilityIdentifier("workspace-task-diagnostic-\(task.id)")
       }
     }
-    .padding(12)
+    .padding(WorkbenchSpacing.card)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       WorkbenchBackgroundStyle.card,

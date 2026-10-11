@@ -16,6 +16,10 @@ struct AIConnectionSetupSection: View {
       )
       .font(.headline)
       Text(message).font(.callout).foregroundStyle(.secondary)
+      if !config.usesCodexAppServer, config.preset != .local {
+        Text("选择服务商 → 保存 Key → 明确授权 → 选择模型 → 主动验证")
+          .font(.caption).foregroundStyle(.secondary)
+      }
       HStack {
         Button(actionTitle, action: onContinue)
           .workbenchProminentActionStyle()

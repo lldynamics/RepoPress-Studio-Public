@@ -1,6 +1,6 @@
+import PublishingCoreSupport
 import Foundation
 import PublishingKnowledgeCore
-import PublishingWorkbenchCore
 import SwiftUI
 
 extension RSSArticleList {
@@ -165,7 +165,7 @@ extension RSSArticleList {
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
     }
-    .padding(24)
+    .padding(WorkbenchSpacing.spacious)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .accessibilityElement(children: .combine)
     .accessibilityLabel("\(title)，\(message)")
@@ -174,7 +174,7 @@ extension RSSArticleList {
   func failureState(feedTitle: String, message: String) -> some View {
     VStack(spacing: 14) {
       Image(systemName: "exclamationmark.triangle.fill")
-        .font(.system(size: 34))
+        .font(.system(size: WorkbenchIconSize.hero))
         .foregroundStyle(WorkbenchTheme.risk)
         .accessibilityHidden(true)
       Text("“\(feedTitle)”读取失败")
@@ -197,7 +197,7 @@ extension RSSArticleList {
         }
       }
     }
-    .padding(24)
+    .padding(WorkbenchSpacing.spacious)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .accessibilityElement(children: .contain)
   }
@@ -254,9 +254,9 @@ extension RSSArticleList {
                       .font(.caption.weight(.semibold))
                       .foregroundStyle(.secondary)
                       .frame(maxWidth: .infinity, alignment: .leading)
-                      .padding(.horizontal, 12)
-                      .padding(.top, 12)
-                      .padding(.bottom, 5)
+                      .padding(.horizontal, WorkbenchSpacing.card)
+                      .padding(.top, WorkbenchSpacing.card)
+                      .padding(.bottom, WorkbenchSpacing.tight)
                       .background(.regularMaterial)
                   } else {
                     EmptyView()
@@ -277,7 +277,7 @@ extension RSSArticleList {
                     Spacer()
                   }
                   .contentShape(Rectangle())
-                  .padding(.vertical, 12)
+                  .padding(.vertical, WorkbenchSpacing.card)
                 }
                 .buttonStyle(.plain)
                 .frame(maxWidth: .infinity)

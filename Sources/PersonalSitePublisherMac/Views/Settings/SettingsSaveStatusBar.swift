@@ -55,10 +55,6 @@ struct SettingsSaveStatusPresentation: Equatable {
       return "exclamationmark.triangle"
     }
   }
-
-  var isProminentBannerNeeded: Bool {
-    kind != .idle
-  }
 }
 
 struct SettingsSaveStatusBar: View {
@@ -122,7 +118,7 @@ struct SettingsSaveStatusBar: View {
       }
     }
     .padding(.horizontal, WorkbenchSpacing.content)
-    .padding(.vertical, 11)
+    .padding(.vertical, WorkbenchSpacing.card)
     .overlay(alignment: .top) {
       Divider()
     }

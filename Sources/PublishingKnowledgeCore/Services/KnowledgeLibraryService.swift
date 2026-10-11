@@ -44,6 +44,8 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
   let databaseLock = NSLock()
   let storageMutationLock = NSLock()
   var cachedDatabase: KnowledgeDatabase?
+  private var isCacheRetentionEnabled = true
+  private var cacheRetentionGeneration: UInt64 = 0
   let semanticBackfillLock = NSLock()
   var backfilledSemanticModelIDs: Set<String> = []
   var inflightSemanticModelIDs: Set<String> = []
@@ -102,7 +104,22 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     defer { databaseLock.unlock() }
     if let cachedDatabase { return cachedDatabase }
     let database = try KnowledgeDatabase(fileURL: rootURL.appendingPathComponent("library.sqlite"))
+    database.semanticFlatVectorIndexes.setCacheRetentionEnabled(
+      isCacheRetentionEnabled, generation: cacheRetentionGeneration
+    )
     cachedDatabase = database
     return database
+  }
+
+  /// Changes only rebuildable in-memory snapshots; this never opens the database.
+  public func setCacheRetentionEnabled(_ isEnabled: Bool, generation: UInt64) {
+    databaseLock.lock()
+    defer { databaseLock.unlock() }
+    guard generation >= cacheRetentionGeneration else { return }
+    cacheRetentionGeneration = generation
+    isCacheRetentionEnabled = isEnabled
+    cachedDatabase?.semanticFlatVectorIndexes.setCacheRetentionEnabled(
+      isEnabled, generation: generation
+    )
   }
 }

@@ -24,7 +24,7 @@ struct ProjectFileSaveRecoveryBanner: View {
       }
       .font(.callout)
       .padding(.horizontal, WorkbenchSpacing.content)
-      .padding(.vertical, 11)
+      .padding(.vertical, WorkbenchSpacing.card)
       .frame(maxWidth: .infinity, alignment: .leading)
       .overlay(alignment: .top) { Divider() }
       .accessibilityElement(children: .contain)

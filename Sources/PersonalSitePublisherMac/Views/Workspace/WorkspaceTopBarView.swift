@@ -100,17 +100,6 @@ enum WorkspaceTopBarPresentation {
   }
 }
 
-extension WorkspaceSection {
-  var showsPublishingStatusToolbar: Bool {
-    switch self {
-    case .writing, .contentHealth:
-      return true
-    case .sync, .library, .rss, .images:
-      return false
-    }
-  }
-}
-
 struct WorkspaceToolbarMenuLabel: View {
   let title: String
   let systemImage: String
@@ -131,7 +120,7 @@ struct WorkspaceToolbarMenuLabel: View {
             .font(.workbenchMetadata.weight(.medium))
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, 5)
+            .padding(.horizontal, WorkbenchSpacing.tight)
             .padding(.vertical, 1)
             .background(Color.primary.opacity(0.06), in: Capsule())
             .foregroundStyle(.secondary)
@@ -141,60 +130,8 @@ struct WorkspaceToolbarMenuLabel: View {
     .font(.workbenchButtonLabel)
     .frame(minWidth: showsTitle ? nil : 28, minHeight: 24)
     .padding(.horizontal, showsTitle ? 6 : 0)
-    .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+    .contentShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge, style: .continuous))
     .accessibilityHidden(true)
-  }
-}
-
-struct WorkspaceTaskCenterToolbarButton: View {
-  @Environment(\.colorScheme) private var colorScheme
-  @ObservedObject private var activityStatus: WorkbenchActivityStatusFacade
-  let open: () -> Void
-
-  init(store: WorkbenchStore, open: @escaping () -> Void) {
-    _activityStatus = ObservedObject(wrappedValue: store.activityStatus)
-    self.open = open
-  }
-
-  var body: some View {
-    Button(action: open) {
-      Label(
-        "任务",
-        systemImage: activityStatus.activeTaskCount > 0
-          ? "list.bullet.rectangle.fill"
-          : "list.bullet.rectangle")
-    }
-    .buttonStyle(
-      WorkspaceToolbarIconButtonStyle(
-        isActive: activityStatus.activeTaskCount > 0,
-        showsTitle: false
-      )
-    )
-    .frame(width: 30, height: 28)
-    .overlay(alignment: .topTrailing) {
-      if activityStatus.failedTaskCount > 0 {
-        Text(activityStatus.failedTaskCount > 9 ? "9+" : "\(activityStatus.failedTaskCount)")
-          .font(.workbenchMetadata.weight(.bold).monospacedDigit())
-          .foregroundStyle(colorScheme == .dark ? .black : .white)
-          .frame(width: activityStatus.failedTaskCount > 9 ? 19 : 14, height: 14)
-          .background(WorkbenchTheme.risk, in: Capsule())
-          .offset(x: -1, y: 2)
-          .allowsHitTesting(false)
-      }
-    }
-    .help(String(localized: "任务中心（⌥⌘L）"))
-    .accessibilityLabel("任务中心")
-    .accessibilityValue(taskCenterAccessibilityValue)
-    .accessibilityIdentifier("workspace-task-center-toggle")
-  }
-
-  private var taskCenterAccessibilityValue: String {
-    if activityStatus.activeTaskCount == 0, activityStatus.failedTaskCount == 0 {
-      return String(localized: "无进行中或失败任务")
-    }
-    return String(
-      localized: "进行中 \(activityStatus.activeTaskCount)，失败 \(activityStatus.failedTaskCount)"
-    )
   }
 }
 
@@ -231,23 +168,26 @@ struct OmniCommandSearchBar: View {
 
           Text("⇧⌘K")
             .font(.workbenchMetadata.weight(.bold))
-            .padding(.horizontal, 4)
+            .padding(.horizontal, WorkbenchSpacing.tight)
             .padding(.vertical, 1)
-            .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
+            .background(
+              Color.primary.opacity(0.08),
+              in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge)
+            )
             .foregroundStyle(.tertiary)
         }
       }
-      .padding(.horizontal, 8)
+      .padding(.horizontal, WorkbenchSpacing.control)
       .frame(width: WorkspaceTopBarPresentation.searchWidth(for: density), height: 28)
       .background(
         Color.primary.opacity(0.06),
-        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.searchBar, style: .continuous)
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control, style: .continuous)
       )
       .contentShape(
-        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.searchBar, style: .continuous))
+        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control, style: .continuous))
     }
     .buttonStyle(
-      WorkbenchFocusRingButtonStyle(cornerRadius: WorkbenchCornerRadius.searchBar, lineWidth: 1.5)
+      WorkbenchFocusRingButtonStyle(cornerRadius: WorkbenchCornerRadius.control, lineWidth: 1.5)
     )
     .layoutPriority(1)
     .help(String(localized: "唤起命令面板与全局搜索 (⇧⌘K)"))
@@ -291,7 +231,8 @@ struct WorkspaceToolbarIconButtonStyle: ButtonStyle {
       .frame(minWidth: showsTitle ? nil : 28, minHeight: 28)
       .fixedSize(horizontal: showsTitle, vertical: false)
       .background {
-        let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+        let shape = RoundedRectangle(
+          cornerRadius: WorkbenchCornerRadius.control, style: .continuous)
         shape
           .fill(backgroundColor(isPressed: configuration.isPressed))
           .overlay {
@@ -301,13 +242,14 @@ struct WorkspaceToolbarIconButtonStyle: ButtonStyle {
           }
       }
       .overlay {
-        RoundedRectangle(cornerRadius: 6, style: .continuous)
+        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control, style: .continuous)
           .strokeBorder(
             isFocused ? workbenchAccentColor : Color.clear,
             lineWidth: isFocused ? 1.5 : 0
           )
       }
-      .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+      .contentShape(
+        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control, style: .continuous))
   }
 
   @ViewBuilder
@@ -502,38 +444,17 @@ struct WorkspacePreviewToolbarButton: View {
   }
 }
 
-/// A semantic blue publish CTA for the end of a primary-action toolbar group.
-/// Opens the publishing review; readiness checks belong to the publishing flow.
-struct WorkspacePreparePublishToolbarButton: View {
-  let density: WorkspaceTopBarPresentation.Density
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      Label(String(localized: "准备发布"), systemImage: "paperplane.fill")
-    }
-    .buttonStyle(
-      WorkspaceToolbarIconButtonStyle(
-        isActive: false,
-        showsTitle: true,
-        prominence: .primaryAction
-      )
-    )
-    .help(String(localized: "打开本次发布清单和一键发布流程"))
-    .accessibilityLabel(String(localized: "准备发布"))
-    .accessibilityIdentifier("workspace-prepare-publish")
-  }
-}
-
 struct WorkspaceToolbarLeadingContent: View {
   let store: WorkbenchStore
   @ObservedObject private var shell: WorkbenchShellFeatureFacade
+  @ObservedObject private var publishStatus: WorkbenchPublishStatusFeatureFacade
   let isCompact: Bool
   let openSiteSettings: () -> Void
 
   init(store: WorkbenchStore, isCompact: Bool, openSiteSettings: @escaping () -> Void = {}) {
     self.store = store
     _shell = ObservedObject(wrappedValue: store.shell)
+    _publishStatus = ObservedObject(wrappedValue: store.publishStatus)
     self.isCompact = isCompact
     self.openSiteSettings = openSiteSettings
   }
@@ -560,6 +481,13 @@ struct WorkspaceToolbarLeadingContent: View {
         showsTitle: !isCompact,
         siteKindDisplayName: shell.activeProfile.siteKind.localizedDisplayName
       )
+      .overlay(alignment: .topLeading) {
+        Circle()
+          .fill(siteSyncStatus.color)
+          .frame(width: 7, height: 7)
+          .offset(x: 16, y: 1)
+          .accessibilityHidden(true)
+      }
       .frame(
         minWidth: isCompact ? 30 : nil,
         maxWidth: isCompact ? 30 : 220,
@@ -569,15 +497,41 @@ struct WorkspaceToolbarLeadingContent: View {
     }
     .menuStyle(.borderlessButton)
     .menuIndicator(.hidden)
-    .buttonStyle(WorkbenchFocusRingButtonStyle(cornerRadius: 5, lineWidth: 1.5))
+    .buttonStyle(
+      WorkbenchFocusRingButtonStyle(cornerRadius: WorkbenchCornerRadius.badge, lineWidth: 1.5)
+    )
     .help(
       String(
         localized:
-          "个人网站：\(shell.activeProfile.name) · \(shell.activeProfile.siteKind.localizedDisplayName)"
+          "个人网站：\(shell.activeProfile.name) · \(shell.activeProfile.siteKind.localizedDisplayName) · \(siteSyncStatus.label)"
       )
     )
     .accessibilityLabel("切换个人网站")
-    .accessibilityValue(shell.activeProfile.name)
+    .accessibilityValue("\(shell.activeProfile.name)，\(siteSyncStatus.label)")
     .accessibilityIdentifier("workspace-profile-menu")
+  }
+
+  private var siteSyncStatus: (color: Color, label: String) {
+    let profile = publishStatus.activeProfile
+    if profile.purpose.requiresRepositoryReadiness,
+      profile.localRepositoryRootPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    {
+      return (WorkbenchTheme.risk, String(localized: "仓库未配置"))
+    }
+    guard let report = publishStatus.repositoryReport else {
+      return (WorkbenchTheme.neutral, String(localized: "站点待扫描"))
+    }
+    switch WorkspaceTopBarPresentation.repositoryScanStatus(for: report) {
+    case .missingGitDirectory:
+      return (WorkbenchTheme.risk, String(localized: "未发现 Git 仓库"))
+    case .blockingIssues(let count):
+      return (WorkbenchTheme.risk, String(localized: "仓库有 \(count) 个阻断项"))
+    case .remoteChanges(let count):
+      return (WorkbenchTheme.info, String(localized: "远端有 \(count) 项变化"))
+    case .localChanges(let count):
+      return (WorkbenchTheme.warning, String(localized: "本地有 \(count) 项变化"))
+    case .ready:
+      return (WorkbenchTheme.success, String(localized: "站点已同步"))
+    }
   }
 }

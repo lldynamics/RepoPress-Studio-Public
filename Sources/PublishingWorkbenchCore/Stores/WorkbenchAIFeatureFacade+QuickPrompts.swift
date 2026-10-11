@@ -1,10 +1,6 @@
 import Foundation
 
 extension WorkbenchAIFeatureFacade {
-  public var pendingQuickPrompt: AIPublishingQuickPrompt? {
-    store.pendingAIQuickPrompt
-  }
-
   public var pendingQuickPromptRequest: AIPublishingQuickPromptRequest? {
     store.pendingAIQuickPromptRequest
   }

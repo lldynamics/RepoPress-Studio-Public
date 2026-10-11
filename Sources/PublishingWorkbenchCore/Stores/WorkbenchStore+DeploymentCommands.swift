@@ -49,14 +49,6 @@ extension WorkbenchStore {
     deploymentStore.deploymentPollingEligibleRecords(store: self)
   }
 
-  public var remoteReviewPollingEligibleRecords: [ReleaseRecord] {
-    deploymentStore.reviewPollingEligibleRecords(
-      for: activeProfileID,
-      store: self,
-      includeLegacyRecords: true
-    )
-  }
-
   public var remoteReviewPollingEligibleRecordCount: Int {
     deploymentStore.reviewPollingEligibleRecordCount(
       for: activeProfileID,

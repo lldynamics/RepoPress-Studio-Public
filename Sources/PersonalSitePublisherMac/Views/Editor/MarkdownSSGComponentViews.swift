@@ -2,7 +2,6 @@ import PublishingMarkdownCore
 import SwiftUI
 
 struct MarkdownSSGComponentThumbnail: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let kind: MarkdownSSGComponentKind
   let title: String
   let previewText: String
@@ -19,7 +18,7 @@ struct MarkdownSSGComponentThumbnail: View {
 
   var body: some View {
     ZStack(alignment: .topLeading) {
-      RoundedRectangle(cornerRadius: 8)
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
         .fill(Color.primary.opacity(0.045))
 
       switch kind {
@@ -38,9 +37,9 @@ struct MarkdownSSGComponentThumbnail: View {
       }
     }
     .frame(width: 164, height: 76)
-    .clipShape(RoundedRectangle(cornerRadius: 8))
+    .clipShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .overlay {
-      RoundedRectangle(cornerRadius: 8)
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
         .stroke(Color.primary.opacity(0.10), lineWidth: 1)
     }
     .accessibilityElement(children: .combine)
@@ -50,7 +49,7 @@ struct MarkdownSSGComponentThumbnail: View {
 
   private var calloutPreview: some View {
     HStack(alignment: .top, spacing: 8) {
-      RoundedRectangle(cornerRadius: 2)
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge)
         .fill(WorkbenchTheme.warning)
         .frame(width: 4)
       VStack(alignment: .leading, spacing: 4) {
@@ -63,7 +62,7 @@ struct MarkdownSSGComponentThumbnail: View {
           .lineLimit(2)
       }
     }
-    .padding(10)
+    .padding(WorkbenchSpacing.card)
   }
 
   private var leadPreview: some View {
@@ -76,16 +75,16 @@ struct MarkdownSSGComponentThumbnail: View {
         .foregroundStyle(.secondary)
         .lineLimit(2)
       Capsule()
-        .fill(workbenchAccentColor.opacity(0.28))
+        .fill(Color.secondary.opacity(0.28))
         .frame(width: 90, height: 4)
     }
-    .padding(10)
+    .padding(WorkbenchSpacing.card)
   }
 
   private var videoPreview: some View {
     ZStack {
       LinearGradient(
-        colors: [Color.black.opacity(0.72), workbenchAccentColor.opacity(0.55)],
+        colors: [Color.black.opacity(0.72), Color.secondary.opacity(0.55)],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
       )
@@ -121,26 +120,26 @@ struct MarkdownSSGComponentThumbnail: View {
         .foregroundStyle(.secondary)
         .lineLimit(1)
       HStack(spacing: 5) {
-        Capsule().fill(Color.orange.opacity(0.75)).frame(width: 28, height: 4)
-        Capsule().fill(Color.green.opacity(0.65)).frame(width: 44, height: 4)
+        Capsule().fill(Color.secondary.opacity(0.5)).frame(width: 28, height: 4)
+        Capsule().fill(Color.secondary.opacity(0.3)).frame(width: 44, height: 4)
       }
     }
-    .padding(10)
+    .padding(WorkbenchSpacing.card)
   }
 
   private var figurePreview: some View {
     HStack(spacing: 9) {
-      RoundedRectangle(cornerRadius: 5)
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge)
         .fill(
           LinearGradient(
-            colors: [workbenchAccentColor.opacity(0.30), workbenchAccentColor.opacity(0.08)],
+            colors: [Color.secondary.opacity(0.30), Color.secondary.opacity(0.08)],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
           )
         )
         .overlay {
           Image(systemName: "photo")
-            .foregroundStyle(.tint)
+            .foregroundStyle(.secondary)
         }
         .frame(width: 54, height: 54)
       VStack(alignment: .leading, spacing: 5) {
@@ -152,14 +151,14 @@ struct MarkdownSSGComponentThumbnail: View {
           .lineLimit(2)
       }
     }
-    .padding(10)
+    .padding(WorkbenchSpacing.card)
   }
 
   private var customPreview: some View {
     VStack(alignment: .leading, spacing: 7) {
       HStack(spacing: 6) {
         Image(systemName: kind.systemImage)
-          .foregroundStyle(.tint)
+          .foregroundStyle(.secondary)
         Text("自定义短代码")
           .font(.caption.weight(.semibold))
         Spacer()
@@ -169,10 +168,10 @@ struct MarkdownSSGComponentThumbnail: View {
         .foregroundStyle(.secondary)
         .lineLimit(2)
       Capsule()
-        .fill(workbenchAccentColor.opacity(0.30))
+        .fill(Color.secondary.opacity(0.30))
         .frame(width: 72, height: 4)
     }
-    .padding(10)
+    .padding(WorkbenchSpacing.card)
   }
 }
 
@@ -209,7 +208,7 @@ struct MarkdownSSGComponentPreviewStrip: View {
         }
         .padding(.vertical, 2)
       }
-      .padding(.top, 7)
+      .padding(.top, WorkbenchSpacing.control)
     } label: {
       HStack(spacing: 8) {
         Label("短代码与组件折叠预览", systemImage: "rectangle.3.group")
@@ -223,8 +222,8 @@ struct MarkdownSSGComponentPreviewStrip: View {
           .foregroundStyle(.secondary)
       }
     }
-    .padding(.horizontal, 11)
-    .padding(.vertical, 9)
+    .padding(.horizontal, WorkbenchSpacing.card)
+    .padding(.vertical, WorkbenchSpacing.control)
     .background(.bar)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("短代码与组件折叠预览，共 \(occurrences.count) 个")

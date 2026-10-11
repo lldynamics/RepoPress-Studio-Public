@@ -79,7 +79,7 @@ struct RepositoryImageInspectorView: View {
         selectedTabContent
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(12)
+      .padding(WorkbenchSpacing.card)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .onChange(of: asset.repositoryPath) { _, _ in
@@ -92,11 +92,16 @@ struct RepositoryImageInspectorView: View {
 
   private var previewHeader: some View {
     VStack(alignment: .leading, spacing: 8) {
-      WorkbenchThumbnailView(fileURL: asset.fileURL, maxPixelSize: 512, cornerRadius: 8)
-        .frame(maxWidth: .infinity, minHeight: 140, idealHeight: 170, maxHeight: 180)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .accessibilityHidden(true)
+      WorkbenchThumbnailView(
+        fileURL: asset.fileURL, maxPixelSize: 512, cornerRadius: WorkbenchCornerRadius.card
+      )
+      .frame(maxWidth: .infinity, minHeight: 140, idealHeight: 170, maxHeight: 180)
+      .clipShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+      .background(
+        .quaternary,
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card, style: .continuous)
+      )
+      .accessibilityHidden(true)
 
       Text(asset.filename)
         .font(.headline)

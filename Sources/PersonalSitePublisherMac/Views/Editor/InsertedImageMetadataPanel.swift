@@ -93,7 +93,7 @@ struct InsertedImageMetadataPanel: View {
 
       footer
     }
-    .padding(12)
+    .padding(WorkbenchSpacing.card)
     .frame(maxWidth: 620)
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .overlay {

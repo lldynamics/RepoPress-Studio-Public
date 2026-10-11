@@ -56,8 +56,8 @@ struct MacMarkdownLocalPreviewPopover: View {
 
       statusBadge
     }
-    .padding(.horizontal, 16)
-    .padding(.vertical, 13)
+    .padding(.horizontal, WorkbenchSpacing.content)
+    .padding(.vertical, WorkbenchSpacing.card)
   }
 
   @ViewBuilder
@@ -137,7 +137,7 @@ struct MacMarkdownLocalPreviewPopover: View {
 
         runtimeDiagnostics
       }
-      .padding(16)
+      .padding(WorkbenchSpacing.content)
     } else {
       VStack(alignment: .leading, spacing: 8) {
         Label("尚未配置本地站点", systemImage: "exclamationmark.triangle")
@@ -150,7 +150,7 @@ struct MacMarkdownLocalPreviewPopover: View {
           .font(.caption)
           .foregroundStyle(.secondary)
       }
-      .padding(16)
+      .padding(WorkbenchSpacing.content)
     }
   }
 
@@ -244,9 +244,12 @@ struct MacMarkdownLocalPreviewPopover: View {
     }
     .font(.caption)
     .foregroundStyle(.secondary)
-    .padding(9)
+    .padding(WorkbenchSpacing.control)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 8))
+    .background(
+      WorkbenchBackgroundStyle.control,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
     .accessibilityIdentifier("markdown-local-preview-diagnostics")
   }
 
@@ -280,9 +283,11 @@ struct MacMarkdownLocalPreviewPopover: View {
         }
       }
       .font(.caption)
-      .padding(9)
+      .padding(WorkbenchSpacing.control)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 8))
+      .background(
+        WorkbenchBackgroundStyle.control,
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     }
   }
 }

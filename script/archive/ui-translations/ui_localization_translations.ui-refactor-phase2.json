@@ -1,0 +1,230 @@
+{
+  "检查器": {
+    "zh-Hans": "检查器",
+    "en": "Inspector"
+  },
+  "检查器标签": {
+    "zh-Hans": "检查器标签",
+    "en": "Inspector tabs"
+  },
+  "工作区检查器": {
+    "zh-Hans": "工作区检查器",
+    "en": "Workspace inspector"
+  },
+  "发布检查 · %lld": {
+    "zh-Hans": "发布检查 · %lld",
+    "en": "Publish checks · %lld"
+  },
+  "SEO 与分享": {
+    "zh-Hans": "SEO 与分享",
+    "en": "SEO & Sharing"
+  },
+  "封面与图片": {
+    "zh-Hans": "封面与图片",
+    "en": "Cover & Images"
+  },
+  "相关资料": {
+    "zh-Hans": "相关资料",
+    "en": "Related Sources"
+  },
+  "%lld 个标签 · %lld 个分类": {
+    "zh-Hans": "%lld 个标签 · %lld 个分类",
+    "en": "%lld tags · %lld categories"
+  },
+  "标题 %lld 字符 · 摘要 %lld 字符": {
+    "zh-Hans": "标题 %lld 字符 · 摘要 %lld 字符",
+    "en": "Title: %lld characters · Summary: %lld characters"
+  },
+  "%lld 张 · 待检查": {
+    "zh-Hans": "%lld 张 · 待检查",
+    "en": "%lld images · Check pending"
+  },
+  "%lld 张 · %lld 项待处理": {
+    "zh-Hans": "%lld 张 · %lld 项待处理",
+    "en": "%lld images · %lld items to address"
+  },
+  "%lld 张 · 无待处理项": {
+    "zh-Hans": "%lld 张 · 无待处理项",
+    "en": "%lld images · No items to address"
+  },
+  "可关联 %lld 份本地资料": {
+    "zh-Hans": "可关联 %lld 份本地资料",
+    "en": "%lld local sources available"
+  },
+  "尚无本地关联资料": {
+    "zh-Hans": "尚无本地关联资料",
+    "en": "No local sources available"
+  },
+  "通过是当前站点没有错误或警告的文章统计，不能作为筛选条件。": {
+    "zh-Hans": "通过是当前站点没有错误或警告的文章统计，不能作为筛选条件。",
+    "en": "Passed counts articles in the current site with no errors or warnings; it cannot be used as a filter."
+  },
+  "受影响的文章": {
+    "zh-Hans": "受影响的文章",
+    "en": "Affected articles"
+  },
+  "选择一个问题以查看详情。": {
+    "zh-Hans": "选择一个问题以查看详情。",
+    "en": "Select an issue to see its details."
+  },
+  "修复建议生成后先审阅，再选择要应用的字段。": {
+    "zh-Hans": "修复建议生成后先审阅，再选择要应用的字段。",
+    "en": "Review generated suggestions first, then select the fields to apply."
+  },
+  "检查规则": {
+    "zh-Hans": "检查规则",
+    "en": "Check rules"
+  },
+  "检查规则目前不能逐项忽略。": {
+    "zh-Hans": "检查规则目前不能逐项忽略。",
+    "en": "Check rules cannot currently be ignored individually."
+  },
+  "需要处理 · %d": {
+    "en": "Needs attention · %d",
+    "zh-Hans": "需要处理 · %d"
+  },
+  "高级发布方式": {
+    "en": "Advanced publishing options",
+    "zh-Hans": "高级发布方式"
+  },
+  "返回全部变更": {
+    "en": "Return to all changes",
+    "zh-Hans": "返回全部变更"
+  },
+  "仅应用管理的文章…": {
+    "en": "App-managed articles only…",
+    "zh-Hans": "仅应用管理的文章…"
+  },
+  "全部变更": {
+    "en": "All changes",
+    "zh-Hans": "全部变更"
+  },
+  "提交已完成，等待核验部署": {
+    "en": "Commit completed; deployment verification pending",
+    "zh-Hans": "提交已完成，等待核验部署"
+  },
+  "查看差异": {
+    "en": "View diff",
+    "zh-Hans": "查看差异"
+  },
+  "打开完整工作区审阅；确认前不会提交": {
+    "en": "Review the complete worktree; no commit before confirmation",
+    "zh-Hans": "打开完整工作区审阅；确认前不会提交"
+  },
+  "Git 推送认证将在确认前核对": {
+    "en": "Git push authentication will be checked before confirmation",
+    "zh-Hans": "Git 推送认证将在确认前核对"
+  },
+  "正在准备发布连接检查": {
+    "en": "Preparing publishing connection checks",
+    "zh-Hans": "正在准备发布连接检查"
+  },
+  "权限和远端变化将在确认前再次检查": {
+    "en": "Permissions and remote changes will be checked again before confirmation",
+    "zh-Hans": "权限和远端变化将在确认前再次检查"
+  },
+  "发布连接需要处理": {
+    "en": "Publishing connection needs attention",
+    "zh-Hans": "发布连接需要处理"
+  },
+  "请选择当前站点的文章后再发布。": {
+    "en": "Select an article from the current site before publishing.",
+    "zh-Hans": "请选择当前站点的文章后再发布。"
+  },
+  "Git 推送进度": {
+    "en": "Git push progress",
+    "zh-Hans": "Git 推送进度"
+  },
+  "确认前会再次核对权限和文件变化": {
+    "en": "Permissions and file changes will be checked again before confirmation",
+    "zh-Hans": "确认前会再次核对权限和文件变化"
+  },
+  "正在提交并推送，完成前不能关闭发布检查": {
+    "en": "Committing and pushing; publishing checks cannot close until completion",
+    "zh-Hans": "正在提交并推送，完成前不能关闭发布检查"
+  },
+  "尚无已完成的通过项": {
+    "en": "No completed checks have passed yet",
+    "zh-Hans": "尚无已完成的通过项"
+  },
+  "已通过 %d 项": {
+    "en": "Checks passed: %d",
+    "zh-Hans": "已通过 %d 项"
+  },
+  "打开 AI 助手准备修复请求": {
+    "en": "Open the AI assistant to prepare a repair request",
+    "zh-Hans": "打开 AI 助手准备修复请求"
+  },
+  "第 %lld 步：%@": {
+    "en": "Step %lld: %@",
+    "zh-Hans": "第 %lld 步：%@"
+  },
+  "社交预览尚未生成": {
+    "en": "Social preview has not been generated",
+    "zh-Hans": "社交预览尚未生成"
+  },
+  "社交预览需要刷新": {
+    "en": "Social preview needs refreshing",
+    "zh-Hans": "社交预览需要刷新"
+  },
+  "刷新社交预览后才能确认 Open Graph、Twitter/X 和 JSON-LD 字段。": {
+    "en": "Refresh the social preview to verify the Open Graph, Twitter/X, and JSON-LD fields.",
+    "zh-Hans": "刷新社交预览后才能确认 Open Graph、Twitter/X 和 JSON-LD 字段。"
+  },
+  "文章元数据已变化，当前卡片快照不是最新版本。": {
+    "en": "Article metadata has changed; the current card snapshot is out of date.",
+    "zh-Hans": "文章元数据已变化，当前卡片快照不是最新版本。"
+  },
+  "社交卡片": {
+    "en": "Social cards",
+    "zh-Hans": "社交卡片"
+  },
+  "应用文章检查": {
+    "en": "App-managed article checks",
+    "zh-Hans": "应用文章检查"
+  },
+  "%d 阻断 · %d 提醒 · %d 项通过": {
+    "en": "%d blockers · %d reminders · %d checks passed",
+    "zh-Hans": "%d 阻断 · %d 提醒 · %d 项通过"
+  },
+  "内容检查": {
+    "en": "Content checks",
+    "zh-Hans": "内容检查"
+  },
+  "发布账户": {
+    "en": "Publishing account",
+    "zh-Hans": "发布账户"
+  },
+  "变更内容": {
+    "en": "Changed content",
+    "zh-Hans": "变更内容"
+  },
+  "%d 个文件 · 确认前再次核对": {
+    "en": "%d files · checked again before confirmation",
+    "zh-Hans": "%d 个文件 · 确认前再次核对"
+  },
+  "确认页将完整扫描变更": {
+    "en": "The confirmation screen will scan all changes",
+    "zh-Hans": "确认页将完整扫描变更"
+  },
+  "提交并核验部署": {
+    "en": "Commit and verify deployment",
+    "zh-Hans": "提交并核验部署"
+  },
+  "正在提交并推送": {
+    "en": "Committing and pushing",
+    "zh-Hans": "正在提交并推送"
+  },
+  "先创建 PR/MR，合并后再核验部署": {
+    "en": "Create a PR/MR first; verify deployment after merging",
+    "zh-Hans": "先创建 PR/MR，合并后再核验部署"
+  },
+  "确认提交后检查部署与线上页面版本": {
+    "en": "After confirming the commit, check deployment and live page versions",
+    "zh-Hans": "确认提交后检查部署与线上页面版本"
+  },
+  "检查发布账户": {
+    "en": "Check publishing account",
+    "zh-Hans": "检查发布账户"
+  }
+}

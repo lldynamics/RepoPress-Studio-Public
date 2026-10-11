@@ -24,15 +24,15 @@ struct RSSArticleListSkeleton: View {
         .frame(width: 36, height: 36)
 
       VStack(alignment: .leading, spacing: 6) {
-        RoundedRectangle(cornerRadius: 3)
+        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge)
           .fill(Color.primary.opacity(0.08))
           .frame(height: 12)
           .frame(maxWidth: 260)
-        RoundedRectangle(cornerRadius: 3)
+        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge)
           .fill(Color.primary.opacity(0.05))
           .frame(height: 10)
           .frame(maxWidth: 190)
-        RoundedRectangle(cornerRadius: 3)
+        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge)
           .fill(Color.primary.opacity(0.04))
           .frame(height: 10)
           .frame(maxWidth: 150)
@@ -40,19 +40,18 @@ struct RSSArticleListSkeleton: View {
 
       Spacer(minLength: 0)
     }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 10)
+    .padding(.horizontal, WorkbenchSpacing.content)
+    .padding(.vertical, WorkbenchSpacing.control)
   }
 }
 
 /// 刷新期间只保留轻量的顶部进度线，避免把正文列表推下去。
 struct RSSArticleRefreshProgressLine: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   var body: some View {
     // A stable accent line communicates the refresh state without a custom
     // indefinitely-running animation or another state update on every frame.
     Rectangle()
-      .fill(workbenchAccentColor.opacity(0.9))
+      .fill(WorkbenchTheme.progress.opacity(0.9))
       .frame(maxWidth: .infinity)
       .frame(height: 2)
       .accessibilityElement(children: .ignore)
@@ -60,7 +59,6 @@ struct RSSArticleRefreshProgressLine: View {
       .accessibilityIdentifier("rss-article-refresh-progress")
   }
 }
-
 
 #if DEBUG
   #Preview("RSS Article List Skeleton") {
@@ -71,7 +69,6 @@ struct RSSArticleRefreshProgressLine: View {
 #endif
 
 struct RSSArticleRow: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let article: RSSArticleHeader
   let translatedTitle: String?
   let feed: RSSFeed?
@@ -106,13 +103,13 @@ struct RSSArticleRow: View {
           .accessibilityValue(isBatchSelected ? "已选择" : "未选择")
         }
         Circle()
-          .fill(article.isRead ? Color.clear : workbenchAccentColor)
+          .fill(article.isRead ? Color.clear : WorkbenchTheme.info)
           .frame(width: 7, height: 7)
           .overlay {
             Circle()
               .stroke(article.isRead ? Color.secondary.opacity(0.45) : Color.clear, lineWidth: 1)
           }
-          .padding(.top, 6)
+          .padding(.top, WorkbenchSpacing.icon)
           .accessibilityHidden(true)
 
         VStack(alignment: .leading, spacing: 5) {
@@ -169,17 +166,17 @@ struct RSSArticleRow: View {
           }
         }
       }
-      .padding(.horizontal, 12)
-      .padding(.vertical, 8)
+      .padding(.horizontal, WorkbenchSpacing.card)
+      .padding(.vertical, WorkbenchSpacing.control)
       .accessibilityElement(children: .contain)
 
       if normalizedReadingProgress > 0 {
         GeometryReader { geometry in
           ZStack(alignment: .leading) {
             Rectangle()
-              .fill(workbenchAccentColor.opacity(0.12))
+              .fill(WorkbenchTheme.progress.opacity(0.12))
             Rectangle()
-              .fill(workbenchAccentColor)
+              .fill(WorkbenchTheme.progress)
               .frame(width: geometry.size.width * normalizedReadingProgress)
           }
         }
@@ -221,7 +218,7 @@ struct RSSArticleRow: View {
         .accessibilityLabel("打开原文")
       }
     }
-    .padding(4)
+    .padding(WorkbenchSpacing.tight)
     .background(.regularMaterial, in: Capsule())
     .accessibilityElement(children: .contain)
     .accessibilityLabel("文章操作")

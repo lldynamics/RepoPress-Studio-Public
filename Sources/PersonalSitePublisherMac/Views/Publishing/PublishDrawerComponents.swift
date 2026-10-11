@@ -25,9 +25,11 @@ struct PublishDrawerCard<Content: View>: View {
 
       Spacer(minLength: 0)
     }
-    .padding(12)
+    .padding(WorkbenchSpacing.card)
     .frame(maxWidth: .infinity, alignment: .topLeading)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(
+      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
     .accessibilityElement(children: .contain)
     .accessibilityLabel(Text(LocalizedStringKey(title)))
   }
@@ -78,6 +80,92 @@ struct PublishDrawerInfoRow: View {
   }
 }
 
+struct PublishDrawerWorkflowStepRow<Action: View>: View {
+  let step: PublishDrawerWorkflowStep
+  @ViewBuilder let action: () -> Action
+
+  var body: some View {
+    HStack(alignment: .center, spacing: WorkbenchSpacing.control) {
+      ZStack {
+        Circle().fill(tint.opacity(0.10))
+        if let image {
+          Image(systemName: image).font(.caption).foregroundStyle(tint)
+        } else {
+          Text("\(step.id)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+        }
+      }
+      .frame(
+        width: WorkbenchSpacing.content + WorkbenchSpacing.tight,
+        height: WorkbenchSpacing.content + WorkbenchSpacing.tight
+      )
+      .accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(step.title).font(.callout.weight(.medium))
+        Text(step.detail).font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      action().buttonStyle(.link).font(.caption)
+    }
+    .padding(WorkbenchSpacing.control)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("第 \(step.id) 步：\(step.title)")
+    .accessibilityValue(step.detail)
+    .accessibilityIdentifier("publish-inspector-step-\(step.id)")
+  }
+
+  private var image: String? {
+    switch step.status {
+    case .pending: nil
+    case .passed: "checkmark"
+    case .warning: "exclamationmark.triangle"
+    case .blocked: "xmark.octagon"
+    case .running: "arrow.clockwise"
+    }
+  }
+
+  private var tint: Color {
+    switch step.status {
+    case .pending: .secondary
+    case .passed: WorkbenchTheme.success
+    case .warning: WorkbenchTheme.warning
+    case .blocked: WorkbenchTheme.risk
+    case .running: WorkbenchTheme.progress
+    }
+  }
+}
+
+struct PublishDrawerFooterAction {
+  let title: String
+  let systemImage: String
+  let identifier: String
+  let accessibilityLabel: String
+  let accessibilityHint: String?
+  let disabledReason: String?
+  let perform: () -> Void
+}
+
+struct PublishDrawerPrimaryButton: View {
+  let action: PublishDrawerFooterAction
+  let isSecondary: Bool
+
+  var body: some View {
+    let button = Button(action: action.perform) {
+      Label(action.title, systemImage: action.systemImage).frame(maxWidth: .infinity)
+    }
+    .disabled(action.disabledReason != nil)
+    .help(action.disabledReason ?? action.title)
+    .accessibilityIdentifier(action.identifier)
+    .accessibilityLabel(action.accessibilityLabel)
+    .accessibilityHint(action.disabledReason ?? action.accessibilityHint ?? "")
+    if isSecondary {
+      button.buttonStyle(.bordered)
+    } else {
+      button.workbenchProminentActionStyle()
+    }
+  }
+}
+
 struct PublishDrawerFileDiffRow: View {
   let diff: PublishFileDiff
   @State private var isExpanded: Bool
@@ -92,14 +180,15 @@ struct PublishDrawerFileDiffRow: View {
       if let lineDiff = diff.lineDiff?.nilIfEmpty {
         ScrollView(.horizontal) {
           VStack(alignment: .leading, spacing: 1) {
-            ForEach(Array(lineDiff.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
+            ForEach(Array(lineDiff.components(separatedBy: "\n").enumerated()), id: \.offset) {
+              _, line in
               Text(line.isEmpty ? " " : line)
                 .font(.caption.monospaced())
                 .foregroundStyle(color(for: line))
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
           }
-          .padding(10)
+          .padding(WorkbenchSpacing.card)
           .textSelection(.enabled)
         }
         .frame(maxWidth: .infinity, maxHeight: 240, alignment: .leading)
@@ -120,14 +209,19 @@ struct PublishDrawerFileDiffRow: View {
           .frame(width: 16)
         VStack(alignment: .leading, spacing: 2) {
           WorkbenchPathIdentity(path: diff.path)
-          Text("\(diff.kind.localizedDisplayName) · \(diff.status.localizedDisplayName) · \(formattedByteSize)")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+          Text(
+            "\(diff.kind.localizedDisplayName) · \(diff.status.localizedDisplayName) · \(formattedByteSize)"
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
         }
       }
     }
-    .padding(9)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .padding(WorkbenchSpacing.control)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+    )
     .accessibilityElement(children: .contain)
   }
 
@@ -143,6 +237,119 @@ struct PublishDrawerFileDiffRow: View {
       return WorkbenchTheme.risk
     }
     return .secondary
+  }
+}
+
+struct PublishDrawerActionChoice: View {
+  let title: String
+  let detail: String
+  let status: String
+  let systemImage: String
+  let tint: Color
+  let isEnabled: Bool
+  var isPrimary: Bool = false
+  var actionStyle: PublishDrawerActionStyle = .localSave
+  var targetBadge: String? = nil
+  var targetBadgeTint: Color? = nil
+  let actionTitle: String
+  let actionSystemImage: String
+  let actionIdentifier: String
+  let action: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(alignment: .top) {
+        Image(systemName: systemImage)
+          .font(.title2)
+          .foregroundStyle(tint)
+          .accessibilityHidden(true)
+
+        Spacer()
+
+        if let targetBadge {
+          Text(targetBadge)
+            .font(.workbenchMetadata.weight(.medium))
+            .foregroundStyle(targetBadgeTint ?? tint)
+            .padding(.horizontal, WorkbenchSpacing.icon)
+            .padding(.vertical, 2)
+            .background(
+              (targetBadgeTint ?? tint).opacity(0.12),
+              in: Capsule()
+            )
+            .lineLimit(1)
+        }
+      }
+
+      Text(title)
+        .font(.headline)
+      Text(detail)
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      Label(status, systemImage: isEnabled ? "checkmark.circle" : "info.circle")
+        .font(.caption)
+        .foregroundStyle(isEnabled ? tint : .secondary)
+
+      Spacer(minLength: 0)
+
+      if actionStyle == .formalRelease || isPrimary {
+        Button(action: action) {
+          Label(actionTitle, systemImage: actionSystemImage)
+        }
+        .workbenchProminentActionStyle()
+        .keyboardShortcut(.defaultAction)
+        .disabled(!isEnabled)
+        .accessibilityIdentifier(actionIdentifier)
+        .accessibilityHint(
+          PublishDrawerBatchActionPresentation.accessibilityHint(
+            isEnabled: isEnabled,
+            status: status
+          )
+        )
+        .help(status)
+      } else {
+        Button(action: action) {
+          Label(actionTitle, systemImage: actionSystemImage)
+        }
+        .buttonStyle(.bordered)
+        .disabled(!isEnabled)
+        .accessibilityIdentifier(actionIdentifier)
+        .accessibilityHint(
+          PublishDrawerBatchActionPresentation.accessibilityHint(
+            isEnabled: isEnabled,
+            status: status
+          )
+        )
+        .help(status)
+      }
+    }
+    .padding(WorkbenchSpacing.content)
+    .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
+    .background(
+      cardBackground,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .overlay {
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+        .stroke(cardBorderStroke, lineWidth: actionStyle == .formalRelease ? 1.5 : 1)
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(title)
+    .accessibilityValue(status)
+  }
+
+  private var cardBackground: AnyShapeStyle {
+    if actionStyle == .formalRelease {
+      return AnyShapeStyle(WorkbenchTheme.success.opacity(isEnabled ? 0.05 : 0.02))
+    }
+    return WorkbenchBackgroundStyle.card
+  }
+
+  private var cardBorderStroke: Color {
+    if actionStyle == .formalRelease {
+      return WorkbenchTheme.success.opacity(isEnabled ? 0.5 : 0.2)
+    }
+    return tint.opacity(isEnabled ? 0.35 : 0.15)
   }
 }
 
@@ -167,7 +374,7 @@ struct RemotePublishConfirmationView: View {
           .foregroundStyle(.secondary)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(20)
+      .padding(WorkbenchSpacing.page)
 
       Divider()
 
@@ -175,11 +382,18 @@ struct RemotePublishConfirmationView: View {
         VStack(alignment: .leading, spacing: 14) {
           PublishDrawerCard(title: purpose.targetSectionTitle, systemImage: "network") {
             PublishDrawerInfoRow(title: targetLabel, value: targetTitle, systemImage: "doc.text")
-            PublishDrawerInfoRow(title: "远端", value: preview.repositoryName, systemImage: "shippingbox")
-            PublishDrawerInfoRow(title: purpose.modeLabel, value: preview.mode.localizedDisplayName, systemImage: "arrow.up.circle")
-            PublishDrawerInfoRow(title: purpose.branchLabel, value: preview.branchName, systemImage: "arrow.triangle.branch")
-            PublishDrawerInfoRow(title: "目标分支", value: preview.targetBranch, systemImage: "arrow.down.to.line")
-            PublishDrawerInfoRow(title: "权限", value: preview.accessSummary, systemImage: "person.badge.key")
+            PublishDrawerInfoRow(
+              title: "远端", value: preview.repositoryName, systemImage: "shippingbox")
+            PublishDrawerInfoRow(
+              title: purpose.modeLabel, value: preview.mode.localizedDisplayName,
+              systemImage: "arrow.up.circle")
+            PublishDrawerInfoRow(
+              title: purpose.branchLabel, value: preview.branchName,
+              systemImage: "arrow.triangle.branch")
+            PublishDrawerInfoRow(
+              title: "目标分支", value: preview.targetBranch, systemImage: "arrow.down.to.line")
+            PublishDrawerInfoRow(
+              title: "权限", value: preview.accessSummary, systemImage: "person.badge.key")
           }
 
           if preview.mode == .reviewRequest, let reviewDraft {
@@ -234,7 +448,9 @@ struct RemotePublishConfirmationView: View {
                 .foregroundStyle(.secondary)
               if batchReview.excludedCleanupCount > 0 {
                 Label(
-                  String(format: String(localized: "%d 个待下线请求未纳入本次发布，请到回收站单独处理。"), batchReview.excludedCleanupCount),
+                  String(
+                    format: String(localized: "%d 个待下线请求未纳入本次发布，请到回收站单独处理。"),
+                    batchReview.excludedCleanupCount),
                   systemImage: "info.circle"
                 )
                 .font(.caption)
@@ -245,7 +461,8 @@ struct RemotePublishConfirmationView: View {
                   Text(item.markdownPath)
                     .font(.caption.monospaced())
                     .textSelection(.enabled)
-                  ForEach(Array(item.preview.changedFileDiffs.enumerated()), id: \.element.id) { index, diff in
+                  ForEach(Array(item.preview.changedFileDiffs.enumerated()), id: \.element.id) {
+                    index, diff in
                     PublishDrawerFileDiffRow(diff: diff, isExpandedInitially: index == 0)
                   }
                 }
@@ -255,7 +472,8 @@ struct RemotePublishConfirmationView: View {
           }
 
           if !preview.warningIssues.isEmpty {
-            PublishDrawerCard(title: purpose.warningTitle, systemImage: "exclamationmark.triangle") {
+            PublishDrawerCard(title: purpose.warningTitle, systemImage: "exclamationmark.triangle")
+            {
               ForEach(preview.warningIssues) { issue in
                 VStack(alignment: .leading, spacing: 2) {
                   Text(issue.title)
@@ -269,7 +487,7 @@ struct RemotePublishConfirmationView: View {
             }
           }
         }
-        .padding(20)
+        .padding(WorkbenchSpacing.page)
       }
 
       Divider()
@@ -292,7 +510,7 @@ struct RemotePublishConfirmationView: View {
         .accessibilityHint(purpose.confirmAccessibilityHint)
         .accessibilityIdentifier("remote-publish-confirm")
       }
-      .padding(16)
+      .padding(WorkbenchSpacing.content)
     }
     .frame(minWidth: 620, idealWidth: 700, minHeight: 560, idealHeight: 660)
   }

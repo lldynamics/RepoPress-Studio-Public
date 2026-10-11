@@ -20,7 +20,7 @@ struct MarkdownEditorComfortControl: View {
           .labelStyle(.titleAndIcon)
           .font(.workbenchButtonLabel)
           .fixedSize(horizontal: true, vertical: false)
-          .padding(.horizontal, 6)
+          .padding(.horizontal, WorkbenchSpacing.icon)
           .frame(minHeight: 28)
       } else {
         Image(systemName: "textformat.size")

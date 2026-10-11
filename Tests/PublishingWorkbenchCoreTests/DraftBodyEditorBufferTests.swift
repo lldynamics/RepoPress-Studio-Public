@@ -1,3 +1,5 @@
+import Combine
+import Foundation
 import PublishingDomainContracts
 import XCTest
 
@@ -471,5 +473,530 @@ final class DraftBodyEditorBufferTests: XCTestCase {
 
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     XCTAssertEqual(reloaded.drafts.first(where: { $0.id == draft.id })?.bodyMarkdown, stagedBody)
+  }
+}
+
+@MainActor
+final class DraftPreflightCacheTests: XCTestCase {
+  func testSequentialDraftResultsSurviveSiblingWordCountAndSelectionChanges() async throws {
+    let (store, first, second) = try makeStore()
+    let firstResult = await store.runPreflight(for: first.id)
+    XCTAssertNotNil(firstResult)
+    store.scheduleDraftWordCountRefresh(for: second.id, bodyMarkdown: second.bodyMarkdown)
+    let secondResult = await store.runPreflight(for: second.id)
+    XCTAssertNotNil(secondResult)
+
+    XCTAssertEqual(store.cachedPreflightResult(for: first.id), firstResult)
+    XCTAssertEqual(store.cachedPreflightResult(for: second.id), secondResult)
+    store.selectDraft(second.id)
+    await store.preflightRefreshTask?.value
+    store.selectDraft(first.id)
+    await store.preflightRefreshTask?.value
+    XCTAssertEqual(store.cachedPreflightResult(for: first.id)?.context, firstResult?.context)
+    XCTAssertEqual(store.cachedPreflightResult(for: second.id)?.context, secondResult?.context)
+  }
+
+  func testSelectedCalculationInstallsCacheWithoutFlushingAnotherWindowsBuffer() async throws {
+    let (store, first, second) = try makeStore()
+    // Make the second window active before the first window stages its body.
+    // Changing selection itself intentionally commits the previous editor.
+    store.selectDraft(second.id)
+    let initialBuffer = store.draftBodyEditorBuffer(for: first.id)
+    _ = store.stageDraftBody("另一窗口仍在输入", for: first.id, baseRevision: initialBuffer.revision)
+    store.draftBodyCommitTasks[first.id]?.cancel()
+    store.draftBodyCommitTasks[first.id] = nil
+
+    store.refreshPreflightForSelection()
+    await store.preflightRefreshTask?.value
+
+    XCTAssertNotNil(store.cachedPreflightResult(for: second.id))
+    XCTAssertNil(store.cachedPreflightResult(for: first.id))
+    XCTAssertTrue(store.draftBodyEditorBuffer(for: first.id).isDirty)
+    XCTAssertEqual(store.draft(for: first.id)?.bodyMarkdown, first.bodyMarkdown)
+  }
+
+  func testDirtyTargetAndSiblingBuffersInvalidateResultsEvenWithoutEditorWillChange() async throws {
+    let (store, first, second) = try makeStore()
+    _ = await store.runPreflight(for: first.id)
+    _ = await store.runPreflight(for: second.id)
+    XCTAssertNotNil(store.cachedPreflightResult(for: first.id))
+    let buffer = store.draftBodyEditorBuffer(for: second.id)
+
+    _ = store.stageDraftBody(
+      "新正文", for: second.id, baseRevision: buffer.revision, notifyEditorObservers: false
+    )
+    store.draftBodyCommitTasks[second.id]?.cancel()
+    store.draftBodyCommitTasks[second.id] = nil
+
+    XCTAssertNil(store.cachedPreflightResult(for: first.id))
+    XCTAssertNil(store.cachedPreflightResult(for: second.id))
+  }
+
+  func testMetadataAndSiblingCollisionEditsInvalidateCache() async throws {
+    let (store, first, second) = try makeStore()
+    _ = await store.runPreflight(for: first.id)
+    var sibling = second
+    sibling.slug = first.slug
+    store.updateDraft(sibling)
+    XCTAssertNil(store.cachedPreflightResult(for: first.id))
+
+    _ = await store.runPreflight(for: first.id)
+    XCTAssertNotNil(store.cachedPreflightResult(for: first.id))
+    var edited = try XCTUnwrap(store.draft(for: first.id))
+    edited.title = "Changed title"
+    store.updateDraft(edited)
+    XCTAssertNil(store.cachedPreflightResult(for: first.id))
+  }
+
+  func testProfileLinkAuditAndRepositoryInputsRejectPreviousSnapshots() async throws {
+    let (store, first, _) = try makeStore()
+    _ = await store.runPreflight(for: first.id)
+    store.updateActiveProfile { $0.siteKind = .hugo }
+    XCTAssertNil(store.cachedPreflightResult(for: first.id))
+
+    _ = await store.runPreflight(for: first.id)
+    XCTAssertNotNil(store.cachedPreflightResult(for: first.id))
+    store.invalidateSiteLinkAuditSnapshot()
+    XCTAssertNil(store.cachedPreflightResult(for: first.id))
+
+    _ = await store.runPreflight(for: first.id)
+    XCTAssertNotNil(store.cachedPreflightResult(for: first.id))
+    store.setRepositoryReport(nil)
+    XCTAssertNil(store.cachedPreflightResult(for: first.id))
+  }
+
+  func testReportPublicationRejectsSnapshotEvenWhenScanRevisionIsUnchanged() async throws {
+    let (store, first, _) = try makeStore()
+    _ = await store.runPreflight(for: first.id)
+    let scanRevision = store.repositoryStore.repositoryLineDiffReportRevision
+    store.repositoryStore.repositoryReport = nil
+
+    XCTAssertEqual(store.repositoryStore.repositoryLineDiffReportRevision, scanRevision)
+    XCTAssertNil(store.cachedPreflightResult(for: first.id))
+  }
+
+  func testOlderGenerationCannotReplaceNewerResultForSameDraft() throws {
+    let (store, first, _) = try makeStore()
+    let oldGeneration = store.beginDraftPreflightCalculation(for: first.id)
+    let key = try XCTUnwrap(store.draftScopedPreflightRequestKey(for: first.id))
+    let oldSnapshot = snapshot(store: store, key: key, title: "Older result")
+    let newGeneration = store.beginDraftPreflightCalculation(for: first.id)
+    let newSnapshot = snapshot(store: store, key: key, title: "Newer result")
+
+    XCTAssertTrue(store.installDraftPreflightSnapshot(newSnapshot, generation: newGeneration))
+    XCTAssertFalse(store.installDraftPreflightSnapshot(oldSnapshot, generation: oldGeneration))
+    XCTAssertEqual(store.cachedPreflightResult(for: first.id)?.issues.first?.title, "Newer result")
+  }
+
+  func testOlderAsyncRequestWaitingForWordCountCannotOverwriteNewerRequest() async throws {
+    let (store, first, _) = try makeStore()
+    var resumeWordCount: CheckedContinuation<Void, Never>?
+    let wordCountTask = Task {
+      await withCheckedContinuation { resumeWordCount = $0 }
+    }
+    store.draftWordCountRefreshTasks[first.id] = wordCountTask
+    let oldRequest = Task { await store.runPreflight(for: first.id) }
+    for _ in 0..<20 {
+      if store.publishingStore.publishSession.draftPreflightGenerations[first.id] != nil,
+        resumeWordCount != nil
+      {
+        break
+      }
+      await Task.yield()
+    }
+    let continuation = try XCTUnwrap(resumeWordCount)
+    store.draftWordCountRefreshTasks[first.id] = nil
+    let newerResult = await store.runPreflight(for: first.id)
+    XCTAssertNotNil(newerResult)
+    continuation.resume()
+    let olderResult = await oldRequest.value
+
+    XCTAssertNil(olderResult)
+    XCTAssertEqual(store.cachedPreflightResult(for: first.id), newerResult)
+  }
+
+  func testDerivedWordCountPublicationPreservesCachesWithoutCacheNotifications() async throws {
+    let (store, first, second) = try makeStore()
+    _ = await store.runPreflight(for: first.id)
+    _ = await store.runPreflight(for: second.id)
+    await drainNotifications()
+    var notifications = 0
+    let cancellable = store.publishingStore.publishSession.draftPublishStatusDidChange.sink {
+      notifications += 1
+    }
+
+    store.publishingStore.updateDraftWordCount(
+      2, for: second.id, matching: second.bodyMarkdown, store: store
+    )
+    await drainNotifications()
+
+    XCTAssertNotNil(store.cachedPreflightResult(for: first.id))
+    XCTAssertNotNil(store.cachedPreflightResult(for: second.id))
+    XCTAssertEqual(notifications, 0)
+    XCTAssertFalse(store.publishingStore.publishSession.isPublishingDerivedWordCount)
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testBackgroundCacheInstallAndInvalidationNotifyAfterInputsCommit() async throws {
+    let (store, first, second) = try makeStore()
+    let facade = store.publishStatus
+    var visibleResults: [DraftPreflightResult?] = []
+    let cancellable = facade.objectWillChange.sink {
+      visibleResults.append(store.cachedPreflightResult(for: second.id))
+    }
+    store.setSelectedDraftID(first.id)
+    _ = await store.runPreflight(for: second.id)
+    await drainNotifications()
+    XCTAssertTrue(visibleResults.contains { $0?.context.draftID == second.id })
+    visibleResults.removeAll()
+
+    let buffer = store.draftBodyEditorBuffer(for: second.id)
+    _ = store.stageDraftBody("Background edit", for: second.id, baseRevision: buffer.revision)
+    store.draftBodyCommitTasks[second.id]?.cancel()
+    store.draftBodyCommitTasks[second.id] = nil
+    await drainNotifications()
+    XCTAssertFalse(visibleResults.isEmpty)
+    XCTAssertTrue(visibleResults.allSatisfy { $0 == nil })
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testBackgroundInputsContinueNotifyingAfterCacheIsEmpty() async throws {
+    let (store, first, second) = try makeStore()
+    _ = await store.runPreflight(for: second.id)
+    await drainNotifications()
+    store.setSelectedDraftID(first.id)
+    var notifications = 0
+    let cancellable = store.publishStatus.objectWillChange.sink { notifications += 1 }
+    let initialBuffer = store.draftBodyEditorBuffer(for: second.id)
+    _ = store.stageDraftBody("First edit", for: second.id, baseRevision: initialBuffer.revision)
+    store.draftBodyCommitTasks[second.id]?.cancel()
+    store.draftBodyCommitTasks[second.id] = nil
+    await drainNotifications()
+    XCTAssertNil(store.cachedPreflightResult(for: second.id))
+    let previousNotifications = notifications
+    XCTAssertGreaterThan(previousNotifications, 0)
+
+    let nextBuffer = store.draftBodyEditorBuffer(for: second.id)
+    _ = store.stageDraftBody("Second edit", for: second.id, baseRevision: nextBuffer.revision)
+    store.draftBodyCommitTasks[second.id]?.cancel()
+    store.draftBodyCommitTasks[second.id] = nil
+    await drainNotifications()
+    XCTAssertGreaterThan(notifications, previousNotifications)
+    XCTAssertNil(store.cachedPreflightResult(for: second.id))
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testCacheAndGenerationBookkeepingAreBoundedAndDeletedDraftsAreRemoved() async throws {
+    let (store, _, _) = try makeStore()
+    let drafts = (0..<68).map { index in
+      var draft = ArticleDraft.emptyGeneralDraft(editingProfile: store.activeProfile)
+      draft.title = "General \(index)"
+      return draft
+    }
+    store.setDrafts(drafts)
+    for draft in drafts {
+      let result = await store.runPreflight(for: draft.id)
+      XCTAssertNotNil(result)
+    }
+    let session = store.publishingStore.publishSession
+    XCTAssertEqual(session.draftPreflightSnapshots.count, 64)
+    XCTAssertEqual(session.draftPreflightGenerations.count, 64)
+    XCTAssertNil(store.cachedPreflightResult(for: drafts[0].id))
+    XCTAssertNotNil(store.cachedPreflightResult(for: drafts[67].id))
+
+    store.setDrafts([])
+    XCTAssertTrue(session.draftPreflightSnapshots.isEmpty)
+    XCTAssertTrue(session.draftPreflightGenerations.isEmpty)
+    XCTAssertTrue(session.draftPreflightAccessOrder.isEmpty)
+  }
+
+  func testTwoEnsureRequestsShareOneCalculationAndThenUseCache() async throws {
+    let (store, first, _) = try makeStore()
+    let resumeWordCount = try await blockWordCount(store: store, for: first.id)
+    let firstRequest = Task { await store.ensurePreflight(for: first.id) }
+    let operation = try await waitForOperation(store: store, for: first.id)
+    let secondRequest = Task { await store.ensurePreflight(for: first.id) }
+    await drainNotifications()
+    let session = store.publishingStore.publishSession
+    XCTAssertEqual(session.draftPreflightGeneration, operation.generation)
+    XCTAssertEqual(session.draftPreflightRefreshTasks.count, 1)
+    resumeWordCount.resume()
+
+    let firstResult = await firstRequest.value
+    let secondResult = await secondRequest.value
+    XCTAssertNotNil(firstResult)
+    XCTAssertEqual(firstResult, secondResult)
+    let cachedResult = await store.ensurePreflight(for: first.id)
+    XCTAssertEqual(cachedResult, firstResult)
+    XCTAssertEqual(session.draftPreflightGeneration, operation.generation)
+    await drainNotifications()
+    XCTAssertTrue(session.draftPreflightRefreshTasks.isEmpty)
+  }
+
+  func testCancellingOneEnsureWaiterDoesNotCancelSharedCalculation() async throws {
+    let (store, first, _) = try makeStore()
+    let resumeWordCount = try await blockWordCount(store: store, for: first.id)
+    let cancelledRequest = Task { await store.ensurePreflight(for: first.id) }
+    let operation = try await waitForOperation(store: store, for: first.id)
+    let survivingRequest = Task { await store.ensurePreflight(for: first.id) }
+    await drainNotifications()
+    cancelledRequest.cancel()
+
+    let cancelledResult = await cancelledRequest.value
+    XCTAssertNil(cancelledResult)
+    XCTAssertFalse(operation.task.isCancelled)
+    XCTAssertNil(store.cachedPreflightResult(for: first.id))
+    resumeWordCount.resume()
+    let result = await survivingRequest.value
+    XCTAssertNotNil(result)
+    XCTAssertEqual(store.cachedPreflightResult(for: first.id), result)
+  }
+
+  func testEnsureFollowsSameInputForceRefreshBeforeOldWordCountFinishes() async throws {
+    let (store, first, _) = try makeStore()
+    let resumeWordCount = try await blockWordCount(store: store, for: first.id)
+    let ensured = expectation(description: "Ensure follows the replacement task")
+    let ensureRequest = Task {
+      let result = await store.ensurePreflight(for: first.id)
+      ensured.fulfill()
+      return result
+    }
+    let previous = try await waitForOperation(store: store, for: first.id)
+    store.draftWordCountRefreshTasks[first.id] = nil
+    let forcedResult = await store.runPreflight(for: first.id)
+    XCTAssertNotNil(forcedResult)
+    XCTAssertTrue(previous.task.isCancelled)
+    await fulfillment(of: [ensured], timeout: 1)
+    resumeWordCount.resume()
+    let ensuredResult = await ensureRequest.value
+
+    XCTAssertEqual(ensuredResult, forcedResult)
+    XCTAssertEqual(store.cachedPreflightResult(for: first.id), forcedResult)
+  }
+
+  func testRefreshIdentityIncludesSiblingBufferAndSameRevisionRepositoryInputs() throws {
+    let (store, first, second) = try makeStore()
+    let initial = try XCTUnwrap(store.draftPreflightRefreshIdentity(for: first.id))
+    let buffer = store.draftBodyEditorBuffer(for: second.id)
+    _ = store.stageDraftBody("Sibling input", for: second.id, baseRevision: buffer.revision)
+    store.draftBodyCommitTasks[second.id]?.cancel()
+    store.draftBodyCommitTasks[second.id] = nil
+    let siblingChanged = try XCTUnwrap(store.draftPreflightRefreshIdentity(for: first.id))
+    XCTAssertNotEqual(siblingChanged, initial)
+    XCTAssertEqual(
+      siblingChanged.requestKey.bodyRevision, initial.requestKey.bodyRevision
+    )
+    let scanRevision = store.repositoryStore.repositoryLineDiffReportRevision
+    store.repositoryStore.repositoryReport = nil
+    let repositoryChanged = try XCTUnwrap(store.draftPreflightRefreshIdentity(for: first.id))
+
+    XCTAssertEqual(store.repositoryStore.repositoryLineDiffReportRevision, scanRevision)
+    XCTAssertNotEqual(repositoryChanged, siblingChanged)
+    XCTAssertNotEqual(
+      repositoryChanged.repositoryInputGeneration, siblingChanged.repositoryInputGeneration
+    )
+  }
+
+  func testDerivedWordCountDoesNotChangeRefreshIdentity() throws {
+    let (store, first, second) = try makeStore()
+    let initial = try XCTUnwrap(store.draftPreflightRefreshIdentity(for: first.id))
+    let originalDraftRevision = store.draftMutationRevision
+    store.publishingStore.updateDraftWordCount(
+      2, for: second.id, matching: second.bodyMarkdown, store: store
+    )
+
+    XCTAssertGreaterThan(store.draftMutationRevision, originalDraftRevision)
+    XCTAssertEqual(store.draftPreflightRefreshIdentity(for: first.id), initial)
+  }
+
+  func testEnsureWithoutFlushRejectsDirtyTargetAndDefaultFlushOnlyCommitsTarget() async throws {
+    let (store, first, second) = try makeStore()
+    for draft in [first, second] {
+      let buffer = store.draftBodyEditorBuffer(for: draft.id)
+      _ = store.stageDraftBody(
+        "Pending \(draft.title)", for: draft.id, baseRevision: buffer.revision
+      )
+      store.draftBodyCommitTasks[draft.id]?.cancel()
+      store.draftBodyCommitTasks[draft.id] = nil
+    }
+    let dirtyResult = await store.ensurePreflight(for: second.id, flushEditorBuffer: false)
+    XCTAssertNil(dirtyResult)
+    XCTAssertTrue(store.draftBodyEditorBuffer(for: second.id).isDirty)
+
+    let flushedResult = await store.ensurePreflight(for: second.id)
+    XCTAssertNotNil(flushedResult)
+    XCTAssertFalse(store.draftBodyEditorBuffer(for: second.id).isDirty)
+    XCTAssertTrue(store.draftBodyEditorBuffer(for: first.id).isDirty)
+    XCTAssertEqual(store.selectedDraftID, first.id)
+  }
+
+  func testInputInvalidationCancelsAndRemovesRegisteredCalculation() async throws {
+    let (store, first, second) = try makeStore()
+    let resumeWordCount = try await blockWordCount(store: store, for: first.id)
+    let request = Task { await store.ensurePreflight(for: first.id) }
+    let operation = try await waitForOperation(store: store, for: first.id)
+    var changedSibling = second
+    changedSibling.title = "New sibling input"
+    store.updateDraft(changedSibling)
+    let cancelledResult = await request.value
+    XCTAssertNil(cancelledResult)
+    XCTAssertTrue(operation.task.isCancelled)
+    XCTAssertTrue(store.publishingStore.publishSession.draftPreflightRefreshTasks.isEmpty)
+    resumeWordCount.resume()
+    _ = await operation.task.value
+    XCTAssertNil(store.cachedPreflightResult(for: first.id))
+  }
+
+  func testDrawerReceivesFirstBackgroundPreflightCacheNotification() async throws {
+    let (store, _, second) = try makeStore()
+    var notifications = 0
+    let cancellable = store.publishDrawerObservation.objectWillChange.sink { notifications += 1 }
+    _ = await store.ensurePreflight(for: second.id)
+    await drainNotifications()
+
+    XCTAssertGreaterThan(notifications, 0)
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testRegisteredTasksStayBoundedAndAreCancelledWhenDraftsAreRemoved() async throws {
+    let (store, first, _) = try makeStore()
+    let resumeWordCount = try await blockWordCount(store: store, for: first.id)
+    let sharedWordCountTask = try XCTUnwrap(store.draftWordCountRefreshTasks[first.id])
+    let drafts = (0..<68).map { index in
+      ArticleDraft(
+        siteProfileID: store.activeProfileID, title: "Draft \(index)", slug: "draft-\(index)",
+        bodyMarkdown: "Body", wordCount: 1
+      )
+    }
+    store.setDrafts(drafts)
+    for draft in drafts { store.draftWordCountRefreshTasks[draft.id] = sharedWordCountTask }
+    let session = store.publishingStore.publishSession
+    let initialGeneration = session.draftPreflightGeneration
+    let requests = drafts.map { draft in Task { await store.ensurePreflight(for: draft.id) } }
+    for _ in 0..<100 {
+      if session.draftPreflightGeneration == initialGeneration + 68 { break }
+      await Task.yield()
+    }
+    XCTAssertEqual(session.draftPreflightGeneration, initialGeneration + 68)
+    XCTAssertEqual(session.draftPreflightRefreshTasks.count, 64)
+    XCTAssertEqual(session.draftPreflightGenerations.count, 64)
+
+    store.setDrafts([])
+    XCTAssertTrue(session.draftPreflightRefreshTasks.isEmpty)
+    XCTAssertTrue(session.draftPreflightGenerations.isEmpty)
+    resumeWordCount.resume()
+    for request in requests {
+      let result = await request.value
+      XCTAssertNil(result)
+    }
+    XCTAssertTrue(session.draftPreflightSnapshots.isEmpty)
+  }
+
+  func testDisplayedResultKeepsPreviousChecklistWhileAnEditInvalidatesTheCache() async throws {
+    let (store, first, second) = try makeStore()
+    XCTAssertNil(store.displayedPreflightResult(for: first.id), "Never calculated")
+    let result = await store.runPreflight(for: first.id)
+    let calculated = try XCTUnwrap(result)
+    XCTAssertEqual(store.displayedPreflightResult(for: first.id)?.isCurrent, true)
+
+    // Typing invalidates every cache; the previous complete result stays
+    // displayable so a badge cannot fall to a partial count mid-edit.
+    let buffer = store.draftBodyEditorBuffer(for: first.id)
+    _ = store.stageDraftBody("Edited body", for: first.id, baseRevision: buffer.revision)
+    store.draftBodyCommitTasks[first.id]?.cancel()
+    store.draftBodyCommitTasks[first.id] = nil
+    XCTAssertNil(store.cachedPreflightResult(for: first.id))
+    let displayed = try XCTUnwrap(store.displayedPreflightResult(for: first.id))
+    XCTAssertFalse(displayed.isCurrent)
+    XCTAssertEqual(displayed.result, calculated)
+    XCTAssertNil(store.displayedPreflightResult(for: second.id))
+  }
+
+  func testDisplayedResultIsDroppedWhenTheDraftIsRemoved() async throws {
+    let (store, first, second) = try makeStore()
+    _ = await store.runPreflight(for: first.id)
+    _ = await store.runPreflight(for: second.id)
+
+    store.setDrafts([second])
+    XCTAssertNil(store.displayedPreflightResult(for: first.id))
+    XCTAssertNotNil(store.displayedPreflightResult(for: second.id))
+    XCTAssertNil(
+      store.publishingStore.publishSession.draftPreflightLastKnownResults[first.id],
+      "Removed drafts must not keep a remembered result")
+  }
+
+  private func makeStore() throws -> (WorkbenchStore, ArticleDraft, ArticleDraft) {
+    let persistence = try TestWorkbenchFactory.persistence(prefix: "DraftPreflightCache")
+    let rootURL = persistence.fileURL.deletingLastPathComponent()
+    addTeardownBlock { try? FileManager.default.removeItem(at: rootURL) }
+    func tokens(_ role: String) -> KeychainTokenStore {
+      KeychainTokenStore(
+        service: "draft-preflight-cache-\(role)-\(UUID())", accountPrefix: "tests", inMemory: true)
+    }
+    let store = WorkbenchStore(
+      persistence: persistence, safeMode: true,
+      keychainTokenStore: tokens("ai"), repositoryTokenStore: tokens("repository"),
+      deploymentTokenStore: tokens("deployment")
+    )
+    let first = ArticleDraft(
+      siteProfileID: store.activeProfileID, title: "First", slug: "first",
+      bodyMarkdown: "First body", wordCount: 2
+    )
+    let second = ArticleDraft(
+      siteProfileID: store.activeProfileID, title: "Second", slug: "second",
+      bodyMarkdown: "Second body"
+    )
+    store.setDrafts([first, second])
+    store.setSelectedDraftID(first.id)
+    return (store, first, second)
+  }
+
+  private func snapshot(
+    store: WorkbenchStore,
+    key: DraftScopedPreflightRequestKey,
+    title: String
+  ) -> DraftPreflightSnapshot {
+    store.makeDraftPreflightSnapshot(
+      result: DraftPreflightResult(
+        context: DraftExecutionContext(
+          draftID: key.draftID, profileID: key.profile.id, bodyRevision: key.bodyRevision
+        ),
+        issues: [PreflightIssue(severity: .warning, title: title, message: title)]
+      ),
+      requestKey: key
+    )
+  }
+
+  private func drainNotifications() async {
+    for _ in 0..<5 { await Task.yield() }
+  }
+
+  private func blockWordCount(
+    store: WorkbenchStore,
+    for draftID: UUID
+  ) async throws -> CheckedContinuation<Void, Never> {
+    let blocked = expectation(description: "Word-count task is blocked")
+    var resumeWordCount: CheckedContinuation<Void, Never>?
+    store.draftWordCountRefreshTasks[draftID] = Task {
+      await withCheckedContinuation {
+        resumeWordCount = $0
+        blocked.fulfill()
+      }
+    }
+    await fulfillment(of: [blocked], timeout: 1)
+    return try XCTUnwrap(resumeWordCount)
+  }
+
+  private func waitForOperation(
+    store: WorkbenchStore,
+    for draftID: UUID
+  ) async throws -> DraftPreflightRefreshOperation {
+    for _ in 0..<100 {
+      if let operation = store.publishingStore.publishSession.draftPreflightRefreshTasks[draftID] {
+        return operation
+      }
+      await Task.yield()
+    }
+    return try XCTUnwrap(store.publishingStore.publishSession.draftPreflightRefreshTasks[draftID])
   }
 }

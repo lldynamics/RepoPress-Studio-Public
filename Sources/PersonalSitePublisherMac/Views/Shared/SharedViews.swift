@@ -567,7 +567,6 @@ struct GuidedEmptyStateAction: Identifiable {
 }
 
 struct GuidedEmptyStateView: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let title: LocalizedStringKey
   let message: LocalizedStringKey
   let systemImage: String
@@ -579,12 +578,12 @@ struct GuidedEmptyStateView: View {
       VStack(spacing: 12) {
         ZStack {
           Circle()
-            .fill(workbenchAccentColor.opacity(0.12))
+            .fill(Color.secondary.opacity(0.12))
             .frame(width: 72, height: 72)
 
           Image(systemName: systemImage)
-            .font(.system(size: 32, weight: .medium))
-            .foregroundStyle(workbenchAccentColor)
+            .font(.system(size: WorkbenchIconSize.hero, weight: .medium))
+            .foregroundStyle(.secondary)
         }
 
         VStack(spacing: 4) {
@@ -619,15 +618,15 @@ struct GuidedEmptyStateView: View {
         .frame(maxWidth: 440)
       }
     }
-    .padding(32)
+    .padding(WorkbenchSpacing.spacious + WorkbenchSpacing.control)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 
   private func actionCard(for item: GuidedEmptyStateAction, isHovered: Bool) -> some View {
     HStack(spacing: 14) {
       Image(systemName: item.systemImage)
-        .font(.system(size: 18, weight: .medium))
-        .foregroundStyle(workbenchAccentColor)
+        .font(.system(size: WorkbenchIconSize.prominent, weight: .medium))
+        .foregroundStyle(.secondary)
         .frame(width: 28, height: 28)
 
       VStack(alignment: .leading, spacing: 2) {
@@ -643,18 +642,18 @@ struct GuidedEmptyStateView: View {
 
       Image(systemName: "chevron.right")
         .font(.caption.weight(.semibold))
-        .foregroundStyle(isHovered ? workbenchAccentColor : Color.secondary.opacity(0.5))
+        .foregroundStyle(isHovered ? Color.primary : Color.secondary.opacity(0.5))
     }
-    .padding(.horizontal, 16)
-    .padding(.vertical, 12)
+    .padding(.horizontal, WorkbenchSpacing.content)
+    .padding(.vertical, WorkbenchSpacing.card)
     .background(
-      RoundedRectangle(cornerRadius: 12, style: .continuous)
-        .fill(isHovered ? workbenchAccentColor.opacity(0.06) : Color.primary.opacity(0.03))
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel, style: .continuous)
+        .fill(isHovered ? Color.primary.opacity(0.06) : Color.primary.opacity(0.03))
     )
     .overlay(
-      RoundedRectangle(cornerRadius: 12, style: .continuous)
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel, style: .continuous)
         .strokeBorder(
-          isHovered ? workbenchAccentColor.opacity(0.45) : Color.primary.opacity(0.08), lineWidth: 1
+          isHovered ? Color.primary.opacity(0.18) : Color.primary.opacity(0.08), lineWidth: 1
         )
     )
   }

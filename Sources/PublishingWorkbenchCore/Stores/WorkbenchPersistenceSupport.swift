@@ -1,5 +1,10 @@
 
 import Foundation
+
+public enum FreshWorkspaceSeedPolicy: Sendable {
+  case blank
+  case softwareGuides
+}
 import PublishingCoreSupport
 public enum WorkbenchInitialSnapshotSource: Sendable {
   case persistence

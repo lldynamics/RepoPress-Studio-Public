@@ -9,7 +9,7 @@ struct EditorArticleDefaultsSection: View {
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
         DefaultRuleCustomFrontMatterSection()
-          .padding(.top, 4)
+          .padding(.top, WorkbenchSpacing.tight)
       }
       .accessibilityIdentifier("settings-global-front-matter-preset")
     } header: {

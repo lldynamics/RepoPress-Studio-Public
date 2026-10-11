@@ -7,6 +7,55 @@ import XCTest
 
 @MainActor
 final class MarkdownEditorStatisticsTests: XCTestCase {
+  func testDraftSwitchWithSameRevisionAndOffsetRejectsLateStatisticsAndKeepsBindings() async {
+    let firstBody = String(repeating: "Article A has different statistics. ", count: 2_000)
+    let secondBody = "Article B stays selected."
+    let clock = ManualClock()
+    var text = firstBody
+    var selection = NSRange(location: 0, length: 0)
+    var frontMatterSelection = false
+    var delivered: [MarkdownEditorStatistics] = []
+    let coordinator = MacMarkdownTextView.Coordinator(
+      text: Binding(get: { text }, set: { text = $0 }),
+      bodyMarkdown: firstBody, bodyUTF16Offset: 0, statisticsClock: clock,
+      selectedRange: Binding(get: { selection }, set: { selection = $0 }),
+      isFrontMatterSelection: Binding(
+        get: { frontMatterSelection }, set: { frontMatterSelection = $0 }),
+      comfortConfiguration: MarkdownEditorComfortConfiguration(), diagnostics: [],
+      onStatisticsChanged: { delivered.append($0) }, onPasteMessage: { _ in },
+      onScrollPositionChanged: { _ in }, onDroppedFiles: { _ in })
+    let textView = NSTextView()
+    textView.string = firstBody
+    coordinator.scheduleFullStatistics(for: firstBody)
+    await clock.waitForSleepCount(1)
+    let oldTask = coordinator.statisticsTask
+    let revision = coordinator.syntaxDocumentRevision
+
+    text = secondBody
+    selection = NSRange(location: 5, length: 0)
+    textView.string = secondBody
+    textView.setSelectedRange(selection)
+    coordinator.updateDocumentContext(
+      bodyMarkdown: secondBody, bodyUTF16Offset: 0, allowsLiveBodyChanges: true,
+      attachments: [], in: textView)
+    XCTAssertEqual(coordinator.syntaxDocumentRevision, revision)
+    clock.advance(by: .seconds(2.5))
+    await oldTask?.value
+
+    XCTAssertTrue(
+      delivered.isEmpty,
+      "Statistics for A must not be delivered into B's unchanged revision and offset.")
+    XCTAssertEqual(text, secondBody)
+    XCTAssertEqual(textView.string, secondBody)
+    XCTAssertEqual(selection, NSRange(location: 5, length: 0))
+    XCTAssertEqual(textView.selectedRange(), selection)
+    coordinator.scheduleFullStatistics(for: secondBody)
+    await clock.waitForSleepCount(2)
+    clock.advance(by: .seconds(2.5))
+    await coordinator.waitForPendingStatisticsDelivery()
+    XCTAssertEqual(delivered, [MarkdownEditorStatistics.make(for: secondBody)])
+  }
+
   func testBoundedDeltasMatchFullStatisticsForUnicodeAndSeparators() throws {
     try assertBoundedDelta(
       previous: "你好 world",

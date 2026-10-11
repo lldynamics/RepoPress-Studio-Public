@@ -235,8 +235,7 @@ extension PublishingStore {
           "已统一采用 %lld 个远端版本；没有写入远端。",
           mutationPlan.updatedDraftIDs.count
         )
-        setPublishingActionMessage(message, status: .success)
-        return .completed(message: message)
+        return completeRemoteConflictResolution(message: message, status: .success, store: store)
       }
       let payloadSnapshot: RemoteRepositoryConflictPayloadSnapshot
       let resolvedPayloadFingerprint = await remoteConflictPackageFingerprint(
@@ -315,8 +314,8 @@ extension PublishingStore {
         let message = CoreL10n.text(
           "PR/MR 已创建，但本地草稿在执行期间已变化；已保留新编辑，请重新同步。"
         )
-        setPublishingActionMessage(message, status: .warning)
-        return .completed(message: message)
+        return completeRemoteConflictResolution(
+          message: message, status: .warning, result: publishResult, store: store)
       }
       applyRemoteConflictDraftMutationPlan(mutationPlan, store: store)
       if publishResult.reviewURL != nil {
@@ -326,13 +325,12 @@ extension PublishingStore {
           submittedPackage: payloadSnapshot.package
         )
       }
-      store.save()
       let message =
         publishResult.reviewURL == nil
         ? CoreL10n.text("全部冲突已统一应用；远端已是目标内容，无需新建 PR/MR。")
         : CoreL10n.text("全部冲突已统一应用，PR/MR 已准备，等待合并后进入部署。")
-      setPublishingActionMessage(message, status: .success)
-      return .completed(message: message)
+      return completeRemoteConflictResolution(
+        message: message, status: .success, result: publishResult, store: store)
     } catch {
       let message = CoreL10n.format("刷新远端冲突失败：%@", error.localizedDescription)
       setPublishingActionMessage(message, status: .failure)
@@ -451,6 +449,7 @@ extension PublishingStore {
       let localDocument =
         publishPackageBuilder.build(draft: resolvedDraft, profile: profile)
         .markdownFile?.content ?? finalDocument
+      resolvedDraft.preserveRepositoryState(from: baseline.draft)
       resolvedDraft.adoptReviewedRemoteBaseline(
         profile: profile,
         repositoryPath: item.repositoryPath,
@@ -462,7 +461,6 @@ extension PublishingStore {
       baselinesByPath[item.repositoryPath] = baseline
       updatedDraftIDs.append(package.draftID)
     }
-
     guard itemsByPath.count == session.conflicts.count else { return nil }
     let mergePlan = LocalContentImportMergeService().makePlan(
       existingDrafts: drafts,

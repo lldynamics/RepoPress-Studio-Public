@@ -108,10 +108,11 @@ struct RemoteConflictSemanticMergeWorkspace: View {
         .foregroundStyle(.orange)
       }
     }
-    .padding(10)
+    .padding(WorkbenchSpacing.card)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
-      workbenchAccentColor.opacity(0.08),
+      state.unresolvedSemanticCount > 0
+        ? WorkbenchTheme.warning.opacity(0.08) : WorkbenchSurface.groupedCard,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
     )
   }
@@ -234,7 +235,7 @@ struct RemoteConflictSemanticMergeWorkspace: View {
               .font(.system(.caption, design: .monospaced))
               .textSelection(.enabled)
               .frame(maxWidth: .infinity, alignment: .topLeading)
-              .padding(8)
+              .padding(WorkbenchSpacing.control)
           }
           .frame(minHeight: 100, maxHeight: 240)
           .background(
@@ -269,7 +270,7 @@ struct RemoteConflictSemanticMergeWorkspace: View {
       TextEditor(text: sourceBinding)
         .font(.system(.body, design: .monospaced))
         .scrollContentBackground(.hidden)
-        .padding(6)
+        .padding(WorkbenchSpacing.icon)
         .background(
           WorkbenchBackgroundStyle.control,
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
@@ -301,7 +302,7 @@ struct RemoteConflictSemanticMergeWorkspace: View {
     Label(semanticUnavailableMessage, systemImage: "exclamationmark.triangle")
       .font(.caption)
       .foregroundStyle(.orange)
-      .padding(10)
+      .padding(WorkbenchSpacing.card)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(
         Color.orange.opacity(0.08),
@@ -361,7 +362,7 @@ struct RemoteConflictSemanticMergeWorkspace: View {
           .font(.system(.caption, design: .monospaced))
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .topLeading)
-          .padding(7)
+          .padding(WorkbenchSpacing.control)
       }
       .frame(minHeight: 40, maxHeight: 160)
       .background(

@@ -83,10 +83,12 @@ public struct ContentHealthReportService: Sendable {
     draftSummaries.reserveCapacity(drafts.count)
     for draft in drafts {
       try cancellationCheck()
-      let presentation = presentations[draft.id] ?? ContentHealthDraftPresentation(
-        title: draft.title,
-        markdownPath: profile.markdownPath(for: draft)
-      )
+      let presentation =
+        presentations[draft.id]
+        ?? ContentHealthDraftPresentation(
+          title: draft.title,
+          markdownPath: profile.markdownPath(for: draft)
+        )
       let cacheKey = ContentHealthReportCacheKey.make(
         draft: draft,
         profile: profile,
@@ -116,7 +118,7 @@ public struct ContentHealthReportService: Sendable {
       let imageReport = imageWorkbenchService.report(draft: draft, profile: profile)
       let imageIssues = imageReport.issues
         .filter { !$0.isCovered(by: preflightIssues) }
-        .compactMap(\.preflightIssue)
+        .compactMap { ContentHealthSuppressionPolicy.imageIssue($0, report: imageReport) }
       let summary = DraftPreflightSummary(
         draftID: draft.id,
         draftTitle: presentation.title,
@@ -131,8 +133,13 @@ public struct ContentHealthReportService: Sendable {
       }
     }
     try cancellationCheck()
+    let suppressionResult = ContentHealthSuppressionPolicy.apply(
+      summaries: draftSummaries, draftsByID: draftsByID, profile: profile
+    )
+    draftSummaries = suppressionResult.summaries
     let publicRiskSummary = ContentHealthProjection.publicRiskSummary(from: draftSummaries)
-    let aiFixQueueItems = aiFixQueueService.items(drafts: drafts, profile: profile, summaries: draftSummaries)
+    let aiFixQueueItems = aiFixQueueService.items(
+      drafts: drafts, profile: profile, summaries: draftSummaries)
     let slugChangeService = SlugChangeRedirectService()
     let slugChangeImpacts = Dictionary(
       uniqueKeysWithValues: drafts.compactMap { draft -> (UUID, SlugChangeImpact)? in
@@ -153,9 +160,11 @@ public struct ContentHealthReportService: Sendable {
       sitePreflightIssues: sitePreflightIssues,
       draftSummaries: draftSummaries,
       publicRiskSummary: publicRiskSummary,
-      publicRiskDraftSummaries: ContentHealthProjection.publicRiskDraftSummaries(from: draftSummaries),
+      publicRiskDraftSummaries: ContentHealthProjection.publicRiskDraftSummaries(
+        from: draftSummaries),
       aiFixQueueItems: aiFixQueueItems,
-      slugChangeImpacts: slugChangeImpacts
+      slugChangeImpacts: slugChangeImpacts,
+      suppressedIssues: suppressionResult.suppressedIssues
     )
   }
 
@@ -220,10 +229,13 @@ public struct ContentHealthReportService: Sendable {
     report: SiteLinkAuditReport,
     drafts: [ArticleDraft]
   ) -> [UUID: [PreflightIssue]] {
-    Dictionary(uniqueKeysWithValues: drafts.compactMap { draft in
-      let issues = report.preflightIssues(for: draft)
-      return issues.isEmpty ? nil : (draft.id, issues)
-    })
+    Dictionary(
+      uniqueKeysWithValues: drafts.compactMap { draft in
+        let issues = report.preflightIssues(for: draft).map {
+          ContentHealthSuppressionPolicy.linkIssue($0, draftID: draft.id, report: report)
+        }
+        return issues.isEmpty ? nil : (draft.id, issues)
+      })
   }
 
   private func addingLinkIssues(

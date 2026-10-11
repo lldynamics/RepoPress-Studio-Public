@@ -9,4 +9,9 @@ public protocol RepositorySyncProfile: Sendable {
   var repoOwner: String { get }
   var repoName: String { get }
   var repositoryProvider: RepositoryProvider { get }
+  var requiresControlledCommitExecution: Bool { get }
+}
+
+extension RepositorySyncProfile {
+  public var requiresControlledCommitExecution: Bool { false }
 }

@@ -67,6 +67,8 @@ final class DraftVersionComparisonLoader: ObservableObject {
 
   private let comparator: Comparator
   private var cache: [DraftVersionComparisonRequestKey: DraftVersionComparison] = [:]
+  private var cacheOrder: [DraftVersionComparisonRequestKey] = []
+  private let cacheLimit = 8
   private var inFlight: [DraftVersionComparisonRequestKey: Task<DraftVersionComparison, Never>] =
     [:]
   private var currentKey: DraftVersionComparisonRequestKey?
@@ -75,7 +77,8 @@ final class DraftVersionComparisonLoader: ObservableObject {
   init(
     comparator: @escaping Comparator = { previous, current in
       await Task.detached(priority: .userInitiated) {
-        DraftVersionComparisonService().compare(previous: previous, current: current)
+        DraftVersionComparisonService().compare(
+          previous: previous, current: current, includeAlignedBodyRows: true)
       }.value
     }
   ) {
@@ -93,6 +96,7 @@ final class DraftVersionComparisonLoader: ObservableObject {
       return
     }
     if let cached = cache[request.key] {
+      markRecentlyUsed(request.key)
       comparison = cached
       isLoading = false
       return
@@ -116,6 +120,7 @@ final class DraftVersionComparisonLoader: ObservableObject {
     let result = await workTask.value
     inFlight[request.key] = nil
     cache[request.key] = result
+    markRecentlyUsed(request.key)
     guard !Task.isCancelled,
       currentKey == request.key,
       generation == requestedGeneration
@@ -124,6 +129,15 @@ final class DraftVersionComparisonLoader: ObservableObject {
     }
     comparison = result
     isLoading = false
+  }
+
+  // Aligned comparisons contain the full body, so retain only recent pairs.
+  private func markRecentlyUsed(_ key: DraftVersionComparisonRequestKey) {
+    cacheOrder.removeAll { $0 == key }
+    cacheOrder.append(key)
+    while cacheOrder.count > cacheLimit {
+      cache.removeValue(forKey: cacheOrder.removeFirst())
+    }
   }
 }
 
@@ -134,12 +148,18 @@ struct DraftVersionComparisonView: View {
   @StateObject private var liveContext: WorkbenchMarkdownEditorLiveContextFeatureFacade
   @StateObject private var comparisonLoader: DraftVersionComparisonLoader
   @Environment(\.dismiss) private var dismiss
+  @State private var sourceVersionID: UUID
+  @State private var versions: [DraftVersionSnapshot]
+  @State private var versionPendingRestoreID: UUID?
   @State private var target = DraftVersionComparisonTarget.current
+  @State private var changesOnly = false
   @State private var isRestoreConfirmationPresented = false
 
   init(store: WorkbenchStore, sourceVersion: DraftVersionSnapshot) {
     self.store = store
     self.sourceVersion = sourceVersion
+    _sourceVersionID = State(initialValue: sourceVersion.id)
+    _versions = State(initialValue: store.versions(for: sourceVersion.draftID))
     _publishing = ObservedObject(wrappedValue: store.publishing)
     _liveContext = StateObject(
       wrappedValue: WorkbenchMarkdownEditorLiveContextFeatureFacade(
@@ -150,8 +170,8 @@ struct DraftVersionComparisonView: View {
     _comparisonLoader = StateObject(wrappedValue: DraftVersionComparisonLoader())
   }
 
-  private var versions: [DraftVersionSnapshot] {
-    store.versions(for: sourceVersion.draftID)
+  private var selectedSourceVersion: DraftVersionSnapshot? {
+    versions.first { $0.id == sourceVersionID }
   }
 
   private var currentDraft: ArticleDraft? {
@@ -159,11 +179,12 @@ struct DraftVersionComparisonView: View {
   }
 
   private var comparisonRequest: DraftVersionComparisonRequest? {
+    guard let selectedSourceVersion else { return nil }
     switch target {
     case .current:
       guard let currentDraft else { return nil }
       return .current(
-        sourceVersion: sourceVersion,
+        sourceVersion: selectedSourceVersion,
         targetDraft: currentDraft,
         bodyMarkdown: liveContext.bodyMarkdown,
         bodyRevision: liveContext.bodyRevision
@@ -172,14 +193,14 @@ struct DraftVersionComparisonView: View {
       guard let targetVersion = versions.first(where: { $0.id == versionID }) else {
         return nil
       }
-      return .version(sourceVersion: sourceVersion, targetVersion: targetVersion)
+      return .version(sourceVersion: selectedSourceVersion, targetVersion: targetVersion)
     }
   }
 
   var body: some View {
     VStack(spacing: 0) {
       comparisonHeader
-        .padding(16)
+        .padding(WorkbenchSpacing.content)
 
       Divider()
 
@@ -214,7 +235,7 @@ struct DraftVersionComparisonView: View {
           restoreActions
         }
       }
-      .padding(16)
+      .padding(WorkbenchSpacing.content)
     }
     .frame(idealWidth: 980, minHeight: 420, idealHeight: 720)
     .navigationTitle("版本差异")
@@ -224,13 +245,23 @@ struct DraftVersionComparisonView: View {
       titleVisibility: .visible
     ) {
       Button("恢复左侧版本", role: .destructive) {
-        if store.restoreDraftVersion(sourceVersion.id) {
+        guard let versionID = versionPendingRestoreID,
+          versions.contains(where: { $0.id == versionID }), currentDraft != nil
+        else { return }
+        if store.restoreDraftVersion(versionID) {
           dismiss()
         }
       }
       Button("取消", role: .cancel) {}
     } message: {
       Text("恢复前会自动保存当前内容，因此仍可从版本历史回到恢复前状态。")
+    }
+    .onChange(of: sourceVersionID) { _, selectedID in
+      if target == .version(selectedID) { target = .current }
+    }
+    .onReceive(publishing.draftVersionChanges) { snapshots in
+      versions = snapshots.filter { $0.draftID == sourceVersion.draftID }
+        .sorted { $0.capturedAt > $1.capturedAt }
     }
     .task(id: comparisonRequest?.key) {
       await comparisonLoader.load(comparisonRequest)
@@ -253,102 +284,105 @@ struct DraftVersionComparisonView: View {
       }
       .keyboardShortcut(.cancelAction)
       Button {
+        versionPendingRestoreID = selectedSourceVersion?.id
         isRestoreConfirmationPresented = true
       } label: {
-        Text("恢复左侧版本 · \(sourceVersion.capturedAt.formatted(date: .abbreviated, time: .shortened))")
+        if let selectedSourceVersion {
+          // swift-format-ignore
+          Text("恢复左侧版本 · \(selectedSourceVersion.capturedAt.formatted(date: .abbreviated, time: .shortened))")
+        } else {
+          Text("恢复左侧版本")
+        }
       }
       .workbenchProminentActionStyle()
       .keyboardShortcut(.defaultAction)
-      .disabled(currentDraft == nil)
+      .disabled(currentDraft == nil || selectedSourceVersion == nil)
     }
   }
 
   private var comparisonHeader: some View {
-    ViewThatFits(in: .horizontal) {
-      comparisonHeaderRow
-      comparisonHeaderColumn
-    }
-  }
-
-  private var comparisonHeaderRow: some View {
-    HStack(alignment: .center, spacing: 16) {
-      versionLabel(
-        title: "所选版本",
-        reason: sourceVersion.reason.localizedDisplayName,
-        date: sourceVersion.capturedAt
-      )
-
-      Image(systemName: "arrow.right")
-        .foregroundStyle(.secondary)
-        .accessibilityHidden(true)
-
-      VStack(alignment: .leading, spacing: 5) {
-        Text("对比目标")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-        Picker("对比目标", selection: $target) {
-          Text("当前文章").tag(DraftVersionComparisonTarget.current)
-          ForEach(versions.filter { $0.id != sourceVersion.id }) { version in
-            Text(versionMenuTitle(version))
-              .tag(DraftVersionComparisonTarget.version(version.id))
-          }
-        }
-        .labelsHidden()
-        .pickerStyle(.menu)
-        .frame(maxWidth: 310, alignment: .leading)
-      }
-
-      Spacer()
-
-      if let comparison = comparisonLoader.comparison {
-        HStack(spacing: 8) {
-          comparisonBadge("元数据 \(comparison.fieldChanges.count)", color: WorkbenchTheme.primary)
-          comparisonBadge("+\(comparison.addedLineCount)", color: WorkbenchTheme.success)
-          comparisonBadge("−\(comparison.removedLineCount)", color: WorkbenchTheme.risk)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-          "元数据变化 \(comparison.fieldChanges.count) 项，新增 \(comparison.addedLineCount) 行，删除 \(comparison.removedLineCount) 行"
-        )
-      }
-    }
-  }
-
-  private var comparisonHeaderColumn: some View {
     VStack(alignment: .leading, spacing: 12) {
-      versionLabel(
-        title: "所选版本", reason: sourceVersion.reason.localizedDisplayName,
-        date: sourceVersion.capturedAt)
-      VStack(alignment: .leading, spacing: 5) {
-        Text("对比目标").font(.caption).foregroundStyle(.secondary)
-        Picker("对比目标", selection: $target) {
-          Text("当前文章").tag(DraftVersionComparisonTarget.current)
-          ForEach(versions.filter { $0.id != sourceVersion.id }) { version in
-            Text(versionMenuTitle(version)).tag(DraftVersionComparisonTarget.version(version.id))
-          }
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .top, spacing: 20) {
+          sourcePicker
+          targetPicker
         }
-        .labelsHidden().pickerStyle(.menu)
+        VStack(alignment: .leading, spacing: 12) {
+          sourcePicker
+          targetPicker
+        }
       }
-      if let comparison = comparisonLoader.comparison {
-        HStack(spacing: 8) {
-          comparisonBadge("元数据 \(comparison.fieldChanges.count)", color: WorkbenchTheme.primary)
-          comparisonBadge("+\(comparison.addedLineCount)", color: WorkbenchTheme.success)
-          comparisonBadge("−\(comparison.removedLineCount)", color: WorkbenchTheme.risk)
+      ViewThatFits(in: .horizontal) {
+        HStack {
+          comparisonSummary
+          Spacer(minLength: 12)
+          changesOnlyToggle
+        }
+        VStack(alignment: .leading, spacing: 10) {
+          comparisonSummary
+          changesOnlyToggle
         }
       }
     }
   }
 
-  private func versionLabel(title: String, reason: String, date: Date) -> some View {
-    VStack(alignment: .leading, spacing: 4) {
-      Text(title)
-        .font(.caption)
-        .foregroundStyle(.secondary)
-      Text(reason)
-        .font(.headline)
-      Text(date.formatted(date: .abbreviated, time: .shortened))
-        .font(.caption)
-        .foregroundStyle(.secondary)
+  private var sourcePicker: some View {
+    VStack(alignment: .leading, spacing: 5) {
+      Text("旧版（左侧）").font(.caption).foregroundStyle(.secondary)
+      Picker("旧版（左侧）", selection: $sourceVersionID) {
+        if selectedSourceVersion == nil {
+          Text("所选版本已不存在。").tag(sourceVersionID)
+        }
+        ForEach(versions) { version in
+          Text(versionMenuTitle(version)).tag(version.id)
+        }
+      }
+      .labelsHidden()
+      .pickerStyle(.menu)
+      .accessibilityIdentifier("draft-version-source-picker")
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
+  private var targetPicker: some View {
+    VStack(alignment: .leading, spacing: 5) {
+      Text("新版（右侧）").font(.caption).foregroundStyle(.secondary)
+      Picker("新版（右侧）", selection: $target) {
+        Text("当前文章").tag(DraftVersionComparisonTarget.current)
+        if case .version(let versionID) = target,
+          !versions.contains(where: { $0.id == versionID })
+        {
+          Text("所选版本已不存在。").tag(target)
+        }
+        ForEach(versions.filter { $0.id != sourceVersionID }) { version in
+          Text(versionMenuTitle(version)).tag(DraftVersionComparisonTarget.version(version.id))
+        }
+      }
+      .labelsHidden()
+      .pickerStyle(.menu)
+      .accessibilityIdentifier("draft-version-target-picker")
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
+  private var changesOnlyToggle: some View {
+    Toggle("只看改动", isOn: $changesOnly)
+      .toggleStyle(.checkbox)
+      .accessibilityIdentifier("draft-version-changes-only")
+  }
+
+  @ViewBuilder
+  private var comparisonSummary: some View {
+    if let comparison = comparisonLoader.comparison {
+      HStack(spacing: 8) {
+        comparisonBadge("元数据 \(comparison.fieldChanges.count)", color: WorkbenchTheme.info)
+        comparisonBadge("+\(comparison.addedLineCount)", color: WorkbenchTheme.success)
+        comparisonBadge("−\(comparison.removedLineCount)", color: WorkbenchTheme.risk)
+      }
+      .accessibilityElement(children: .combine)
+      .accessibilityLabel(
+        "元数据变化 \(comparison.fieldChanges.count) 项，新增 \(comparison.addedLineCount) 行，删除 \(comparison.removedLineCount) 行"
+      )
     }
   }
 
@@ -356,29 +390,25 @@ struct DraftVersionComparisonView: View {
     Text(text)
       .font(.caption.monospacedDigit().weight(.semibold))
       .foregroundStyle(color)
-      .padding(.horizontal, 8)
-      .padding(.vertical, 4)
+      .padding(.horizontal, WorkbenchSpacing.control)
+      .padding(.vertical, WorkbenchSpacing.tight)
       .background(color.opacity(0.1), in: Capsule())
   }
 
-  @ViewBuilder
   private func comparisonContent(_ comparison: DraftVersionComparison) -> some View {
-    if comparison.hasChanges {
+    GeometryReader { geometry in
       ScrollView {
         VStack(alignment: .leading, spacing: 18) {
           metadataChanges(comparison.fieldChanges)
-          bodyChanges(comparison)
-        }
-        .padding(16)
-      }
-    } else {
-      WorkbenchStateView(
-        presentation: WorkbenchStatePresentation(
-          kind: .success(
-            detail: String(localized: "这两个版本没有正文或可恢复元数据差异。")
+          DraftVersionAlignedBodyView(
+            rows: comparison.alignedBodyRows,
+            changesOnly: changesOnly,
+            availableWidth: max(0, geometry.size.width - 2 * WorkbenchSpacing.content)
           )
-        )
-      )
+        }
+        .padding(WorkbenchSpacing.content)
+      }
+      .accessibilityIdentifier("draft-version-synchronized-scroll")
     }
   }
 
@@ -415,8 +445,9 @@ struct DraftVersionComparisonView: View {
         .accessibilityHidden(true)
       comparisonValue(change.currentValue, color: WorkbenchTheme.success)
     }
-    .padding(10)
-    .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+    .padding(WorkbenchSpacing.card)
+    .background(
+      .quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
   private func metadataChangeColumn(_ change: DraftVersionFieldChange) -> some View {
@@ -431,8 +462,9 @@ struct DraftVersionComparisonView: View {
         .frame(maxWidth: .infinity, alignment: .center)
       comparisonValue(change.currentValue, color: WorkbenchTheme.success)
     }
-    .padding(10)
-    .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+    .padding(WorkbenchSpacing.card)
+    .background(
+      .quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
   private func comparisonValue(_ value: String, color: Color) -> some View {
@@ -443,130 +475,23 @@ struct DraftVersionComparisonView: View {
       .foregroundStyle(isEmpty ? Color.secondary.opacity(0.6) : color)
       .italic(isEmpty)
       .textSelection(.enabled)
-      .padding(.horizontal, 6)
-      .padding(.vertical, 3)
+      .padding(.horizontal, WorkbenchSpacing.icon)
+      .padding(.vertical, WorkbenchSpacing.tight)
       .background(
         isEmpty ? Color.clear : color.opacity(0.08),
-        in: RoundedRectangle(cornerRadius: 5)
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge)
       )
       .frame(maxWidth: .infinity, alignment: .leading)
   }
 
-  private func bodyChanges(_ comparison: DraftVersionComparison) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack {
-        Label("正文差异", systemImage: "doc.text.magnifyingglass")
-          .font(.headline)
-        Spacer()
-        Text("红色为所选版本中被删除的行，绿色为对比目标新增的行。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-
-      if comparison.bodyLineDiffs.isEmpty {
-        Text("正文没有变化")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-      } else {
-        ScrollView(.horizontal) {
-          LazyVStack(alignment: .leading, spacing: 0) {
-            ForEach(comparison.bodyLineDiffs) { line in
-              DraftVersionLineDiffRow(line: line)
-            }
-          }
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .textSelection(.enabled)
-        }
-        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-          RoundedRectangle(cornerRadius: 8)
-            .stroke(.separator, lineWidth: 1)
-        }
-      }
-    }
-  }
-
   private func versionMenuTitle(_ version: DraftVersionSnapshot) -> String {
-    "\(version.reason.localizedDisplayName) · \(version.capturedAt.formatted(date: .abbreviated, time: .shortened))"
+    "\(version.reason.localizedDisplayName) · \(version.capturedAt.formatted(date: .abbreviated, time: .standard))"
   }
 
-}
-
-private struct DraftVersionLineDiffRow: View {
-  let line: DraftVersionLineDiff
-
-  var body: some View {
-    if line.kind == .skipped {
-      Text("省略 \(line.skippedLineCount) 行未变化内容")
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity, alignment: .center)
-        .padding(.vertical, 5)
-        .background(.quaternary.opacity(0.35))
-    } else {
-      HStack(alignment: .firstTextBaseline, spacing: 0) {
-        lineNumber(line.previousLineNumber)
-        lineNumber(line.currentLineNumber)
-        Text(verbatim: prefix)
-          .foregroundStyle(foregroundColor)
-          .frame(width: 22, alignment: .center)
-        Text(verbatim: line.text.isEmpty ? " " : line.text)
-          .font(.callout.monospaced())
-          .foregroundStyle(foregroundColor)
-          .padding(.trailing, 12)
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(.vertical, 2)
-      .background(backgroundColor)
-      .accessibilityElement(children: .combine)
-      .accessibilityLabel(accessibilityLabel)
-    }
-  }
-
-  private func lineNumber(_ number: Int?) -> some View {
-    Text(number.map(String.init) ?? "")
-      .font(.caption.monospacedDigit())
-      .foregroundStyle(.tertiary)
-      .frame(width: 42, alignment: .trailing)
-      .padding(.trailing, 7)
-  }
-
-  private var prefix: String {
-    switch line.kind {
-    case .removed: "−"
-    case .added: "+"
-    case .unchanged, .skipped: " "
-    }
-  }
-
-  private var foregroundColor: Color {
-    switch line.kind {
-    case .removed: WorkbenchTheme.risk
-    case .added: WorkbenchTheme.success
-    case .unchanged, .skipped: .primary
-    }
-  }
-
-  private var backgroundColor: Color {
-    switch line.kind {
-    case .removed: WorkbenchTheme.risk.opacity(0.1)
-    case .added: WorkbenchTheme.success.opacity(0.1)
-    case .unchanged, .skipped: .clear
-    }
-  }
-
-  private var accessibilityLabel: String {
-    switch line.kind {
-    case .removed: "删除行 \(line.previousLineNumber ?? 0)：\(line.text)"
-    case .added: "新增行 \(line.currentLineNumber ?? 0)：\(line.text)"
-    case .unchanged: "未变化：\(line.text)"
-    case .skipped: "省略 \(line.skippedLineCount) 行未变化内容"
-    }
-  }
 }
 
 extension DraftVersionEditableField {
-  fileprivate var localizedDisplayName: String {
+  var localizedDisplayName: String {
     switch self {
     case .title: String(localized: "标题")
     case .date: String(localized: "日期")
@@ -576,6 +501,7 @@ extension DraftVersionEditableField {
     case .authors: String(localized: "作者")
     case .aliases: String(localized: "旧地址别名")
     case .permalink: String(localized: "固定地址")
+    case .translationKey: String(localized: "翻译关联键")
     case .draftState: String(localized: "草稿状态")
     case .visibility: String(localized: "可见性")
     case .summary: String(localized: "摘要")

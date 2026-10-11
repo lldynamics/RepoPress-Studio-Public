@@ -22,6 +22,15 @@ struct SettingsAITabFactory {
       updateConnectionProfile: { profile in
         context.store.updateAIConnectionProfile(profile)
       },
+      reconfigureConnectionProfile: {
+        connectionID, expectedConfig, proposedConfig, referencingSites in
+        context.store.reconfigureAIConnectionProfile(
+          connectionID,
+          expectedConfig: expectedConfig,
+          proposedConfig: proposedConfig,
+          expectedReferencingSites: referencingSites
+        )
+      },
       createConnectionProfile: { name, preset in
         context.store.createAIConnectionProfile(named: name, preset: preset)
       },
@@ -37,7 +46,9 @@ struct SettingsAITabFactory {
       deletableConnectionProfiles: context.store.aiConnectionProfiles.filter {
         context.store.canDeleteAIConnectionProfile($0.id)
       },
-      credentialStorageMode: context.store.ai.credentialStorageMode,
+      credentialStorageMode: context.store.ai.credentialStorageMode(
+        forConnectionProfileID: connectionID
+      ),
       tokenAvailability: connectionID == context.store.activeAIConnectionProfile.id
         ? context.store.ai.tokenAvailability
         : context.store.ai.keyAvailability(forConnectionProfileID: connectionID),
@@ -59,7 +70,7 @@ struct SettingsAITabFactory {
         context.store.ai.refreshKeyAvailability()
       },
       setCredentialStorageMode: { mode in
-        context.store.ai.setCredentialStorageMode(mode)
+        context.store.ai.setCredentialStorageMode(mode, connectionProfileID: connectionID)
       },
       testConnection: { probeCapabilities in
         await context.store.ai.testConnection(

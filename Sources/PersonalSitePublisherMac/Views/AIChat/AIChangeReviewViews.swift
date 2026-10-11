@@ -27,7 +27,7 @@ struct AIChangeComparisonView: View {
         .foregroundStyle(.secondary)
       Text(value.isEmpty ? (isAfter ? String(localized: "清空") : String(localized: "未设置")) : value)
         .font(.callout)
-        .foregroundStyle(isAfter ? WorkbenchTheme.primary : .secondary)
+        .foregroundStyle(isAfter ? WorkbenchTheme.info : .secondary)
         .strikethrough(!isAfter && !value.isEmpty)
         .textSelection(.enabled)
         .fixedSize(horizontal: false, vertical: true)

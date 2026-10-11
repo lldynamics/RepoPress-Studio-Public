@@ -103,7 +103,7 @@ private struct RepositoryImageInspectorContent: View {
           if failure.canRetry {
             Button("重试保存") { saveStatus.retrySave() }.buttonStyle(.bordered)
           }
-        }.padding(12)
+        }.padding(WorkbenchSpacing.card)
       }
     }
     .onChange(of: session.targetDraftID) { _, draftID in

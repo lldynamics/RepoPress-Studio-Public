@@ -168,21 +168,6 @@ struct ContentHealthArticlePresentation: Sendable {
   }
 }
 
-struct ContentHealthSnapshot: Sendable {
-  var id: UUID
-  var generatedAt: Date
-  var profileID: UUID
-  var profileName: String
-  var publicRiskDraftSummaries: [DraftPreflightSummary]
-  var aiFixQueueItems: [AIPublishingFixQueueItem]
-  var sitePreflightIssues: [PreflightIssue]
-  var contentHealthSummaries: [DraftPreflightSummary]
-  var slugChangeImpacts: [UUID: SlugChangeImpact]
-  var errorCount: Int
-  var warningCount: Int
-  var passingDraftCount: Int
-}
-
 struct ContentHealthPresentationService: Sendable {
   func snapshot(
     profileID: UUID,
@@ -230,7 +215,8 @@ struct ContentHealthPresentationService: Sendable {
         slugChangeImpacts: report.slugChangeImpacts,
         errorCount: errorCount,
         warningCount: warningCount,
-        passingDraftCount: passingDraftCount
+        passingDraftCount: passingDraftCount,
+        suppressedIssues: report.suppressedIssues
       )
     }
     return try await withTaskCancellationHandler {
@@ -506,7 +492,7 @@ struct ContentHealthAIFixResultPreviewSheet: View {
       }
       .pickerStyle(.segmented)
       .frame(maxWidth: 240)
-      .padding(.vertical, 10)
+      .padding(.vertical, WorkbenchSpacing.control)
 
       Divider()
 
@@ -543,15 +529,15 @@ struct ContentHealthAIFixResultPreviewSheet: View {
         )
         .font(.caption)
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
+        .padding(.horizontal, WorkbenchSpacing.control)
+        .padding(.vertical, WorkbenchSpacing.tight)
         .background(WorkbenchBackgroundStyle.control, in: Capsule())
       }
 
       Button("关闭") { dismiss() }
         .keyboardShortcut(.cancelAction)
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
   }
 
   private var fieldsContent: some View {
@@ -581,8 +567,8 @@ struct ContentHealthAIFixResultPreviewSheet: View {
         .buttonStyle(.borderless)
         .font(.caption)
       }
-      .padding(.horizontal, 16)
-      .padding(.top, 8)
+      .padding(.horizontal, WorkbenchSpacing.content)
+      .padding(.top, WorkbenchSpacing.control)
 
       if fields.isEmpty {
         ScrollView {
@@ -594,7 +580,7 @@ struct ContentHealthAIFixResultPreviewSheet: View {
               .font(.system(.body, design: .monospaced))
               .textSelection(.enabled)
           }
-          .padding(16)
+          .padding(WorkbenchSpacing.content)
         }
       } else {
         ScrollView {
@@ -615,9 +601,11 @@ struct ContentHealthAIFixResultPreviewSheet: View {
                     Text(item.fieldKey)
                       .font(.caption.monospaced())
                       .foregroundStyle(.secondary)
-                      .padding(.horizontal, 4)
+                      .padding(.horizontal, WorkbenchSpacing.tight)
                       .padding(.vertical, 1)
-                      .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 3))
+                      .background(
+                        WorkbenchBackgroundStyle.control,
+                        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge))
                     if !item.isSupported {
                       Text("当前不支持应用")
                         .font(.caption)
@@ -643,25 +631,25 @@ struct ContentHealthAIFixResultPreviewSheet: View {
                       .font(.system(.caption, design: .monospaced))
                       .textSelection(.enabled)
                   }
-                  .padding(8)
+                  .padding(WorkbenchSpacing.control)
                   .frame(maxWidth: .infinity, alignment: .leading)
                   .background(
                     item.isSelected
                       ? AnyShapeStyle(WorkbenchTheme.success.opacity(0.06))
                       : WorkbenchBackgroundStyle.control,
-                    in: RoundedRectangle(cornerRadius: 6)
+                    in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
                   )
                 }
               }
-              .padding(8)
+              .padding(WorkbenchSpacing.control)
               .background(
                 WorkbenchBackgroundStyle.card,
                 in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
               )
             }
           }
-          .padding(.horizontal, 16)
-          .padding(.vertical, 6)
+          .padding(.horizontal, WorkbenchSpacing.content)
+          .padding(.vertical, WorkbenchSpacing.icon)
         }
       }
 
@@ -669,8 +657,8 @@ struct ContentHealthAIFixResultPreviewSheet: View {
         Text(applicationFeedback.message)
           .font(.caption)
           .foregroundStyle(applicationFeedback.isSuccess ? WorkbenchTheme.success : WorkbenchTheme.risk)
-          .padding(.horizontal, 16)
-          .padding(.bottom, 8)
+          .padding(.horizontal, WorkbenchSpacing.content)
+          .padding(.bottom, WorkbenchSpacing.control)
           .accessibilityLabel(applicationFeedback.message)
       }
     }
@@ -682,7 +670,7 @@ struct ContentHealthAIFixResultPreviewSheet: View {
         .font(.system(.body, design: .monospaced))
         .textSelection(.enabled)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .padding(18)
+        .padding(WorkbenchSpacing.content)
     }
   }
 
@@ -719,7 +707,7 @@ struct ContentHealthAIFixResultPreviewSheet: View {
         .workbenchProminentActionStyle()
       }
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
   }
 
   private static func parseFields(from result: AIPublishingActionResult) -> [FrontMatterFixFieldItem] {
@@ -796,59 +784,6 @@ struct ContentHealthAIFixResultPreviewSheet: View {
     case "categories": return "分类"
     case "draft": return "草稿状态"
     default: return key.capitalized
-    }
-  }
-}
-
-struct ContentHealthIssueCard: View {
-  let issue: PreflightIssue
-  let onFocus: (() -> Void)?
-
-  init(issue: PreflightIssue, onFocus: (() -> Void)? = nil) {
-    self.issue = issue
-    self.onFocus = onFocus
-  }
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 5) {
-      SeverityBadge(severity: issue.severity)
-      Text(issue.title)
-        .font(.workbenchItemTitle)
-      Text(issue.message)
-        .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-
-      if let onFocus {
-        HStack {
-          Spacer(minLength: 0)
-          Button {
-            onFocus()
-          } label: {
-            Label("定位到\(issue.contentHealthFocusTargetTitle)", systemImage: "arrow.right.circle")
-          }
-          .buttonStyle(.link)
-          .controlSize(.small)
-        }
-      }
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-  }
-}
-
-extension PreflightIssue {
-  var contentHealthFocusTargetTitle: String {
-    switch structuredField {
-    case .body:
-      return String(localized: "正文")
-    case .summary:
-      return String(localized: "摘要")
-    case .attachments, .cover, .coverAlt:
-      return String(localized: "图片")
-    case .repository, .contentRoot, .assetRoot, .markdownPathPattern, .repositoryPath:
-      return String(localized: "仓库")
-    default:
-      return String(localized: "元数据")
     }
   }
 }

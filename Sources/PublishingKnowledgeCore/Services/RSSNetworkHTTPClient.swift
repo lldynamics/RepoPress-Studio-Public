@@ -353,7 +353,8 @@ package enum RSSNetworkHTTPClient {
     for originalRequest: URLRequest,
     maximumByteCount: Int,
     allowsPrivateNetworkAccess: Bool,
-    resolver: @escaping RSSNetworkURLPolicy.Resolver = RSSNetworkURLPolicy.defaultResolver
+    resolver: @escaping RSSNetworkURLPolicy.Resolver = RSSNetworkURLPolicy.defaultResolver,
+    additionalURLValidation: (@Sendable (URL) throws -> Void)? = nil
   ) async throws -> (Data, HTTPURLResponse) {
     guard maximumByteCount > 0,
       let originalURL = originalRequest.url,
@@ -368,6 +369,9 @@ package enum RSSNetworkHTTPClient {
     var currentURL = originalURL
     for redirectCount in 0...Self.maximumRedirectCount {
       try Task.checkCancellation()
+      // Optional caller scope applies BEFORE connecting, including redirects.
+      // History backfill uses it for same-origin and robots restrictions.
+      try additionalURLValidation?(currentURL)
       let endpoint = try RSSNetworkURLPolicy.validatedEndpoint(
         currentURL,
         allowsPrivateNetworkAccess: allowsPrivateNetworkAccess,

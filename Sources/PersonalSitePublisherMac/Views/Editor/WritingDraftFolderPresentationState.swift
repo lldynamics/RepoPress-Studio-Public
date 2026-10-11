@@ -109,11 +109,6 @@ struct WritingDraftFolderExpansionState: Equatable, Hashable {
     userExpandedFolderIDs.formUnion(ancestorFolderIDs)
   }
 
-  mutating func revealAncestors<S: Sequence>(forSelection ancestorFolderIDs: S)
-  where S.Element == String {
-    revealAncestorsForSelection(ancestorFolderIDs)
-  }
-
   /// Temporarily reveals search-result ancestors. This does not change the
   /// user's explicit expansion choices and can be removed when search ends.
   mutating func revealSearchResultAncestors<S: Sequence>(_ ancestorFolderIDs: S)
@@ -124,9 +119,5 @@ struct WritingDraftFolderExpansionState: Equatable, Hashable {
   /// Ends the transient reveal lifecycle (normally when search is cleared).
   mutating func clearTransientReveal() {
     transientlyRevealedFolderIDs.removeAll(keepingCapacity: true)
-  }
-
-  mutating func clearTransientReveals() {
-    clearTransientReveal()
   }
 }

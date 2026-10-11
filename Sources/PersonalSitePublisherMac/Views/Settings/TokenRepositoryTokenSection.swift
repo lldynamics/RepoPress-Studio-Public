@@ -3,7 +3,6 @@ import PublishingGitCore
 import SwiftUI
 
 struct TokenRepositoryTokenSection: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let repositoryProvider: RepositoryProvider
   let repositoryTokenInput: Binding<String>
   let shouldFocusInput: Bool
@@ -41,11 +40,11 @@ struct TokenRepositoryTokenSection: View {
             }
             .buttonStyle(.borderless)
           }
-          .padding(.vertical, 4)
+          .padding(.vertical, WorkbenchSpacing.tight)
         } label: {
           Label("如何创建 GitHub 个人访问令牌 (PAT)？", systemImage: "questionmark.circle")
             .font(.caption.weight(.semibold))
-            .foregroundStyle(workbenchAccentColor)
+            .foregroundStyle(.secondary)
         }
       }
 

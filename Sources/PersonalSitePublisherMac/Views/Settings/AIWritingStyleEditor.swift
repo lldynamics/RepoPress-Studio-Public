@@ -14,7 +14,7 @@ struct AIWritingStyleEditor: View {
       TextEditor(text: text)
         .font(.body)
         .frame(minHeight: 58, idealHeight: 72, maxHeight: 96)
-        .padding(5)
+        .padding(WorkbenchSpacing.tight)
         .background(
           RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
             .fill(Color(nsColor: .textBackgroundColor))

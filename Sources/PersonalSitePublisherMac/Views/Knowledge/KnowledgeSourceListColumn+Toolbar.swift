@@ -112,8 +112,8 @@ extension KnowledgeSourceListColumn {
           sortMenu
         }
       }
-      .padding(.horizontal, 8)
-      .padding(.vertical, 6)
+      .padding(.horizontal, WorkbenchSpacing.control)
+      .padding(.vertical, WorkbenchSpacing.icon)
       .background(
         WorkbenchBackgroundStyle.control,
         in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
@@ -218,8 +218,8 @@ extension KnowledgeSourceListColumn {
             Text(rule.localizedDisplayName)
               .font(.workbenchMetadata)
               .foregroundStyle(.secondary)
-              .padding(.horizontal, 7)
-              .padding(.vertical, 3)
+              .padding(.horizontal, WorkbenchSpacing.control)
+              .padding(.vertical, WorkbenchSpacing.tight)
               .background(WorkbenchBackgroundStyle.card, in: Capsule())
           }
         }
@@ -234,7 +234,7 @@ extension KnowledgeSourceListColumn {
         .lineLimit(1)
       Button(action: onRemove) {
         Image(systemName: "xmark")
-          .font(.system(size: 8, weight: .bold))
+          .font(.system(size: WorkbenchIconSize.indicator, weight: .bold))
           .frame(width: 20, height: 20)
           .contentShape(Rectangle())
       }
@@ -242,9 +242,9 @@ extension KnowledgeSourceListColumn {
       .accessibilityLabel("移除筛选：\(title)")
     }
     .font(.workbenchMetadata.weight(.medium))
-    .padding(.leading, 7)
-    .padding(.trailing, 5)
-    .padding(.vertical, 3)
+    .padding(.leading, WorkbenchSpacing.control)
+    .padding(.trailing, WorkbenchSpacing.tight)
+    .padding(.vertical, WorkbenchSpacing.tight)
     .foregroundStyle(.tint)
     .background(workbenchAccentColor.opacity(0.1), in: Capsule())
   }

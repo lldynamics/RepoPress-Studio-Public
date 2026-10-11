@@ -9,6 +9,7 @@
             .font(.workbenchPageTitle)
 
           palette
+          surfaces
           controls
           informationHierarchy
           emptyStates
@@ -16,6 +17,35 @@
           modalSurface
         }
         .workbenchPageLayout(maxWidth: .infinity)
+      }
+    }
+
+    private var surfaces: some View {
+      VStack(alignment: .leading, spacing: WorkbenchSpacing.card) {
+        Text("语义表面与状态标签")
+          .font(.workbenchSectionTitle)
+
+        HStack(spacing: WorkbenchSpacing.control) {
+          surfaceSwatch(LocalizedStringKey("侧栏"), color: WorkbenchSurface.sidebar)
+          surfaceSwatch(
+            LocalizedStringKey("写作纸张"),
+            color: WorkbenchSurface.writingPaper(usesWarmPaper: true)
+          )
+          surfaceSwatch(LocalizedStringKey("详情栏"), color: WorkbenchSurface.inspector)
+          surfaceSwatch(LocalizedStringKey("分组卡片"), color: WorkbenchSurface.groupedCard)
+        }
+
+        HStack(spacing: WorkbenchSpacing.control) {
+          ForEach(
+            [
+              WorkbenchStatusTagKind.draft, .ready, .published, .unsynced,
+              .publishFailed, .alerts(3),
+            ],
+            id: \.self
+          ) { kind in
+            WorkbenchStatusTag(kind: kind)
+          }
+        }
       }
     }
 
@@ -219,6 +249,18 @@
         WorkbenchBackgroundStyle.card,
         in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
       )
+    }
+
+    private func surfaceSwatch(_ name: LocalizedStringKey, color: Color) -> some View {
+      Text(name)
+        .font(.workbenchMetadata)
+        .padding(WorkbenchSpacing.control)
+        .frame(maxWidth: .infinity, minHeight: 52)
+        .background(color, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+        .overlay {
+          RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+        }
     }
   }
 

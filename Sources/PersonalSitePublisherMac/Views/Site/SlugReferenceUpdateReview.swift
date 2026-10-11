@@ -111,7 +111,7 @@ struct SlugReferenceUpdateReviewSheet: View {
           .accessibilityIdentifier("content-health-confirm-slug-references")
       }
     }
-    .padding(20)
+    .padding(WorkbenchSpacing.page)
     .frame(minWidth: 620, idealWidth: 760, minHeight: 460, idealHeight: 580)
   }
 }
@@ -141,7 +141,7 @@ struct SlugReferenceUpdateResultView: View {
         }
       }
     }
-    .padding(12)
+    .padding(WorkbenchSpacing.card)
     .accessibilityIdentifier("content-health-slug-update-result")
   }
 }

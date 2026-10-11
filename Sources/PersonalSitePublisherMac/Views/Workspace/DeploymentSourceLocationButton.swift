@@ -105,7 +105,7 @@ private struct DeploymentSourcePreview: View {
         Spacer()
       }
     }
-    .padding(20)
+    .padding(WorkbenchSpacing.page)
     .frame(minWidth: 640, idealWidth: 780, minHeight: 420, idealHeight: 540)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("deployment-source-preview")

@@ -3,8 +3,9 @@ import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
 import UniformTypeIdentifiers
+
 #if canImport(Darwin)
-import Darwin
+  import Darwin
 #endif
 
 enum MarkdownOutlineSectionAction {
@@ -51,15 +52,15 @@ struct MarkdownOutlinePopover: View {
         .help(String(localized: "关闭文章大纲"))
         .accessibilityLabel("关闭文章大纲")
       }
-      .padding(.horizontal, 14)
-      .padding(.vertical, 12)
+      .padding(.horizontal, WorkbenchSpacing.content)
+      .padding(.vertical, WorkbenchSpacing.card)
 
       Divider()
 
       if items.isEmpty {
         VStack(spacing: 8) {
           Image(systemName: "text.badge.plus")
-            .font(.system(size: 24, weight: .medium))
+            .font(.system(size: WorkbenchIconSize.section, weight: .medium))
             .foregroundStyle(.secondary)
           Text("还没有可导航的标题")
             .font(.headline)
@@ -68,7 +69,7 @@ struct MarkdownOutlinePopover: View {
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
         }
-        .padding(24)
+        .padding(WorkbenchSpacing.spacious)
         .frame(maxWidth: .infinity, minHeight: 150)
       } else {
         ScrollView {
@@ -77,7 +78,7 @@ struct MarkdownOutlinePopover: View {
               outlineRow(item)
             }
           }
-          .padding(8)
+          .padding(WorkbenchSpacing.control)
         }
         .frame(maxHeight: isPinned ? .infinity : 360)
       }
@@ -119,12 +120,12 @@ struct MarkdownOutlinePopover: View {
           }
         }
         .padding(.leading, item.level == 3 ? 16 : 0)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 7)
+        .padding(.horizontal, WorkbenchSpacing.control)
+        .padding(.vertical, WorkbenchSpacing.control)
         .contentShape(Rectangle())
         .background {
           if item.id == activeItemID {
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
               .fill(workbenchAccentColor.opacity(0.18))
           }
         }
@@ -247,11 +248,13 @@ struct MarkdownOutlinePopover: View {
     direction: MarkdownOutlineMoveDirection
   ) -> Bool {
     guard let itemIndex = items.firstIndex(of: item) else { return false }
-    let lowerBound = stride(from: itemIndex - 1, through: 0, by: -1)
+    let lowerBound =
+      stride(from: itemIndex - 1, through: 0, by: -1)
       .first(where: { items[$0].level < item.level })
       .map { $0 + 1 }
       ?? 0
-    let upperBound = ((itemIndex + 1)..<items.count)
+    let upperBound =
+      ((itemIndex + 1)..<items.count)
       .first(where: { items[$0].level < item.level })
       ?? items.count
     let siblingIndices = (lowerBound..<upperBound).filter { items[$0].level == item.level }

@@ -52,7 +52,7 @@ struct RepositoryWorktreeReviewFileList: View {
                     .font(.system(.caption, design: .monospaced))
                     .textSelection(.enabled)
                     .fixedSize(horizontal: true, vertical: true)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, WorkbenchSpacing.icon)
                 }
               } else if review.notice == nil {
                 Text("仅文件状态变化，没有文本差异。")
@@ -131,7 +131,7 @@ struct RepositoryPublishConfirmationFeedback: View {
         }
       }
       .padding(.horizontal, WorkbenchSpacing.spacious)
-      .padding(.vertical, 10)
+      .padding(.vertical, WorkbenchSpacing.control)
     }
   }
 }

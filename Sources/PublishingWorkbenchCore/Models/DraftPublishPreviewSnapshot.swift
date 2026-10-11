@@ -34,12 +34,6 @@ public struct DraftPublishPreviewSnapshot: Hashable, Sendable {
     remotePublishPreview
   }
 
-  /// A descriptive alias for callers that refer to the identity as an
-  /// execution context rather than the shorter `context` label.
-  public var executionContext: DraftExecutionContext {
-    context
-  }
-
   public init(
     context: DraftExecutionContext,
     publishPackage: PublishPackage,

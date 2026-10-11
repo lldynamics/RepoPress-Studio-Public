@@ -73,6 +73,57 @@ final class RemoteRepositoryConflictResolutionTests: XCTestCase {
     XCTAssertNotNil(draft.repositoryImportFingerprint)
   }
 
+  func testReviewedRemoteBaselineRetainsActualLocalProjectFileBaseline() {
+    let profile = SiteProfile.defaultProfile
+    let path = "content/posts/merged.md"
+    var draft = ArticleDraft(siteProfileID: profile.id, title: "Merged", slug: "merged")
+    draft.recordProjectFile(
+      profile: profile, repositoryPath: path,
+      renderedContentDigest: "local-rendered-digest", projectFileContentDigest: "actual-disk-digest"
+    )
+
+    draft.adoptReviewedRemoteBaseline(
+      profile: profile, repositoryPath: path, remoteRevision: "remote-revision",
+      remoteDocument: "remote document", localDocument: "merged document"
+    )
+
+    XCTAssertEqual(draft.repositoryBinding?.projectFileContentDigest, "actual-disk-digest")
+    XCTAssertEqual(
+      draft.repositoryBinding?.projectFileRenderedContentDigest, "local-rendered-digest"
+    )
+    XCTAssertEqual(draft.repositoryBinding?.remoteRevision, "remote-revision")
+    XCTAssertEqual(
+      draft.repositoryBinding?.renderedContentDigest,
+      ArticleDraft.repositoryDocumentDigest("remote document")
+    )
+    XCTAssertEqual(draft.repositoryBinding?.syncState, .localChanged)
+  }
+
+  func testReviewedRemoteBaselineRejectsUnrelatedProjectFileBaseline() {
+    let originalProfile = SiteProfile.defaultProfile
+    var otherProfile = originalProfile
+    otherProfile.repoName = "another-repository"
+    let path = "content/posts/merged.md"
+    for target in [(otherProfile, path), (originalProfile, "content/posts/other.md")] {
+      var draft = ArticleDraft(
+        siteProfileID: originalProfile.id, title: "Merged", slug: "merged"
+      )
+      draft.recordProjectFile(
+        profile: originalProfile, repositoryPath: path,
+        renderedContentDigest: "local-rendered-digest",
+        projectFileContentDigest: "actual-disk-digest"
+      )
+
+      draft.adoptReviewedRemoteBaseline(
+        profile: target.0, repositoryPath: target.1, remoteRevision: "remote-revision",
+        remoteDocument: "remote document", localDocument: "merged document"
+      )
+
+      XCTAssertNil(draft.repositoryBinding?.projectFileContentDigest)
+      XCTAssertNil(draft.repositoryBinding?.projectFileRenderedContentDigest)
+    }
+  }
+
   func testMediaConflictCannotEnterTextMergeOrRemoteImport() {
     let item = RemoteRepositoryConflictItem(
       repositoryPath: "static/image.png",

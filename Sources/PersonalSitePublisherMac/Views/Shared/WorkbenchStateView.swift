@@ -1,6 +1,144 @@
 import AppKit
 import SwiftUI
 
+/// Semantic workspace surfaces stay distinct without borrowing the accent or
+/// status palettes. The writing role delegates to the established paper
+/// implementation so AppKit text views and SwiftUI containers remain equal.
+enum WorkbenchSurface {
+  static let sidebar = WorkbenchAdaptiveColor(
+    light: (0.945, 0.950, 0.945),
+    dark: (0.105, 0.115, 0.108),
+    lightHighContrast: (0.905, 0.915, 0.905),
+    darkHighContrast: (0.055, 0.065, 0.058)
+  ).color
+
+  static let inspector = WorkbenchAdaptiveColor(
+    light: (0.965, 0.968, 0.963),
+    dark: (0.125, 0.132, 0.126),
+    lightHighContrast: (0.925, 0.930, 0.922),
+    darkHighContrast: (0.070, 0.076, 0.071)
+  ).color
+
+  static let groupedCard = WorkbenchAdaptiveColor(
+    light: (0.990, 0.990, 0.985),
+    dark: (0.165, 0.172, 0.166),
+    lightHighContrast: (1.000, 1.000, 1.000),
+    darkHighContrast: (0.205, 0.215, 0.207)
+  ).color
+
+  static func writingPaper(usesWarmPaper: Bool) -> Color {
+    WorkbenchWritingSurface.color(usesWarmPaper: usesWarmPaper)
+  }
+}
+
+/// The compact status vocabulary shared by article rows and future grouped
+/// cards. Accent color is intentionally absent: tags communicate state only.
+enum WorkbenchStatusTagKind: Hashable {
+  case draft
+  case ready
+  case published
+  case localOnly
+  case unsynced
+  case publishFailed
+  case alerts(Int)
+
+  var title: String {
+    switch self {
+    case .draft:
+      return String(localized: "草稿")
+    case .ready:
+      return String(localized: "待发布")
+    case .published:
+      return String(localized: "已发布")
+    case .localOnly:
+      return String(localized: "仅本地")
+    case .unsynced:
+      return String(localized: "同步异常")
+    case .publishFailed:
+      return String(localized: "发布失败")
+    case .alerts(let count):
+      return String(localized: "\(count) 项问题")
+    }
+  }
+
+  fileprivate var systemImage: String {
+    switch self {
+    case .draft: return "doc.text"
+    case .ready: return "checkmark.circle"
+    case .published: return "checkmark.seal"
+    case .localOnly: return "internaldrive"
+    case .unsynced: return "arrow.triangle.2.circlepath"
+    case .publishFailed: return "xmark.octagon"
+    case .alerts: return "exclamationmark.triangle"
+    }
+  }
+
+  fileprivate var tone: WorkbenchStatusTagTone {
+    switch self {
+    case .draft: return .neutral
+    case .ready: return .information
+    case .published: return .success
+    case .localOnly: return .neutral
+    case .unsynced: return .warning
+    case .publishFailed: return .risk
+    case .alerts: return .warning
+    }
+  }
+
+  fileprivate var identifier: String {
+    switch self {
+    case .draft: return "draft"
+    case .ready: return "ready"
+    case .published: return "published"
+    case .localOnly: return "local-only"
+    case .unsynced: return "unsynced"
+    case .publishFailed: return "publish-failed"
+    case .alerts: return "alerts"
+    }
+  }
+}
+
+private enum WorkbenchStatusTagTone {
+  case neutral
+  case information
+  case success
+  case warning
+  case risk
+
+  var color: Color {
+    switch self {
+    case .neutral: return WorkbenchTheme.neutral
+    case .information: return WorkbenchTheme.info
+    case .success: return WorkbenchTheme.success
+    case .warning: return WorkbenchTheme.warning
+    case .risk: return WorkbenchTheme.risk
+    }
+  }
+}
+
+struct WorkbenchStatusTag: View {
+  let kind: WorkbenchStatusTagKind
+
+  var body: some View {
+    Label(kind.title, systemImage: kind.systemImage)
+      .labelStyle(.titleAndIcon)
+      .font(.workbenchMetadata.weight(.medium))
+      .foregroundStyle(kind.tone.color)
+      .lineLimit(1)
+      .fixedSize(horizontal: true, vertical: false)
+      .padding(.horizontal, WorkbenchSpacing.icon)
+      .padding(.vertical, 2)
+      .background(kind.tone.color.opacity(0.10), in: Capsule())
+      .overlay {
+        Capsule()
+          .strokeBorder(kind.tone.color.opacity(0.22), lineWidth: 1)
+      }
+      .accessibilityElement(children: .ignore)
+      .accessibilityLabel(kind.title)
+      .accessibilityIdentifier("workbench-status-tag-\(kind.identifier)")
+  }
+}
+
 struct WorkbenchStateView: View {
   let presentation: WorkbenchStatePresentation
   let density: WorkbenchStateDensity

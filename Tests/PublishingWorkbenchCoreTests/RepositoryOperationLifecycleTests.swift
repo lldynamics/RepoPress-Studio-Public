@@ -1,7 +1,7 @@
 import Foundation
-import XCTest
-
+import PublishingDomainContracts
 import PublishingGitCore
+import XCTest
 
 @testable import PublishingWorkbenchCore
 
@@ -97,7 +97,9 @@ final class RepositoryOperationLifecycleTests: XCTestCase {
 
     let completed = try service.commitMerge(profile: profile, message: "Resolve article conflict")
     XCTAssertEqual(completed.kind, .none)
-    XCTAssertNotEqual(try runGit(["rev-parse", "--verify", "MERGE_HEAD"], rootURL: rootURL, allowFailure: true).status, 0)
+    XCTAssertNotEqual(
+      try runGit(["rev-parse", "--verify", "MERGE_HEAD"], rootURL: rootURL, allowFailure: true)
+        .status, 0)
     XCTAssertEqual(try read(rootURL.appendingPathComponent(path)), "title\nresolved\n")
   }
 
@@ -106,7 +108,8 @@ final class RepositoryOperationLifecycleTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: rootURL) }
     let profile = try prepareMergeConflict(at: rootURL)
     let service = LocalRepositoryService()
-    let localHead = try runGit(["rev-parse", "HEAD"], rootURL: rootURL).output.trimmingCharacters(in: .whitespacesAndNewlines)
+    let localHead = try runGit(["rev-parse", "HEAD"], rootURL: rootURL).output.trimmingCharacters(
+      in: .whitespacesAndNewlines)
 
     XCTAssertThrowsError(try service.abortRebase(profile: profile)) { error in
       XCTAssertEqual(
@@ -118,7 +121,8 @@ final class RepositoryOperationLifecycleTests: XCTestCase {
     let aborted = try service.abortMerge(profile: profile)
     XCTAssertEqual(aborted.kind, .none)
     XCTAssertEqual(
-      try runGit(["rev-parse", "HEAD"], rootURL: rootURL).output.trimmingCharacters(in: .whitespacesAndNewlines),
+      try runGit(["rev-parse", "HEAD"], rootURL: rootURL).output.trimmingCharacters(
+        in: .whitespacesAndNewlines),
       localHead
     )
     XCTAssertEqual(
@@ -137,7 +141,8 @@ final class RepositoryOperationLifecycleTests: XCTestCase {
     let conflicted = service.operationLifecycle(profile: profile)
     XCTAssertEqual(conflicted.kind, .rebase)
     XCTAssertEqual(conflicted.unresolvedConflictCount, 1)
-    XCTAssertThrowsError(try service.commitMerge(profile: profile, message: "not a merge")) { error in
+    XCTAssertThrowsError(try service.commitMerge(profile: profile, message: "not a merge")) {
+      error in
       XCTAssertEqual(
         error as? RepositoryOperationLifecycleError,
         .unexpectedOperation(expected: .merge, actual: .rebase)
@@ -177,6 +182,83 @@ final class RepositoryOperationLifecycleTests: XCTestCase {
     }
   }
 
+  func testMergeCompletionExplicitlyRunsTrustedCommitHooks() throws {
+    let root = try makeTemporaryRepository()
+    defer { try? FileManager.default.removeItem(at: root) }
+    var profile = try prepareMergeConflict(at: root)
+    let path = "content/posts/article.md"
+    try write("title\nresolved\n", to: root.appendingPathComponent(path))
+    _ = try runGit(["add", "--", path], rootURL: root)
+    let marker = root.appendingPathComponent(".git/merge-hook-marker")
+    for name in ["pre-commit", "prepare-commit-msg", "commit-msg", "post-commit"] {
+      try writeLifecyclePolicyHook(
+        "#!/bin/sh\nprintf '%s\\n' '\(name)' >> '\(marker.path)'\n",
+        name: name, root: root
+      )
+    }
+    profile.gitExecutionPolicy = try RepositoryGitExecutionPolicyService().trustingHooks(at: root)
+    let completed = try LocalRepositoryService().commitMerge(
+      profile: profile, message: "Reviewed merge")
+    XCTAssertEqual(completed.kind, .none)
+    XCTAssertEqual(
+      try read(marker).split(separator: "\n").map(String.init),
+      ["pre-commit", "prepare-commit-msg", "commit-msg", "post-commit"]
+    )
+    XCTAssertEqual(try read(root.appendingPathComponent(path)), "title\nresolved\n")
+  }
+
+  func testMergeHookChangedContentRequiresReviewAndRequiredSigningFailureKeepsMergeOpen() throws {
+    for changesContent in [true, false] {
+      let root = try makeTemporaryRepository()
+      defer { try? FileManager.default.removeItem(at: root) }
+      var profile = try prepareMergeConflict(at: root)
+      let path = "content/posts/article.md"
+      try write("title\nresolved\n", to: root.appendingPathComponent(path))
+      _ = try runGit(["add", "--", path], rootURL: root)
+      let head = try runGit(["rev-parse", "HEAD"], rootURL: root).output
+      if changesContent {
+        try writeLifecyclePolicyHook(
+          "#!/bin/sh\nprintf 'unreviewed\\n' >> '\(path)'\ngit add -- '\(path)'\n",
+          name: "pre-commit", root: root
+        )
+        profile.gitExecutionPolicy = try RepositoryGitExecutionPolicyService().trustingHooks(
+          at: root)
+      } else {
+        profile.gitExecutionPolicy = RepositoryGitExecutionPolicy(
+          sshCommitSigningEnabled: true,
+          sshSigningKey: root.appendingPathComponent(".git/missing-key").path
+        )
+      }
+      XCTAssertThrowsError(
+        try LocalRepositoryService().commitMerge(profile: profile, message: "Controlled merge"))
+      XCTAssertEqual(try runGit(["rev-parse", "HEAD"], rootURL: root).output, head)
+      XCTAssertEqual(LocalRepositoryService().operationLifecycle(profile: profile).kind, .merge)
+    }
+  }
+
+  func testRebaseContinueFailsClosedForSigningAndTrustedHooksPolicies() throws {
+    let root = try makeTemporaryRepository()
+    defer { try? FileManager.default.removeItem(at: root) }
+    var profile = try prepareRebaseConflict(at: root)
+    for policy in [
+      RepositoryGitExecutionPolicy(sshCommitSigningEnabled: true, sshSigningKey: "/tmp/key.pub"),
+      try RepositoryGitExecutionPolicyService().trustingHooks(at: root),
+    ] {
+      profile.gitExecutionPolicy = policy
+      XCTAssertThrowsError(try LocalRepositoryService().continueRebase(profile: profile)) {
+        XCTAssertEqual($0 as? RepositoryGitExecutionPolicyError, .unsupportedRebase)
+      }
+      XCTAssertEqual(LocalRepositoryService().operationLifecycle(profile: profile).kind, .rebase)
+    }
+  }
+
+  private func writeLifecyclePolicyHook(_ script: String, name: String, root: URL) throws {
+    let hook = root.appendingPathComponent(".git/hooks/\(name)")
+    try write(script, to: hook)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: NSNumber(value: Int16(0o700))], ofItemAtPath: hook.path)
+  }
+
   private func prepareMergeConflict(at rootURL: URL) throws -> SiteProfile {
     try initializeRepository(rootURL)
     let path = "content/posts/article.md"
@@ -189,7 +271,8 @@ final class RepositoryOperationLifecycleTests: XCTestCase {
     try runGit(["switch", "-q", "main"], rootURL: rootURL)
     try write("title\nlocal\n", to: rootURL.appendingPathComponent(path))
     try runGit(["commit", "-q", "-am", "local"], rootURL: rootURL)
-    XCTAssertNotEqual(try runGit(["merge", "feature"], rootURL: rootURL, allowFailure: true).status, 0)
+    XCTAssertNotEqual(
+      try runGit(["merge", "feature"], rootURL: rootURL, allowFailure: true).status, 0)
     return SiteProfile(
       name: "Lifecycle Test",
       localRepositoryRootPath: rootURL.path,
@@ -197,7 +280,9 @@ final class RepositoryOperationLifecycleTests: XCTestCase {
     )
   }
 
-  private func prepareRebaseConflict(at rootURL: URL, branchName: String = "feature") throws -> SiteProfile {
+  private func prepareRebaseConflict(at rootURL: URL, branchName: String = "feature") throws
+    -> SiteProfile
+  {
     if FileManager.default.fileExists(atPath: rootURL.appendingPathComponent(".git").path) {
       try runGit(["rebase", "--abort"], rootURL: rootURL)
       try runGit(["switch", "-q", "main"], rootURL: rootURL)
@@ -217,7 +302,8 @@ final class RepositoryOperationLifecycleTests: XCTestCase {
     try write("title\nmain\n", to: rootURL.appendingPathComponent(path))
     try runGit(["commit", "-q", "-am", "main"], rootURL: rootURL)
     try runGit(["switch", "-q", branchName], rootURL: rootURL)
-    XCTAssertNotEqual(try runGit(["rebase", "main"], rootURL: rootURL, allowFailure: true).status, 0)
+    XCTAssertNotEqual(
+      try runGit(["rebase", "main"], rootURL: rootURL, allowFailure: true).status, 0)
     return SiteProfile(
       name: "Lifecycle Test",
       localRepositoryRootPath: rootURL.path,
@@ -235,7 +321,8 @@ final class RepositoryOperationLifecycleTests: XCTestCase {
     try runGit(["stash", "push", "-q", "-m", "lifecycle stash"], rootURL: rootURL)
     try write("title\nmain\n", to: rootURL.appendingPathComponent(path))
     try runGit(["commit", "-q", "-am", "main"], rootURL: rootURL)
-    XCTAssertNotEqual(try runGit(["stash", "apply", "--index"], rootURL: rootURL, allowFailure: true).status, 0)
+    XCTAssertNotEqual(
+      try runGit(["stash", "apply", "--index"], rootURL: rootURL, allowFailure: true).status, 0)
     return SiteProfile(name: "Lifecycle Test", localRepositoryRootPath: rootURL.path)
   }
 
@@ -247,13 +334,15 @@ final class RepositoryOperationLifecycleTests: XCTestCase {
 
   private func makeTemporaryRepository() throws -> URL {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("RepositoryOperationLifecycleTests-" + UUID().uuidString, isDirectory: true)
+      .appendingPathComponent(
+        "RepositoryOperationLifecycleTests-" + UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
     return rootURL
   }
 
   private func write(_ text: String, to url: URL) throws {
-    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
     try Data(text.utf8).write(to: url)
   }
 
@@ -276,9 +365,12 @@ final class RepositoryOperationLifecycleTests: XCTestCase {
     process.standardError = errorPipe
     try process.run()
     process.waitUntilExit()
-    let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    let output =
+      String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
     guard allowFailure || process.terminationStatus == 0 else {
-      let error = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "Git command failed"
+      let error =
+        String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
+        ?? "Git command failed"
       throw NSError(
         domain: "RepositoryOperationLifecycleTests",
         code: Int(process.terminationStatus),

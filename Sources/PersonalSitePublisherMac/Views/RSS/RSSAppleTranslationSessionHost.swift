@@ -1,6 +1,5 @@
 import Foundation
 import PublishingKnowledgeCore
-import PublishingWorkbenchCore
 import SwiftUI
 
 #if canImport(Translation)

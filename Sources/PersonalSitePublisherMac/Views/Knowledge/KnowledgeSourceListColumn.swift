@@ -61,7 +61,7 @@ struct KnowledgeSourceListColumn: View {
           .font(.caption)
         }
         .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
-        .padding(.bottom, 8)
+        .padding(.bottom, WorkbenchSpacing.control)
       }
 
       KnowledgeCollectionNavigationView(
@@ -70,14 +70,14 @@ struct KnowledgeSourceListColumn: View {
         onRenameFolder: beginRenamingFolder,
         onDeleteFolder: requestFolderDeletion
       )
-      .padding(.top, 4)
-      .padding(.bottom, 6)
+      .padding(.top, WorkbenchSpacing.tight)
+      .padding(.bottom, WorkbenchSpacing.icon)
       .background(WorkbenchBackgroundStyle.card)
 
       knowledgeListToolbar
         .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
-        .padding(.top, 8)
-        .padding(.bottom, 8)
+        .padding(.top, WorkbenchSpacing.control)
+        .padding(.bottom, WorkbenchSpacing.control)
 
       documentList
     }

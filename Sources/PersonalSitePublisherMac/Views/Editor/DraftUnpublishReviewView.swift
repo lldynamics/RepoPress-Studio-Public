@@ -60,7 +60,7 @@ struct DraftUnpublishReviewView: View {
           .accessibilityIdentifier("unpublish-impact-confirm")
       }
     }
-    .padding(24)
+    .padding(WorkbenchSpacing.spacious)
     .frame(width: 620)
     .accessibilityIdentifier("unpublish-impact-review")
     .task { await load() }

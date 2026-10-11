@@ -241,19 +241,6 @@ public final class WorkspaceBackupScheduler: ObservableObject {
     Task { @MainActor [weak self] in await self?.refreshRecentBackups() }
   }
 
-  public func resetDestinationFolder() {
-    guard !isRunning else { return }
-    settings.destinationPath = nil
-    settings.destinationIsICloud = false
-    settings.preserveAutomaticBackupHistoryOnSelectedDisk = false
-    settings.destinationVolumeUUID = nil
-    settings.deferAutomaticBackupPruningUntilNextBackup = true
-    persistSettings()
-    Task { @MainActor [weak self] in
-      await self?.refreshRecentBackups()
-    }
-  }
-
   public func runBackupNow() async {
     await performBackup(isAutomatic: false)
   }
@@ -572,11 +559,6 @@ public final class WorkspaceBackupScheduler: ObservableObject {
     guard available >= required.partialValue else {
       throw WorkspaceBackupError.insufficientDiskSpace(requiredByteCount: required.partialValue, availableByteCount: available)
     }
-  }
-
-  private func availableBytes(at folderURL: URL) throws -> Int64 {
-    let attributes = try fileManager.attributesOfFileSystem(forPath: folderURL.path)
-    return (attributes[.systemFreeSize] as? NSNumber)?.int64Value ?? 0
   }
 
   private func validateSelectedBackupVolume(_ folderURL: URL) throws {

@@ -61,15 +61,17 @@ extension AIChatContextInspectorView {
         HStack(spacing: 6) {
           Image(systemName: "sparkles")
             .font(.workbenchMetadata)
-            .foregroundStyle(workbenchAccentColor)
+            .foregroundStyle(WorkbenchTheme.progress)
           Text("AI 思考中…")
             .font(.caption.weight(.medium))
-            .foregroundStyle(workbenchAccentColor)
+            .foregroundStyle(WorkbenchTheme.progress)
           Spacer()
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(workbenchAccentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+        .padding(.horizontal, WorkbenchSpacing.control)
+        .padding(.vertical, WorkbenchSpacing.tight)
+        .background(
+          WorkbenchTheme.progress.opacity(0.1),
+          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
       }
 
       VStack(alignment: .leading, spacing: 8) {
@@ -82,17 +84,12 @@ extension AIChatContextInspectorView {
                 }
               }
             }
-            Text(
-              AIChatContextReferencePresentation.summary(
-                for: selectedContextReferences
-              )
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
           }
           .accessibilityElement(children: .contain)
           .accessibilityLabel("本次 AI 上下文")
+          .accessibilityValue(
+            AIChatContextReferencePresentation.summary(for: selectedContextReferences)
+          )
         }
 
         if !selectedChatImageAttachments.isEmpty {
@@ -115,8 +112,8 @@ extension AIChatContextInspectorView {
             )
             .font(.body)
             .foregroundStyle(.tertiary)
-            .padding(.top, 7)
-            .padding(.leading, 5)
+            .padding(.top, WorkbenchSpacing.control)
+            .padding(.leading, WorkbenchSpacing.tight)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
           }
@@ -141,6 +138,7 @@ extension AIChatContextInspectorView {
             onToggle: toggleChatImageAttachment,
             onClear: { setSelectedImageAttachmentIDs([]) }
           )
+          .labelStyle(.iconOnly)
           .disabled(
             inspectorDraft == nil
               || !currentAIProviderConfig.supportsImageInput
@@ -180,13 +178,13 @@ extension AIChatContextInspectorView {
           .accessibilityIdentifier("ai-assistant-send-button")
         }
       }
-      .padding(9)
+      .padding(WorkbenchSpacing.control)
       .background(
         Color(nsColor: .textBackgroundColor).opacity(0.72),
-        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel, style: .continuous)
       )
       .overlay {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
+        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel, style: .continuous)
           .strokeBorder(
             isComposerFocused
               ? WorkbenchTheme.primary
@@ -196,7 +194,7 @@ extension AIChatContextInspectorView {
           .allowsHitTesting(false)
       }
     }
-    .padding(10)
+    .padding(WorkbenchSpacing.card)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("ai-assistant-composer")
   }
@@ -217,50 +215,6 @@ extension AIChatContextInspectorView {
 
   var knowledgeChatContextReferences: [AIContextReference] {
     availableChatContextReferences.filter { $0.kind == .knowledgeEntry }
-  }
-
-  var contextReferenceMenu: some View {
-    Menu {
-      ForEach(primaryChatContextReferences) { reference in
-        contextReferenceButton(reference)
-      }
-
-      if !articleChatContextReferences.isEmpty {
-        Menu("其他文章") {
-          ForEach(articleChatContextReferences) { reference in
-            contextReferenceButton(reference)
-          }
-        }
-      }
-
-      if !knowledgeChatContextReferences.isEmpty {
-        Menu("资料库（仅允许发送给远程 AI）") {
-          ForEach(knowledgeChatContextReferences) { reference in
-            contextReferenceButton(reference)
-          }
-        }
-      }
-
-      if !selectedContextReferences.isEmpty {
-        Divider()
-        Button("清空 @ 上下文") {
-          setSelectedContextReferences([])
-        }
-      }
-    } label: {
-      Label(
-        selectedContextReferences.isEmpty
-          ? String(localized: "引用上下文")
-          : "@ \(selectedContextReferences.count)",
-        systemImage: "at"
-      )
-    }
-    .menuStyle(.borderlessButton)
-    .fixedSize()
-    .disabled(availableChatContextReferences.isEmpty || isChatBusy)
-    .help("明确选择本次发送给 AI 的文章、选区、站点配置或资料")
-    .accessibilityLabel(String(localized: "引用上下文"))
-    .accessibilityIdentifier("ai-assistant-context-menu")
   }
 
   func contextReferenceButton(
@@ -338,8 +292,8 @@ extension AIChatContextInspectorView {
       .accessibilityLabel("移除上下文 \(label)")
     }
     .font(.caption)
-    .padding(.horizontal, 7)
-    .padding(.vertical, 4)
+    .padding(.horizontal, WorkbenchSpacing.control)
+    .padding(.vertical, WorkbenchSpacing.tight)
     .background(Color.primary.opacity(0.07), in: Capsule())
   }
 
@@ -376,8 +330,8 @@ extension AIChatContextInspectorView {
       .accessibilityLabel("移除图片 \(attachment.originalFilename)")
     }
     .font(.caption)
-    .padding(.horizontal, 7)
-    .padding(.vertical, 4)
+    .padding(.horizontal, WorkbenchSpacing.control)
+    .padding(.vertical, WorkbenchSpacing.tight)
     .background(Color.primary.opacity(0.07), in: Capsule())
   }
 
@@ -719,82 +673,5 @@ extension AIChatContextInspectorView {
     }
     setInspectorSurfaceConversationID(conversation.id)
     return conversation
-  }
-}
-
-/// A popover keeps the attachment checklist open while the user makes several
-/// selections. A menu closes after every button activation, which makes a
-/// multi-image choice needlessly repetitive with a pointer.
-private struct AIChatImageAttachmentPicker: View {
-  let attachments: [DraftAttachment]
-  let selectedIDs: Set<UUID>
-  let onToggle: (UUID) -> Void
-  let onClear: () -> Void
-  @State private var isPresented = false
-
-  var body: some View {
-    Button {
-      isPresented = true
-    } label: {
-      Label(
-        selectedIDs.isEmpty
-          ? String(localized: "添加图片")
-          : String(localized: "图片 \(selectedIDs.count)"),
-        systemImage: "paperclip"
-      )
-    }
-    .buttonStyle(.borderless)
-    .fixedSize()
-    .accessibilityIdentifier("ai-chat-image-attachment-picker")
-    .popover(isPresented: $isPresented, arrowEdge: .bottom) {
-      VStack(alignment: .leading, spacing: 10) {
-        Text("添加图片")
-          .font(.headline)
-
-        if attachments.isEmpty {
-          Text("当前文章没有可发送的图片")
-            .foregroundStyle(.secondary)
-        } else {
-          ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-              ForEach(attachments) { attachment in
-                let knownFailureReason = AIChatImageAttachmentSelectionPolicy.knownFailureReason(
-                  for: attachment
-                )
-                Toggle(
-                  isOn: Binding(
-                    get: { selectedIDs.contains(attachment.id) },
-                    set: { _ in onToggle(attachment.id) }
-                  )
-                ) {
-                  VStack(alignment: .leading, spacing: 2) {
-                    Text(attachment.originalFilename)
-                    if let knownFailureReason {
-                      Text(knownFailureReason)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
-                  }
-                }
-                .toggleStyle(.checkbox)
-                .disabled(!selectedIDs.contains(attachment.id) && knownFailureReason != nil)
-              }
-            }
-          }
-          .frame(maxHeight: 280)
-
-          Divider()
-          HStack {
-            Button("清空图片选择", action: onClear)
-              .disabled(selectedIDs.isEmpty)
-            Spacer()
-            Button("完成") { isPresented = false }
-              .keyboardShortcut(.defaultAction)
-          }
-        }
-      }
-      .padding(14)
-      .frame(minWidth: 280)
-    }
   }
 }

@@ -39,6 +39,7 @@ public final class AICredentialStore: @unchecked Sendable {
   private let backupExclusionHandler: (URL) throws -> Void
   private let lock = NSRecursiveLock()
   private var transientMode: AICredentialStorageMode?
+  private var transientConnectionModes: [String: String] = [:]
   private var sessionCredentials: [UUID: StoredCredential] = [:]
   private var transientGenerations: [String: Int] = [:]
 
@@ -97,6 +98,8 @@ public final class AICredentialStore: @unchecked Sendable {
     self.backupExclusionHandler = backupExclusionHandler
   }
 
+  /// Default for newly registered connections. Existing connection choices
+  /// are frozen independently and never changed by this preference.
   public var storageMode: AICredentialStorageMode {
     lock.lock()
     defer { lock.unlock() }
@@ -116,12 +119,40 @@ public final class AICredentialStore: @unchecked Sendable {
     }
   }
 
+  public func storageMode(forConnectionProfileID id: UUID) -> AICredentialStorageMode {
+    synchronized { resolvedStorageMode(for: id) }
+  }
+
+  public func setStorageMode(_ mode: AICredentialStorageMode, forConnectionProfileID id: UUID) {
+    synchronized {
+      var modes = connectionStorageModes()
+      modes[id.uuidString.lowercased()] = mode.rawValue
+      setConnectionStorageModes(modes)
+    }
+  }
+
+  /// Freeze legacy global choices before a default preference can change.
+  /// This migration reads preference metadata only, never any credential.
+  public func initializeStorageModes(forConnectionProfileIDs ids: [UUID]) {
+    synchronized {
+      for id in ids { _ = resolvedStorageMode(for: id) }
+    }
+  }
+
+  public func removeStorageMode(forConnectionProfileID id: UUID) {
+    synchronized {
+      var modes = connectionStorageModes()
+      modes.removeValue(forKey: id.uuidString.lowercased())
+      setConnectionStorageModes(modes)
+    }
+  }
+
   public func token(
     forConnectionProfileID id: UUID,
     legacyProfile: SiteProfile? = nil
   ) throws -> String? {
     try synchronized {
-      switch resolvedStorageMode() {
+      switch resolvedStorageMode(for: id) {
       case .localFile:
         guard selectedModeHasCurrentGeneration(for: id) else { return nil }
         return try localDocument().credentials[id.uuidString]?.token.nilIfEmpty
@@ -152,7 +183,7 @@ public final class AICredentialStore: @unchecked Sendable {
     legacyProfile: SiteProfile? = nil
   ) throws -> KeychainTokenAvailability {
     try synchronized {
-      switch resolvedStorageMode() {
+      switch resolvedStorageMode(for: id) {
       case .localFile:
         guard selectedModeHasCurrentGeneration(for: id) else {
           return KeychainTokenAvailability(hasToken: false)
@@ -203,7 +234,7 @@ public final class AICredentialStore: @unchecked Sendable {
         throw AICredentialStoreError.emptyToken
       }
       let credential = StoredCredential(token: normalizedToken, updatedAt: Date())
-      switch resolvedStorageMode() {
+      switch resolvedStorageMode(for: id) {
       case .localFile:
         var document = try localDocument()
         document.credentials[id.uuidString] = credential
@@ -228,7 +259,7 @@ public final class AICredentialStore: @unchecked Sendable {
     legacyProfiles: [SiteProfile] = []
   ) throws {
     try synchronized {
-      switch resolvedStorageMode() {
+      switch resolvedStorageMode(for: id) {
       case .localFile:
         guard fileManager.fileExists(atPath: localFileURL.path) else { return }
         var document = try localDocument()
@@ -249,9 +280,11 @@ public final class AICredentialStore: @unchecked Sendable {
   }
 
   /// Legacy Keychain cleanup is deliberately disabled outside Keychain mode.
-  public func deleteLegacyTokenIfKeychainIsSelected(for profile: SiteProfile) throws {
+  public func deleteLegacyTokenIfKeychainIsSelected(
+    for profile: SiteProfile, connectionProfileID id: UUID
+  ) throws {
     try synchronized {
-      guard resolvedStorageMode() == .keychain else { return }
+      guard resolvedStorageMode(for: id) == .keychain else { return }
       try keychainTokenStore.deleteLegacyAIToken(for: profile)
     }
   }
@@ -264,7 +297,7 @@ public final class AICredentialStore: @unchecked Sendable {
     legacyProfiles: [SiteProfile] = []
   ) throws {
     try synchronized {
-      if resolvedStorageMode() == .keychain {
+      if resolvedStorageMode(for: id) == .keychain {
         // A Codex connection uses a loopback sentinel as an internal
         // transport identity. It never had an origin-bound legacy Keychain
         // item, so asking the Keychain store to construct that account is
@@ -320,15 +353,40 @@ public final class AICredentialStore: @unchecked Sendable {
     return transientMode ?? defaultMode
   }
 
+  private func resolvedStorageMode(for id: UUID) -> AICredentialStorageMode {
+    let key = id.uuidString.lowercased()
+    var modes = connectionStorageModes()
+    if let rawValue = modes[key], let mode = AICredentialStorageMode(rawValue: rawValue) {
+      return mode
+    }
+    let mode = resolvedStorageMode()
+    modes[key] = mode.rawValue
+    setConnectionStorageModes(modes)
+    return mode
+  }
+
+  private func connectionStorageModes() -> [String: String] {
+    userDefaults?.dictionary(forKey: preferenceKey + ".connections") as? [String: String]
+      ?? transientConnectionModes
+  }
+
+  private func setConnectionStorageModes(_ modes: [String: String]) {
+    if let userDefaults {
+      userDefaults.set(modes, forKey: preferenceKey + ".connections")
+    } else {
+      transientConnectionModes = modes
+    }
+  }
+
   private func selectedModeHasCurrentGeneration(for id: UUID) -> Bool {
-    modeGeneration(for: resolvedStorageMode(), connectionProfileID: id)
+    modeGeneration(for: resolvedStorageMode(for: id), connectionProfileID: id)
       == credentialGeneration(for: id)
   }
 
   private func markSelectedModeCurrent(for id: UUID) {
     setModeGeneration(
       credentialGeneration(for: id),
-      for: resolvedStorageMode(),
+      for: resolvedStorageMode(for: id),
       connectionProfileID: id
     )
   }

@@ -10,7 +10,7 @@ struct SettingsConfigurationStatusView: View {
         max(0, geometry.size.width - 2 * WorkbenchSpacing.content)
       )
       ScrollView {
-        VStack(alignment: .leading, spacing: WorkbenchSpacing.section) {
+        VStack(alignment: .leading, spacing: WorkbenchSpacing.content) {
           SettingsTaskShortcutsView(selectDestination: context.selectSettingsDestination)
             .settingsSubsectionAnchor(.configurationTasks)
 

@@ -6,17 +6,19 @@ import XCTest
 
 @MainActor
 final class WorkspaceContextNavigationTests: XCTestCase {
-  func testCompactInspectorUsesRailOnlyAcrossTheManualInspectorBand() {
+  func testCompactInspectorBandKeepsTheSharedRailAvailable() {
     XCTAssertEqual(WorkspaceResponsiveLayoutSnapshot(width: 959).band, .constrained)
     XCTAssertEqual(WorkspaceResponsiveLayoutSnapshot(width: 960).band, .compactInspector)
-    XCTAssertEqual(WorkspaceResponsiveLayoutSnapshot(width: 1_179).band, .compactInspector)
-    XCTAssertEqual(WorkspaceResponsiveLayoutSnapshot(width: 1_180).band, .standardInspector)
-    XCTAssertEqual(WorkspaceResponsiveLayoutSnapshot(width: 1_240).band, .standardInspector)
+    XCTAssertEqual(WorkspaceResponsiveLayoutSnapshot(width: 1_180).band, .compactInspector)
+    XCTAssertEqual(WorkspaceResponsiveLayoutSnapshot(width: 1_243).band, .compactInspector)
+    XCTAssertEqual(WorkspaceResponsiveLayoutSnapshot(width: 1_244).band, .standardInspector)
+    XCTAssertEqual(WorkspaceResponsiveLayoutSnapshot(width: 1_423).band, .standardInspector)
+    XCTAssertEqual(WorkspaceResponsiveLayoutSnapshot(width: 1_424).band, .standardInspector)
   }
 
-  func testCompactRailExposesTheFiveVisualWorkspaceRoutesInOrder() {
+  func testPrimaryRailExposesTheFiveVisualWorkspaceRoutesInOrder() {
     XCTAssertEqual(
-      WorkspaceCompactNavigationRail.primarySections,
+      WorkspacePrimaryNavigationRail.primarySections,
       [.writing, .library, .rss, .images, .sync]
     )
   }
@@ -28,7 +30,7 @@ final class WorkspaceContextNavigationTests: XCTestCase {
     )
     XCTAssertEqual(
       WorkspaceNavigationRouteDescriptor.primarySections,
-      WorkspaceCompactNavigationRail.primarySections
+      WorkspacePrimaryNavigationRail.primarySections
     )
     XCTAssertEqual(
       WorkspaceNavigationPresentation.commandMenuItems.map(\.section),

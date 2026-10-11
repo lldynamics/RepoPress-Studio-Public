@@ -3,7 +3,6 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct AIKeychainSection: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let aiAPIKeyInput: Binding<String>
   let shouldFocusInput: Bool
   let navigationRequestID: UUID
@@ -12,6 +11,7 @@ struct AIKeychainSection: View {
   let tokenAvailability: KeychainTokenAvailability
   let actionMessage: String?
   let onSaveAPIKey: () -> Bool
+  let onContinueAfterSave: () -> Void
   let onDeleteAPIKey: () -> Void
   let onRefreshState: () -> Void
   let onChangeStorageMode: @MainActor @Sendable (AICredentialStorageMode) -> Void
@@ -24,18 +24,22 @@ struct AIKeychainSection: View {
 
   var body: some View {
     Section(String(localized: "API Key 凭据")) {
-      Picker("保存位置", selection: storageModeBinding) {
-        ForEach(AICredentialStorageMode.allCases) { mode in
-          Text(storageModeTitle(mode)).tag(mode)
+      LabeledContent("保存位置", value: storageModeTitle(storageMode))
+      DisclosureGroup("更改保存位置") {
+        Picker("保存位置", selection: storageModeBinding) {
+          ForEach(AICredentialStorageMode.allCases) { mode in
+            Text(storageModeTitle(mode)).tag(mode)
+          }
         }
+        .accessibilityLabel("AI API Key 保存位置")
+        .accessibilityHint("只更改当前连接的保存位置，不迁移已有密钥")
+        .accessibilityIdentifier("settings-ai-key-storage-mode")
       }
-      .accessibilityLabel("AI API Key 保存位置")
-      .accessibilityHint("只有选择系统钥匙串后，AI 功能才会访问钥匙串中的 API Key")
 
       Text(
         String(
           localized:
-            "此保存模式是所有 AI API 连接共用的全局偏好。切换位置不会静默读取、复制或删除其他位置的旧凭据；请在目标位置重新保存。"
+            "保存位置仅适用于当前连接，其他连接不受影响。切换位置不会读取、复制、迁移或删除旧位置的密钥；请在目标位置重新保存。"
         )
       )
       .font(.callout)
@@ -47,10 +51,12 @@ struct AIKeychainSection: View {
             .focused($isAPIKeyFocused)
             .font(.body.monospaced())
             .accessibilityLabel("AI API Key")
+            .accessibilityIdentifier("settings-ai-key-input")
         } else {
           SecureField("API Key", text: aiAPIKeyInput)
             .focused($isAPIKeyFocused)
             .accessibilityLabel("AI API Key")
+            .accessibilityIdentifier("settings-ai-key-input")
         }
 
         Button {
@@ -75,29 +81,19 @@ struct AIKeychainSection: View {
       .accessibilityHint("输入后保存到\(storageModeTitle(storageMode))")
 
       HStack(alignment: .center, spacing: 10) {
-        Button(saveButtonTitle) {
-          aiAPIKeyInput.wrappedValue = Self.sanitizeAPIKey(aiAPIKeyInput.wrappedValue)
-          isJustSaved = false
-          saveFailureMessage = nil
-          guard onSaveAPIKey() else {
-            saveFailureMessage = String(
-              localized:
-                "保存失败：无法写入\(storageModeTitle(storageMode))。请检查存储权限后重试；输入内容仍保留。"
-            )
-            return
-          }
-          saveFeedbackResetTask?.cancel()
-          isJustSaved = true
-          saveFeedbackResetTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2.5))
-            guard !Task.isCancelled else { return }
-            isJustSaved = false
-            saveFeedbackResetTask = nil
-          }
+        Button("保存并继续") {
+          saveAPIKey(continuingSetup: true)
         }
         .workbenchProminentActionStyle()
         .disabled(aiAPIKeyInput.wrappedValue.trimmedForPublishing.isEmpty)
         .accessibilityLabel("保存 AI API Key")
+        .accessibilityIdentifier("settings-ai-key-save-continue")
+
+        Button(saveButtonTitle) {
+          saveAPIKey(continuingSetup: false)
+        }
+        .disabled(aiAPIKeyInput.wrappedValue.trimmedForPublishing.isEmpty)
+        .accessibilityIdentifier("settings-ai-key-save")
 
         if isJustSaved {
           AccessibleStatusMessage(
@@ -174,16 +170,20 @@ struct AIKeychainSection: View {
       HStack(spacing: 6) {
         Image(systemName: storageModeSystemImage)
           .font(.caption)
-          .foregroundStyle(workbenchAccentColor)
+          .foregroundStyle(.secondary)
         Text(storageModeExplanation)
           .font(.workbenchMetadata)
           .foregroundStyle(.secondary)
       }
-      .padding(.top, 4)
+      .padding(.top, WorkbenchSpacing.tight)
     }
     .task(id: navigationRequestID) {
       guard shouldFocusInput else { return }
       isAPIKeyFocused = true
+    }
+    .onDisappear {
+      saveFeedbackResetTask?.cancel()
+      saveFeedbackResetTask = nil
     }
     .confirmationDialog(
       "删除\(config.normalizedDisplayName) API Key？",
@@ -196,6 +196,31 @@ struct AIKeychainSection: View {
       Button("取消", role: .cancel) {}
     } message: {
       Text("删除后，使用当前服务的 AI 写作、对话和批量建议将不可用，直到重新保存 Key。")
+    }
+  }
+
+  func saveAPIKey(continuingSetup: Bool) {
+    isJustSaved = false
+    saveFailureMessage = nil
+    guard
+      AIAPIKeySaveAction.perform(
+        input: aiAPIKeyInput, save: onSaveAPIKey,
+        continueSetup: continuingSetup ? onContinueAfterSave : nil
+      )
+    else {
+      saveFailureMessage = String(
+        localized:
+          "保存失败：无法写入\(storageModeTitle(storageMode))。请检查存储权限后重试；输入内容仍保留。"
+      )
+      return
+    }
+    saveFeedbackResetTask?.cancel()
+    isJustSaved = true
+    saveFeedbackResetTask = Task { @MainActor in
+      try? await Task.sleep(for: .seconds(2.5))
+      guard !Task.isCancelled else { return }
+      isJustSaved = false
+      saveFeedbackResetTask = nil
     }
   }
 
@@ -217,7 +242,7 @@ struct AIKeychainSection: View {
     case .localFile:
       return String(localized: "本地配置文件（明文）")
     case .keychain:
-      return String(localized: "系统钥匙串（推荐，默认）")
+      return String(localized: "系统钥匙串（推荐）")
     case .session:
       return String(localized: "仅本次会话")
     }
@@ -287,6 +312,20 @@ struct AIKeychainSection: View {
       text = String(text.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
     }
     return text
+  }
+}
+
+enum AIAPIKeySaveAction {
+  /// Only successful storage consumes the input or advances the form. The
+  /// continuation navigates locally; it must not grant consent or send requests.
+  @MainActor static func perform(
+    input: Binding<String>, save: () -> Bool, continueSetup: (() -> Void)?
+  ) -> Bool {
+    input.wrappedValue = AIKeychainSection.sanitizeAPIKey(input.wrappedValue)
+    guard save() else { return false }
+    input.wrappedValue = ""
+    continueSetup?()
+    return true
   }
 }
 

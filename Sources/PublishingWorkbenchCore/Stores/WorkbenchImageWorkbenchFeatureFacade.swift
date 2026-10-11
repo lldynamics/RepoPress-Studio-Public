@@ -119,10 +119,6 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
     assetResourceOperationStatesByProfileID[profileID]?.presentation
   }
 
-  public func assetResourceOperationTitle(for profileID: UUID) -> String? {
-    assetResourceOperationStatesByProfileID[profileID]?.title
-  }
-
   public var assetResourceOperationTaskDescriptors: [AssetResourceOperationTaskDescriptor] {
     assetResourceOperationStatesByProfileID.compactMap { profileID, state in
       guard let title = state.title, let presentation = state.presentation else { return nil }

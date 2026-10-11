@@ -3,6 +3,22 @@ import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
 
+struct WorkspaceImageInspectorNavigationObserver: ViewModifier {
+  @ObservedObject private var images: WorkbenchImageWorkbenchFeatureFacade
+  let onRequest: (ImageInspectorFocusRequest) -> Void
+
+  init(store: WorkbenchStore, onRequest: @escaping (ImageInspectorFocusRequest) -> Void) {
+    _images = ObservedObject(wrappedValue: store.imageWorkbench)
+    self.onRequest = onRequest
+  }
+
+  func body(content: Content) -> some View {
+    content.onChange(of: images.imageInspectorFocusRequest?.id) { _, _ in
+      if let request = images.imageInspectorFocusRequest { onRequest(request) }
+    }
+  }
+}
+
 struct WorkspaceShellSplitLayout: View {
   let store: WorkbenchStore
   let selectedSection: WorkspaceSection
@@ -11,8 +27,9 @@ struct WorkspaceShellSplitLayout: View {
   let isCompact: Bool
   let isFocusMode: Bool
   let isSidebarPresented: Bool
-  let showsCompactNavigationRail: Bool
   let isInspectorPresented: Bool
+  @Binding var selectedHealthIssue: ContentHealthIssueSelection?
+  let healthInspectorActions: ContentHealthInspectorActions
   @Binding var contentHealthFilter: ContentHealthContextFilter
   @Binding var imageWorkbenchContextStage: ImageWorkbenchContextStage
   let imageBrowserSession: RepositoryImageBrowserSession
@@ -25,6 +42,7 @@ struct WorkspaceShellSplitLayout: View {
   let onSelectSection: (WorkspaceSection) -> Void
   let onSelectDraft: (UUID?) -> Void
   let onFocusDraft: (UUID, WorkspaceSection) -> Void
+  let openTaskCenter: () -> Void
   @AppStorage("workspacePrimarySidebarWidthV2")
   private var storedSidebarWidth = Double(WorkbenchLayoutMode.defaultSidebarWidth)
   @State private var sidebarResizeStartWidth: CGFloat?
@@ -40,6 +58,8 @@ struct WorkspaceShellSplitLayout: View {
     isFocusMode: Bool,
     isInspectorPresented: Bool,
     contentHealthFilter: Binding<ContentHealthContextFilter>,
+    selectedHealthIssue: Binding<ContentHealthIssueSelection?>,
+    healthInspectorActions: ContentHealthInspectorActions,
     imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>,
     imageBrowserSession: RepositoryImageBrowserSession,
     repositoryContextStage: Binding<RepositoryContextStage>,
@@ -51,8 +71,8 @@ struct WorkspaceShellSplitLayout: View {
     onSelectSection: @escaping (WorkspaceSection) -> Void,
     onSelectDraft: @escaping (UUID?) -> Void,
     onFocusDraft: @escaping (UUID, WorkspaceSection) -> Void,
-    isSidebarPresented: Bool = true,
-    showsCompactNavigationRail: Bool = false
+    openTaskCenter: @escaping () -> Void,
+    isSidebarPresented: Bool = true
   ) {
     self.store = store
     self.selectedSection = selectedSection
@@ -61,9 +81,10 @@ struct WorkspaceShellSplitLayout: View {
     self.isCompact = isCompact
     self.isFocusMode = isFocusMode
     self.isSidebarPresented = isSidebarPresented
-    self.showsCompactNavigationRail = showsCompactNavigationRail
     self.isInspectorPresented = isInspectorPresented
     _contentHealthFilter = contentHealthFilter
+    _selectedHealthIssue = selectedHealthIssue
+    self.healthInspectorActions = healthInspectorActions
     _imageWorkbenchContextStage = imageWorkbenchContextStage
     self.imageBrowserSession = imageBrowserSession
     _repositoryContextStage = repositoryContextStage
@@ -75,6 +96,7 @@ struct WorkspaceShellSplitLayout: View {
     self.onSelectSection = onSelectSection
     self.onSelectDraft = onSelectDraft
     self.onFocusDraft = onFocusDraft
+    self.openTaskCenter = openTaskCenter
   }
 
   var body: some View {
@@ -85,11 +107,16 @@ struct WorkspaceShellSplitLayout: View {
 
   private func workspace(workspaceWidth: CGFloat) -> some View {
     HStack(spacing: 0) {
-      if showsCompactNavigationRail {
-        WorkspaceCompactNavigationRail(
+      if WorkspaceSidebarVisibilityPolicy.shouldShowNavigationRail(
+        isFocusMode: isFocusMode
+      ) {
+        WorkspacePrimaryNavigationRail(
+          store: store,
           selectedSection: selectedSection,
-          siteIssueCount: contentHealthSidebarProjection.knownIssueCount(for: store.activeProfile.id),
-          onSelectSection: onSelectSection
+          siteIssueCount: contentHealthSidebarProjection.knownIssueCount(
+            for: store.activeProfile.id),
+          onSelectSection: onSelectSection,
+          openTaskCenter: openTaskCenter
         )
 
         Divider()
@@ -126,6 +153,8 @@ struct WorkspaceShellSplitLayout: View {
         selectedSection: selectedSection,
         selectedDraftID: selectedDraftID,
         contentHealthFilter: $contentHealthFilter,
+        selectedHealthIssue: $selectedHealthIssue,
+        healthInspectorActions: healthInspectorActions,
         imageWorkbenchContextStage: $imageWorkbenchContextStage,
         imageBrowserSession: imageBrowserSession,
         repositoryContextStage: $repositoryContextStage,
@@ -151,11 +180,17 @@ struct WorkspaceShellSplitLayout: View {
   private func sidebarWidth(workspaceWidth: CGFloat) -> CGFloat {
     WorkbenchLayoutMode.sidebarWidth(
       storedWidth: CGFloat(storedSidebarWidth),
-      workspaceWidth: workspaceWidth,
+      workspaceWidth: workspaceWidth + (isInspectorPresented ? inspectorWidthBudget : 0),
       centerMinimumWidth: centerMinimumWidth,
-      inspectorPresented: isInspectorPresented
+      inspectorPresented: isInspectorPresented,
+      inspectorMinimumWidth: inspectorWidthBudget
     )
   }
+
+  /// `workspaceWidth` is measured beside the Inspector, so the same budget is
+  /// added back and subtracted again: the sidebar only yields to the center
+  /// minimum, whatever width the user dragged the Inspector to.
+  private var inspectorWidthBudget: CGFloat { WorkbenchLayoutMode.inspectorIdealWidth }
 
   private var centerMinimumWidth: CGFloat {
     return isCompact ? 460 : 560
@@ -164,9 +199,10 @@ struct WorkspaceShellSplitLayout: View {
   private func sidebarMaximumWidth(workspaceWidth: CGFloat) -> CGFloat {
     WorkbenchLayoutMode.sidebarWidth(
       storedWidth: 380,
-      workspaceWidth: workspaceWidth,
+      workspaceWidth: workspaceWidth + (isInspectorPresented ? inspectorWidthBudget : 0),
       centerMinimumWidth: centerMinimumWidth,
-      inspectorPresented: isInspectorPresented
+      inspectorPresented: isInspectorPresented,
+      inspectorMinimumWidth: inspectorWidthBudget
     )
   }
 

@@ -114,10 +114,6 @@ public struct PrivacyProtectionEvent: Identifiable, Codable, Hashable, Sendable 
     self.message = message
     self.createdAt = createdAt
   }
-
-  public var checklistLine: String {
-    "- \(kind.displayName)：\(message)"
-  }
 }
 
 public struct PrivacyProtectionStatus: Hashable, Sendable {

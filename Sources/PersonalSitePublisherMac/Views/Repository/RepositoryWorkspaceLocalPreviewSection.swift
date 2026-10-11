@@ -160,7 +160,7 @@ extension RepositoryWorkspaceView {
             .lineLimit(8)
           }
         }
-        .padding(10)
+        .padding(WorkbenchSpacing.card)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
           WorkbenchBackgroundStyle.control,
@@ -169,7 +169,7 @@ extension RepositoryWorkspaceView {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("repository-preview-diagnostics")
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
       .background(
         WorkbenchBackgroundStyle.card,
         in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)

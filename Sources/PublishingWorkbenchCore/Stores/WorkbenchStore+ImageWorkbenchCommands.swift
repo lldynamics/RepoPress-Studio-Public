@@ -58,14 +58,6 @@ extension WorkbenchStore {
     imageStore.cachedImageWorkbenchSiteSummary()
   }
 
-  public var isImageWorkbenchSiteSummaryLoading: Bool {
-    imageStore.isSiteSummaryLoading
-  }
-
-  public var imageWorkbenchSiteSummaryErrorMessage: String? {
-    imageStore.siteSummaryErrorMessage
-  }
-
   public func refreshImageWorkbenchSiteSummaryInBackground(force: Bool = false) async {
     await imageStore.refreshImageWorkbenchSiteSummaryInBackground(force: force)
     invalidateDraftTaskQueueStateCache()

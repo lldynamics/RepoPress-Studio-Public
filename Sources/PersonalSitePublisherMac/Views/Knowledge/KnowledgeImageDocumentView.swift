@@ -16,7 +16,7 @@ struct KnowledgeImageDataThumbnailView: View {
 
   var body: some View {
     ZStack {
-      RoundedRectangle(cornerRadius: 7, style: .continuous)
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control, style: .continuous)
         .fill(.quaternary)
       if let image {
         Image(decorative: image.value, scale: 1)
@@ -27,7 +27,7 @@ struct KnowledgeImageDataThumbnailView: View {
           .foregroundStyle(.secondary)
       }
     }
-    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+    .clipShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control, style: .continuous))
     .task(id: requestID) {
       let decoded = await Self.decodeThumbnail(data: data, maximumPixelSize: 160)
       guard !Task.isCancelled else { return }
@@ -78,13 +78,14 @@ struct KnowledgeDocumentThumbnailView: View {
         WorkbenchThumbnailView(
           fileURL: fileURL,
           maxPixelSize: WorkbenchThumbnailSizing.listMaxPixelSize,
-          cornerRadius: 6
+          cornerRadius: WorkbenchCornerRadius.control
         )
       } else {
         Image(systemName: "photo")
           .foregroundStyle(.secondary)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
-          .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+          .background(
+            .quaternary, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
       }
     }
     .frame(width: 38, height: 38)
@@ -122,7 +123,7 @@ struct KnowledgeImageDocumentView: View {
       imageToolbar
 
       ZStack {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
+        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel, style: .continuous)
           .fill(.quaternary.opacity(0.45))
 
         if isLoading {
@@ -302,10 +303,10 @@ struct KnowledgeImageDocumentView: View {
             .frame(width: scaledSize.width, height: scaledSize.height)
 
           if let highlightedAnchor {
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
+            RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge, style: .continuous)
               .fill(workbenchAccentColor.opacity(0.16))
               .overlay {
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge, style: .continuous)
                   .stroke(workbenchAccentColor, lineWidth: 3)
               }
               .frame(

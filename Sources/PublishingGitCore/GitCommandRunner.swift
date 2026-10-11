@@ -134,141 +134,7 @@ public struct GitCommandRunner: Sendable {
     GitCommandLogRedactor.redactedDiagnosticText(text)
   }
 
-  @available(
-    *, noasync,
-    message: "Use runAsync instead in async contexts to avoid blocking cooperative thread pool"
-  )
-  public func run(
-    _ arguments: [String],
-    rootURL: URL,
-    inputLines: [String]? = nil,
-    inputDelimiter: GitCommandInputDelimiter = .newline,
-    preserveStandardOutputWhitespace: Bool = false,
-    acceptExistingCommitMessage: Bool = false,
-    environmentOverrides: [String: String] = [:]
-  ) -> GitCommandResult {
-    GitPipeSignalPolicy.install()
-    if let reason = Self.repositoryConfigurationBlockReason(rootURL: rootURL) {
-      return Self.blockedConfigurationResult(reason)
-    }
-    let process = Process()
-    process.executableURL = executableURL
-    process.arguments = ["-C", rootURL.path] + arguments
-    var environment = Self.isolatedGitEnvironment()
-    if acceptExistingCommitMessage {
-      // `git rebase --continue` may open the existing commit message even
-      // though the user already reviewed it. `/usr/bin/true` accepts that
-      // frozen message without enabling an arbitrary configured editor.
-      environment["GIT_EDITOR"] = "/usr/bin/true"
-    }
-    // A narrow caller-owned overlay supports isolated Git state such as a
-    // temporary index without exposing the host process environment.
-    for (key, value) in environmentOverrides where key == "GIT_INDEX_FILE" {
-      environment[key] = value
-    }
-    process.environment = environment
-
-    let outputPipe = Pipe()
-    let errorPipe = Pipe()
-    process.standardOutput = outputPipe
-    process.standardError = errorPipe
-    let outputCollector = BoundedOutputCollector(limit: maximumOutputBytes)
-    let drainCoordinator = GitPipeDrainCoordinator()
-    installDrainHandler(
-      on: outputPipe.fileHandleForReading,
-      stream: .standardOutput,
-      collector: outputCollector,
-      coordinator: drainCoordinator
-    )
-    installDrainHandler(
-      on: errorPipe.fileHandleForReading,
-      stream: .standardError,
-      collector: outputCollector,
-      coordinator: drainCoordinator
-    )
-
-    let inputData = standardInputData(
-      lines: inputLines,
-      delimiter: inputDelimiter
-    )
-    let inputPipe = Pipe()
-    if inputData != nil {
-      process.standardInput = inputPipe
-    }
-
-    let completed = DispatchSemaphore(value: 0)
-    let inputWriteCompleted = DispatchSemaphore(value: 0)
-    let inputWriteOutcome = GitInputWriteOutcome()
-    process.terminationHandler = { _ in
-      completed.signal()
-    }
-
-    do {
-      try process.run()
-      let deadline = DispatchTime.now() + timeout
-      // Process owns duplicated write descriptors after launch. Closing our
-      // copies lets the drainers observe EOF as soon as Git exits.
-      outputPipe.fileHandleForWriting.closeFile()
-      errorPipe.fileHandleForWriting.closeFile()
-      if let inputData {
-        inputPipe.fileHandleForReading.closeFile()
-        GitStandardInputWriter(data: inputData, handle: inputPipe.fileHandleForWriting)
-          .start { errorMessage in
-            inputWriteOutcome.record(errorMessage)
-            inputWriteCompleted.signal()
-          }
-      }
-      let processFinished = completed.wait(timeout: deadline) == .success
-      if !processFinished {
-        if process.isRunning { process.terminate() }
-        if completed.wait(timeout: .now() + 1) == .timedOut {
-          #if canImport(Darwin)
-            Darwin.kill(process.processIdentifier, SIGKILL)
-          #endif
-          _ = completed.wait(timeout: .now() + 1)
-        }
-      }
-
-      let inputFinished =
-        inputData == nil
-        || inputWriteCompleted.wait(
-          timeout: processFinished ? deadline : .now() + 1
-        ) == .success
-      if !inputFinished {
-        inputWriteOutcome.record("stdin writer did not finish before the command timeout")
-      }
-
-      return result(
-        process: process,
-        outputPipe: outputPipe,
-        errorPipe: errorPipe,
-        outputCollector: outputCollector,
-        drainCoordinator: drainCoordinator,
-        arguments: arguments,
-        preserveStandardOutputWhitespace: preserveStandardOutputWhitespace,
-        didFinish: processFinished && inputFinished,
-        inputWriteError: inputWriteOutcome.errorMessage
-      )
-    } catch {
-      outputPipe.fileHandleForReading.readabilityHandler = nil
-      errorPipe.fileHandleForReading.readabilityHandler = nil
-      drainCoordinator.stopAndWait()
-      outputPipe.fileHandleForWriting.closeFile()
-      errorPipe.fileHandleForWriting.closeFile()
-      if inputData != nil {
-        inputPipe.fileHandleForReading.closeFile()
-        inputPipe.fileHandleForWriting.closeFile()
-      }
-      return GitCommandResult(
-        terminationStatus: 127,
-        standardOutput: "",
-        standardError: error.localizedDescription
-      )
-    }
-
-  }
-
-  private func result(
+  func result(
     process: Process,
     outputPipe: Pipe,
     errorPipe: Pipe,
@@ -363,7 +229,7 @@ public struct GitCommandRunner: Sendable {
       })
   }
 
-  private func installDrainHandler(
+  func installDrainHandler(
     on handle: FileHandle,
     stream: GitOutputStream,
     collector: BoundedOutputCollector,
@@ -395,7 +261,7 @@ public struct GitCommandRunner: Sendable {
     return chunks.joined(separator: "\n")
   }
 
-  private func standardInputData(
+  func standardInputData(
     lines: [String]?,
     delimiter: GitCommandInputDelimiter
   ) -> Data? {
@@ -444,7 +310,7 @@ public struct GitCommandRunner: Sendable {
     cachedIsolatedGitEnvironment
   }
 
-  private static func blockedConfigurationResult(_ reason: String) -> GitCommandResult {
+  static func blockedConfigurationResult(_ reason: String) -> GitCommandResult {
     GitCommandResult(
       terminationStatus: 126,
       standardOutput: "",
@@ -457,7 +323,7 @@ public struct GitCommandRunner: Sendable {
   /// This intentionally parses the files directly: invoking `git config` to
   /// inspect them would first honor the same include and executable settings
   /// that this gate is meant to protect.
-  private static func repositoryConfigurationBlockReason(rootURL: URL) -> String? {
+  static func repositoryConfigurationBlockReason(rootURL: URL) -> String? {
     let fileManager = FileManager.default
     let root = rootURL.standardizedFileURL
     let gitEntryURL = root.appendingPathComponent(".git")
@@ -737,7 +603,7 @@ public struct GitCommandRunner: Sendable {
   }
 }
 
-private enum GitPipeSignalPolicy {
+enum GitPipeSignalPolicy {
   private static let installed: Void = {
     #if canImport(Darwin)
       _ = Darwin.signal(SIGPIPE, SIG_IGN)
@@ -749,7 +615,7 @@ private enum GitPipeSignalPolicy {
   }
 }
 
-private final class GitInputWriteOutcome: Sendable {
+final class GitInputWriteOutcome: Sendable {
   private let recordedError = OSAllocatedUnfairLock<String?>(initialState: nil)
 
   func record(_ errorMessage: String?) {
@@ -763,7 +629,7 @@ private final class GitInputWriteOutcome: Sendable {
   }
 }
 
-private final class GitStandardInputWriter: @unchecked Sendable {
+final class GitStandardInputWriter: @unchecked Sendable {
   private let data: Data
   private let handle: FileHandle
 
@@ -1068,7 +934,7 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
   }
 }
 
-private enum GitOutputStream {
+enum GitOutputStream {
   case standardOutput
   case standardError
 }
@@ -1077,7 +943,7 @@ private enum GitOutputStream {
 /// `readabilityHandler` does not cancel a callback that is already running. If
 /// that callback has consumed the final bytes but has not appended them yet,
 /// reading the collector immediately can lose short-lived command output.
-private final class GitPipeDrainCoordinator: @unchecked Sendable {
+final class GitPipeDrainCoordinator: @unchecked Sendable {
   private let condition = NSCondition()
   private var acceptsNewDrains = true
   private var activeDrainCount = 0
@@ -1301,7 +1167,7 @@ private enum GitCommandLogRedactor {
   }
 }
 
-private final class BoundedOutputCollector: Sendable {
+final class BoundedOutputCollector: Sendable {
   private struct State: Sendable {
     var standardOutput = Data()
     var standardError = Data()

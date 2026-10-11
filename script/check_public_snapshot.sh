@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+REMOTE_HISTORY_ONLY=0
+if [[ "${1:-}" == "--remote-history" ]]; then
+  REMOTE_HISTORY_ONLY=1
+  shift
+  [[ "$#" -eq 1 ]] || {
+    echo "usage: check_public_snapshot.sh --remote-history <public-git-checkout>" >&2
+    exit 2
+  }
+fi
 ROOT_INPUT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 [[ -d "$ROOT_INPUT" ]] || {
   echo "public snapshot gate: directory is missing: $ROOT_INPUT" >&2
@@ -21,6 +30,66 @@ fail() {
   echo "public snapshot gate: $*" >&2
   exit 1
 }
+
+check_git_history() {
+  local private_path=""
+  local objects=""
+  local object=""
+  local object_path=""
+  local historical_private_paths=()
+  for private_path in \
+    RELEASE_CHECKLIST.md \
+    APP_STORE_CHECKLIST.md \
+    README.public.md \
+    BrowserExtension/release-ledger.json \
+    docs/private-release \
+    docs/release-screenshots \
+    docs/app-store \
+    docs/app-store-screenshots \
+    docs/browser-extension-store-assets \
+    docs/release-evidence; do
+    objects="$(git -C "$ROOT_DIR" rev-list --objects --all -- "$private_path" 2>/dev/null)" \
+      || fail "Git history traversal failed; history was not verified"
+    while IFS= read -r object; do
+      # Commit/tree refs can produce object IDs without a path even for an
+      # absent pathspec. Only named objects prove that this path is reachable.
+      [[ "$object" == *' '* ]] || continue
+      object_path="${object#* }"
+      if [[ "$object_path" == "$private_path" || "$object_path" == "$private_path/"* ]]; then
+        historical_private_paths+=("$private_path")
+        break
+      fi
+    done <<<"$objects"
+  done
+  if [[ "${#historical_private_paths[@]}" -gt 0 ]]; then
+    printf 'public snapshot gate: private path is reachable from Git history:\n' >&2
+    printf '  - %s\n' "${historical_private_paths[@]}" >&2
+    return 1
+  fi
+}
+
+if [[ "$REMOTE_HISTORY_ONLY" == "1" ]]; then
+  ROOT_DIR="$(git -C "$ROOT_DIR" rev-parse --show-toplevel 2>/dev/null)" \
+    || fail "public history preflight requires a Git checkout"
+  git -C "$ROOT_DIR" rev-parse --verify HEAD >/dev/null 2>&1 \
+    || fail "public history preflight requires a committed Git checkout"
+  fetch_options=(--prune --no-tags --no-recurse-submodules)
+  if [[ "$(git -C "$ROOT_DIR" rev-parse --is-shallow-repository)" == "true" ]]; then
+    fetch_options+=(--unshallow)
+  fi
+  # Refresh every remote branch and tag, including histories absent from a
+  # single-branch clone. Tags use a separate tracking namespace; local tags
+  # and branch checkouts are not rewritten. Never change the remote history.
+  git -C "$ROOT_DIR" fetch "${fetch_options[@]}" origin \
+    '+refs/heads/*:refs/remotes/origin/*' \
+    '+refs/tags/*:refs/remotes/public-snapshot-tags/*' >/dev/null 2>&1 \
+    || fail "public remote refs could not be refreshed; history was not verified"
+  [[ "$(git -C "$ROOT_DIR" rev-parse --is-shallow-repository)" == "false" ]] \
+    || fail "public remote history remains shallow; history was not verified"
+  check_git_history
+  echo "public snapshot gate: all remote branch and tag histories passed"
+  exit 0
+fi
 
 relative_path() {
   local file_name="$1"
@@ -141,27 +210,7 @@ if [[ "${#workflow_files[@]}" -ne 1 || "${workflow_files[0]}" != ".github/workfl
 fi
 
 if git -C "$ROOT_DIR" rev-parse --verify HEAD >/dev/null 2>&1; then
-  historical_private_paths=()
-  for private_path in \
-    RELEASE_CHECKLIST.md \
-    APP_STORE_CHECKLIST.md \
-    README.public.md \
-    BrowserExtension/release-ledger.json \
-    docs/private-release \
-    docs/release-screenshots \
-    docs/app-store \
-    docs/app-store-screenshots \
-    docs/browser-extension-store-assets \
-    docs/release-evidence; do
-    if [[ -n "$(git -C "$ROOT_DIR" rev-list --objects --all -- "$private_path" 2>/dev/null)" ]]; then
-      historical_private_paths+=("$private_path")
-    fi
-  done
-  if [[ "${#historical_private_paths[@]}" -gt 0 ]]; then
-    printf 'public snapshot gate: private path is reachable from Git history:\n' >&2
-    printf '  - %s\n' "${historical_private_paths[@]}" >&2
-    exit 1
-  fi
+  check_git_history
 fi
 
 blocked_files=()

@@ -89,10 +89,11 @@ extension WorkbenchStore {
       else {
         return report
       }
-      self.siteLinkAuditSnapshotStore.replace(report, for: key)
+      self.replaceSiteLinkAuditSnapshotIfCurrent(
+        report, key: key, drafts: drafts, profile: profile
+      )
       self.siteLinkAuditRefreshTask = nil
       self.siteLinkAuditRefreshKey = nil
-      self.invalidateDraftTaskQueueStateCache()
       return report
     }
   }
@@ -145,7 +146,12 @@ extension WorkbenchStore {
     guard siteLinkAuditKey(drafts: drafts, profile: profile) == key,
       hasCurrentSiteLinkAuditInputs(drafts: drafts, profile: profile)
     else { return }
+    // A scoped preflight can supply the shared report too. Match the async
+    // link-audit path's task notification, without rewriting a warm report
+    // when another article uses the same site inputs.
+    guard siteLinkAuditSnapshotStore.report(for: key) == nil else { return }
     siteLinkAuditSnapshotStore.replace(report, for: key)
+    invalidateDraftTaskQueueStateCache()
   }
 
   func invalidateSiteLinkAuditSnapshot() {
@@ -153,5 +159,8 @@ extension WorkbenchStore {
     siteLinkAuditRefreshTask = nil
     siteLinkAuditRefreshKey = nil
     siteLinkAuditSnapshotStore.invalidate()
+    if !publishingStore.publishSession.draftPreflightInputCancellables.isEmpty {
+      publishingStore.publishSession.invalidateDraftPreflightInputs()
+    }
   }
 }

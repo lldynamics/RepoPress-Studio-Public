@@ -322,6 +322,7 @@ extension DraftListFilter {
     case .checkFailed: "display.draft-list-filter.check-failed"
     case .ready: "display.draft-list-filter.ready"
     case .published: "display.draft-list-filter.published"
+    case .localOnly: "display.draft-list-filter.local-only"
     case .privateArticles: "display.draft-list-filter.private-articles"
     }
   }

@@ -395,4 +395,40 @@ final class FirstRunSetupPresentationTests: XCTestCase {
     XCTAssertEqual(store.selectedSection, WorkspaceSection.writing)
     XCTAssertTrue(store.selectedDraft?.isGeneralDraft == true)
   }
+
+  @MainActor
+  func testLocalDraftWorkspaceReusesLegacyPlaceholderDraft() throws {
+    let fileURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("FirstRunLegacyDrafts-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: fileURL))
+    var initial = try XCTUnwrap(store.selectedDraft)
+    initial.bodyMarkdown = "# 未命名文章\n\n从这里开始写作。\n"
+    store.updateDraft(initial)
+
+    store.prepareLocalDraftWorkspace()
+
+    XCTAssertEqual(store.profiles.count, 1)
+    XCTAssertTrue(store.drafts.first { $0.id == initial.id }?.isGeneralDraft == true)
+  }
+
+  @MainActor
+  func testLocalDraftWorkspacePreservesUserEditedInitialBodyAndSite() throws {
+    let fileURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("FirstRunEditedDrafts-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: fileURL))
+    let profileID = store.activeProfileID
+    var initial = try XCTUnwrap(store.selectedDraft)
+    initial.bodyMarkdown = "My first paragraph"
+    store.updateDraft(initial)
+
+    store.prepareLocalDraftWorkspace()
+
+    XCTAssertEqual(store.profiles.count, 2)
+    let preserved = try XCTUnwrap(store.drafts.first { $0.id == initial.id })
+    XCTAssertEqual(preserved.bodyMarkdown, "My first paragraph")
+    XCTAssertEqual(preserved.siteProfileID, profileID)
+    XCTAssertFalse(preserved.isGeneralDraft)
+  }
 }

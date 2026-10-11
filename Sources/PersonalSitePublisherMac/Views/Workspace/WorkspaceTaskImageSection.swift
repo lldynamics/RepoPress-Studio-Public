@@ -168,7 +168,7 @@ private struct ImageMetadataEditorRow: View {
         .toggleStyle(.checkbox)
         .controlSize(.small)
     }
-    .padding(8)
+    .padding(WorkbenchSpacing.control)
     .background(
       isFocused ? workbenchAccentColor.opacity(0.10) : Color.clear,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)

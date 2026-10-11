@@ -11,7 +11,7 @@ extension ArticleDraft {
       tags: profile.defaultTags,
       categories: profile.defaultCategories,
       authors: profile.defaultAuthor.nilIfEmpty.map { [$0] } ?? [],
-      bodyMarkdown: "# 未命名文章\n\n从这里开始写作。\n"
+      bodyMarkdown: ""
     )
   }
 
@@ -23,7 +23,7 @@ extension ArticleDraft {
       title: "未命名草稿",
       date: now,
       slug: SlugService.fallbackSlug(date: now),
-      bodyMarkdown: "# 未命名草稿\n\n从这里开始写作。\n"
+      bodyMarkdown: ""
     )
   }
 
@@ -63,7 +63,7 @@ extension ArticleDraft {
     }
   }
 
-  public static let currentSoftwareGuideSeedVersion = 10
+  public static let currentSoftwareGuideSeedVersion = 11
 
   public struct SoftwareGuideSynchronizationResult: Sendable {
     public let drafts: [ArticleDraft]
@@ -271,14 +271,12 @@ extension ArticleDraft {
       categories: ["指南"],
       summary: "认识顶部状态区、工作区导航、文章范围和详情栏，并按推荐顺序完成第一次安全发布。",
       bodyMarkdown: """
-        # 开始使用：认识发布工作台
-
         欢迎使用 RepoPress Studio。你正在阅读的“使用指南”默认位于通用草稿（General Drafts），不会自动发布，也没有仓库写入路径。可以直接阅读、复制，或移到回收站；如果准备改写成自己的操作手册，建议先复制一份。
 
         ## 顶部：先看站点、状态和入口
 
         - **站点切换与本地预览**：确认正在编辑哪个网站，并打开本地预览。
-        - **发布状态**：汇总仓库、当前文章和部署状态；点击后可进入对应页面或打开发布流程。
+        - **发布**：右上角的主按钮，数字表示当前文章待处理的检查项；点击后在右侧检查器打开“发布检查”。
         - **全局搜索（⇧⌘K）**：搜索草稿、标签和应用指令。
         - **直接操作按钮**：常用功能直接显示；在“写作”中可打开 AI 助手或右侧检查器。
 
@@ -296,8 +294,8 @@ extension ArticleDraft {
         1. 已有网站时，在“站点”选择本地仓库，并确认站点类型、分支、文章目录和图片目录。
         2. 还没有网站时，选择“暂不配置站点”；以后准备好仓库后再连接站点。
         3. 回到“写作”，新建或导入文章，补全标题、摘要、slug、标签和分类。
-        4. 在“站点 → 站点检查”修复阻断问题，然后打开顶部“发布状态”。
-        5. 在“准备发布”面板审阅检查与差异，选择“保存到本地”或“发布所有变更”。
+        4. 在“站点 → 站点检查”修复阻断问题，然后点击右上角“发布”。
+        5. 在右侧“发布检查”中审阅检查与差异，选择“保存到本地”或发布。
         6. 发布后到“发布记录”核对提交、PR/MR、自动化任务和部署结果。
 
         > 安全练习：修改本段文字，再打开右侧检查器查看文章信息。只要不执行保存或发布动作，仓库不会发生变化。
@@ -312,8 +310,6 @@ extension ArticleDraft {
       categories: ["指南"],
       summary: "选择文章范围，新建 Markdown 草稿，补全元数据，并通过预览、检查与版本记录完成一篇文章。",
       bodyMarkdown: """
-        # 写作与预览：完成第一篇文章
-
         ## 1. 先选文章范围
 
         在“当前站点”中新建的文章属于当前网站，可以进入发布流程；在“通用草稿”中新建的是通用草稿，适合跨网站积累提纲和素材。确认范围后，点击文章列表上方的 **＋**。
@@ -346,8 +342,6 @@ extension ArticleDraft {
       categories: ["指南"],
       summary: "配置自己的 API 与模型，在当前文章或通用上下文中使用 AI，并管理多个可分支、可归档的对话。",
       bodyMarkdown: """
-        # AI 助手：配置模型与管理多个对话
-
         AI 写作辅助和自定义 API 在独立免费版中直接开放。RepoPress Studio 不提供共享测试密钥，也不按请求次数收费；API 用量和费用由你选择的服务商决定。
 
         ## 1. 配置服务商
@@ -386,8 +380,6 @@ extension ArticleDraft {
       categories: ["指南"],
       summary: "导入本地文档或网页地址，建立可搜索、可引用且保留来源的长期资料库。",
       bodyMarkdown: """
-        # 资料库：整理并引用长期资料
-
         资料库适合保存研究材料、参考文档和长期笔记。它与文章草稿分开管理，因此你可以先整理来源，再决定哪些内容值得写进文章。
 
         ## 导入本地资料
@@ -424,8 +416,6 @@ extension ArticleDraft {
       categories: ["指南"],
       summary: "配置仓库后按“检查 → 保存到本地 / 发布上线”完成发布，并在最终确认前审阅完整差异。",
       bodyMarkdown: """
-        # 安全发布：连接仓库、检查并提交
-
         最新发布流程集中回答两个问题：文件是否安全，以及这次只保存到本地还是发布上线。分支、远端、同步、历史和部署管理统一放在“站点”页面。
 
         ## 1. 配置站点
@@ -436,9 +426,9 @@ extension ArticleDraft {
 
         ## 2. 打开统一发布流程
 
-        点击顶部“发布状态”并进入发布。抽屉会自动执行文章检查和文件预览：
+        点击右上角“发布”，右侧检查器会切到“发布检查”，并自动执行文章检查和文件预览：
 
-        1. 先看“发布准备”中的文件变化、阻断问题和提醒。
+        1. 先看“需要处理”中的阻断问题和提醒，以及变更内容。
         2. 有问题时先修复；不要通过最终确认绕过阻断项。
         3. 展开“检查文件变化”，审阅全部检查结果和逐文件 Diff。
         4. 最后再选择具体操作。
@@ -465,8 +455,6 @@ extension ArticleDraft {
       categories: ["指南"],
       summary: "用图片工作台、内容检查、维护报告和版本历史保持网站长期清晰、稳定、可恢复。",
       bodyMarkdown: """
-        # 发布之后：图片、维护与版本恢复
-
         一个可靠的网站需要持续维护，而不只是完成一次发布。
 
         ## 图片
@@ -504,8 +492,6 @@ extension ArticleDraft {
       summary:
         "Learn the top status area, workspace navigation, draft scopes, and the recommended path to a safe first release.",
       bodyMarkdown: """
-        # Getting Started: Meet Your Publishing Workbench
-
         Welcome to RepoPress Studio. These Guide articles live in General Drafts by default. They are never published automatically and have no repository write path. Read, duplicate, or move them to the recycle bin. If you want to turn one into your own runbook, duplicate it first.
 
         ## Top bar: site, status, and entry points
@@ -546,8 +532,6 @@ extension ArticleDraft {
       summary:
         "Choose a draft scope, write in Markdown, complete metadata, and use previews, checks, and versions to finish an article.",
       bodyMarkdown: """
-        # Writing and Preview: Finish Your First Article
-
         ## 1. Choose the draft scope
 
         Articles created under Current Site belong to the active site and can enter publishing. General Drafts are reusable drafts for outlines and material shared across sites. Choose the scope, then click **＋** above the article list.
@@ -581,8 +565,6 @@ extension ArticleDraft {
       summary:
         "Configure your own API and model, use article or general context, and manage multiple conversations with branches and archives.",
       bodyMarkdown: """
-        # AI Assistant: Choose Models and Manage Conversations
-
         AI writing tools and custom APIs are available directly in the free standalone edition. RepoPress Studio does not provide a shared test key or charge per request; usage and billing come from the provider you configure.
 
         ## 1. Configure a provider
@@ -622,8 +604,6 @@ extension ArticleDraft {
       summary:
         "Import local documents or webpage URLs to build a searchable, citable library with clear provenance.",
       bodyMarkdown: """
-        # Library: Organize and Cite Long-Term Sources
-
         The Library is for research material, reference documents, and long-lived notes. It is separate from article drafts, so you can organize evidence before deciding what belongs in a post.
 
         ## Import local material
@@ -661,8 +641,6 @@ extension ArticleDraft {
       summary:
         "Configure a repository, follow Check → Save Locally or Publish Online, and review the complete diff before final confirmation.",
       bodyMarkdown: """
-        # Safe Publishing: Connect, Review, and Commit
-
         The current publishing flow answers two questions: are the files safe, and should this operation only save locally or go online? Branch, remote, synchronization, history, and deployment management live in Repository & Publish.
 
         ## 1. Configure the site
@@ -703,8 +681,6 @@ extension ArticleDraft {
       summary:
         "Use image tools, content checks, maintenance reports, and version history to keep the site clear and recoverable.",
       bodyMarkdown: """
-        # After Publishing: Images, Maintenance, and Recovery
-
         A dependable site needs ongoing care, not just a successful first release.
 
         ## Images

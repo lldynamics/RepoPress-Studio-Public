@@ -71,7 +71,7 @@ struct FirstRunRepositoryHandoffView: View {
         }
       }
     }
-    .padding(24)
+    .padding(WorkbenchSpacing.spacious)
     .frame(width: 520, alignment: .leading)
     .fixedSize(horizontal: false, vertical: true)
     .accessibilityElement(children: .contain)

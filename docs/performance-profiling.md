@@ -35,6 +35,18 @@ article content or search ranking:
   retries if the previous decode is already cancelling. The limits are owned by
   that implementation. A large grid may show placeholders while work is queued;
   original image files are not changed.
+- RSS cover thumbnails also have a total retained-byte budget in addition to
+  their entry limit. Hits refresh LRU order; a cover larger than the budget is
+  delivered to its current consumers without being retained.
+- The application listens for macOS memory-pressure changes. Warning or critical
+  pressure releases rebuildable RSS, workbench and inline-attachment image
+  caches and semantic-vector snapshots, and pauses retention until normal
+  pressure returns. Active and queued work still delivers its results; searches
+  retain their ranking and permissions. A knowledge library opened later inherits
+  the current policy without pressure handling opening a database itself.
+  Monotonic policy generations reject stale asynchronous updates. These changes
+  bound retained cache memory; matching Release footprint measurements are still
+  required to establish an overall memory reduction.
 - RSS header searches can stop during database-lock waits and SQLite execution.
   The cancellation handler is scoped to read queries and removed before the
   connection is reused. Write transactions retain their existing semantics.
@@ -87,6 +99,13 @@ article content or search ranking:
   and schedule the existing delayed background full scan. Subsequent edits
   cannot reuse that stale incremental base; generation and document mapping
   checks still reject an obsolete full result.
+  `MarkdownEditorStatisticsSession` owns the cache, delayed task and delivery
+  for one represented editor. Its context generation also changes when the
+  represented body changes, so switching articles rejects a previous scan
+  even if the new editor reuses the same document revision and body offset.
+  Dismantling invalidates the session. The AppKit coordinator retains text,
+  selection, command routing and native input ownership. These lifecycle
+  regressions establish correctness, not a measured latency improvement.
 - Knowledge navigation shares one document snapshot for folder, unfiled and
   smart-collection counts. Document mutations invalidate it; selection and
   hover changes reuse it. Saved-collection counts retain only the current rule
@@ -222,6 +241,11 @@ presented as an automated green result.
 
 Phase timings retain current `ApplyBlockMarkerDrawings` and
 `ApplyInlineAttachmentDrawings` names alongside their legacy overlay names.
+Editable attachment application resolves the complete source span of each card
+intersecting the viewport, including formulas crossing a narrow viewport edge;
+its deferred pass runs in common run-loop modes so scroll tracking does not wait
+for a return to default mode, while revision and generation checks still reject
+stale work.
 For compatibility, `inlineAttachmentOverlays` remains the JSON attachment
 evidence field; `inlineAttachmentEvidence.phaseName` identifies which
 instrumentation supplied the samples. Reanalysis after an analyzer correction must retain the

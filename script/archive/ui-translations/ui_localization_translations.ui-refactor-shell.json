@@ -1,0 +1,16 @@
+{
+  "%@：%@。点击打开本次发布清单。": {
+    "en": "%1$@: %2$@. Click to open this publishing checklist.",
+    "zh-Hans": "%1$@：%2$@。点击打开本次发布清单。"
+  },
+  "仓库未配置": "Repository not configured",
+  "写作纸张": "Writing Paper",
+  "分组卡片": "Grouped Card",
+  "发布前需处理：%@。点击打开本次发布清单。": {
+    "en": "Resolve before publishing: %@. Click to open this publishing checklist.",
+    "zh-Hans": "发布前需处理：%@。点击打开本次发布清单。"
+  },
+  "站点已同步": "Site is synced",
+  "站点待扫描": "Site scan pending",
+  "语义表面与状态标签": "Semantic Surfaces and Status Tags"
+}

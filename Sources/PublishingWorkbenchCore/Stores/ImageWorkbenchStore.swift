@@ -35,7 +35,6 @@ public final class ImageWorkbenchStore: ObservableObject {
   private var siteSummaryTask: Task<ImageWorkbenchSiteSummary, Error>?
   private var siteSummaryGeneration: UInt64 = 0
   private var siteSummaryBaseline: ImageWorkbenchSiteSummaryInputSignature?
-  private var lastBatchRetryAction: (@MainActor () -> Void)?
 
   @Published public private(set) var imageBatchProgress: ImageBatchProgress?
   @Published public private(set) var isImageBatchProcessing = false
@@ -150,13 +149,6 @@ public final class ImageWorkbenchStore: ObservableObject {
     isImageBatchProcessing = true
     lastBatchFailure = nil
     lastBatchOperation = operation
-    lastBatchRetryAction = { [weak self] in
-      self?.startImageBatch(
-        operation,
-        drafts: currentDrafts,
-        includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
-      )
-    }
     imageActionMessage = CoreL10n.format("正在%@：0/%d 篇文章。", operation.progressTitle, currentDrafts.count)
 
     imageBatchTask = Task { [weak self] in
@@ -326,14 +318,6 @@ public final class ImageWorkbenchStore: ObservableObject {
       profileID: profileIDs.count == 1 ? profileIDs.first : nil,
       draftID: drafts.count == 1 ? drafts.first?.id : nil
     )
-  }
-
-  public func retryLastBatch() {
-    guard !isImageBatchProcessing, let lastBatchRetryAction else {
-      imageActionMessage = CoreL10n.text("当前没有可重试的图片处理任务。")
-      return
-    }
-    lastBatchRetryAction()
   }
 
   private func currentImageReportSignature(for draftID: UUID) -> ImageWorkbenchReportInputSignature? {

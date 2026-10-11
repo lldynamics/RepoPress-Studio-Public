@@ -13,7 +13,7 @@ struct AIChatFollowUpSuggestionsView: View {
         HStack(spacing: 4) {
           Image(systemName: "sparkles")
             .font(.workbenchMetadata.weight(.semibold))
-            .foregroundStyle(WorkbenchTheme.primary)
+            .foregroundStyle(.secondary)
           Text(String(localized: "建议下一步："))
             .font(.caption.weight(.medium))
             .foregroundStyle(.secondary)
@@ -33,20 +33,16 @@ struct AIChatFollowUpSuggestionsView: View {
                   Text(suggestion.title)
                     .font(.caption.weight(.medium))
                 }
-                .padding(.horizontal, 9)
-                .padding(.vertical, 5)
+                .padding(.horizontal, WorkbenchSpacing.control)
+                .padding(.vertical, WorkbenchSpacing.tight)
                 .background(
-                  suggestion.kind == .toolAction
-                    ? WorkbenchTheme.primary.opacity(0.12)
-                    : Color.primary.opacity(0.05),
+                  Color.primary.opacity(suggestion.kind == .toolAction ? 0.08 : 0.05),
                   in: Capsule()
                 )
                 .overlay {
                   Capsule()
                     .stroke(
-                      suggestion.kind == .toolAction
-                        ? WorkbenchTheme.primary.opacity(0.3)
-                        : Color.primary.opacity(0.1),
+                      Color.primary.opacity(suggestion.kind == .toolAction ? 0.18 : 0.1),
                       lineWidth: 1
                     )
                 }
@@ -61,7 +57,7 @@ struct AIChatFollowUpSuggestionsView: View {
           .padding(.vertical, 2)
         }
       }
-      .padding(.top, 4)
+      .padding(.top, WorkbenchSpacing.tight)
     }
   }
 }

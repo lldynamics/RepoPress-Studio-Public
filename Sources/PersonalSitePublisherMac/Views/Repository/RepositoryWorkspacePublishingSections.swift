@@ -23,8 +23,9 @@ struct RepositoryPermissionActionPresentation: Equatable {
       )
     }
     if let detectedOrigin,
-       !detectedOrigin.owner.trimmedForPublishing.isEmpty,
-       !detectedOrigin.name.trimmedForPublishing.isEmpty {
+      !detectedOrigin.owner.trimmedForPublishing.isEmpty,
+      !detectedOrigin.name.trimmedForPublishing.isEmpty
+    {
       let detectedOwner = detectedOrigin.owner.trimmedForPublishing
       let detectedRepository = detectedOrigin.name.trimmedForPublishing
       let ownerMatches = owner.isEmpty || owner == detectedOwner
@@ -154,8 +155,8 @@ extension RepositoryWorkspaceView {
               ? String(localized: "正在执行线上发布...")
               : String(localized: "正在检查仓库权限...")
           )
-            .font(.callout)
-            .foregroundStyle(.secondary)
+          .font(.callout)
+          .foregroundStyle(.secondary)
         }
       }
 
@@ -168,12 +169,15 @@ extension RepositoryWorkspaceView {
       }
 
       if let latestEntry {
-        Label("最近记录：\(latestEntry.status.localizedDisplayName)", systemImage: latestEntry.status.systemImage)
-          .font(.callout)
-          .foregroundStyle(ledgerStatusForeground(latestEntry.status))
+        Label(
+          "最近记录：\(latestEntry.status.localizedDisplayName)",
+          systemImage: latestEntry.status.systemImage
+        )
+        .font(.callout)
+        .foregroundStyle(ledgerStatusForeground(latestEntry.status))
       }
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
     .background(
       WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -248,9 +252,11 @@ extension RepositoryWorkspaceView {
           .font(.callout.monospaced())
           .textSelection(.enabled)
           .lineLimit(8)
-          .padding(10)
+          .padding(WorkbenchSpacing.card)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+          .background(
+            WorkbenchBackgroundStyle.control,
+            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
 
         ForEach(plan.notes, id: \.self) { note in
           Label(note, systemImage: "info.circle")
@@ -258,8 +264,11 @@ extension RepositoryWorkspaceView {
             .foregroundStyle(.secondary)
         }
       }
-      .padding(14)
-      .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+      .padding(WorkbenchSpacing.content)
+      .background(
+        WorkbenchBackgroundStyle.card,
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+      )
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("repository-section-sync-plan")
     }
@@ -305,8 +314,10 @@ extension RepositoryWorkspaceView {
         value: store.selectedDraft.map { store.activeProfile.markdownPath(for: $0) } ?? "-"
       )
     }
-    .padding(14)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .padding(WorkbenchSpacing.content)
+    .background(
+      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("repository-section-path-rules")
   }
@@ -401,8 +412,10 @@ extension RepositoryWorkspaceView {
           .workbenchTruncatedIdentity(changedPaths, lineLimit: 6)
       }
     }
-    .padding(10)
-    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .padding(WorkbenchSpacing.card)
+    .background(
+      WorkbenchBackgroundStyle.control,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
   func remoteRepositoryCreationResultCard(_ result: RemoteRepositoryCreationResult) -> some View {
@@ -451,15 +464,19 @@ extension RepositoryWorkspaceView {
       }
       .font(.caption)
     }
-    .padding(10)
-    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .padding(WorkbenchSpacing.card)
+    .background(
+      WorkbenchBackgroundStyle.control,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
   func remoteConflictPreview(paths: [String], isDirectCommit: Bool) -> some View {
-    let title: LocalizedStringKey = isDirectCommit
+    let title: LocalizedStringKey =
+      isDirectCommit
       ? "远端冲突会阻断直接提交"
       : "远端冲突预览"
-    let detail: LocalizedStringKey = isDirectCommit
+    let detail: LocalizedStringKey =
+      isDirectCommit
       ? "先同步这些 upstream 变更，或切换为 PR/MR 发布。"
       : "这些路径在 upstream 也有变更，合并前需要审阅远端 diff。"
 
@@ -477,9 +494,12 @@ extension RepositoryWorkspaceView {
         WorkbenchPathIdentity(path: path)
       }
     }
-    .padding(8)
+    .padding(WorkbenchSpacing.control)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background((isDirectCommit ? WorkbenchTheme.risk : WorkbenchTheme.warning).opacity(WorkbenchOpacity.warningBackground), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(
+      (isDirectCommit ? WorkbenchTheme.risk : WorkbenchTheme.warning).opacity(
+        WorkbenchOpacity.warningBackground),
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
 }

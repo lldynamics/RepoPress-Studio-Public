@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 public struct AIPublishingChatTranslationTarget: Hashable, Sendable {
   public let languageCode: String
@@ -13,6 +14,23 @@ public struct AIPublishingChatTranslationTarget: Hashable, Sendable {
 /// Turns an explicit whole-article translation request into a new-draft plan.
 /// The source draft is never a destination of this workflow.
 public enum AIPublishingChatTranslationDraftService {
+  public static var supportedTargets: [AIPublishingChatTranslationTarget] {
+    [
+      AIPublishingChatTranslationTarget(languageCode: "en", displayName: CoreL10n.text("英文")),
+      AIPublishingChatTranslationTarget(
+        languageCode: "zh-Hans", displayName: CoreL10n.text("简体中文")),
+    ]
+  }
+
+  /// Stable command text is parsed locally, independently of the UI locale.
+  public static func creationRequest(target: AIPublishingChatTranslationTarget) -> String? {
+    switch target.languageCode.lowercased() {
+    case "en": return "请将当前文章全文翻译为英文，并创建关联新草稿"
+    case "zh-hans": return "请将当前文章全文翻译为简体中文，并创建关联新草稿"
+    default: return nil
+    }
+  }
+
   public static func target(for text: String) -> AIPublishingChatTranslationTarget? {
     let normalized =
       text
@@ -28,10 +46,11 @@ public enum AIPublishingChatTranslationDraftService {
     guard isWholeArticle, requestsNewDraft else { return nil }
 
     if ["翻译为英文", "翻译成英文", "英文版", "英语"].contains(where: normalized.contains) {
-      return AIPublishingChatTranslationTarget(languageCode: "en", displayName: "英文")
+      return AIPublishingChatTranslationTarget(languageCode: "en", displayName: CoreL10n.text("英文"))
     }
     if ["翻译为中文", "翻译成中文", "中文版", "简体中文"].contains(where: normalized.contains) {
-      return AIPublishingChatTranslationTarget(languageCode: "zh-Hans", displayName: "简体中文")
+      return AIPublishingChatTranslationTarget(
+        languageCode: "zh-Hans", displayName: CoreL10n.text("简体中文"))
     }
     return nil
   }
@@ -91,13 +110,15 @@ public enum AIPublishingChatTranslationDraftService {
         translatedSlug: response.slug
       )
       prepared.translationDraftPlan = plan
-      prepared.content =
-        "已生成\(target.displayName)关联草稿“\(plan.translatedDraft.title)”。确认创建后会新增草稿，原稿不会被覆盖。"
+      prepared.content = CoreL10n.format(
+        "已生成%@关联草稿“%@”。确认创建后会新增草稿，原稿不会被覆盖。",
+        target.displayName, plan.translatedDraft.title
+      )
       return prepared
     } catch {
       prepared.translationDraftPlan = nil
-      prepared.content =
-        "AI 返回的翻译草稿未通过安全校验，原稿没有变化：\(error.localizedDescription)"
+      prepared.content = CoreL10n.format(
+        "AI 返回的翻译草稿未通过安全校验，原稿没有变化：%@", error.localizedDescription)
       return prepared
     }
   }
@@ -113,7 +134,7 @@ public enum AIPublishingChatTranslationDraftService {
     case invalidJSON
 
     var errorDescription: String? {
-      "翻译结果必须是符合约定的完整 JSON。"
+      CoreL10n.text("翻译结果必须是符合约定的完整 JSON。")
     }
   }
 

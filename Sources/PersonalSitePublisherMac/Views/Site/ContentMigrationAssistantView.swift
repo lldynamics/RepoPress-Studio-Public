@@ -1,38 +1,6 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
-private enum ContentMigrationNotice {
-  case analyzing
-  case ready
-  case completed(inserted: Int, updated: Int)
-  case unsupportedSource
-  case unreadableSource(String)
-  case invalidExport(String)
-  case profileChanged
-  case fileTooLarge
-  case tooManyMarkdownFiles
-  case copiedRedirectCSV
-  case exportedRedirectCSV(String)
-  case copyFailed
-  case exportFailed(String)
-  case failure(String)
-
-  var isError: Bool {
-    switch self {
-    case .unsupportedSource, .unreadableSource, .invalidExport, .profileChanged,
-      .fileTooLarge, .tooManyMarkdownFiles, .copyFailed, .exportFailed, .failure:
-      true
-    default:
-      false
-    }
-  }
-}
-
-enum ContentMigrationLayout {
-  static let metricMinimumWidth: CGFloat = 132
-  static let emptyStateMinimumHeight: CGFloat = 220
-}
-
 struct ContentMigrationAssistantView: View {
   private let workbenchStore: WorkbenchStore
   @ObservedObject private var dataManagement: WorkbenchDataManagementFeatureFacade
@@ -123,7 +91,7 @@ struct ContentMigrationAssistantView: View {
           severity: notice.isError ? .error : .info
         )
         .font(.caption)
-        .padding(.top, 6)
+        .padding(.top, WorkbenchSpacing.icon)
       }
     }
   }
@@ -209,7 +177,7 @@ struct ContentMigrationAssistantView: View {
   private func migrationMetric(_ title: String, value: String, image: String) -> some View {
     HStack(spacing: 8) {
       Image(systemName: image)
-        .foregroundStyle(.tint)
+        .foregroundStyle(.secondary)
       VStack(alignment: .leading, spacing: 1) {
         Text(value)
           .font(.headline)
@@ -221,7 +189,7 @@ struct ContentMigrationAssistantView: View {
       }
       Spacer(minLength: 0)
     }
-    .padding(10)
+    .padding(WorkbenchSpacing.card)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
@@ -315,12 +283,12 @@ struct ContentMigrationAssistantView: View {
       } else if item.disposition == .update, let comparison = item.comparison {
         DisclosureGroup("查看更新差异") {
           migrationComparison(comparison)
-            .padding(.top, 6)
+            .padding(.top, WorkbenchSpacing.icon)
         }
         .font(.caption)
       }
     }
-    .padding(10)
+    .padding(WorkbenchSpacing.card)
     .background(
       WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
     )
@@ -379,7 +347,7 @@ struct ContentMigrationAssistantView: View {
     Text(migrationDispositionTitle(disposition))
       .font(.caption.weight(.semibold))
       .foregroundStyle(migrationDispositionColor(disposition))
-      .padding(.horizontal, 7)
+      .padding(.horizontal, WorkbenchSpacing.control)
       .padding(.vertical, 2)
       .background(migrationDispositionColor(disposition).opacity(0.1), in: Capsule())
   }
@@ -427,12 +395,14 @@ struct ContentMigrationAssistantView: View {
               .font(.caption.monospaced())
               .foregroundStyle(migrationDiffColor(line.kind))
               .frame(maxWidth: .infinity, alignment: .leading)
-              .padding(.horizontal, 6)
+              .padding(.horizontal, WorkbenchSpacing.icon)
               .padding(.vertical, 2)
           }
         }
         .textSelection(.enabled)
-        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+        .background(
+          Color(nsColor: .textBackgroundColor),
+          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
         if comparison.bodyLineDiffs.count > 80 {
           Text("差异较大，此处显示前 80 行；已完整统计新增和删除行数。")
             .foregroundStyle(.secondary)
@@ -786,7 +756,7 @@ struct ContentMigrationAssistantView: View {
   private func migrationDispositionColor(_ disposition: ContentMigrationDraftDisposition) -> Color {
     switch disposition {
     case .insert: WorkbenchTheme.success
-    case .update: WorkbenchTheme.primary
+    case .update: WorkbenchTheme.info
     case .unchanged: .secondary
     case .conflict: WorkbenchTheme.risk
     }
@@ -802,21 +772,7 @@ struct ContentMigrationAssistantView: View {
   }
 
   private func migrationFieldTitle(_ field: DraftVersionEditableField) -> String {
-    switch field {
-    case .title: "标题"
-    case .date: "日期"
-    case .slug: "Slug"
-    case .tags: "标签"
-    case .categories: "分类"
-    case .authors: "作者"
-    case .aliases: "旧地址别名"
-    case .permalink: "固定地址"
-    case .draftState: "草稿状态"
-    case .visibility: "可见性"
-    case .summary: "摘要"
-    case .cover: "封面"
-    case .attachments: "附件"
-    }
+    field.localizedDisplayName
   }
 
   private func migrationDiffColor(_ kind: DraftVersionLineDiffKind) -> Color {

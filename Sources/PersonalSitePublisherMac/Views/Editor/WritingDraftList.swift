@@ -25,6 +25,8 @@ extension WritingDraftColumn {
           draftListEmptyState
         } else if isFolderDisplayMode {
           folderDraftListContent
+        } else if sortOrder == .updatedNewest || sortOrder == .updatedOldest {
+          recencySectionedDraftListContent
         } else {
           ForEach(Array(paginatedDrafts.enumerated()), id: \.1.id) { index, draft in
             draftRow(draft)
@@ -45,6 +47,34 @@ extension WritingDraftColumn {
     .listStyle(.sidebar)
     .scrollContentBackground(.hidden)
     .background(Color.clear)
+  }
+
+  /// When ordered by update time, "今天 / 本周 / 更早" headers make long lists
+  /// easier to scan; other orders keep a single flat list.
+  @ViewBuilder
+  private var recencySectionedDraftListContent: some View {
+    ForEach(WritingDraftRecencyGroup.sections(for: paginatedDrafts)) { section in
+      Section {
+        ForEach(section.rows, id: \.draft.id) { row in
+          draftRow(row.draft)
+            .onAppear {
+              maybeLoadMoreDraftsIfNeeded(
+                currentIndex: row.index,
+                visibleCount: paginatedDrafts.count
+              )
+            }
+        }
+      } header: {
+        Text(section.group.title)
+          .font(.workbenchMetadata.weight(.semibold))
+          .foregroundStyle(.secondary)
+          .accessibilityAddTraits(.isHeader)
+      }
+    }
+
+    if paginatedDrafts.count < filteredDraftCount {
+      loadMoreDraftsButton
+    }
   }
 
   @ViewBuilder
@@ -103,8 +133,8 @@ extension WritingDraftColumn {
           .foregroundStyle(.secondary)
       }
       .padding(.leading, CGFloat(depth) * 14)
-      .padding(.horizontal, 4)
-      .padding(.vertical, 5)
+      .padding(.horizontal, WorkbenchSpacing.tight)
+      .padding(.vertical, WorkbenchSpacing.tight)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
@@ -247,8 +277,8 @@ extension WritingDraftColumn {
           .foregroundStyle(.secondary)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(.horizontal, 4)
-      .padding(.vertical, 6)
+      .padding(.horizontal, WorkbenchSpacing.tight)
+      .padding(.vertical, WorkbenchSpacing.icon)
     }
     .buttonStyle(.plain)
     .listRowInsets(listRowInsets)

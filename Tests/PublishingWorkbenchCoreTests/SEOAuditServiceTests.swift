@@ -176,6 +176,32 @@ final class SEOAuditServiceTests: XCTestCase {
     XCTAssertFalse(hasDuplicateTitleWarning(draft: draft, profile: profile))
   }
 
+  func testConcurrentEditorThemeResolutionUsesEachCompletedDetection() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "SEOAuditConcurrentH1-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let template = root.appendingPathComponent("themes/paper/layouts/_default/single.html")
+    try FileManager.default.createDirectory(
+      at: template.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try "theme = \"paper\"\n".write(
+      to: root.appendingPathComponent("hugo.toml"), atomically: true, encoding: .utf8)
+    try "<article><h2>{{ .Title }}</h2></article>".write(
+      to: template, atomically: true, encoding: .utf8)
+    let profile = SiteProfile(
+      name: "并发主题站点", siteKind: .hugo, localRepositoryRootPath: root.path)
+    let revision = UUID()
+    let results = await withTaskGroup(of: Bool.self, returning: [Bool].self) { group in
+      for _ in 0..<24 {
+        group.addTask { await profile.resolveBodyH1DuplicateWarning(repositoryRevision: revision) }
+      }
+      var results: [Bool] = []
+      for await result in group { results.append(result) }
+      return results
+    }
+    XCTAssertEqual(results.count, 24)
+    XCTAssertTrue(results.allSatisfy { !$0 })
+  }
+
   func testUnknownThemeLayoutKeepsLegacyDefaultEnabled() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(
       "SEOAuditUnknownH1-\(UUID().uuidString)", isDirectory: true)

@@ -81,7 +81,7 @@ extension RepositoryWorkspaceView {
           }
         }
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
       .background(
         WorkbenchBackgroundStyle.card,
         in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -257,7 +257,7 @@ struct RepositoryChangedFileDisclosureRow<Identity: View, Actions: View, DiffAct
                 .font(.caption.monospaced())
                 .textSelection(.enabled)
                 .lineLimit(16)
-                .padding(10)
+                .padding(WorkbenchSpacing.card)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                   WorkbenchBackgroundStyle.control,
@@ -272,7 +272,7 @@ struct RepositoryChangedFileDisclosureRow<Identity: View, Actions: View, DiffAct
                 .font(.caption.monospaced())
                 .textSelection(.enabled)
                 .lineLimit(16)
-                .padding(10)
+                .padding(WorkbenchSpacing.card)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                   WorkbenchBackgroundStyle.control,

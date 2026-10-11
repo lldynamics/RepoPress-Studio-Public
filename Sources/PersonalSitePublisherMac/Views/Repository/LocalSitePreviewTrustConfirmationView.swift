@@ -93,9 +93,11 @@ struct LocalSitePreviewTrustConfirmationView: View {
         Text(presentation.command)
           .font(.caption.monospaced())
           .textSelection(.enabled)
-          .padding(10)
+          .padding(WorkbenchSpacing.card)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 8))
+          .background(
+            WorkbenchBackgroundStyle.control,
+            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
       }
 
       Label(presentation.riskMessage, systemImage: "exclamationmark.shield.fill")

@@ -3,27 +3,35 @@ import PublishingCoreSupport
 
 /// A pure plan for creating a linked translation as a new draft.
 ///
-/// The source draft is represented only by identity and fingerprint. Applying
-/// this plan returns `translatedDraft`; it never mutates or replaces the source.
+/// Planning never changes the source. Confirmation may assign a missing Hugo
+/// translation key, while preserving all source words and publication state.
 public struct AITranslationDraftPlan: Codable, Hashable, Sendable {
   public let sourceDraftID: ArticleDraft.ID
   public let sourceContentFingerprint: String
   public let targetLanguageCode: String
   public let translatedDraft: ArticleDraft
   public let link: AITranslationDraftLink
+  /// The shared Hugo key to assign at confirmation; nil for other generators
+  /// and for plans saved before native key support.
+  public let sourceTranslationKey: String?
+  public let destinationMarkdownPath: String?
 
   public init(
     sourceDraftID: ArticleDraft.ID,
     sourceContentFingerprint: String,
     targetLanguageCode: String,
     translatedDraft: ArticleDraft,
-    link: AITranslationDraftLink
+    link: AITranslationDraftLink,
+    sourceTranslationKey: String? = nil,
+    destinationMarkdownPath: String? = nil
   ) {
     self.sourceDraftID = sourceDraftID
     self.sourceContentFingerprint = sourceContentFingerprint
     self.targetLanguageCode = targetLanguageCode
     self.translatedDraft = translatedDraft
     self.link = link
+    self.sourceTranslationKey = sourceTranslationKey
+    self.destinationMarkdownPath = destinationMarkdownPath
   }
 }
 
@@ -35,6 +43,9 @@ public enum AITranslationDraftPlanningError: LocalizedError, Equatable, Sendable
   case sourceDraftChanged
   case destinationReusesSourceIdentity
   case invalidTranslationLink
+  case destinationPathExists
+  case targetLanguageAlreadyExists
+  case destinationPathChanged
 
   public var errorDescription: String? {
     switch self {
@@ -52,8 +63,20 @@ public enum AITranslationDraftPlanningError: LocalizedError, Equatable, Sendable
       return CoreL10n.text("翻译草稿不能复用原文章标识。")
     case .invalidTranslationLink:
       return CoreL10n.text("翻译计划中的文章关联不一致，请重新生成翻译。")
+    case .destinationPathExists:
+      return CoreL10n.text("目标路径已有文章，请调整译文路径或打开已有译文。")
+    case .targetLanguageAlreadyExists:
+      return CoreL10n.text("这篇文章已有相同目标语言的译文，请先打开并核对已有译文。")
+    case .destinationPathChanged:
+      return CoreL10n.text("站点的译文路径设置已变化，请重新生成并审阅翻译计划。")
     }
   }
+}
+
+public struct AITranslationDraftCreation: Equatable, Sendable {
+  public let translatedDraft: ArticleDraft
+  /// Only populated when confirmation needs to assign a missing Hugo key.
+  public let updatedSource: ArticleDraft?
 }
 
 public enum AITranslationDraftPlanningService {
@@ -96,6 +119,11 @@ public enum AITranslationDraftPlanningService {
       usesNativeTranslationPath: profile?.siteKind == .hugo || profile?.siteKind == .zola
     )
     let fingerprint = source.repositoryContentFingerprint
+    let translationKey =
+      profile?.siteKind == .hugo
+      ? source.translationKey?.trimmedForPublishing.nilIfEmpty
+        ?? "repopress-\(source.id.uuidString.lowercased())"
+      : nil
     let link = AITranslationDraftLink(
       sourceDraftID: source.id,
       translatedDraftID: destinationDraftID,
@@ -116,6 +144,7 @@ public enum AITranslationDraftPlanningService {
       tags: source.tags,
       categories: source.categories,
       authors: source.authors,
+      translationKey: translationKey,
       draft: true,
       visibility: source.visibility,
       summary: translatedSummary.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -138,7 +167,9 @@ public enum AITranslationDraftPlanningService {
       sourceContentFingerprint: fingerprint,
       targetLanguageCode: language,
       translatedDraft: translatedDraft,
-      link: link
+      link: link,
+      sourceTranslationKey: translationKey,
+      destinationMarkdownPath: profile?.markdownPath(for: translatedDraft)
     )
   }
 
@@ -160,6 +191,11 @@ public enum AITranslationDraftPlanningService {
       plan.link.translatedDraftID == plan.translatedDraft.id,
       plan.link.sourceContentFingerprint == plan.sourceContentFingerprint,
       plan.link.targetLanguageCode == plan.targetLanguageCode,
+      plan.translatedDraft.siteProfileID == currentSource.siteProfileID,
+      plan.translatedDraft.scope == currentSource.scope,
+      plan.link.sourceTranslationFingerprint == nil
+        || plan.link.sourceTranslationFingerprint == currentSource.translationContentFingerprint,
+      isValidLanguageCode(plan.targetLanguageCode),
       isSafeSourceMarkdownPath(plan.link.sourceMarkdownPath)
     else {
       throw AITranslationDraftPlanningError.invalidTranslationLink
@@ -174,8 +210,102 @@ public enum AITranslationDraftPlanningService {
     guard isSafeSourceMarkdownPath(link.sourceMarkdownPath) else {
       throw AITranslationDraftPlanningError.invalidTranslationLink
     }
+    if let profile {
+      guard link.sourceMarkdownPath == profile.markdownPath(for: currentSource) else {
+        throw AITranslationDraftPlanningError.sourceDraftChanged
+      }
+    }
     translated.translationLink = link
+    // Reminders belong to each article and are never copied into a translation.
+    translated.publishReminderAt = nil
+    if let profile, profile.siteKind != .hugo {
+      translated.translationKey = nil
+    }
     return translated
+  }
+
+  /// Validates the entire confirmation before either draft is changed. The
+  /// caller commits this result and the source version in one workspace save.
+  public static func materializeCreation(
+    _ plan: AITranslationDraftPlan,
+    currentSource: ArticleDraft,
+    profile: SiteProfile,
+    existingDrafts: [ArticleDraft]
+  ) throws -> AITranslationDraftCreation {
+    var translated = try materialize(plan, currentSource: currentSource, profile: profile)
+    let path = profile.markdownPath(for: translated)
+    guard isSafeSourceMarkdownPath(path) else {
+      throw AITranslationDraftPlanningError.invalidTranslationLink
+    }
+    if let plannedPath = plan.destinationMarkdownPath, plannedPath != path {
+      throw AITranslationDraftPlanningError.destinationPathChanged
+    }
+    if let issue = creationConflict(
+      source: currentSource, translatedDraft: translated, profile: profile,
+      existingDrafts: existingDrafts
+    ) {
+      throw issue
+    }
+
+    var updatedSource: ArticleDraft?
+    if profile.siteKind == .hugo {
+      let key =
+        currentSource.translationKey?.trimmedForPublishing.nilIfEmpty
+        ?? plan.sourceTranslationKey?.trimmedForPublishing.nilIfEmpty
+        ?? "repopress-\(currentSource.id.uuidString.lowercased())"
+      if let plannedKey = plan.sourceTranslationKey,
+        plannedKey != key || translated.translationKey != key
+      {
+        throw AITranslationDraftPlanningError.invalidTranslationLink
+      }
+      translated.translationKey = key
+      if currentSource.translationKey != key {
+        var source = currentSource
+        source.translationKey = key
+        updatedSource = source
+      }
+    }
+    return AITranslationDraftCreation(translatedDraft: translated, updatedSource: updatedSource)
+  }
+
+  /// Used by the entry sheet before making an AI request and again on confirm.
+  public static func creationConflict(
+    source: ArticleDraft,
+    translatedDraft: ArticleDraft,
+    profile: SiteProfile,
+    existingDrafts: [ArticleDraft]
+  ) -> AITranslationDraftPlanningError? {
+    guard let language = translatedDraft.translationLink?.targetLanguageCode else {
+      return .invalidTranslationLink
+    }
+    let normalizedLanguage = normalizedLanguageCode(language)
+    if let sourceLanguage = profile.translationLanguageCode(for: source),
+      normalizedLanguageCode(sourceLanguage) == normalizedLanguage
+    {
+      return .targetLanguageAlreadyExists
+    }
+    let relatedKey = source.translationKey?.trimmedForPublishing.nilIfEmpty
+    for draft in existingDrafts where draft.siteProfileID == source.siteProfileID {
+      let sameSource = draft.translationLink?.sourceDraftID == source.id
+      let sameHugoKey =
+        profile.siteKind == .hugo && relatedKey != nil
+        && draft.translationKey?.trimmedForPublishing.nilIfEmpty == relatedKey
+      if sameSource || sameHugoKey,
+        let existingLanguage = profile.translationLanguageCode(for: draft),
+        normalizedLanguageCode(existingLanguage) == normalizedLanguage
+      {
+        return .targetLanguageAlreadyExists
+      }
+    }
+    let path = profile.markdownPath(for: translatedDraft).normalizedRelativePath().lowercased()
+    if existingDrafts.contains(where: { draft in
+      guard draft.siteProfileID == source.siteProfileID else { return false }
+      return profile.markdownPath(for: draft).normalizedRelativePath().lowercased() == path
+        || draft.repositoryPath?.normalizedRelativePath().lowercased() == path
+    }) {
+      return .destinationPathExists
+    }
+    return nil
   }
 
   private static func normalizedLanguageCode(_ value: String) -> String {

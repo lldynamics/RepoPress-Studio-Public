@@ -7,6 +7,22 @@ final class DraftVersionComparisonServiceTests: XCTestCase {
   private let service = DraftVersionComparisonService()
   private let profileID = UUID()
 
+  func testTranslationKeyOnlyChangeCanBeComparedAndRestored() {
+    let previous = ArticleDraft(siteProfileID: profileID, title: "原稿")
+    var current = previous
+    current.translationKey = "shared-hugo-key"
+    current.publishReminderAt = Date(timeIntervalSince1970: 4_000)
+    let comparison = service.compare(previous: previous, current: current)
+    XCTAssertTrue(comparison.hasChanges)
+    XCTAssertEqual(comparison.fieldChanges.map(\.field), [.translationKey])
+    let restored = service.restoringContent(from: previous, into: current)
+    XCTAssertNil(restored.translationKey)
+    XCTAssertEqual(restored.publishReminderAt, current.publishReminderAt)
+    var older = previous
+    older.translationKey = "older-key"
+    XCTAssertEqual(service.restoringContent(from: older, into: current).translationKey, "older-key")
+  }
+
   func testComparisonReportsMetadataAndAlignedBodyChanges() {
     let previous = ArticleDraft(
       siteProfileID: profileID,

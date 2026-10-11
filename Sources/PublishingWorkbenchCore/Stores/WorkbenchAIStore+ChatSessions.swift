@@ -159,17 +159,6 @@ extension WorkbenchAIStore {
     }
   }
 
-  func removeAIChatSessionState(for draftID: UUID) {
-    if let activeConversationID = activeAIConversationIDsByDraftID.removeValue(
-      forKey: draftID
-    ) {
-      aiConversations.removeAll { $0.id == activeConversationID }
-      store.scheduleAutosave()
-    }
-    if aiChatDraftID == draftID {
-      applyCurrentAIChatSession(AIPublishingChatSessionState())
-    }
-  }
 
   func cacheCurrentAIChatSessionForAIStore() {
     guard let draftID = aiChatDraftID else { return }

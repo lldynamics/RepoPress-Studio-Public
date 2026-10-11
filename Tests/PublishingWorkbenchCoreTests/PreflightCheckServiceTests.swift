@@ -145,6 +145,40 @@ final class PreflightCheckServiceTests: XCTestCase {
     )
   }
 
+  func testTimestampSlugIsValidAndOffersOnlyNonBlockingGuidance() {
+    let profile = SiteProfile.defaultProfile
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "A readable article title",
+      slug: "2026-10-11-1404",
+      draft: false,
+      bodyMarkdown: String(repeating: "The article body is ready to publish. ", count: 5)
+    )
+    let issues = PreflightCheckService().run(
+      draft: draft, allDrafts: [draft], profile: profile, includeRepositoryReadiness: false
+    )
+    let slugIssues = issues.filter { $0.field == "slug" }
+    XCTAssertTrue(SlugService.isValid(draft.slug, rule: profile.slugValidationRule))
+    XCTAssertEqual(slugIssues.count, 1)
+    XCTAssertEqual(slugIssues.first?.severity, .info)
+    let summary = DraftPreflightSummary(
+      draftID: draft.id, draftTitle: draft.title,
+      markdownPath: profile.markdownPath(for: draft), issues: slugIssues)
+    XCTAssertTrue(summary.isPassing)
+    XCTAssertTrue(summary.blockingIssues.isEmpty)
+    XCTAssertEqual(draft.slug, "2026-10-11-1404")
+    XCTAssertEqual(SlugService.slug(from: draft.title), "a-readable-article-title")
+  }
+
+  func testFallbackSlugRecognitionDoesNotTreatOrdinaryOrDatePrefixedSlugsAsProvisional() {
+    XCTAssertTrue(
+      SlugService.isFallbackSlug(SlugService.fallbackSlug(date: Date(timeIntervalSince1970: 0))))
+    XCTAssertTrue(SlugService.isFallbackSlug(" 2026-10-11-1404 "))
+    for slug in ["my-article", "2026-10-11-article", "2026-10-11-1404-notes", "", "2026-10-11"] {
+      XCTAssertFalse(SlugService.isFallbackSlug(slug), slug)
+    }
+  }
+
   func testReportsDuplicateRenderedPublishPath() {
     let profile = SiteProfile.defaultProfile
     let first = ArticleDraft(

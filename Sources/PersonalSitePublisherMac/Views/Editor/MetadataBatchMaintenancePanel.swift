@@ -98,7 +98,7 @@ struct MetadataBatchMaintenancePanel: View {
         .font(.caption)
         .foregroundStyle(.secondary)
     }
-    .padding(16)
+    .padding(WorkbenchSpacing.content)
   }
 
   @ViewBuilder
@@ -136,12 +136,12 @@ struct MetadataBatchMaintenancePanel: View {
                 metadataValueColumn(title: String(localized: "原值"), values: preview.originalValues)
                 Image(systemName: "arrow.right")
                   .foregroundStyle(.secondary)
-                  .padding(.top, 20)
+                  .padding(.top, WorkbenchSpacing.page)
                 metadataValueColumn(title: String(localized: "建议值"), values: preview.proposedValues)
               }
             }
           }
-          .padding(.vertical, 4)
+          .padding(.vertical, WorkbenchSpacing.tight)
         }
         .listStyle(.inset)
       }
@@ -162,8 +162,10 @@ struct MetadataBatchMaintenancePanel: View {
         .textSelection(.enabled)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(8)
-    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 6))
+    .padding(WorkbenchSpacing.control)
+    .background(
+      WorkbenchBackgroundStyle.control,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
   private var footer: some View {
@@ -181,7 +183,7 @@ struct MetadataBatchMaintenancePanel: View {
         .disabled(plan == nil || selectedDraftIDs.isEmpty)
         .accessibilityIdentifier("metadata-batch-maintenance-apply")
     }
-    .padding(16)
+    .padding(WorkbenchSpacing.content)
   }
 
   private var hasValidInput: Bool {

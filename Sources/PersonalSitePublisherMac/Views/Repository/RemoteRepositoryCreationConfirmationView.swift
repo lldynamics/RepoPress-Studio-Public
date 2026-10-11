@@ -21,7 +21,7 @@ struct RemoteRepositoryCreationConfirmationView: View {
       HStack(alignment: .top, spacing: 12) {
         Image(systemName: "shippingbox.and.arrow.backward")
           .font(.title2)
-          .foregroundStyle(WorkbenchTheme.primary)
+          .foregroundStyle(.secondary)
           .accessibilityHidden(true)
 
         VStack(alignment: .leading, spacing: 4) {
@@ -33,7 +33,7 @@ struct RemoteRepositoryCreationConfirmationView: View {
         }
         Spacer()
       }
-      .padding(20)
+      .padding(WorkbenchSpacing.page)
 
       Divider()
 
@@ -102,8 +102,8 @@ struct RemoteRepositoryCreationConfirmationView: View {
         Button(action: cancelAction) {
           Text("取消")
         }
-          .keyboardShortcut(.cancelAction)
-          .disabled(isCreating)
+        .keyboardShortcut(.cancelAction)
+        .disabled(isCreating)
 
         Spacer()
 
@@ -130,7 +130,7 @@ struct RemoteRepositoryCreationConfirmationView: View {
         .keyboardShortcut(.defaultAction)
         .disabled(isCreating || !hasCompleteTarget)
       }
-      .padding(20)
+      .padding(WorkbenchSpacing.page)
     }
     .frame(width: 500)
     .frame(minHeight: 390)

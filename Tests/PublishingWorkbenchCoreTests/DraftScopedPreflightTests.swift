@@ -116,6 +116,25 @@ final class DraftScopedPreflightTests: XCTestCase {
     store.updateDraft(draft)
     return try XCTUnwrap(store.drafts.first(where: { $0.id == draft.id }))
   }
+
+  func testSiteSetupIssuesAreSeparatedFromArticleIssues() {
+    for field in [
+      "scope", "repository", "repositoryPath", "repositoryToken", "contentRoot",
+      "assetRoot", "markdownPathPattern", "siteKind",
+    ] {
+      XCTAssertTrue(
+        PreflightIssue(severity: .error, title: "t", message: "m", field: field).isSiteSetupIssue,
+        field
+      )
+    }
+    for field in ["title", "slug", "summary", "body", "cover"] {
+      XCTAssertFalse(
+        PreflightIssue(severity: .error, title: "t", message: "m", field: field).isSiteSetupIssue,
+        field
+      )
+    }
+    XCTAssertFalse(PreflightIssue(severity: .error, title: "t", message: "m").isSiteSetupIssue)
+  }
 }
 
 @MainActor
@@ -192,4 +211,5 @@ final class DraftScopedPreflightRequestKeyTests: XCTestCase {
     )
     return store
   }
+
 }

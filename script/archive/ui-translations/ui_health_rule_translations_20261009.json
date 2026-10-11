@@ -1,0 +1,10 @@
+{
+  "Slug 格式非法": "Invalid slug format",
+  "仍是草稿": "Still a draft",
+  "内部链接无法解析": "Unresolvable Internal Link",
+  "图片体积偏大": "Large image file",
+  "图片缺少 alt": "Missing image alt text",
+  "日期在未来": "Future date",
+  "正文偏短": "Short body",
+  "正文图片未登记": "Unregistered body image"
+}

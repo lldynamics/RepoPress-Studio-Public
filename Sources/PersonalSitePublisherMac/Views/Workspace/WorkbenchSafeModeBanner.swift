@@ -20,8 +20,8 @@ struct WorkbenchSafeModeBanner: View {
       .buttonStyle(.bordered)
       .accessibilityLabel("退出安全模式并关闭应用")
     }
-    .padding(.horizontal, 16)
-    .padding(.vertical, 8)
+    .padding(.horizontal, WorkbenchSpacing.content)
+    .padding(.vertical, WorkbenchSpacing.control)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(WorkbenchTheme.warning.opacity(0.12))
     .overlay(alignment: .bottom) {

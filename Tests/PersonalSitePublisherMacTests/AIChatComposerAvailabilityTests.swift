@@ -113,3 +113,92 @@ final class AIChatQuickPromptDeliveryPolicyTests: XCTestCase {
     )
   }
 }
+
+final class MarkdownEditorAIWritingOperationsTests: XCTestCase {
+  func testMissingAPIKeyOpensCredentialsWhileConfiguredAPIConnectionStaysAvailable() {
+    let config = AIProviderConfig(preset: .openAICompatible, requiresAPIKey: true)
+
+    XCTAssertEqual(
+      MarkdownEditorAIConfigurationPresentation.destination(
+        for: config, isAIEnabled: false, hasAuthenticatedChatGPTAccount: false
+      ),
+      .ai(.credentials)
+    )
+    XCTAssertNil(
+      MarkdownEditorAIConfigurationPresentation.destination(
+        for: config, isAIEnabled: true, hasAuthenticatedChatGPTAccount: false
+      )
+    )
+  }
+
+  func testChatGPTRequiresLoginButNeverRequiresAnAPIKey() {
+    let config = AIProviderConfig(preset: .codexAppServer, requiresAPIKey: false)
+
+    XCTAssertEqual(
+      MarkdownEditorAIConfigurationPresentation.destination(
+        for: config, isAIEnabled: true, hasAuthenticatedChatGPTAccount: false
+      ),
+      .ai(.connection)
+    )
+    XCTAssertNil(
+      MarkdownEditorAIConfigurationPresentation.destination(
+        for: config, isAIEnabled: true, hasAuthenticatedChatGPTAccount: true
+      )
+    )
+  }
+
+  func testLocalAIKeepsItsKeylessConfiguration() {
+    XCTAssertNil(
+      MarkdownEditorAIConfigurationPresentation.destination(
+        for: AIProviderConfig(preset: .local, requiresAPIKey: false),
+        isAIEnabled: true,
+        hasAuthenticatedChatGPTAccount: false
+      )
+    )
+  }
+
+  func testFrontMatterSelectionCannotReuseTheLastBodySelection() {
+    var actions = toolbarActions(selectionAvailability: .init(isEnabled: true))
+    actions.isBodySelectionActive = false
+
+    for kind: AIPublishingActionKind in [
+      .rewriteSelection, .translateSelectionToChinese, .translateSelectionToEnglish,
+    ] {
+      XCTAssertFalse(actions.selectionAvailability(for: kind).isEnabled)
+    }
+
+    actions.isBodySelectionActive = true
+    XCTAssertTrue(actions.selectionAvailability(for: .rewriteSelection).isEnabled)
+  }
+
+  func testSelectionMenuPreservesExistingRunningActionRestrictions() {
+    let busy = AIPublishingActionAvailabilityPresentation(
+      isEnabled: false, unavailableReason: "AI 正在处理"
+    )
+    let actions = toolbarActions(selectionAvailability: busy)
+
+    XCTAssertEqual(actions.selectionAvailability(for: .rewriteSelection), busy)
+    XCTAssertEqual(actions.selectionAvailability(for: .translateSelectionToEnglish), busy)
+  }
+
+  private func toolbarActions(
+    selectionAvailability: AIPublishingActionAvailabilityPresentation
+  ) -> MarkdownEditorToolbarActions {
+    MarkdownEditorToolbarActions(
+      onShowFindReplace: {},
+      onShowOutline: {},
+      onShowShortcutHelp: {},
+      onOpenAIContextInspector: {},
+      onOpenAITemplateLibrary: {},
+      onRequestInlineAICompletion: {},
+      onExportDocument: { _ in },
+      selectionAIActionAvailability: { _ in selectionAvailability },
+      articleAIActionAvailability: { _ in .init(isEnabled: true) },
+      onPerformSelectionAIAction: { _ in },
+      onPerformArticleAIAction: { _ in },
+      onPerformConvergedSelectionAIAction: { _ in },
+      onPerformConvergedArticleAIAction: { _ in },
+      onPasteAIPromptToClipboard: {}
+    )
+  }
+}

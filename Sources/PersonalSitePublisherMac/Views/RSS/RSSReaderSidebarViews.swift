@@ -8,6 +8,7 @@ struct RSSReaderWorkspaceSidebar: View {
   @ObservedObject var presentation: RSSReaderPresentationState
   @State private var feedPendingDeletion: RSSFeed?
   @State private var feedPendingAddressEdit: RSSFeed?
+  @State private var feedPendingHistoryBackfill: RSSFeed?
 
   var body: some View {
     RSSFeedSidebar(
@@ -18,13 +19,17 @@ struct RSSReaderWorkspaceSidebar: View {
       searchDraft: presentation.searchDraft,
       isAddSubscriptionPresented: $presentation.isAddSubscriptionPresented,
       removeFeed: { feedPendingDeletion = $0 },
-      editFeedAddress: { feedPendingAddressEdit = $0 }
+      editFeedAddress: { feedPendingAddressEdit = $0 },
+      backfillHistory: { feedPendingHistoryBackfill = $0 }
     )
     .sheet(item: $feedPendingAddressEdit) { feed in
       RSSEditFeedURLSheet(feed: feed) { newURL in
         try store.updateFeedURL(feedID: feed.id, newURL: newURL)
         Task { await store.refresh(feedID: feed.id, force: true) }
       }
+    }
+    .sheet(item: $feedPendingHistoryBackfill) { feed in
+      RSSHistoryBackfillSheet(store: store, feed: feed)
     }
     .confirmationDialog(
       "删除订阅？",
@@ -72,6 +77,7 @@ struct RSSFeedSidebar: View {
   @FocusState private var isSearchFocused: Bool
   let removeFeed: (RSSFeed) -> Void
   let editFeedAddress: (RSSFeed) -> Void
+  var backfillHistory: (RSSFeed) -> Void = { _ in }
 
   var body: some View {
     let feedGroups = RSSFeedSidebarFeedGroups(feeds: store.feeds)
@@ -253,8 +259,8 @@ struct RSSFeedSidebar: View {
           .accessibilityLabel("正在搜索 RSS 文章")
       }
     }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 6)
+    .padding(.horizontal, WorkbenchSpacing.control)
+    .padding(.vertical, WorkbenchSpacing.icon)
     .background(
       WorkbenchBackgroundStyle.control,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
@@ -312,6 +318,10 @@ struct RSSFeedSidebar: View {
       Button("修改订阅地址") {
         editFeedAddress(feed)
       }
+      Button("补齐历史文章") {
+        backfillHistory(feed)
+      }
+      .accessibilityIdentifier("rss-history-backfill-menu")
       Divider()
       Button("删除订阅", role: .destructive) {
         removeFeed(feed)

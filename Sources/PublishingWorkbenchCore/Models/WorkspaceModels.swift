@@ -36,21 +36,6 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
     "\(localizationKey).detail"
   }
 
-  /// The concise label used when this stable route is shown beneath a parent
-  /// workspace area. Keep the route's original localization key for saved
-  /// commands and deep links, but avoid presenting a child named "Writing"
-  /// beneath a parent also named "Writing".
-  public var navigationPageLocalizationKey: String {
-    switch self {
-    case .writing:
-      return "workspace.writing.page"
-    case .sync:
-      return "workspace.sync.page"
-    case .library, .rss, .images, .contentHealth:
-      return localizationKey
-    }
-  }
-
   public var systemImage: String {
     switch self {
     case .writing:
@@ -217,38 +202,6 @@ public enum WorkspaceInspectorPresentation {
   }
 }
 
-public struct WorkspaceInspectorColumnWidths: Equatable, Sendable {
-  public let minimum: CGFloat
-  public let ideal: CGFloat
-  public let maximum: CGFloat
-
-  public init(minimum: CGFloat, ideal: CGFloat, maximum: CGFloat) {
-    self.minimum = minimum
-    self.ideal = ideal
-    self.maximum = maximum
-  }
-}
-
-public enum WorkspaceInspectorColumnWidthPolicy {
-  public static let article = WorkspaceInspectorColumnWidths(
-    minimum: 320,
-    ideal: 360,
-    maximum: 460
-  )
-
-  public static let aiCollaboration = WorkspaceInspectorColumnWidths(
-    minimum: 420,
-    ideal: 500,
-    maximum: 620
-  )
-
-  public static func widths(
-    isAIAssistantPresented: Bool
-  ) -> WorkspaceInspectorColumnWidths {
-    isAIAssistantPresented ? aiCollaboration : article
-  }
-}
-
 extension WorkspaceSection {
   public var centerSurface: WorkspaceCenterSurface {
     switch self {
@@ -371,10 +324,6 @@ public struct DraftComparisonContent: Hashable, Sendable {
       return "本地仓库已有版本"
     }
     return "未找到仓库版本"
-  }
-
-  public var preferredContent: String? {
-    remoteContent ?? localContent
   }
 }
 

@@ -529,9 +529,8 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
       fileURL: paths.rssReaderFileURL,
       bootstrap: rssBootstrap
     )
-    #if DEBUG || SCREENSHOT_CAPTURE_BUILD
-      ScreenshotDemoDataService.prepareRSSReaderFixtureIfEnabled(in: rssStore)
-    #endif
+    WorkbenchLaunchDemoSupport.prepareRSSReaderFixture(in: rssStore)
+    let credentials = WorkbenchLaunchDemoSupport.credentialStores()
     let workbenchStore = WorkbenchStore(
       persistence: paths.persistence,
       initialSnapshotSource: preparation.snapshotSource,
@@ -540,16 +539,15 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
       knowledgeLibraryService: paths.knowledgeLibraryService,
       managedAttachmentFileStore: paths.managedAttachmentFileStore,
       rssReaderFileURL: paths.rssReaderFileURL,
-      workspaceBackupDirectoryURL: paths.workspaceBackupDirectoryURL
+      workspaceBackupDirectoryURL: paths.workspaceBackupDirectoryURL,
+      keychainTokenStore: credentials.ai,
+      repositoryTokenStore: credentials.repository,
+      deploymentTokenStore: credentials.deployment
     )
     workbenchStore.reportStartupWorkspaceBackupRestoreOutcome(
       preparation.workspaceRestoreOutcome
     )
-    #if DEBUG || SCREENSHOT_CAPTURE_BUILD
-      if ScreenshotDemoDataService.isEnabledFromEnvironment {
-        ScreenshotDemoDataService.applyRequestedSurfaceIfEnabled(to: workbenchStore)
-      }
-    #endif
+    WorkbenchLaunchDemoSupport.applyRequestedSurface(to: workbenchStore)
     workbenchStore.knowledge.reportStartupRestoreOutcome(preparation.restoreOutcome)
 
     self.store = workbenchStore

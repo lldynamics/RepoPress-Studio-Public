@@ -21,7 +21,7 @@ struct SiteKindChangeConfirmationView: View {
           .foregroundStyle(.secondary)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(20)
+      .padding(WorkbenchSpacing.page)
 
       Divider()
 
@@ -63,7 +63,7 @@ struct SiteKindChangeConfirmationView: View {
             .padding(.vertical, WorkbenchSpacing.control)
           }
         }
-        .padding(20)
+        .padding(WorkbenchSpacing.page)
       }
 
       Divider()
@@ -84,7 +84,7 @@ struct SiteKindChangeConfirmationView: View {
         .keyboardShortcut(.defaultAction)
         .disabled(ruleChanges.isEmpty)
       }
-      .padding(16)
+      .padding(WorkbenchSpacing.content)
     }
     .frame(minWidth: 660, idealWidth: 760, minHeight: 520, idealHeight: 620)
     .workbenchGlassContainer(material: .regularMaterial)

@@ -58,7 +58,7 @@ extension WorkspaceBackupService {
         snapshot,
         references: validated.manifest.attachmentReferences,
         attachmentRootURL: attachmentRootURL
-      )
+      ).removingLocalGitExecutionPermissions()
       try WorkbenchSnapshotSemanticValidator.validate(restoredSnapshot)
       let data = try encodedWorkbenchSnapshot(restoredSnapshot)
       guard Int64(data.count) <= limits.maximumWorkbenchByteCount else {

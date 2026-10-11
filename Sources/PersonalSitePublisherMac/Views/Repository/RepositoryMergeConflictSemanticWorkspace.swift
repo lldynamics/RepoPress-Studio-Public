@@ -82,9 +82,12 @@ struct RepositoryMergeConflictSemanticWorkspace: View {
             .accessibilityIdentifier("repository-merge-semantic-unresolved-count")
           }
         }
-        .padding(10)
+        .padding(WorkbenchSpacing.card)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(workbenchAccentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .background(
+          state.unresolvedSemanticCount > 0
+            ? WorkbenchTheme.warning.opacity(0.08) : WorkbenchSurface.groupedCard,
+          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
 
         ForEach(plan.frontMatterConflicts) { frontMatterCard($0) }
         ForEach(plan.bodyConflicts) { bodyCard($0) }
@@ -192,10 +195,12 @@ struct RepositoryMergeConflictSemanticWorkspace: View {
               .font(.system(.caption, design: .monospaced))
               .textSelection(.enabled)
               .frame(maxWidth: .infinity, alignment: .topLeading)
-              .padding(8)
+              .padding(WorkbenchSpacing.control)
           }
           .frame(minHeight: 100, maxHeight: 240)
-          .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 8))
+          .background(
+            WorkbenchBackgroundStyle.control,
+            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
         }
         Button {
           copySemanticResultToSource()
@@ -220,10 +225,11 @@ struct RepositoryMergeConflictSemanticWorkspace: View {
           .font(.system(.caption, design: .monospaced))
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .topLeading)
-          .padding(7)
+          .padding(WorkbenchSpacing.control)
       }
       .frame(minHeight: 40, maxHeight: 140)
-      .background(color.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+      .background(
+        color.opacity(0.07), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     }
   }
 
@@ -257,9 +263,11 @@ struct RepositoryMergeConflictSemanticUnavailableBanner: View {
     Label(message, systemImage: "exclamationmark.triangle")
       .font(.caption)
       .foregroundStyle(.orange)
-      .padding(10)
+      .padding(WorkbenchSpacing.card)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+      .background(
+        Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+      )
       .accessibilityIdentifier("repository-merge-semantic-unavailable")
   }
 
@@ -283,6 +291,8 @@ extension View {
   fileprivate func semanticCard() -> some View {
     padding(10)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 8))
+      .background(
+        WorkbenchBackgroundStyle.control,
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 }

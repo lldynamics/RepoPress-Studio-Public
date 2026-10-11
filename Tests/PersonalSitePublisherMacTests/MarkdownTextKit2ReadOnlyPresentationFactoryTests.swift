@@ -109,6 +109,23 @@ final class MarkdownTextKit2ReadOnlyPresentationFactoryTests: XCTestCase {
     XCTAssertTrue(output.document.installedAttachments.isEmpty)
   }
 
+  func testLongAndMultilineFormulasUseTheirFullMeasuredHeight() throws {
+    let formula = "a + b\nc + d\n" + String(repeating: "x^2 + ", count: 60) + "z"
+    let source = "$$\n" + formula + "\n$$\n"
+    let output = MarkdownTextKit2ReadOnlyPresentationFactory.make(
+      fullSource: source, bodyMarkdown: source, bodyUTF16Offset: 0,
+      attachments: [], availableWidth: 200, baseFontSize: 16
+    )
+    let entry = try XCTUnwrap(output.entries.first)
+    let measured = MarkdownInlineFormulaPresentation.size(
+      for: formula, displayMode: .display, fontSize: 19, availableWidth: 200)
+
+    XCTAssertEqual(entry.attachment.bounds.height, measured.height)
+    XCTAssertGreaterThan(entry.attachment.bounds.height, 100)
+    XCTAssertEqual(output.document.source, source)
+    XCTAssertEqual(output.document.attributedString.string, "\u{FFFC}\n")
+  }
+
   func testAdjacentImageAndFormulaEntriesPreserveOrderingAndRanges() throws {
     let body = "![图](a.png)\n$x$"
     let source = "🙂中文" + body + "后"

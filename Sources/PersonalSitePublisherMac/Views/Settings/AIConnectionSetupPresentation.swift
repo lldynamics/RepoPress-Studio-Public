@@ -15,6 +15,20 @@ enum AIConnectionSetupNextStep: Equatable {
   case ready
 }
 
+enum AIConnectionSetupContinuation: Equatable {
+  case consent
+  case modelSelection
+
+  /// Saving credentials only advances the local form. Discovery and validation
+  /// remain separate explicit actions, and this never grants sending consent.
+  static func afterSavingKey(
+    dataSharingConsent: AIDataSharingConsentPresentation
+  ) -> Self {
+    dataSharingConsent.isGranted && !dataSharingConsent.requiresAccountReauthorization
+      ? .modelSelection : .consent
+  }
+}
+
 struct AIConnectionSetupPresentation: Equatable {
   let nextStep: AIConnectionSetupNextStep
   let title: String

@@ -240,6 +240,21 @@ enum AIChatInspectorHeaderPresentation {
     return "\(provider) · \(activeModel)"
   }
 
+  static func compactModelTitle(
+    for config: AIProviderConfig,
+    activeModel: String?
+  ) -> String {
+    guard
+      let model = activeModel?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    else {
+      return String(localized: "选择模型")
+    }
+    if config.usesCodexAppServer, model == AIProviderPreset.codexDefaultModel {
+      return String(localized: "账户默认模型")
+    }
+    return model
+  }
+
   static func supportsSelectableReasoningLevel(
     config: AIProviderConfig,
     hasDraft: Bool
@@ -275,40 +290,9 @@ enum AIChatInspectorHeaderPresentation {
   }
 }
 
-/// Keeps the Inspector header's density decisions value-only so the default
-/// surface cannot accidentally grow a second source/action chip band again.
-/// The Composer remains responsible for showing the actual outbound payload.
+/// Describes the outbound context at the Composer's single context control.
+/// Full reference names remain in the selected reference chips and menu.
 enum AIChatInspectorDensityPresentation {
-  enum SourcePresentation: Equatable {
-    case compactSummary
-    case fullChips
-  }
-
-  enum QuickActionPresentation: Equatable {
-    case hidden
-    case menu
-  }
-
-  struct Configuration: Equatable {
-    let sourcePresentation: SourcePresentation
-    let quickActionPresentation: QuickActionPresentation
-    let accessibilityState: String
-  }
-
-  static func configuration(isExpanded: Bool) -> Configuration {
-    isExpanded
-      ? Configuration(
-        sourcePresentation: .fullChips,
-        quickActionPresentation: .menu,
-        accessibilityState: "已展开"
-      )
-      : Configuration(
-        sourcePresentation: .compactSummary,
-        quickActionPresentation: .hidden,
-        accessibilityState: "已折叠"
-      )
-  }
-
   static func compactContextSummary(
     mode: AIPublishingChatContextMode,
     draftTitle: String?,
@@ -334,15 +318,4 @@ enum AIChatInspectorDensityPresentation {
       .joined(separator: " · ")
   }
 
-  static func disclosureAccessibilityValue(
-    configuration: Configuration,
-    compactSummary: String
-  ) -> String {
-    switch configuration.sourcePresentation {
-    case .compactSummary:
-      return "\(configuration.accessibilityState)。\(compactSummary)。展开可查看完整来源、设置和快捷提示。"
-    case .fullChips:
-      return "\(configuration.accessibilityState)。\(compactSummary)。正在显示完整来源、设置和快捷提示。"
-    }
-  }
 }

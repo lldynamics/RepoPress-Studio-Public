@@ -149,6 +149,22 @@ public struct RSSArticleFullTextService: Sendable {
       }
     }
 
+    return try extractFullTextRecord(
+      for: article, download: download, cachedRecord: reusableCachedRecord, attemptedAt: attemptedAt
+    )
+  }
+
+  /// Reuses the normal extraction and quality contract for a page already
+  /// downloaded during bounded history discovery. Feed payloads stay intact.
+  public func extractFullTextRecord(
+    for article: RSSArticle,
+    download: RSSArticlePageDownload,
+    cachedRecord: RSSArticleFullTextRecord? = nil,
+    attemptedAt: Date = Date()
+  ) throws -> RSSArticleFullTextRecord {
+    guard !download.notModified else {
+      throw RSSReaderError.persistence(CoreL10n.text("全文提取需要网页响应正文。"))
+    }
     let extraction = try extractor.extract(
       data: download.data,
       sourceURL: download.resolvedURL,
@@ -170,7 +186,7 @@ public struct RSSArticleFullTextService: Sendable {
         sourceContentHash: hash,
         confidence: extraction.confidence,
         attemptedAt: attemptedAt,
-        retryAfter: attemptedAt.addingTimeInterval(Self.retryDelay(after: reusableCachedRecord)),
+        retryAfter: attemptedAt.addingTimeInterval(Self.retryDelay(after: cachedRecord)),
         failureMessage: rejectionReason,
         contentHTML: extraction.contentHTML,
         plainText: extraction.plainText

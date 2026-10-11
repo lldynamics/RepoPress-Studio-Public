@@ -60,7 +60,7 @@ struct AIChatConversationInspectorSection: View {
           }
           .buttonStyle(.plain)
           .font(.caption)
-          .foregroundStyle(WorkbenchTheme.primary)
+          .foregroundStyle(.secondary)
         }
 
         ForEach(context.messages) { message in
@@ -249,7 +249,7 @@ struct AIChatConversationInspectorSection: View {
             }
             .buttonStyle(.plain)
             .font(.workbenchButtonLabel)
-            .foregroundStyle(WorkbenchTheme.primary)
+            .foregroundStyle(.secondary)
           }
           if let locator = citation.locator?.nilIfEmpty {
             Text(locator)

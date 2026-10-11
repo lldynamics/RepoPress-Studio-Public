@@ -58,35 +58,4 @@ public struct AIPublishingMetadataApplicationRecord: Identifiable, Codable, Hash
   public var summaryText: String {
     "\(draftTitle) · \(fieldText)"
   }
-
-  public var diffSummaryText: String {
-    var lines: [String] = []
-    if previousTitle != nil || newTitle != nil {
-      lines.append("标题：\(display(previousTitle)) -> \(display(newTitle))")
-    }
-    if previousSlug != nil || newSlug != nil {
-      lines.append("Slug：\(display(previousSlug)) -> \(display(newSlug))")
-    }
-    if previousSummary != nil || newSummary != nil {
-      lines.append("摘要：\(display(previousSummary)) -> \(display(newSummary))")
-    }
-    if previousTags != nil || newTags != nil {
-      lines.append("Tags：\(display(previousTags)) -> \(display(newTags))")
-    }
-    return lines.joined(separator: "\n")
-  }
-
-  private func display(_ value: String?) -> String {
-    guard let value, !value.isEmpty else {
-      return "空"
-    }
-    return value
-  }
-
-  private func display(_ values: [String]?) -> String {
-    guard let values, !values.isEmpty else {
-      return "空"
-    }
-    return values.joined(separator: ", ")
-  }
 }

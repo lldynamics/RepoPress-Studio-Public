@@ -35,7 +35,8 @@ extension RepositoryWorkspaceView {
           LazyVGrid(columns: repositoryMetricGridColumns, spacing: 8) {
             MetricTile(title: "文章", value: "\(summary.articleCount)", systemImage: "doc.text")
             MetricTile(title: "图片", value: "\(summary.imageCount)", systemImage: "photo")
-            MetricTile(title: "配置", value: "\(summary.configurationCount)", systemImage: "gearshape")
+            MetricTile(
+              title: "配置", value: "\(summary.configurationCount)", systemImage: "gearshape")
             MetricTile(title: "其他", value: "\(summary.otherCount)", systemImage: "ellipsis")
           }
         }
@@ -99,8 +100,11 @@ extension RepositoryWorkspaceView {
           }
         }
       }
-      .padding(14)
-      .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+      .padding(WorkbenchSpacing.content)
+      .background(
+        WorkbenchBackgroundStyle.card,
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+      )
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("repository-section-remote-changes")
     }
@@ -194,7 +198,8 @@ extension RepositoryWorkspaceView {
         .help("导入远端文章草稿")
         .accessibilityLabel("导入远端文章草稿")
         .accessibilityValue(file.displayPath)
-        .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)-import")
+        .accessibilityIdentifier(
+          "repository-remote-file-\(file.accessibilityIdentifierToken)-import")
       }
 
       Button {
@@ -207,27 +212,33 @@ extension RepositoryWorkspaceView {
       .help("复制远端路径")
       .accessibilityLabel("复制远端路径")
       .accessibilityValue(file.displayPath)
-      .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)-copy-path")
+      .accessibilityIdentifier(
+        "repository-remote-file-\(file.accessibilityIdentifierToken)-copy-path")
 
       Text(file.status)
         .font(.caption.monospaced())
         .foregroundStyle(.secondary)
         .accessibilityLabel("远端文件状态")
         .accessibilityValue(file.status)
-        .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)-status")
+        .accessibilityIdentifier(
+          "repository-remote-file-\(file.accessibilityIdentifierToken)-status")
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)-actions")
   }
 
-  private func remoteRepositoryChangeSummary(for report: RepositoryScanReport) -> RepositoryChangeSummary {
+  private func remoteRepositoryChangeSummary(for report: RepositoryScanReport)
+    -> RepositoryChangeSummary
+  {
     report.remoteChangeSummary(
       contentRoot: store.activeProfile.contentRoot,
       assetRoot: store.activeProfile.assetRoot
     )
   }
 
-  private func importableRemoteChangedArticleFiles(for report: RepositoryScanReport) -> [RepositoryChangedFile] {
+  private func importableRemoteChangedArticleFiles(for report: RepositoryScanReport)
+    -> [RepositoryChangedFile]
+  {
     report.remoteChangedFilesForRole(
       role: .article,
       contentRoot: store.activeProfile.contentRoot,

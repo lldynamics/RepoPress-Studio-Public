@@ -66,11 +66,11 @@ extension WritingDraftColumn {
       .buttonStyle(.borderless)
       .controlSize(.small)
     }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 6)
+    .padding(.horizontal, WorkbenchSpacing.control)
+    .padding(.vertical, WorkbenchSpacing.icon)
     .background(
       workbenchAccentColor.opacity(WorkbenchOpacity.accentBackground),
-      in: RoundedRectangle(cornerRadius: 8))
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
   @MainActor

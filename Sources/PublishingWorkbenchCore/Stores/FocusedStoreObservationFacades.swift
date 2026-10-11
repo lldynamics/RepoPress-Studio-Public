@@ -433,6 +433,10 @@ public final class WorkbenchPublishDrawerObservationFacade: ObservableObject {
   private var cancellables = Set<AnyCancellable>()
 
   init(store: WorkbenchStore) {
+    store.configureDraftPreflightInputObservationIfNeeded()
+    store.publishingStore.publishSession.draftPublishStatusDidChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
     observe(store.publishingStore.publishSession.$batchPublishPlan)
     observe(store.publishingStore.publishSession.$batchRemotePublishPreviewSnapshot)
     observe(store.publishingStore.publishSession.$remoteRepositoryConflictSession)

@@ -41,6 +41,7 @@ public final class WorkbenchRootPresentationFeatureFacade: ObservableObject {
     guard !didPrepareInitialWindowPresentation else { return }
     didPrepareInitialWindowPresentation = true
     hideAssistant()
+    store.setInspectorPresented(true)
   }
 
   private func observe<P: Publisher>(_ publisher: P)

@@ -93,7 +93,8 @@ extension WorkbenchAIStore {
       refreshAIKeyAvailability()
       aiActionMessage = CoreL10n.format(
         "AI API Key 已保存到 %@。",
-        credentialStorageModeName(aiCredentialStore.storageMode)
+        credentialStorageModeName(
+          aiCredentialStore.storageMode(forConnectionProfileID: connection.id))
       )
       aiChatMessage = "AI API Key 已就绪，可以发送消息。"
       return true
@@ -141,7 +142,10 @@ extension WorkbenchAIStore {
     let generation = beginAIRequest(lane, showsActionLoading: true)
     defer { finishAIRequest(lane, generation: generation) }
     let config = connection.config
-    aiRequestContextChecks[lane] = { [weak self] in
+    aiRequests[lane]?.authorization = AINonStreamingAuthorizationBinding(
+      profileID: store.activeProfileID, connectionID: connection.id, config: config
+    )
+    aiRequests[lane]?.contextCheck = { [weak self] in
       guard let self else { return false }
       return self.settingsConnection(for: connectionProfileID)?.id == connection.id
         && self.settingsConnection(for: connectionProfileID)?.config == config

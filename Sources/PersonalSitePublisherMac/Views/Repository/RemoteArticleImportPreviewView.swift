@@ -36,7 +36,7 @@ struct RemoteArticleImportPreviewView: View {
           .foregroundStyle(.secondary)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(20)
+      .padding(WorkbenchSpacing.page)
 
       Divider()
 
@@ -62,7 +62,7 @@ struct RemoteArticleImportPreviewView: View {
               .foregroundStyle(.secondary)
               .textSelection(.enabled)
               .lineLimit(8)
-              .padding(8)
+              .padding(WorkbenchSpacing.control)
               .frame(maxWidth: .infinity, alignment: .leading)
               .background(
                 WorkbenchBackgroundStyle.control,
@@ -70,7 +70,7 @@ struct RemoteArticleImportPreviewView: View {
               )
           }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, WorkbenchSpacing.icon)
       }
       .listStyle(.inset)
 
@@ -92,7 +92,7 @@ struct RemoteArticleImportPreviewView: View {
         .keyboardShortcut(.defaultAction)
         .disabled(selectedPaths.isEmpty)
       }
-      .padding(16)
+      .padding(WorkbenchSpacing.content)
     }
     .frame(minWidth: 640, idealWidth: 720, minHeight: 520, idealHeight: 640)
   }

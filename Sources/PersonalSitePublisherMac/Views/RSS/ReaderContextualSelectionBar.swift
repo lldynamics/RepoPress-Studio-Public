@@ -24,8 +24,8 @@ struct ReaderContextualSelectionBar: View {
       }
       .font(.caption.weight(.medium))
       .buttonStyle(.plain)
-      .padding(.horizontal, 10)
-      .padding(.vertical, 6)
+      .padding(.horizontal, WorkbenchSpacing.control)
+      .padding(.vertical, WorkbenchSpacing.icon)
       .workbenchGlassSurface(
         material: .regularMaterial,
         in: Capsule()
@@ -97,7 +97,7 @@ struct ReaderContextualSelectionBar: View {
       Label(feedbackText, systemImage: "checkmark.circle.fill")
         .font(.caption.weight(.semibold))
         .foregroundStyle(WorkbenchTheme.success)
-        .padding(.horizontal, 4)
+        .padding(.horizontal, WorkbenchSpacing.tight)
         .transition(
           WorkbenchMotion.statusTransition(reduceMotion: accessibilityReduceMotion)
         )

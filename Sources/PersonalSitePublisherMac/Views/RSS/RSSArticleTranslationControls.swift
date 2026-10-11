@@ -1,6 +1,5 @@
 import PublishingAICore
 import PublishingKnowledgeCore
-import PublishingWorkbenchCore
 import SwiftUI
 
 struct RSSArticleTranslationControls: View {
@@ -312,7 +311,7 @@ private struct RSSArticleTranslationLanguageSheet: View {
           .disabled(RSSArticleTranslationTarget.custom(language: language) == nil)
       }
     }
-    .padding(24)
+    .padding(WorkbenchSpacing.spacious)
     .frame(width: 420)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("自定义 RSS 翻译目标语言")

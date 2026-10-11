@@ -24,7 +24,6 @@ private struct RSSLibraryInspectorEntry: Identifiable {
 }
 
 struct RSSLibraryInspectorPanel: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @ObservedObject var rssStore: RSSReaderStore
   let workbenchStore: WorkbenchStore
   @State private var dragStyle: KnowledgeArticleInsertionStyle = .blockquote
@@ -97,7 +96,7 @@ struct RSSLibraryInspectorPanel: View {
         }
       }
     }
-    .padding(12)
+    .padding(WorkbenchSpacing.card)
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .overlay {
       RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -140,7 +139,7 @@ struct RSSLibraryInspectorPanel: View {
             .foregroundStyle(
               entry.highlight == nil
                 ? WorkbenchTheme.warning
-                : workbenchAccentColor
+                : Color.secondary
             )
             .frame(width: 16)
 
@@ -210,9 +209,10 @@ struct RSSLibraryInspectorPanel: View {
           }
       }
     }
-    .padding(9)
+    .padding(WorkbenchSpacing.control)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: 9))
+    .background(
+      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
   private func loadAndInsert(

@@ -137,13 +137,13 @@ struct AppearanceSettingsView: View {
         content()
       }
 
-      VStack(alignment: .leading, spacing: WorkbenchSpacing.section) {
+      VStack(alignment: .leading, spacing: WorkbenchSpacing.content) {
         preferenceLabel(title: title, subtitle: subtitle)
         content()
           .frame(maxWidth: .infinity, alignment: .leading)
       }
     }
-    .padding(.vertical, 18)
+    .padding(.vertical, WorkbenchSpacing.content)
   }
 
   private func preferenceLabel(

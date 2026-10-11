@@ -64,9 +64,6 @@ struct PreflightDuplicateIndex: Sendable {
 }
 
 public struct PreflightCheckService: Sendable {
-  private static let markdownImageRegex = try? NSRegularExpression(
-    pattern: #"!\[[^\]]*\]\(([^)]+)\)"#
-  )
   private let publicRiskScanner: PublicRiskScanner
   private let imagePrivacySanitizer: ImagePrivacySanitizingService
 
@@ -131,8 +128,17 @@ public struct PreflightCheckService: Sendable {
         severity: .warning,
         title: CoreL10n.text("Slug 格式非法"),
         message: profile.slugValidationRule.detail,
-        field: "slug"
+          field: "slug",
+          ruleID: ContentHealthRuleID.slugFormat.rawValue
       ))
+    } else if SlugService.isFallbackSlug(slug) {
+      issues.append(
+        .init(
+          severity: .info,
+          title: CoreL10n.text("Slug 使用时间戳"),
+          message: CoreL10n.text("当前网址使用时间戳。可在元数据中选择“用标题生成”，也可以保留此网址发布。"),
+          field: "slug"
+        ))
     }
 
     if draft.draft && !draft.isPrivate {
@@ -140,7 +146,8 @@ public struct PreflightCheckService: Sendable {
         severity: .warning,
         title: CoreL10n.text("仍是草稿"),
         message: CoreL10n.text("draft 为 true，发布前需要确认这是计划行为。"),
-        field: "draft"
+          field: "draft",
+          ruleID: ContentHealthRuleID.draftFlag.rawValue
       ))
     }
 
@@ -149,7 +156,8 @@ public struct PreflightCheckService: Sendable {
         severity: .warning,
         title: CoreL10n.text("日期在未来"),
         message: CoreL10n.text("确认文章发布日期是否正确。"),
-        field: "date"
+          field: "date",
+          ruleID: ContentHealthRuleID.futureDate.rawValue
       ))
     }
 
@@ -158,7 +166,8 @@ public struct PreflightCheckService: Sendable {
         severity: .warning,
         title: CoreL10n.text("正文偏短"),
         message: CoreL10n.text("正文少于 80 个字符，发布前建议确认内容完整。"),
-        field: "body"
+          field: "body",
+          ruleID: ContentHealthRuleID.shortBody.rawValue
       ))
     }
 
@@ -294,7 +303,9 @@ public struct PreflightCheckService: Sendable {
           title: CoreL10n.text("图片缺少 alt"),
           message: CoreL10n.format("%@ 还没有可发布的 alt 文本。", attachment.originalFilename),
           field: "attachments",
-          category: .missingMediaAlt
+            category: .missingMediaAlt,
+            relatedValue: attachment.repositoryPath,
+            ruleID: ContentHealthRuleID.missingMediaAlt.rawValue
         ))
       }
 
@@ -366,7 +377,8 @@ public struct PreflightCheckService: Sendable {
         message: CoreL10n.format("%@ 不在当前文章附件列表中。", missingImagePath),
         field: "body",
         category: .unregisteredBodyImage,
-        relatedValue: missingImagePath
+          relatedValue: missingImagePath,
+          ruleID: ContentHealthRuleID.unregisteredBodyImage.rawValue
       ))
     }
 
@@ -579,25 +591,5 @@ public struct PreflightCheckService: Sendable {
     path == root || path.hasPrefix(root + "/")
   }
 
-  private func missingMarkdownImagePaths(in draft: ArticleDraft) -> [String] {
-    let registered = Set(
-      draft.attachments
-        .filter { $0.mediaKind == .image }
-        .map(\.relativePublishPath)
-    )
-    guard let regex = Self.markdownImageRegex else {
-      return []
-    }
 
-    let text = draft.bodyMarkdown
-    let range = NSRange(text.startIndex..<text.endIndex, in: text)
-    return regex.matches(in: text, range: range).compactMap { match in
-      guard let matchRange = Range(match.range(at: 1), in: text) else { return nil }
-      let path = String(text[matchRange])
-      guard !path.hasPrefix("http://"), !path.hasPrefix("https://"), !path.hasPrefix("data:") else {
-        return nil
-      }
-      return registered.contains(path) ? nil : path
-    }
-  }
 }

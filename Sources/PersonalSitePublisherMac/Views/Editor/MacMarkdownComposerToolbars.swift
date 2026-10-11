@@ -13,8 +13,16 @@ struct MacMarkdownEditorToolbar: View {
   let articleInformationToggle: MacMarkdownArticleInformationToggle?
   let formattingToolbar: MacMarkdownFormattingToolbar
   @EnvironmentObject private var zenModeController: ZenModeController
+  @Environment(\.openSettings) private var openSettings
+  @Environment(\.settingsWorkspaceCommandAction) private var settingsWorkspaceCommandAction
+  @ObservedObject private var codexConnection = CodexConnectionController.shared
+  @AppStorage(MarkdownEditorComfortPreferences.bodyWidthKey)
+  private var bodyWidth = MarkdownEditorComfortConfiguration.defaultBodyWidth
+  @AppStorage(MarkdownEditorComfortPreferences.warmPaperBackgroundEnabledKey)
+  private var usesWarmPaper = MarkdownEditorComfortConfiguration.defaultWarmPaperBackgroundEnabled
   @State private var selectedPublishAssets = AIPublishingAssetKind.defaultSelection
-  @State private var isPublishAssetPickerPresented = false
+  @State var isPublishAssetPickerPresented = false
+  @State private var isVersionHistoryPresented = false
 
   init(
     title: Binding<String>,
@@ -41,17 +49,30 @@ struct MacMarkdownEditorToolbar: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      titleArea
+    VStack(spacing: WorkbenchSpacing.content) {
       editingTools
+      titleArea
+        .frame(maxWidth: CGFloat(bodyWidth), alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
-    .padding(.horizontal, WorkbenchSpacing.section)
-    .padding(.vertical, 9)
-    .background(.bar)
+    .padding(.horizontal, WorkbenchSpacing.content)
+    .padding(.vertical, WorkbenchSpacing.control)
+    .background(WorkbenchWritingSurface.color(usesWarmPaper: usesWarmPaper))
+    .sheet(isPresented: $isVersionHistoryPresented) {
+      DraftLifecycleCenterView(store: store, presentation: .articleHistory(draftID: draftID))
+    }
+    .focusedSceneValue(
+      \.markdownEditorVersionHistoryCommandAction,
+      versionHistoryCommandAction
+    )
+    .onChange(of: draftID) { _, _ in
+      isVersionHistoryPresented = false
+    }
     .popover(isPresented: $isPublishAssetPickerPresented) {
       MacMarkdownPublishAssetPickerPopover(
         selectedAssets: $selectedPublishAssets,
-        isGenerationEnabled: actions.articleAIActionAvailability(.draftPublishAssetPack).isEnabled,
+        isGenerationEnabled: aiConfigurationDestination == nil
+          && actions.articleAIActionAvailability(.draftPublishAssetPack).isEnabled,
         onGenerate: {
           actions.onPerformConvergedArticleAIAction(
             .publishAssetPack(AIPublishingAssetPackConfiguration(assets: selectedPublishAssets))
@@ -59,6 +80,11 @@ struct MacMarkdownEditorToolbar: View {
           isPublishAssetPickerPresented = false
         }
       )
+    }
+    .task(id: aiProviderConfig.preset == .codexAppServer) {
+      if aiProviderConfig.preset == .codexAppServer {
+        await codexConnection.refresh()
+      }
     }
     .onKeyPress(.tab) {
       zenModeController.beginKeyboardNavigation()
@@ -107,18 +133,85 @@ struct MacMarkdownEditorToolbar: View {
         .fixedSize(horizontal: true, vertical: false)
       editingToolsRow(formattingLayout: .scrollable, collapsesWritingTools: true)
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(WorkbenchSpacing.tight)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("编辑器工具栏")
+    .accessibilityIdentifier("markdown-editor-floating-toolbar")
+    .workbenchGlassSurface(
+      material: .regularMaterial,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel, style: .continuous)
+    )
+    .shadow(
+      color: Color(nsColor: .shadowColor).opacity(WorkbenchOpacity.noticeBackground),
+      radius: WorkbenchSpacing.tight, x: 0, y: 1
+    )
+    .frame(maxWidth: .infinity, alignment: .center)
   }
 
   private func editingToolsRow(
     formattingLayout: MarkdownFormattingToolbarLayout,
     collapsesWritingTools: Bool
   ) -> some View {
-    HStack(spacing: 8) {
-      formattingToolbar.withLayout(formattingLayout)
-        .frame(maxWidth: .infinity, alignment: .leading)
+    HStack(spacing: WorkbenchSpacing.tight) {
+      formattingTools(layout: formattingLayout)
         .layoutPriority(1)
+      Divider().frame(height: WorkbenchIconSize.prominent)
       writingTools(isCollapsed: collapsesWritingTools)
+    }
+  }
+
+  private var versionHistoryButton: some View {
+    Button {
+      versionHistoryCommandAction.open()
+    } label: {
+      Label("历史版本", systemImage: "clock.arrow.circlepath")
+        .fixedSize()
+    }
+    .help("查看当前文章的历史版本并比较差异（⌃⌥⌘H）")
+    .accessibilityLabel("历史版本")
+    .accessibilityIdentifier("markdown-version-history-button")
+  }
+
+  private var versionHistoryCommandAction: MarkdownEditorVersionHistoryCommandAction {
+    MarkdownEditorVersionHistoryCommandAction(
+      draftID: draftID,
+      prepare: actions.onPrepareVersionHistory,
+      present: { isVersionHistoryPresented = true }
+    )
+  }
+
+  private var aiProviderConfig: AIProviderConfig {
+    guard let draft = store.drafts.first(where: { $0.id == draftID }) else {
+      return store.aiProviderConfig(for: store.activeProfile)
+    }
+    return store.aiProviderConfig(for: store.profile(for: draft))
+  }
+
+  var aiConfigurationDestination: SettingsDestination? {
+    MarkdownEditorAIConfigurationPresentation.destination(
+      for: aiProviderConfig,
+      isAIEnabled: actions.isAIEnabled,
+      hasAuthenticatedChatGPTAccount: codexConnection.accountStatus?.isAuthenticated == true
+    )
+  }
+
+  func openAIConfiguration(_ destination: SettingsDestination) {
+    SettingsNavigation.present(
+      destination: destination,
+      workspaceAction: settingsWorkspaceCommandAction
+    ) {
+      openSettings()
+    }
+  }
+
+  @ViewBuilder
+  private func formattingTools(layout: MarkdownFormattingToolbarLayout) -> some View {
+    switch layout {
+    case .scrollable:
+      formattingToolbar.withLayout(layout)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    case .automatic, .compact:
+      formattingToolbar.withLayout(layout)
     }
   }
 
@@ -152,6 +245,8 @@ struct MacMarkdownEditorToolbar: View {
       moreActionsMenuButton(showsTitle: true)
     } label: {
       Label("写作工具", systemImage: "wrench.and.screwdriver")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("写作工具")
     }
     .menuIndicator(.hidden)
     .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: true))
@@ -224,50 +319,19 @@ struct MacMarkdownEditorToolbar: View {
     .accessibilityIdentifier("markdown-document-export-menu")
   }
 
-  private func aiActionsMenuButton(showsTitle: Bool) -> some View {
-    Menu {
-      aiActions
-    } label: {
-      editorActionLabel("AI 操作", systemName: "sparkles", showsTitle: showsTitle)
-    }
-    .menuIndicator(.hidden)
-    .help("AI 操作")
-    .accessibilityLabel("AI 操作")
-    .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
-
-  }
-
-  private func inlineAICompletionButton(showsTitle: Bool) -> some View {
-    Button {
-      actions.onRequestInlineAICompletion()
-    } label: {
-      editorActionLabel("行内续写（⌥\\）", systemName: "text.append", showsTitle: showsTitle)
-    }
-    .buttonStyle(
-      MarkdownEditorToolbarButtonStyle(
-        showsTitle: showsTitle,
-        isSelected: false
-      )
-    )
-    .foregroundStyle(Color.secondary)
-    .help(String(localized: "请求 AI 续写（Option + 反斜杠）"))
-    .accessibilityLabel(String(localized: "AI 操作：续写"))
-    .accessibilityValue(String(localized: "按需触发"))
-    .accessibilityIdentifier("markdown-inline-ai-completion")
-  }
-
   private func moreActionsMenuButton(showsTitle: Bool) -> some View {
     Menu {
       MarkdownFocusModeToggles(isActive: $isFocusModeActive)
       MarkdownEditorComfortControl(showsTitle: true)
       Divider()
+      versionHistoryButton
       exportMenuButton(showsTitle: true)
       shortcutHelpButton(showsTitle: true)
     } label: {
       editorActionLabel("更多…", systemName: "ellipsis.circle", showsTitle: showsTitle)
     }
     .menuIndicator(.hidden)
-    .help(String(localized: "更多操作：专注模式、编辑器设置、导出、打印、分享与快捷键说明"))
+    .help(String(localized: "更多操作：专注模式、编辑器设置、历史版本、导出、打印、分享与快捷键说明"))
     .accessibilityLabel(String(localized: "更多操作"))
     .accessibilityIdentifier("markdown-editor-more-actions-menu")
   }
@@ -291,24 +355,122 @@ struct MacMarkdownEditorToolbar: View {
   }
 
   @ViewBuilder
-  private var aiActions: some View {
-    articleAIActionButton(.continueWriting, kind: .continueArticle)
-    inlineAICompletionButton(showsTitle: true)
-    convergedRewriteAction
-    convergedPublishAssetPackAction
+  func editorActionLabel(
+    _ title: String,
+    systemName: String,
+    showsTitle: Bool
+  ) -> some View {
+    if showsTitle {
+      Label(title, systemImage: systemName)
+        .labelStyle(.titleAndIcon)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+    } else {
+      Image(systemName: systemName)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+    }
+  }
 
-    Menu {
-      selectionAIActionButton(.translate, kind: .translateSelectionToChinese)
-      selectionAIActionButton(.translate, kind: .translateSelectionToEnglish)
+  private func exportButton(
+    _ title: LocalizedStringKey,
+    systemImage: String,
+    format: MarkdownDocumentExportFormat
+  ) -> some View {
+    Button {
+      actions.onExportDocument(format)
     } label: {
-      Label(
-        AIPublishingDefaultCapability.translate.localizedDisplayName,
-        systemImage: AIPublishingDefaultCapability.translate.systemImage
+      Label(title, systemImage: systemImage)
+    }
+  }
+}
+
+extension MacMarkdownEditorToolbar {
+  func aiActionsMenuButton(showsTitle: Bool) -> some View {
+    Menu {
+      aiActions
+    } label: {
+      editorActionLabel("AI 操作", systemName: "wand.and.sparkles", showsTitle: showsTitle)
+    }
+    .menuIndicator(.hidden)
+    .help("AI 操作")
+    .accessibilityLabel("AI 操作")
+    .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
+    .accessibilityIdentifier("markdown-editor-ai-actions-menu")
+
+  }
+
+  private func inlineAICompletionButton(showsTitle: Bool) -> some View {
+    Button {
+      actions.onRequestInlineAICompletion()
+    } label: {
+      editorActionLabel("行内续写（⌥\\）", systemName: "text.append", showsTitle: showsTitle)
+    }
+    .buttonStyle(
+      MarkdownEditorToolbarButtonStyle(
+        showsTitle: showsTitle,
+        isSelected: false
       )
+    )
+    .foregroundStyle(Color.secondary)
+    .help(String(localized: "请求 AI 续写（Option + 反斜杠）"))
+    .accessibilityLabel(String(localized: "AI 操作：续写"))
+    .accessibilityValue(String(localized: "按需触发"))
+    .accessibilityIdentifier("markdown-inline-ai-completion")
+    .disabled(!actions.canRequestInlineAICompletion)
+  }
+
+  @ViewBuilder
+  private var aiActions: some View {
+    if let aiConfigurationDestination {
+      Button {
+        openAIConfiguration(aiConfigurationDestination)
+      } label: {
+        Label("去配置", systemImage: "gearshape")
+      }
+      .accessibilityIdentifier("markdown-ai-configure-action")
+      Divider()
     }
 
-    convergedReviewAction
-    articleAIActionButton(.citeKnowledge, kind: .draftReferencesSection)
+    Section("选区") {
+      convergedRewriteAction
+      Menu {
+        selectionAIActionButton(.translate, kind: .translateSelectionToChinese)
+        selectionAIActionButton(.translate, kind: .translateSelectionToEnglish)
+      } label: {
+        Label(
+          AIPublishingDefaultCapability.translate.localizedDisplayName,
+          systemImage: AIPublishingDefaultCapability.translate.systemImage
+        )
+      }
+      .disabled(!actions.isBodySelectionActive)
+    }
+    .disabled(aiConfigurationDestination != nil)
+
+    Section("全文") {
+      articleAIActionButton(.continueWriting, kind: .continueArticle)
+      inlineAICompletionButton(showsTitle: true)
+      convergedReviewAction
+      articleAIActionButton(.citeKnowledge, kind: .draftReferencesSection)
+    }
+    .disabled(aiConfigurationDestination != nil)
+
+    Section("发布") {
+      articleAIActionButton(
+        String(localized: "摘要"), systemImage: "text.alignleft", kind: .suggestSummary
+      )
+      articleAIActionButton(
+        String(localized: "标题"), systemImage: "textformat", kind: .suggestTitles
+      )
+      articleAIActionButton(
+        String(localized: "社交文案"), systemImage: "bubble.left.and.bubble.right",
+        kind: .draftSocialShare
+      )
+      convergedPublishAssetPackAction
+    }
+    .disabled(aiConfigurationDestination != nil)
+
+    Divider()
 
     Button {
       actions.onOpenAIContextInspector()
@@ -335,7 +497,7 @@ struct MacMarkdownEditorToolbar: View {
   }
 
   private var convergedRewriteAction: some View {
-    let isRewriteEnabled = actions.selectionAIActionAvailability(.rewriteSelection).isEnabled
+    let isRewriteEnabled = actions.selectionAvailability(for: .rewriteSelection).isEnabled
     return Menu {
       Section("风格") {
         ForEach(AIPublishingRewriteStyle.allCases) { style in
@@ -368,8 +530,9 @@ struct MacMarkdownEditorToolbar: View {
         }
       }
     } label: {
-      Label("AI 操作", systemImage: "sparkles")
+      Label("改写", systemImage: "wand.and.sparkles")
     }
+    .disabled(!isRewriteEnabled)
     .help("对选中文本执行改写、润色、扩写、压缩或简化")
     .accessibilityIdentifier("ai-converged-rewrite-menu")
   }
@@ -381,6 +544,7 @@ struct MacMarkdownEditorToolbar: View {
       Label("发布资产包", systemImage: "shippingbox")
     }
     .help("勾选多个发布资产，一次生成完整发布包")
+    .disabled(!actions.articleAIActionAvailability(.draftPublishAssetPack).isEnabled)
     .accessibilityIdentifier("ai-converged-publish-asset-pack")
   }
 
@@ -397,226 +561,30 @@ struct MacMarkdownEditorToolbar: View {
     .accessibilityIdentifier("ai-converged-content-review")
   }
 
-  @ViewBuilder
-  private func editorActionLabel(
-    _ title: String,
-    systemName: String,
-    showsTitle: Bool
+  private func articleAIActionButton(
+    _ capability: AIPublishingDefaultCapability,
+    kind: AIPublishingActionKind
   ) -> some View {
-    if showsTitle {
-      Label(title, systemImage: systemName)
-        .labelStyle(.titleAndIcon)
-    } else {
-      Image(systemName: systemName)
-        .accessibilityHidden(true)
-    }
+    articleAIActionButton(
+      capability.localizedDisplayName,
+      systemImage: capability.systemImage,
+      kind: kind
+    )
   }
 
   private func articleAIActionButton(
-    _ capability: AIPublishingDefaultCapability,
+    _ title: String,
+    systemImage: String,
     kind: AIPublishingActionKind
   ) -> some View {
     let availability = actions.articleAIActionAvailability(kind)
     return Button {
       actions.onPerformArticleAIAction(kind)
     } label: {
-      Label(capability.localizedDisplayName, systemImage: capability.systemImage)
-    }
-    .disabled(!availability.isEnabled)
-    .help(availability.unavailableReason ?? capability.localizedDisplayName)
-  }
-
-  private func selectionAIActionButton(
-    _ capability: AIPublishingDefaultCapability,
-    kind: AIPublishingActionKind
-  ) -> some View {
-    let availability = actions.selectionAIActionAvailability(kind)
-    return Button {
-      actions.onPerformSelectionAIAction(kind)
-    } label: {
-      Label(
-        capability == .translate ? kind.localizedDisplayName : capability.localizedDisplayName,
-        systemImage: capability.systemImage
-      )
-    }
-    .disabled(!availability.isEnabled)
-    .help(availability.unavailableReason ?? capability.localizedDisplayName)
-  }
-
-  private func exportButton(
-    _ title: LocalizedStringKey,
-    systemImage: String,
-    format: MarkdownDocumentExportFormat
-  ) -> some View {
-    Button {
-      actions.onExportDocument(format)
-    } label: {
       Label(title, systemImage: systemImage)
     }
-  }
-}
-
-private struct MacMarkdownPublishAssetPickerPopover: View {
-  @Binding var selectedAssets: Set<AIPublishingAssetKind>
-  let isGenerationEnabled: Bool
-  let onGenerate: () -> Void
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      VStack(alignment: .leading, spacing: 4) {
-        Text("选择发布资产")
-          .font(.headline)
-        Text("勾选后一次生成所选资产。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-      }
-
-      ScrollView {
-        VStack(alignment: .leading, spacing: 8) {
-          ForEach(AIPublishingAssetKind.allCases) { asset in
-            Toggle(asset.localizedDisplayName, isOn: selectionBinding(for: asset))
-          }
-        }
-      }
-      .frame(maxHeight: 280)
-
-      HStack {
-        Text("已选择 \(selectedAssets.count) 项")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-        Spacer()
-        Button("生成所选资产") {
-          onGenerate()
-        }
-        .workbenchProminentActionStyle()
-        .disabled(selectedAssets.isEmpty || !isGenerationEnabled)
-        .keyboardShortcut(.defaultAction)
-      }
-    }
-    .padding(16)
-    .frame(width: 320, alignment: .leading)
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("选择发布资产")
-    .accessibilityIdentifier("ai-publish-asset-picker")
+    .disabled(!availability.isEnabled)
+    .help(availability.unavailableReason ?? kind.localizedDisplayName)
   }
 
-  private func selectionBinding(for asset: AIPublishingAssetKind) -> Binding<Bool> {
-    Binding(
-      get: { selectedAssets.contains(asset) },
-      set: { isSelected in
-        if isSelected {
-          selectedAssets.insert(asset)
-        } else {
-          selectedAssets.remove(asset)
-        }
-      }
-    )
-  }
-}
-
-/// Keeps persistence-state invalidation inside the title area instead of
-/// rebuilding and remeasuring the complete adaptive toolbar.
-private struct MacMarkdownEditorTitleArea: View {
-  @Binding var title: String
-  let focusRequestID: UUID?
-  let draftID: UUID
-  let markdownPath: String
-  let articleInformationToggle: MacMarkdownArticleInformationToggle?
-  @StateObject private var saveStatus: WorkbenchMarkdownEditorSaveStatusFeatureFacade
-
-  @FocusState private var isTitleFocused: Bool
-
-  init(
-    title: Binding<String>,
-    focusRequestID: UUID?,
-    store: WorkbenchStore,
-    draftID: UUID,
-    markdownPath: String,
-    articleInformationToggle: MacMarkdownArticleInformationToggle?
-  ) {
-    _title = title
-    self.focusRequestID = focusRequestID
-    self.draftID = draftID
-    self.markdownPath = markdownPath
-    self.articleInformationToggle = articleInformationToggle
-    _saveStatus = StateObject(
-      wrappedValue: WorkbenchMarkdownEditorSaveStatusFeatureFacade(
-        store: store,
-        draftID: draftID
-      )
-    )
-  }
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 2) {
-      TextField(
-        "文章标题",
-        text: Binding(
-          get: { title },
-          set: { value in
-            // The field may wrap visually, while article metadata remains a single title.
-            title = value.replacingOccurrences(of: "\r\n", with: " ")
-              .replacingOccurrences(of: "\n", with: " ")
-              .replacingOccurrences(of: "\r", with: " ")
-          }
-        ),
-        prompt: Text("未命名文章").italic().foregroundColor(.secondary),
-        axis: .vertical
-      )
-      .textFieldStyle(.plain)
-      .labelsHidden()
-      .focused($isTitleFocused)
-      .onChange(of: focusRequestID) { _, requestID in
-        if requestID != nil { isTitleFocused = true }
-      }
-      .font(.title2.weight(.semibold))
-      // Unsaved state is shown by the save-status control; recoloring the
-      // title duplicated it and made the heading flicker while typing.
-      .accessibilityLabel("文章标题")
-      .accessibilityValue(title.nilIfEmpty ?? String(localized: "未命名文章"))
-      .lineLimit(1...3)
-      .help(title.nilIfEmpty ?? String(localized: "未命名文章"))
-
-      HStack(spacing: 10) {
-        InteractiveBreadcrumbView(
-          markdownPath: markdownPath,
-          fileURL: nil
-        )
-        if let articleInformationToggle {
-          articleInformationToggle
-            .fixedSize()
-        }
-      }
-
-      if let failure = saveStatus.saveFailure {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-          Label(
-            failure.scope == .project ? String(localized: "项目保存失败") : String(localized: "保存到软件失败"),
-            systemImage: "exclamationmark.triangle.fill"
-          )
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(WorkbenchTheme.warning)
-
-          Text(failure.message)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
-            .help(failure.message)
-
-          if failure.canRetry {
-            Button("重试") {
-              saveStatus.retrySave()
-            }
-            .controlSize(.small)
-          }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("markdown-editor-save-failure")
-      }
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .onChange(of: draftID) { _, updatedDraftID in
-      saveStatus.trackDraft(updatedDraftID)
-    }
-  }
 }

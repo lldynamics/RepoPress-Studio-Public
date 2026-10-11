@@ -47,15 +47,16 @@ struct RSSHighlightEditorSheet: View {
           .textSelection(.enabled)
       }
       .frame(minHeight: 70, maxHeight: 150)
-      .padding(10)
-      .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+      .padding(WorkbenchSpacing.card)
+      .background(
+        .quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
 
       Text("批注（可选）")
         .font(.subheadline.weight(.semibold))
       TextEditor(text: $note)
         .font(.body)
         .frame(minHeight: 110)
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary))
+        .overlay(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card).stroke(.quaternary))
         .accessibilityLabel("高亮批注")
 
       TextField("标签，用逗号分隔（可选）", text: $tagsText)
@@ -75,7 +76,7 @@ struct RSSHighlightEditorSheet: View {
           .disabled(isSaveUnavailable)
       }
     }
-    .padding(20)
+    .padding(WorkbenchSpacing.page)
     .frame(width: 520)
     .onAppear {
       // Keep the editor fully keyboard reachable without stealing focus from
@@ -137,7 +138,7 @@ struct RSSArticleTagsSheet: View {
         .keyboardShortcut(.defaultAction)
       }
     }
-    .padding(20)
+    .padding(WorkbenchSpacing.page)
     .frame(width: 430)
   }
 }
@@ -165,8 +166,8 @@ struct RSSReaderWelcomeView: View {
   var body: some View {
     VStack(spacing: 18) {
       Image(systemName: "dot.radiowaves.left.and.right")
-        .font(.system(size: 42))
-        .foregroundStyle(.tint)
+        .font(.system(size: WorkbenchIconSize.hero))
+        .foregroundStyle(.secondary)
         .accessibilityHidden(true)
       Text("开始阅读")
         .font(.largeTitle.weight(.semibold))
@@ -200,7 +201,7 @@ struct RSSReaderWelcomeView: View {
       }
       .frame(maxWidth: 560)
     }
-    .padding(32)
+    .padding(WorkbenchSpacing.spacious + WorkbenchSpacing.control)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("rss-reader-welcome")
@@ -315,14 +316,14 @@ struct RSSExcerptNoteSheet: View {
       TextEditor(text: $excerpt)
         .font(.body)
         .frame(minHeight: 150)
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+        .overlay(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control).stroke(.quaternary))
         .accessibilityLabel("要保存的文章摘录")
       Text("笔记")
         .font(.subheadline.weight(.semibold))
       TextEditor(text: $note)
         .font(.body)
         .frame(minHeight: 100)
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+        .overlay(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control).stroke(.quaternary))
         .accessibilityLabel("关于这段摘录的笔记")
 
       HStack {

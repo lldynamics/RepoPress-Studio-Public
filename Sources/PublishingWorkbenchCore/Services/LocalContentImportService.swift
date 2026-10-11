@@ -1,6 +1,7 @@
 import Foundation
 import PublishingCoreSupport
 import PublishingDomainContracts
+
 public struct LocalContentImportResult: Codable, Hashable, Sendable {
   public var importedDrafts: [ArticleDraft]
   public var skippedPaths: [String]
@@ -833,6 +834,8 @@ public struct LocalContentImportService: Sendable {
       authors: authors,
       aliases: values["aliases"] ?? values["alias"] ?? [],
       permalink: values["permalink"]?.first?.nilIfEmpty,
+      translationKey: profile.siteKind == .hugo
+        ? values["translationkey"]?.first?.nilIfEmpty : nil,
       draft: draftFlag,
       visibility: visibility,
       summary: summary,
@@ -1053,13 +1056,6 @@ public struct LocalContentImportService: Sendable {
         .filter { !$0.isEmpty }
     }
     return [cleanScalar(value)].filter { !$0.isEmpty }
-  }
-
-  private func cleanScalar(_ value: String) -> String {
-    value
-      .trimmedForPublishing
-      .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-      .trimmedForPublishing
   }
 
   private func parsedBool(_ value: String?) -> Bool? {

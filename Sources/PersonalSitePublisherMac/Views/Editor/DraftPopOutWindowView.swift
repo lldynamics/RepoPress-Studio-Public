@@ -6,7 +6,7 @@ import SwiftUI
 struct DraftPopOutWindowView: View {
   let store: WorkbenchStore
   let draftID: UUID
-  @ObservedObject private var draftList: DraftListStore
+  private let draftList: DraftListStore
   @Environment(\.controlActiveState) private var controlActiveState
   @StateObject private var windowSession: WorkspaceWindowSession
   @StateObject private var sceneCommandRouter = WorkspaceSceneCommandRouter()
@@ -14,13 +14,14 @@ struct DraftPopOutWindowView: View {
   init(store: WorkbenchStore, draftID: UUID) {
     self.store = store
     self.draftID = draftID
-    _draftList = ObservedObject(wrappedValue: store.draftList)
+    draftList = store.draftList
     _windowSession = StateObject(
       wrappedValue: WorkspaceWindowSession(selectedSection: .writing, selectedDraftID: draftID)
     )
   }
 
   var body: some View {
+    let _ = draftList.presentationRevision
     Group {
       if let draft = store.draft(for: draftID) {
         MacMarkdownComposerView(

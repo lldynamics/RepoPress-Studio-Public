@@ -42,7 +42,7 @@ struct KnowledgeSearchResultRow: View {
           Text(reason.shortDisplayName)
             .font(.workbenchMetadata.weight(.medium))
             .foregroundStyle(reason.foregroundStyle)
-            .padding(.horizontal, 6)
+            .padding(.horizontal, WorkbenchSpacing.icon)
             .padding(.vertical, 2)
             .background(reason.backgroundStyle, in: Capsule())
         }
@@ -50,7 +50,7 @@ struct KnowledgeSearchResultRow: View {
       .accessibilityElement(children: .combine)
       .accessibilityLabel(hit.reasons.map(\.accessibilityDisplayName).joined(separator: "、"))
     }
-    .padding(.vertical, 5)
+    .padding(.vertical, WorkbenchSpacing.tight)
     .accessibilityElement(children: .combine)
     .accessibilityLabel(accessibilitySummary)
     .accessibilityHint("选择后跳转到正文中的准确段落")

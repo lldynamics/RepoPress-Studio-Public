@@ -209,8 +209,8 @@ struct FirstRunSetupProfileStaging {
     profile.aiProviderConfig = persistedProfile.aiProviderConfig
   }
 }
-
 private struct FirstRunSetupPathCard: View {
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let path: FirstRunSetupPath
   let isSelected: Bool
 
@@ -219,13 +219,13 @@ private struct FirstRunSetupPathCard: View {
       HStack(alignment: .top, spacing: 8) {
         Image(systemName: path.systemImage)
           .font(.title3)
-          .foregroundStyle(WorkbenchTheme.primary)
+          .foregroundStyle(isSelected ? workbenchAccentColor : Color.secondary)
 
         Spacer(minLength: 0)
 
         if isSelected {
           Image(systemName: "checkmark.circle.fill")
-            .foregroundStyle(WorkbenchTheme.primary)
+            .foregroundStyle(workbenchAccentColor)
             .accessibilityHidden(true)
         }
       }
@@ -242,12 +242,12 @@ private struct FirstRunSetupPathCard: View {
         .fixedSize(horizontal: false, vertical: true)
     }
     .frame(maxWidth: .infinity, minHeight: 148, alignment: .topLeading)
-    .padding(WorkbenchSpacing.section)
+    .padding(WorkbenchSpacing.content)
     .background {
       RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
         .fill(
           isSelected
-            ? WorkbenchTheme.primary.opacity(0.10)
+            ? workbenchAccentColor.opacity(0.10)
             : Color.secondary.opacity(0.08)
         )
     }
@@ -255,7 +255,7 @@ private struct FirstRunSetupPathCard: View {
       RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
         .stroke(
           isSelected
-            ? WorkbenchTheme.primary.opacity(0.60)
+            ? workbenchAccentColor.opacity(0.60)
             : Color.secondary.opacity(0.18),
           lineWidth: isSelected ? 1.5 : 1
         )
@@ -316,7 +316,7 @@ struct FirstRunSetupView: View {
       if let completionMessage {
         AccessibleStatusMessage(message: completionMessage, severity: .error)
           .padding(.horizontal, WorkbenchSpacing.spacious)
-          .padding(.bottom, WorkbenchSpacing.section)
+          .padding(.bottom, WorkbenchSpacing.content)
       }
 
       Divider()
@@ -346,7 +346,7 @@ struct FirstRunSetupView: View {
       HStack(spacing: 10) {
         Image(systemName: "leaf.fill")
           .font(.title2)
-          .foregroundStyle(WorkbenchTheme.primary)
+          .foregroundStyle(.secondary)
 
         VStack(alignment: .leading, spacing: 2) {
           Text(
@@ -377,13 +377,13 @@ struct FirstRunSetupView: View {
             }
             .font(.caption.weight(candidate == step ? .semibold : .regular))
             .foregroundStyle(
-              candidate.rawValue <= step.rawValue ? WorkbenchTheme.primary : Color.secondary)
+              candidate.rawValue <= step.rawValue ? WorkbenchTheme.progress : Color.secondary)
 
             if candidate != Step.allCases.last {
               Rectangle()
                 .fill(
                   candidate.rawValue < step.rawValue
-                    ? WorkbenchTheme.primary : Color.secondary.opacity(0.25)
+                    ? WorkbenchTheme.progress : Color.secondary.opacity(0.25)
                 )
                 .frame(height: 1)
             }
@@ -490,7 +490,7 @@ struct FirstRunSetupView: View {
             ? String(localized: "正在克隆仓库…")
             : String(localized: "正在读取仓库配置…")
         )
-          .controlSize(.small)
+        .controlSize(.small)
       } else if let repositoryMessage {
         AccessibleStatusMessage(message: repositoryMessage, severity: .error)
       }
@@ -592,7 +592,7 @@ struct FirstRunSetupView: View {
           }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 4)
+        .padding(.top, WorkbenchSpacing.tight)
       }
 
       DisclosureGroup(String(localized: "进阶：远端发布方式"), isExpanded: $showsAdvancedPublishingRules) {
@@ -612,7 +612,7 @@ struct FirstRunSetupView: View {
           }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 4)
+        .padding(.top, WorkbenchSpacing.tight)
       }
 
       if !hasValidPublishingRules {
@@ -745,7 +745,7 @@ struct FirstRunSetupView: View {
         .keyboardShortcut(.defaultAction)
       }
     }
-    .padding(18)
+    .padding(WorkbenchSpacing.content)
   }
 
   private func continueFromPathSelection() {
@@ -779,7 +779,7 @@ struct FirstRunSetupView: View {
     HStack(alignment: .top, spacing: 12) {
       Image(systemName: systemImage)
         .font(.title3)
-        .foregroundStyle(WorkbenchTheme.primary)
+        .foregroundStyle(.secondary)
         .frame(width: 26)
       VStack(alignment: .leading, spacing: 4) {
         Text(title)
@@ -790,7 +790,7 @@ struct FirstRunSetupView: View {
           .textSelection(.enabled)
       }
     }
-    .padding(WorkbenchSpacing.section)
+    .padding(WorkbenchSpacing.content)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))

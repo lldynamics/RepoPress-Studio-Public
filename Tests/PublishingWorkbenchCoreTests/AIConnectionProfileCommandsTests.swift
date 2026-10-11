@@ -21,6 +21,100 @@ final class AIConnectionProfileCommandsTests: XCTestCase {
     XCTAssertEqual(store.aiConnectionProfiles, originalConnections)
   }
 
+  func testReconfigureAppliesOnlyWhenLiveConfigurationAndReferencingSitesMatch() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let tokenStore = testTokenStore()
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: directory.appendingPathComponent("workbench.json")),
+      safeMode: true, keychainTokenStore: tokenStore
+    )
+    var connection = store.activeAIConnectionProfile
+    connection.config = configuredTestProvider()
+    XCTAssertTrue(store.updateAIConnectionProfile(connection))
+    XCTAssertTrue(store.ai.saveAPIKey("must-be-invalidated"))
+    var proposed = connection.config
+    proposed.baseURL = "https://reconfigured.example/v1"
+
+    XCTAssertTrue(
+      store.reconfigureAIConnectionProfile(
+        connection.id, expectedConfig: connection.config, proposedConfig: proposed,
+        expectedReferencingSites: [store.activeProfileID: store.activeProfile.name]
+      ))
+
+    XCTAssertEqual(store.activeAIConnectionProfile.config, proposed)
+    XCTAssertEqual(store.activeProfile.aiProviderConfig, proposed)
+    XCTAssertNil(try tokenStore.aiToken(forConnectionProfileID: connection.id))
+  }
+
+  func testReconfigureRejectsStaleFullConfigWithoutRemovingCredential() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let tokenStore = testTokenStore()
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: directory.appendingPathComponent("workbench.json")),
+      safeMode: true, keychainTokenStore: tokenStore
+    )
+    var connection = store.activeAIConnectionProfile
+    connection.config = configuredTestProvider()
+    XCTAssertTrue(store.updateAIConnectionProfile(connection))
+    XCTAssertTrue(store.ai.saveAPIKey("must-survive-stale-config"))
+    let expected = connection.config
+    var proposed = expected
+    proposed.baseURL = "https://must-not-apply.example/v1"
+    connection.config.model = "concurrently-edited-model"
+    XCTAssertTrue(store.updateAIConnectionProfile(connection))
+
+    XCTAssertFalse(
+      store.reconfigureAIConnectionProfile(
+        connection.id, expectedConfig: expected, proposedConfig: proposed,
+        expectedReferencingSites: [store.activeProfileID: store.activeProfile.name]
+      ))
+
+    XCTAssertEqual(store.activeAIConnectionProfile.config, connection.config)
+    XCTAssertEqual(
+      try tokenStore.aiToken(forConnectionProfileID: connection.id), "must-survive-stale-config")
+    XCTAssertTrue(store.ai.actionMessage?.contains("本次配置未更改") == true)
+  }
+
+  func testReconfigureRejectsChangedSiteNamesAndNewSiteReferences() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let tokenStore = testTokenStore()
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: directory.appendingPathComponent("workbench.json")),
+      safeMode: true, keychainTokenStore: tokenStore
+    )
+    var connection = store.activeAIConnectionProfile
+    connection.config = configuredTestProvider()
+    XCTAssertTrue(store.updateAIConnectionProfile(connection))
+    XCTAssertTrue(store.ai.saveAPIKey("must-survive-stale-sites"))
+    var proposed = connection.config
+    proposed.baseURL = "https://must-not-apply.example/v1"
+    let originalSites = [store.activeProfileID: store.activeProfile.name]
+    store.updateActiveProfile { $0.name = "Renamed after review" }
+    XCTAssertFalse(
+      store.reconfigureAIConnectionProfile(
+        connection.id, expectedConfig: connection.config, proposedConfig: proposed,
+        expectedReferencingSites: originalSites
+      ))
+
+    let renamedSites = [store.activeProfileID: store.activeProfile.name]
+    _ = store.createProfile(named: "New referencing site")
+    XCTAssertTrue(store.selectAIConnectionProfile(connection.id))
+    XCTAssertFalse(
+      store.reconfigureAIConnectionProfile(
+        connection.id, expectedConfig: connection.config, proposedConfig: proposed,
+        expectedReferencingSites: renamedSites
+      ))
+    XCTAssertEqual(store.aiConnectionProfile(for: connection.id)?.config, connection.config)
+    XCTAssertEqual(
+      try tokenStore.aiToken(forConnectionProfileID: connection.id), "must-survive-stale-sites")
+  }
+
   func testChangingConnectionDestinationDeletesSharedAPIKeyBeforeUpdate() throws {
     let directory = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }

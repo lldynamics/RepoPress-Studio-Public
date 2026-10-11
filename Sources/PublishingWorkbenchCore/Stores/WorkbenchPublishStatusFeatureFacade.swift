@@ -1,9 +1,10 @@
 import Combine
 import Foundation
 
-/// Observation boundary for the compact publishing status control in the
-/// workspace toolbar. It does not follow draft body buffers, AI streams or
-/// unrelated repository operations.
+/// Observation boundary for the publish badge in the workspace toolbar and
+/// the Inspector's 发布检查 tab. Body edits reach it only through the
+/// coalesced draft-scoped preflight notification; it does not follow AI
+/// streams or unrelated repository operations.
 @MainActor
 public final class WorkbenchPublishStatusFeatureFacade: ObservableObject {
   private unowned let store: WorkbenchStore
@@ -11,6 +12,7 @@ public final class WorkbenchPublishStatusFeatureFacade: ObservableObject {
 
   init(store: WorkbenchStore) {
     self.store = store
+    store.configureDraftPreflightInputObservationIfNeeded()
 
     observe(store.publishingStore.$profiles)
     observe(store.publishingStore.$activeProfileID)
@@ -21,6 +23,17 @@ public final class WorkbenchPublishStatusFeatureFacade: ObservableObject {
     observe(store.publishingStore.publishSession.$releaseRecords)
     observe(store.repositoryStore.$repositoryReport)
     observe(store.deploymentStore.$deploymentStatusSnapshots)
+    // Inputs of the publish badge besides preflight: the article's images,
+    // social card, SEO-relevant metadata and publishing account. These are
+    // the same inputs the publish panel lists under 需要处理.
+    observe(store.imageStore.$backgroundImageReport)
+    observe(store.imageStore.$imageReportLoadingDraftID)
+    observe(store.aiWorkspaceStore.$seoSocialPreviewSnapshots)
+    observe(store.repositoryStore.$repositoryTokenAvailability)
+    observe(store.publishingStore.publishSession.$remotePublishPreviewSnapshot)
+    store.publishingStore.publishSession.draftPublishStatusDidChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
     // Use the new array supplied by the publisher rather than reading the
     // store during @Published's willSet phase. Only the selected draft's list
     // metadata can invalidate this toolbar; another row changing must not.

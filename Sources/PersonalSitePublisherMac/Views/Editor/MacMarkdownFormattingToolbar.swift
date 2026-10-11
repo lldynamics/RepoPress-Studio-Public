@@ -23,11 +23,10 @@ struct MacMarkdownFormattingToolbar: View {
 
   var body: some View {
     toolbarContent
-      .frame(maxWidth: .infinity, alignment: .leading)
       .frame(minHeight: 34)
       .buttonStyle(WorkbenchFocusRingButtonStyle())
-      .padding(.horizontal, presentation == .integrated ? 0 : 10)
-      .padding(.vertical, presentation == .integrated ? 0 : 6)
+      .padding(.horizontal, presentation == .integrated ? 0 : WorkbenchSpacing.control)
+      .padding(.vertical, presentation == .integrated ? 0 : WorkbenchSpacing.icon)
       .background {
         if presentation == .standalone {
           Rectangle().fill(.bar)
@@ -86,24 +85,24 @@ struct MacMarkdownFormattingToolbar: View {
   }
 
   private func formattingRow(items: [MarkdownToolbarFormattingItem]) -> some View {
-    HStack(spacing: 5) {
+    HStack(spacing: WorkbenchSpacing.tight) {
       ForEach(items) { item in
         formattingItem(item, showsTitle: false)
       }
     }
     .fixedSize(horizontal: true, vertical: false)
-    .padding(.horizontal, 4)
+    .padding(.horizontal, WorkbenchSpacing.tight)
   }
 
   private var scrollingFormattingRow: some View {
     ScrollView(.horizontal, showsIndicators: true) {
-      HStack(spacing: 5) {
+      HStack(spacing: WorkbenchSpacing.tight) {
         ForEach(MarkdownToolbarLayout.primaryFormattingItems) { item in
           formattingItem(item, showsTitle: false)
         }
       }
       .fixedSize(horizontal: true, vertical: false)
-      .padding(.horizontal, 4)
+      .padding(.horizontal, WorkbenchSpacing.tight)
     }
   }
 
@@ -144,7 +143,7 @@ struct MacMarkdownFormattingToolbar: View {
     case .formatMenu:
       groupedMenu(
         title: "格式",
-        systemName: "bold.italic.underline",
+        systemName: "paintbrush.pointed",
         help: "行内代码、引用、删除线与中英文排版",
         identifier: "markdown-format-menu",
         items: MarkdownToolbarLayout.formatMenuItems
@@ -226,12 +225,16 @@ struct MacMarkdownFormattingToolbar: View {
         Text(title)
           .font(.workbenchButtonLabel)
         Image(systemName: "chevron.down")
-          .font(.system(size: 7, weight: .bold))
+          .font(.system(size: WorkbenchIconSize.indicator, weight: .bold))
           .foregroundStyle(.secondary)
       }
       .fixedSize(horizontal: true, vertical: false)
-      .padding(.horizontal, 5)
+      .padding(.horizontal, WorkbenchSpacing.tight)
       .frame(minHeight: 28)
+      // Without this the icon, title and chevron each surface as a separate
+      // menu button to VoiceOver and UI tests.
+      .accessibilityElement(children: .ignore)
+      .accessibilityLabel(Text(title))
     }
     .menuIndicator(.hidden)
     .foregroundStyle(.secondary)
@@ -254,10 +257,12 @@ struct MacMarkdownFormattingToolbar: View {
             .font(.workbenchMetadata.weight(.semibold))
             .monospaced()
           Image(systemName: "chevron.down")
-            .font(.system(size: 7, weight: .bold))
+            .font(.system(size: WorkbenchIconSize.indicator, weight: .bold))
             .foregroundStyle(.secondary)
         }
         .frame(minWidth: 28, minHeight: 28)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("标题层级")
       }
     }
     .menuIndicator(.hidden)
@@ -279,12 +284,14 @@ struct MacMarkdownFormattingToolbar: View {
       } else {
         HStack(spacing: 2) {
           Image(systemName: "list.bullet")
-            .font(.system(size: 13, weight: .regular))
+            .font(.system(size: WorkbenchIconSize.inline, weight: .regular))
           Image(systemName: "chevron.down")
-            .font(.system(size: 7, weight: .bold))
+            .font(.system(size: WorkbenchIconSize.indicator, weight: .bold))
             .foregroundStyle(.secondary)
         }
         .frame(minWidth: 28, minHeight: 28)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("列表")
       }
     }
     .menuIndicator(.hidden)
@@ -318,7 +325,7 @@ struct MacMarkdownFormattingToolbar: View {
         .labelStyle(.titleAndIcon)
         .font(.workbenchButtonLabel)
         .fixedSize(horizontal: true, vertical: false)
-        .padding(.horizontal, 6)
+        .padding(.horizontal, WorkbenchSpacing.icon)
         .frame(minHeight: 28)
     } else {
       Image(systemName: systemName)

@@ -23,10 +23,6 @@ extension WorkbenchAIStore {
     try aiChatOperationCoordinator.check(operationID)
   }
 
-  func setAIChatCancellationRequested(_ value: Bool) {
-    aiChatOperationCoordinator.setCancellationRequested(value)
-  }
-
   func aiChatCancellationRequested() -> Bool {
     aiChatOperationCoordinator.isCancellationRequested
   }

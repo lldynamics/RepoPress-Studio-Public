@@ -6,6 +6,21 @@ import XCTest
 @testable import PublishingAICore
 
 final class AIConnectionSetupPresentationTests: XCTestCase {
+  func testSuccessfulKeySaveNavigatesToExplicitConsentBeforeModelSelection() {
+    XCTAssertEqual(
+      AIConnectionSetupContinuation.afterSavingKey(dataSharingConsent: consent(granted: false)),
+      .consent)
+    XCTAssertEqual(
+      AIConnectionSetupContinuation.afterSavingKey(dataSharingConsent: consent(granted: true)),
+      .modelSelection)
+    XCTAssertEqual(
+      AIConnectionSetupContinuation.afterSavingKey(
+        dataSharingConsent:
+          AIDataSharingConsentPresentation(
+            providerName: "ChatGPT", destination: "Codex / ChatGPT", destinationState: .remote,
+            isGranted: true, requiresAccountReauthorization: true)),
+      .consent)
+  }
 
   func testResolvedModelAliasDoesNotInvalidateSuccessfulRequest() {
     let report = AIConnectionTestReport(

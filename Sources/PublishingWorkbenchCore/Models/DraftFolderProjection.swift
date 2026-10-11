@@ -48,17 +48,10 @@ public struct DraftFolderNode: Identifiable, Hashable, Sendable {
 
   public var displayName: String { name }
 
-  public var isVirtual: Bool {
-    kind == .protectedContent || kind == .unfiled
-  }
-
   /// Number of drafts directly in this node and all of its descendants.
   public var totalDescendantDraftCount: Int {
     draftIDs.count + children.reduce(0) { $0 + $1.totalDescendantDraftCount }
   }
-
-  /// Alias that reads naturally at call sites rendering a folder badge.
-  public var descendantDraftCount: Int { totalDescendantDraftCount }
 
   public var totalDraftCount: Int { totalDescendantDraftCount }
 

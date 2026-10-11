@@ -7,7 +7,7 @@ extension ReleaseHistoryDetailView {
     let record = entry.record
 
     return releaseRecordCardDetails(entry)
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
       .background(
         WorkbenchBackgroundStyle.card,
         in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -49,7 +49,7 @@ extension ReleaseHistoryDetailView {
           .foregroundStyle(.secondary)
         Text(entry.statusMessage)
           .font(.callout)
-          .foregroundStyle(ledgerStatusForeground(entry.status))
+          .foregroundStyle(ReleaseHistoryStatusStyle.ledgerForeground(entry.status))
       }
 
       Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
@@ -120,7 +120,7 @@ extension ReleaseHistoryDetailView {
             systemImage: "checklist"
           )
           .font(.callout)
-          .foregroundStyle(statusForeground(deploymentStatus.level))
+          .foregroundStyle(ReleaseHistoryStatusStyle.deploymentForeground(deploymentStatus.level))
 
           if deploymentHistory.count > 1 {
             DeploymentStatusTrendChart(history: deploymentHistory)
@@ -133,7 +133,7 @@ extension ReleaseHistoryDetailView {
             VStack(alignment: .leading, spacing: 8) {
               HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: signal.level.systemImage)
-                  .foregroundStyle(statusForeground(signal.level))
+                  .foregroundStyle(ReleaseHistoryStatusStyle.deploymentForeground(signal.level))
                   .frame(width: 16)
                 Text(signal.title)
                   .font(.callout.weight(.medium))
@@ -166,7 +166,7 @@ extension ReleaseHistoryDetailView {
             }
           }
         }
-        .padding(10)
+        .padding(WorkbenchSpacing.card)
         .background(
           WorkbenchBackgroundStyle.card,
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
@@ -190,7 +190,7 @@ extension ReleaseHistoryDetailView {
             }
           }
         }
-        .padding(10)
+        .padding(WorkbenchSpacing.card)
         .background(
           WorkbenchBackgroundStyle.card,
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
@@ -214,7 +214,7 @@ extension ReleaseHistoryDetailView {
                     .fixedSize(horizontal: false, vertical: true)
                 }
               }
-              .padding(.top, 6)
+              .padding(.top, WorkbenchSpacing.icon)
             } label: {
               Label("高级：Git 命令（\(rollbackDraft.commandLines.count) 条）", systemImage: "terminal")
                 .font(.callout.weight(.medium))
@@ -242,13 +242,13 @@ extension ReleaseHistoryDetailView {
                   .lineLimit(8)
               }
             }
-            .padding(8)
+            .padding(WorkbenchSpacing.control)
             .background(
               WorkbenchBackgroundStyle.card,
               in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
           }
         }
-        .padding(10)
+        .padding(WorkbenchSpacing.card)
         .background(
           WorkbenchBackgroundStyle.card,
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
@@ -354,7 +354,7 @@ extension ReleaseHistoryDetailView {
         .foregroundStyle(.secondary)
       Label(entry.status.localizedDisplayName, systemImage: entry.status.systemImage)
         .font(.caption.weight(.medium))
-        .foregroundStyle(ledgerStatusForeground(entry.status))
+        .foregroundStyle(ReleaseHistoryStatusStyle.ledgerForeground(entry.status))
     }
   }
 
@@ -367,7 +367,7 @@ extension ReleaseHistoryDetailView {
   private func deploymentStatusTitle(_ deploymentStatus: DeploymentStatusSnapshot) -> some View {
     Label(deploymentStatus.title, systemImage: deploymentStatus.level.systemImage)
       .font(.callout.weight(.medium))
-      .foregroundStyle(statusForeground(deploymentStatus.level))
+      .foregroundStyle(ReleaseHistoryStatusStyle.deploymentForeground(deploymentStatus.level))
       .fixedSize(horizontal: false, vertical: true)
   }
 
@@ -417,11 +417,7 @@ extension ReleaseHistoryDetailView {
         .font(.callout.weight(.semibold))
         .accessibilityAddTraits(.isHeader)
 
-      LazyVGrid(
-        columns: [GridItem(.adaptive(minimum: 150, maximum: 230), spacing: 8)],
-        alignment: .leading,
-        spacing: 8
-      ) {
+      WorkbenchFlowLayout(horizontalSpacing: 8, verticalSpacing: 8) {
         if record.kind == .remotePublishFailure {
           Button {
             beginFailureReview(record)
@@ -589,7 +585,7 @@ extension ReleaseHistoryDetailView {
         }
       }
       .buttonStyle(.bordered)
-      .controlSize(.regular)
+      .controlSize(.small)
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("release-record-\(record.id)-actions")
@@ -600,7 +596,6 @@ extension ReleaseHistoryDetailView {
     systemImage: String
   ) -> some View {
     Label(title, systemImage: systemImage)
-      .frame(maxWidth: .infinity, alignment: .leading)
   }
 
   func performDangerousReleaseAction(_ action: DangerousReleaseAction) async {

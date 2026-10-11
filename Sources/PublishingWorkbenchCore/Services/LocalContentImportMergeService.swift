@@ -60,6 +60,8 @@ public struct LocalContentImportMergeService: Sendable {
         // Repository Markdown cannot encode the app's source UUID and source
         // fingerprint. Keep the existing article relationship on refresh.
         updated.translationLink = existing.translationLink
+        // Reminder scheduling is local state and is never carried by Markdown.
+        updated.publishReminderAt = existing.publishReminderAt
         guard existing != updated else { continue }
 
         replacedDrafts.append(existing)

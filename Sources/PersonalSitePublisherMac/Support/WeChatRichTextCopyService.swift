@@ -23,20 +23,6 @@ public struct WeChatRichTextCopyService: Sendable {
       self.quoteBackgroundColor = quoteBackgroundColor
     }
 
-    public static let wechatGreen = Theme(
-      primaryColor: "#07c160",
-      secondaryColor: "#10aeff",
-      codeBackgroundColor: "#282c34",
-      quoteBackgroundColor: "#f6ffed"
-    )
-
-    public static let zhihuBlue = Theme(
-      primaryColor: "#0066ff",
-      secondaryColor: "#3385ff",
-      codeBackgroundColor: "#282c34",
-      quoteBackgroundColor: "#f4f8fb"
-    )
-
     public static let elegantClassic = Theme(
       primaryColor: "#007aff",
       secondaryColor: "#5856d6",

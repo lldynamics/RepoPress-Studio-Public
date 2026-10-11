@@ -3,42 +3,6 @@ import PublishingAICore
 import PublishingCoreSupport
 import SwiftUI
 
-enum AIConnectionKind: String, CaseIterable, Identifiable {
-  case chatGPT
-  case local
-  case apiKey
-
-  var id: String { rawValue }
-
-  init(preset: AIProviderPreset) {
-    switch preset {
-    case .codexAppServer:
-      self = .chatGPT
-    case .local:
-      self = .local
-    case .openAICompatible, .deepSeek, .anthropic, .gemini, .siliconFlow, .moonshot, .zhipu,
-      .openRouter, .custom:
-      self = .apiKey
-    }
-  }
-
-  var title: String {
-    switch self {
-    case .chatGPT: return String(localized: "ChatGPT 登录")
-    case .local: return String(localized: "本地模型")
-    case .apiKey: return "API Key"
-    }
-  }
-
-  var systemImage: String {
-    switch self {
-    case .chatGPT: return "person.crop.circle.badge.checkmark"
-    case .local: return "desktopcomputer"
-    case .apiKey: return "key.fill"
-    }
-  }
-}
-
 struct AIProviderSection: View {
   let presetBinding: Binding<AIProviderPreset>
   let presetDisplayName: String
@@ -52,6 +16,9 @@ struct AIProviderSection: View {
   let discoverModels: (UUID, AIProviderConfig) async throws -> [AIModelDescriptor]
   let modelDiscoveryTrigger: UUID?
   let modelDiscoveryAuthorizationMessage: String?
+  let modelDiscoveryInvalidation: UUID?
+  let restorePresetDefaults: () -> Void
+  let onContinueToVerification: () -> Void
   @State private var baseURLDraft: String
   @State private var discoveredModels: [AIModelDescriptor] = []
   @State private var isDiscoveringModels = false
@@ -60,6 +27,7 @@ struct AIProviderSection: View {
   @State private var modelDiscoveryRequestID = UUID()
   @State private var isSearchPopoverPresented = false
   @State private var hasLoadedModels = false
+  @State private var isConnectionFieldsExpanded = false
 
   init(
     presetBinding: Binding<AIProviderPreset>,
@@ -73,7 +41,10 @@ struct AIProviderSection: View {
     connectionProfileID: UUID,
     discoverModels: @escaping (UUID, AIProviderConfig) async throws -> [AIModelDescriptor],
     modelDiscoveryTrigger: UUID? = nil,
-    modelDiscoveryAuthorizationMessage: String? = nil
+    modelDiscoveryAuthorizationMessage: String? = nil,
+    modelDiscoveryInvalidation: UUID? = nil,
+    restorePresetDefaults: @escaping () -> Void,
+    onContinueToVerification: @escaping () -> Void
   ) {
     self.presetBinding = presetBinding
     self.presetDisplayName = presetDisplayName
@@ -87,6 +58,9 @@ struct AIProviderSection: View {
     self.discoverModels = discoverModels
     self.modelDiscoveryTrigger = modelDiscoveryTrigger
     self.modelDiscoveryAuthorizationMessage = modelDiscoveryAuthorizationMessage
+    self.modelDiscoveryInvalidation = modelDiscoveryInvalidation
+    self.restorePresetDefaults = restorePresetDefaults
+    self.onContinueToVerification = onContinueToVerification
     _baseURLDraft = State(initialValue: baseURL.wrappedValue)
   }
 
@@ -110,6 +84,7 @@ struct AIProviderSection: View {
         }
         .accessibilityLabel(String(localized: "API 服务预设"))
         .accessibilityValue(presetDisplayName)
+        .accessibilityIdentifier("settings-ai-provider-preset")
       }
 
       if presetBinding.wrappedValue == .codexAppServer {
@@ -121,13 +96,18 @@ struct AIProviderSection: View {
         Label("无需 API Key", systemImage: "person.crop.circle.badge.checkmark")
           .foregroundStyle(WorkbenchTheme.success)
       } else {
-        baseURLField
+        if fieldPresentation.showsConnectionFieldsByDefault {
+          connectionFields
+        } else {
+          DisclosureGroup("高级与自定义地址", isExpanded: $isConnectionFieldsExpanded) {
+            connectionFields
+          }
+          .disclosureGroupStyle(
+            WorkbenchDisclosureGroupStyle(toggleIdentifier: "settings-ai-provider-advanced")
+          )
+        }
 
         modelField
-
-        Toggle(String(localized: "需要 API 密钥"), isOn: requiresAPIKeyBinding)
-          .accessibilityLabel(String(localized: "AI 需要 API Key"))
-          .accessibilityValue(requiresAPIKeyDisplayValue)
       }
 
       if isPresetModifiedFromDefault {
@@ -158,20 +138,43 @@ struct AIProviderSection: View {
     .onChange(of: modelDiscoveryTrigger) { _, _ in
       if canDiscoverModels { fetchModelsFromAPI() }
     }
+    .onChange(of: modelDiscoveryInvalidation) { _, _ in
+      invalidateModelDiscovery()
+    }
     .onChange(of: modelDiscoveryAuthorizationMessage) { _, message in
       if message != nil { invalidateModelDiscovery() }
     }
     .onChange(of: requiresAPIKeyBinding.wrappedValue) { _, _ in
       invalidateModelDiscovery()
     }
+    .onChange(of: model.wrappedValue) { _, _ in
+      if isDiscoveringModels { invalidateModelDiscovery() }
+    }
     .onChange(of: presetBinding.wrappedValue) { _, _ in
       invalidateModelDiscovery()
     }
     .onChange(of: connectionProfileID) { _, _ in
+      baseURLDraft = baseURL.wrappedValue
       invalidateModelDiscovery()
     }
     .onDisappear {
       invalidateModelDiscovery()
+    }
+  }
+
+  private var fieldPresentation: AIProviderFieldPresentation {
+    AIProviderFieldPresentation(
+      config: AIProviderConfig(
+        preset: presetBinding.wrappedValue, baseURL: baseURL.wrappedValue,
+        model: model.wrappedValue, requiresAPIKey: requiresAPIKeyBinding.wrappedValue))
+  }
+
+  private var connectionFields: some View {
+    VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
+      baseURLField
+      Toggle(String(localized: "需要 API 密钥"), isOn: requiresAPIKeyBinding)
+        .accessibilityLabel(String(localized: "AI 需要 API Key"))
+        .accessibilityValue(requiresAPIKeyDisplayValue)
     }
   }
 
@@ -233,10 +236,11 @@ struct AIProviderSection: View {
           String(localized: "API 基础地址"),
           text: $baseURLDraft
         )
-        .padding(.trailing, 24)
+        .padding(.trailing, WorkbenchSpacing.spacious)
         .textContentType(.URL)
         .accessibilityLabel(String(localized: "AI Base URL"))
         .accessibilityValue(baseURLDraft.nilIfEmpty ?? String(localized: "未填写"))
+        .accessibilityIdentifier("settings-ai-base-url")
 
         if !baseURLDraft.trimmedForPublishing.isEmpty {
           Button {
@@ -307,9 +311,10 @@ struct AIProviderSection: View {
           String(localized: "模型"),
           text: model
         )
-        .padding(.trailing, 24)
+        .padding(.trailing, WorkbenchSpacing.spacious)
         .accessibilityLabel(String(localized: "AI 模型"))
         .accessibilityValue(modelDisplayValue)
+        .accessibilityIdentifier("settings-ai-model")
 
         if !model.wrappedValue.trimmedForPublishing.isEmpty {
           Button {
@@ -336,7 +341,7 @@ struct AIProviderSection: View {
             } label: {
               Text(candidate)
                 .font(.caption)
-                .padding(.horizontal, 6)
+                .padding(.horizontal, WorkbenchSpacing.icon)
                 .padding(.vertical, 2)
                 .background(
                   model.wrappedValue == candidate
@@ -362,7 +367,7 @@ struct AIProviderSection: View {
               Image(systemName: "chevron.right").font(.workbenchMetadata)
             }
             .font(.caption)
-            .foregroundStyle(WorkbenchTheme.brand)
+            .foregroundStyle(.secondary)
           }
           .buttonStyle(.borderless)
           .popover(isPresented: $isSearchPopoverPresented) {
@@ -438,6 +443,12 @@ struct AIProviderSection: View {
           .accessibilityLabel(String(localized: "模型发现失败"))
           .accessibilityValue(discoveryErrorMessage)
       }
+      if modelDiscoveryAuthorizationMessage == nil, !model.wrappedValue.trimmedForPublishing.isEmpty
+      {
+        Button("继续验证连接", action: onContinueToVerification)
+          .buttonStyle(.borderless)
+          .accessibilityIdentifier("settings-ai-model-continue")
+      }
     }
   }
 
@@ -470,14 +481,6 @@ struct AIProviderSection: View {
 
   private func restoreModelPlaceholder() {
     model.wrappedValue = presetBinding.wrappedValue.defaultModel
-  }
-
-  private func restorePresetDefaults() {
-    let preset = presetBinding.wrappedValue
-    baseURLDraft = preset.defaultBaseURL
-    baseURL.wrappedValue = preset.defaultBaseURL
-    model.wrappedValue = preset.defaultModel
-    requiresAPIKeyBinding.wrappedValue = (preset != .local && preset != .codexAppServer)
   }
 
   private func applyBaseURLDraft() {
@@ -533,12 +536,19 @@ struct AIProviderSection: View {
       model: model.wrappedValue,
       requiresAPIKey: requiresAPIKeyBinding.wrappedValue
     )
+    let requestedConnectionID = connectionProfileID
     modelDiscoveryTask = Task {
       do {
-        let models = try await discoverModels(connectionProfileID, config)
+        let models = try await discoverModels(requestedConnectionID, config)
         try Task.checkCancellation()
         await MainActor.run {
-          guard self.modelDiscoveryRequestID == requestID else { return }
+          guard self.modelDiscoveryRequestID == requestID,
+            self.connectionProfileID == requestedConnectionID,
+            self.baseURL.wrappedValue == config.baseURL,
+            self.model.wrappedValue == config.model,
+            self.presetBinding.wrappedValue == config.preset,
+            self.requiresAPIKeyBinding.wrappedValue == config.requiresAPIKey
+          else { return }
           self.discoveredModels = models
           self.hasLoadedModels = true
           self.isSearchPopoverPresented = !models.isEmpty
@@ -574,144 +584,5 @@ struct AIProviderSection: View {
     hasLoadedModels = false
     isSearchPopoverPresented = false
     discoveryErrorMessage = nil
-  }
-}
-
-struct AIModelSearchPopoverView: View {
-  let models: [AIModelDescriptor]
-  let selectedModel: String
-  let onSelect: (String) -> Void
-  @State private var searchText = ""
-
-  var filteredModels: [AIModelDescriptor] {
-    let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-    if trimmed.isEmpty {
-      return models
-    }
-    return models.filter {
-      $0.id.localizedCaseInsensitiveContains(trimmed)
-        || $0.name.localizedCaseInsensitiveContains(trimmed)
-    }
-  }
-
-  var body: some View {
-    VStack(spacing: 0) {
-      HStack(spacing: 6) {
-        Image(systemName: "magnifyingglass")
-          .foregroundStyle(.secondary)
-        TextField(String(localized: "搜索模型 (如 r1, sonnet, gemini, flash...)"), text: $searchText)
-          .textFieldStyle(.plain)
-          .font(.body)
-          .accessibilityLabel(
-            String(localized: "搜索模型 (如 r1, sonnet, gemini, flash...)")
-          )
-        if !searchText.isEmpty {
-          Button {
-            searchText = ""
-          } label: {
-            Image(systemName: "xmark.circle.fill")
-              .foregroundStyle(.secondary)
-          }
-          .buttonStyle(.plain)
-        }
-      }
-      .padding(8)
-      .background(Color.primary.opacity(0.04))
-
-      Divider()
-
-      if filteredModels.isEmpty {
-        VStack(spacing: 6) {
-          Spacer()
-          Image(systemName: "questionmark.folder")
-            .font(.title2)
-            .foregroundStyle(.secondary)
-          Text("未找到包含 \"\(searchText)\" 的模型")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-          Spacer()
-        }
-        .frame(minHeight: 140)
-      } else {
-        ScrollView {
-          LazyVStack(spacing: 2) {
-            ForEach(filteredModels) { descriptor in
-              Button {
-                onSelect(descriptor.id)
-              } label: {
-                HStack(spacing: 8) {
-                  VStack(alignment: .leading, spacing: 2) {
-                    Text(descriptor.name)
-                      .font(.callout.monospaced())
-                      .foregroundStyle(Color.primary)
-                    if descriptor.id != descriptor.name {
-                      Text(descriptor.id)
-                        .font(.workbenchMetadata.monospaced())
-                        .foregroundStyle(.secondary)
-                    }
-                    AIModelMetadataView(model: descriptor)
-                  }
-
-                  Spacer()
-
-                  if descriptor.hasProviderMetadata, descriptor.isReasoning {
-                    Text("深度思考")
-                      .font(.workbenchMetadata.weight(.medium))
-                      .padding(.horizontal, 5)
-                      .padding(.vertical, 2)
-                      .background(Color.purple.opacity(0.15), in: Capsule())
-                      .foregroundStyle(.purple)
-                  }
-
-                  if descriptor.hasProviderMetadata, descriptor.isVision {
-                    Text("多模态")
-                      .font(.workbenchMetadata.weight(.medium))
-                      .padding(.horizontal, 5)
-                      .padding(.vertical, 2)
-                      .background(Color.blue.opacity(0.15), in: Capsule())
-                      .foregroundStyle(.blue)
-                  }
-
-                  if descriptor.id == selectedModel {
-                    Image(systemName: "checkmark")
-                      .font(.caption.weight(.bold))
-                      .foregroundStyle(WorkbenchTheme.brand)
-                  }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .contentShape(Rectangle())
-                .background(
-                  descriptor.id == selectedModel
-                    ? WorkbenchTheme.brand.opacity(0.08)
-                    : Color.clear,
-                  in: RoundedRectangle(cornerRadius: 4)
-                )
-              }
-              .buttonStyle(.plain)
-            }
-          }
-          .padding(6)
-        }
-        .frame(minHeight: 200, maxHeight: 320)
-      }
-
-      Divider()
-
-      HStack {
-        Text("共 \(models.count) 个可用模型")
-          .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
-        Spacer()
-        if !searchText.isEmpty {
-          Text("已筛选出 \(filteredModels.count) 个")
-            .font(.workbenchMetadata)
-            .foregroundStyle(WorkbenchTheme.brand)
-        }
-      }
-      .padding(.horizontal, 10)
-      .padding(.vertical, 6)
-    }
-    .frame(width: 360)
   }
 }

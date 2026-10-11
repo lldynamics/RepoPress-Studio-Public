@@ -761,7 +761,7 @@ final class CodexAppServerClientTests: XCTestCase {
     await XCTAssertThrowsErrorAsync(
       try await client.waitForLoginCompletion(loginID: login.loginID)
     ) { error in
-      XCTAssertEqual(error as? CodexAppServerError, .loginTimedOut)
+      XCTAssertEqual(error as? CodexAppServerError, .cancelled)
     }
     let cancelCount = await transport.sentMessageCount(method: "account/login/cancel")
     XCTAssertEqual(cancelCount, 1)

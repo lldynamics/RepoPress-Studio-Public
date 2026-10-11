@@ -8,16 +8,23 @@ struct MetadataColumn: View {
   let selectedDraftID: UUID?
   let imageBrowserSession: RepositoryImageBrowserSession
   let onOpenImageDraft: (UUID) -> Void
-  @ObservedObject private var contentPresentation: WorkbenchContentPresentationFeatureFacade
+  @Binding private var selectedTab: WorkspaceInspectorTab
+  let selectedHealthIssue: ContentHealthIssueSelection?
+  let healthInspectorActions: ContentHealthInspectorActions
+  let publishScope: PublishScope
+  let publishRequestGeneration: Int
+  let completedReleaseRecordID: UUID?
+  let onNavigatePublishIssue: (UUID, PublishReadinessTarget, PublishScope) -> Void
+  let onRequestAIFix: (UUID, PublishReadinessTarget) -> Void
+  @Binding private var isPresented: Bool
+  @ObservedObject private var publishStatus: WorkbenchPublishStatusFeatureFacade
   let rssStore: RSSReaderStore
   @Binding private var repositoryChangedFileSelection: RepositoryChangedFileSelection?
   @Binding private var aiChatSurfaceState: AIChatSurfaceState
   @Binding private var knowledgeInspectorPresentation: KnowledgeLibraryInspectorPresentationState
   private let aiChatOperationSession: AIChatSurfaceOperationSession
   let prioritizesChecks: Bool
-  let onResetWidth: (() -> Void)?
-  let defaultWidth: CGFloat?
-  @State private var measuredWidth: CGFloat?
+  @State private var hasOpenedPublish = false
   @ObservedObject private var articlePresentation: ArticleInspectorPresentationState
 
   init(
@@ -27,21 +34,38 @@ struct MetadataColumn: View {
     imageBrowserSession: RepositoryImageBrowserSession,
     onOpenImageDraft: @escaping (UUID) -> Void,
     rssStore: RSSReaderStore,
+    windowSession: WorkspaceWindowSession,
+    selectedHealthIssue: ContentHealthIssueSelection?,
+    healthInspectorActions: ContentHealthInspectorActions,
+    publishScope: PublishScope,
+    publishRequestGeneration: Int,
+    completedReleaseRecordID: UUID?,
+    isPresented: Binding<Bool>,
+    onNavigatePublishIssue: @escaping (UUID, PublishReadinessTarget, PublishScope) -> Void,
+    onRequestAIFix: @escaping (UUID, PublishReadinessTarget) -> Void,
     repositoryChangedFileSelection: Binding<RepositoryChangedFileSelection?>,
     aiChatSurfaceState: Binding<AIChatSurfaceState>,
     knowledgeInspectorPresentation: Binding<KnowledgeLibraryInspectorPresentationState>,
     aiChatOperationSession: AIChatSurfaceOperationSession,
     prioritizesChecks: Bool = false,
-    articlePresentation: ArticleInspectorPresentationState,
-    defaultWidth: CGFloat? = nil,
-    onResetWidth: (() -> Void)? = nil
+    articlePresentation: ArticleInspectorPresentationState
   ) {
     self.store = store
     self.selectedSection = selectedSection
     self.selectedDraftID = selectedDraftID
     self.imageBrowserSession = imageBrowserSession
     self.onOpenImageDraft = onOpenImageDraft
-    _contentPresentation = ObservedObject(wrappedValue: store.contentPresentation)
+    let session = ObservedObject(wrappedValue: windowSession).projectedValue
+    _selectedTab = session.inspectorTab
+    self.selectedHealthIssue = selectedHealthIssue
+    self.healthInspectorActions = healthInspectorActions
+    self.publishScope = publishScope
+    self.publishRequestGeneration = publishRequestGeneration
+    self.completedReleaseRecordID = completedReleaseRecordID
+    _isPresented = isPresented
+    self.onNavigatePublishIssue = onNavigatePublishIssue
+    self.onRequestAIFix = onRequestAIFix
+    _publishStatus = ObservedObject(wrappedValue: store.publishStatus)
     self.rssStore = rssStore
     _repositoryChangedFileSelection = repositoryChangedFileSelection
     _aiChatSurfaceState = aiChatSurfaceState
@@ -49,91 +73,114 @@ struct MetadataColumn: View {
     self.aiChatOperationSession = aiChatOperationSession
     _articlePresentation = ObservedObject(wrappedValue: articlePresentation)
     self.prioritizesChecks = prioritizesChecks
-    self.onResetWidth = onResetWidth
-    self.defaultWidth = defaultWidth
   }
 
   var body: some View {
-    ZStack(alignment: .topLeading) {
-      switch WorkspaceInspectorPresentation.route(
-        for: selectedSection
-      ) {
+    VStack(spacing: 0) {
+      Picker("检查器", selection: $selectedTab) {
+        ForEach(WorkspaceInspectorTab.allCases) { tab in
+          if tab == .publish, pendingCount > 0 {
+            Text("发布检查 · \(pendingCount)").tag(tab)
+          } else {
+            Text(tab.title).tag(tab)
+          }
+        }
+      }
+      .pickerStyle(.segmented)
+      .padding(WorkbenchSpacing.control)
+      .accessibilityLabel("检查器标签")
+      .accessibilityValue(selectedTab.title)
+      .accessibilityIdentifier("workspace-inspector-tabs")
+      Divider()
+      ZStack {
+        switch selectedTab {
+        case .information:
+          informationContent
+        case .assistant:
+          AIChatContextInspectorView(
+            store: store,
+            selectedDraftID: selectedDraftID,
+            usesWindowDraftSelection: true,
+            surfaceState: $aiChatSurfaceState,
+            operationSession: aiChatOperationSession
+          )
+        case .publish:
+          Color.clear
+        }
+        if selectedTab == .publish || hasOpenedPublish {
+          PublishDrawerView(
+            publishingFacade: store.publishing,
+            store: store,
+            draftID: selectedDraftID,
+            isPresented: $isPresented,
+            initialScope: publishScope,
+            requestGeneration: publishRequestGeneration,
+            isActive: selectedTab == .publish,
+            initialCompletedReleaseRecordID: completedReleaseRecordID,
+            onNavigateIssue: onNavigatePublishIssue,
+            onRequestAIFix: onRequestAIFix
+          )
+          .opacity(selectedTab == .publish ? 1 : 0)
+          .disabled(selectedTab != .publish)
+          .allowsHitTesting(selectedTab == .publish)
+          .accessibilityHidden(selectedTab != .publish)
+          .accessibilityElement(children: .contain)
+          .accessibilityIdentifier("workspace-publish-inspector")
+          .onAppear { hasOpenedPublish = true }
+        }
+      }
+      // Non-scrolling content such as empty states must claim the remaining
+      // height; otherwise the whole stack, tabs included, is centered.
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    .background(WorkbenchSurface.inspector)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("workspace-inspector")
+    .accessibilityLabel("工作区检查器")
+  }
+
+  private var pendingCount: Int {
+    ArticlePublishAttention.make(store: store, draftID: selectedDraftID)?.pendingCount ?? 0
+  }
+
+  @ViewBuilder
+  private var informationContent: some View {
+    if selectedSection == .contentHealth {
+      ContentHealthSelectedIssueInspector(
+        selectedIssue: selectedHealthIssue, actions: healthInspectorActions
+      )
+    } else {
+      switch WorkspaceInspectorPresentation.route(for: selectedSection) {
       case .repository:
         RepositoryContextInspectorView(
-          store: store,
-          changedFileSelection: $repositoryChangedFileSelection
+          store: store, changedFileSelection: $repositoryChangedFileSelection
         )
       case .knowledgeLibrary:
         KnowledgeInspectorContentView(
-          store: store,
-          knowledge: store.knowledge,
+          store: store, knowledge: store.knowledge,
           presentation: $knowledgeInspectorPresentation
         )
       case .rssLibrary:
         ScrollView {
-          RSSLibraryInspectorPanel(
-            rssStore: rssStore,
-            workbenchStore: store
-          )
-          .padding(14)
+          RSSLibraryInspectorPanel(rssStore: rssStore, workbenchStore: store)
+            .padding(WorkbenchSpacing.content)
         }
-        .background(.bar)
       case .articleImages:
         RepositoryImageInspectorHost(
           store: store, session: imageBrowserSession, onOpenDraft: onOpenImageDraft
         )
       case .articleMetadata, .articleChecks:
         articleInspector
-          .opacity(isAssistantOverlayPresented ? 0 : 1)
-          .allowsHitTesting(!isAssistantOverlayPresented)
-          .accessibilityHidden(isAssistantOverlayPresented)
-      case .aiAssistant:
-        EmptyView()
-      case .unavailable:
+      case .aiAssistant, .unavailable:
         EmptyStateView(
-          title: "当前页面没有详情栏",
-          message: "此页面的操作已集中在主内容区。",
-          systemImage: "sidebar.right",
-          density: .compactPane
+          title: "当前页面没有详情栏", message: "此页面的操作已集中在主内容区。",
+          systemImage: "sidebar.right", density: .compactPane
         )
-        .background(.bar)
-      }
-
-      if isAssistantOverlayPresented {
-        AIChatContextInspectorView(
-          store: store,
-          selectedDraftID: selectedDraftID,
-          usesWindowDraftSelection: true,
-          surfaceState: $aiChatSurfaceState,
-          operationSession: aiChatOperationSession
-        )
-      }
-    }
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("workspace-inspector")
-    .accessibilityLabel("工作区详情栏")
-    .onGeometryChange(for: CGFloat.self) { geometry in
-      geometry.size.width
-    } action: { width in
-      measuredWidth = width
-    }
-    .overlay(alignment: .topTrailing) {
-      if WorkspaceInspectorWidthResetPolicy.showsResetControl(
-        measuredWidth: measuredWidth,
-        defaultWidth: defaultWidth
-      ) {
-        InspectorWidthResetControl(onResetWidth: onResetWidth)
-          .padding(8)
       }
     }
   }
 
-  /// AI is an overlay only for Writing. The underlying article Inspector stays
-  /// at a stable tree position, so its selected tab and ScrollView state can
-  /// survive a temporary AI presentation without exposing a second host.
-  private var isAssistantOverlayPresented: Bool {
-    selectedSection == .writing && contentPresentation.isAssistantPresented
-  }
 }
 
 private struct KnowledgeInspectorContentView: View {
@@ -225,25 +272,4 @@ extension MetadataColumn {
     }
   }
 
-}
-
-private struct InspectorWidthResetControl: View {
-  let onResetWidth: (() -> Void)?
-
-  var body: some View {
-    Button {
-      onResetWidth?()
-    } label: {
-      Label(String(localized: "恢复默认详情栏宽度"), systemImage: "arrow.counterclockwise")
-        .labelStyle(.iconOnly)
-        .frame(width: 22, height: 22)
-        .background(.bar, in: Circle())
-    }
-    .buttonStyle(.borderless)
-    .accessibilityLabel(String(localized: "恢复默认详情栏宽度"))
-    .help(String(localized: "恢复默认详情栏宽度（Option-Command-0）"))
-    .accessibilityHint(String(localized: "恢复默认宽度；也可按 Option-Command-0。"))
-    .keyboardShortcut("0", modifiers: [.option, .command])
-    .disabled(onResetWidth == nil)
-  }
 }

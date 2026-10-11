@@ -3,7 +3,6 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct AIChatMessageSurface<Content: View>: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let role: AIPublishingChatRole
   let timestamp: Date?
   let headerAccessory: (() -> AnyView)?
@@ -43,12 +42,12 @@ struct AIChatMessageSurface<Content: View>: View {
           headerAccessory()
         }
       }
-      .foregroundStyle(isUser ? workbenchAccentColor : WorkbenchTheme.primary)
-      .padding(.horizontal, 4)
+      .foregroundStyle(isUser ? Color.primary : Color.secondary)
+      .padding(.horizontal, WorkbenchSpacing.tight)
 
       content()
-        .padding(.horizontal, 11)
-        .padding(.vertical, 9)
+        .padding(.horizontal, WorkbenchSpacing.card)
+        .padding(.vertical, WorkbenchSpacing.control)
         .frame(
           maxWidth: isUser ? 390 : .infinity,
           alignment: isUser ? .trailing : .leading
@@ -60,8 +59,8 @@ struct AIChatMessageSurface<Content: View>: View {
           )
           .fill(isUser ? AnyShapeStyle(.thinMaterial) : WorkbenchBackgroundStyle.card)
           if isUser {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-              .fill(workbenchAccentColor.opacity(0.08))
+            RoundedRectangle(cornerRadius: WorkbenchCornerRadius.bubble, style: .continuous)
+              .fill(Color.primary.opacity(0.04))
           }
         }
         .overlay {
@@ -70,7 +69,7 @@ struct AIChatMessageSurface<Content: View>: View {
             style: .continuous
           )
           .stroke(
-            isUser ? workbenchAccentColor.opacity(0.18) : Color.primary.opacity(0.08),
+            isUser ? Color.primary.opacity(0.12) : Color.primary.opacity(0.08),
             lineWidth: 1
           )
         }
@@ -111,7 +110,7 @@ struct AIChatAssistantMessageContent: View, Equatable {
       case .structured:
         ForEach(AIChatCodeBlockPresentationService.segments(in: content)) { segment in
           switch segment {
-          case let .text(_, text):
+          case .text(_, let text):
             if !text.isEmpty {
               Text(verbatim: text)
                 .font(.workbenchBody)
@@ -119,7 +118,7 @@ struct AIChatAssistantMessageContent: View, Equatable {
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
             }
-          case let .code(block):
+          case .code(let block):
             if let draft {
               AIChatCodeBlockActionCard(
                 block: block,
@@ -162,12 +161,15 @@ private struct AIChatCodeBlockReadOnlyCard: View {
           .lineSpacing(2)
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(9)
+          .padding(WorkbenchSpacing.control)
       }
       .frame(maxHeight: 260)
     }
-    .padding(9)
-    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 7))
+    .padding(WorkbenchSpacing.control)
+    .background(
+      WorkbenchBackgroundStyle.control,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+    )
     .accessibilityLabel(String(localized: "代码块，只读"))
   }
 }
@@ -225,15 +227,20 @@ struct AIChatCodeBlockActionCard: View {
           .foregroundStyle(.primary)
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(9)
+          .padding(WorkbenchSpacing.control)
       }
       .frame(maxHeight: 260)
-      .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 7))
+      .background(
+        WorkbenchBackgroundStyle.control,
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
     }
-    .padding(9)
-    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 9))
+    .padding(WorkbenchSpacing.control)
+    .background(
+      WorkbenchBackgroundStyle.control,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
     .overlay(
-      RoundedRectangle(cornerRadius: 9, style: .continuous)
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card, style: .continuous)
         .stroke(Color.primary.opacity(0.10), lineWidth: 1)
     )
   }

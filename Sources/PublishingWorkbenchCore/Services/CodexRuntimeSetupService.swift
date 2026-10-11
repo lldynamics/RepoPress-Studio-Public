@@ -45,7 +45,6 @@ public struct CodexRuntimeSetupService: Sendable {
   public static var recommendedVersion: CodexAppServerRuntimeVersion {
     CodexRuntimeRelease.approved.version
   }
-  public static let installationGuide = URL(string: "https://learn.chatgpt.com/docs/codex/cli")!
   let layout: CodexManagedRuntime
   let release: CodexRuntimeRelease
   let download: @Sendable (URL, URL) async throws -> Void

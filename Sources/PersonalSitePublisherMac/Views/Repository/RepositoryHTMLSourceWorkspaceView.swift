@@ -3,7 +3,6 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct RepositoryHTMLSourceWorkspaceView: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @ObservedObject private var shell: WorkbenchShellFeatureFacade
   @ObservedObject var session: RepositoryHTMLSourceSession
   @State private var searchQuery = ""
@@ -83,7 +82,7 @@ struct RepositoryHTMLSourceWorkspaceView: View {
           .accessibilityLabel("刷新 HTML 文件列表")
         }
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
 
       TextField("搜索文件名或路径", text: $searchQuery)
         .textFieldStyle(.roundedBorder)
@@ -100,8 +99,8 @@ struct RepositoryHTMLSourceWorkspaceView: View {
           isFileListFocused = true
           return .handled
         }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 10)
+        .padding(.horizontal, WorkbenchSpacing.card)
+        .padding(.bottom, WorkbenchSpacing.control)
 
       Divider()
 
@@ -116,7 +115,7 @@ struct RepositoryHTMLSourceWorkspaceView: View {
       } else if displayedFiles.isEmpty {
         VStack(spacing: 10) {
           Image(systemName: searchQuery.isEmpty ? "doc.text" : "magnifyingglass")
-            .font(.system(size: 26, weight: .medium))
+            .font(.system(size: WorkbenchIconSize.section, weight: .medium))
             .foregroundStyle(.secondary)
           Text(searchQuery.isEmpty ? "没有 HTML 源文件" : "没有匹配文件")
             .font(.headline)
@@ -128,13 +127,13 @@ struct RepositoryHTMLSourceWorkspaceView: View {
             Button("清除搜索") { searchQuery = "" }
           }
         }
-        .padding(18)
+        .padding(WorkbenchSpacing.content)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
         List(displayedFiles, selection: $selectedRepositoryPath) { file in
           HStack(spacing: 9) {
             Image(systemName: "doc.text")
-              .foregroundStyle(workbenchAccentColor)
+              .foregroundStyle(.secondary)
               .frame(width: 18)
             VStack(alignment: .leading, spacing: 3) {
               Text(URL(fileURLWithPath: file.repositoryPath).lastPathComponent)
@@ -148,7 +147,7 @@ struct RepositoryHTMLSourceWorkspaceView: View {
                 .truncationMode(.middle)
             }
           }
-          .padding(.vertical, 4)
+          .padding(.vertical, WorkbenchSpacing.tight)
           .tag(file.repositoryPath)
           .contextMenu {
             Button("在 Finder 中显示") { reveal(file) }
@@ -170,8 +169,8 @@ struct RepositoryHTMLSourceWorkspaceView: View {
         Text(status)
           .font(.caption)
           .foregroundStyle(.secondary)
-          .padding(.horizontal, 12)
-          .padding(.vertical, 8)
+          .padding(.horizontal, WorkbenchSpacing.card)
+          .padding(.vertical, WorkbenchSpacing.control)
           .frame(maxWidth: .infinity, alignment: .leading)
       }
     }
@@ -183,8 +182,8 @@ struct RepositoryHTMLSourceWorkspaceView: View {
     if let file = selectedFile {
       VStack(alignment: .leading, spacing: 16) {
         Image(systemName: "doc.text")
-          .font(.system(size: 36))
-          .foregroundStyle(workbenchAccentColor)
+          .font(.system(size: WorkbenchIconSize.hero))
+          .foregroundStyle(.secondary)
         Text(URL(fileURLWithPath: file.repositoryPath).lastPathComponent)
           .font(.title2.weight(.semibold))
           .lineLimit(2)
@@ -222,7 +221,7 @@ struct RepositoryHTMLSourceWorkspaceView: View {
           .foregroundStyle(.secondary)
         Spacer()
       }
-      .padding(24)
+      .padding(WorkbenchSpacing.spacious)
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     } else {
       EmptyStateView(

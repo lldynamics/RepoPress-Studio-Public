@@ -1,18 +1,24 @@
 import Foundation
 
+/// A suggestion can only be read or applied with the draft and profile version
+/// that produced it. Partial application replaces this complete entry.
+struct AIDraftSuggestionEntry {
+  let suggestion: AIPublishingMetadataSuggestion
+  let baseline: DraftOperationBaseline
+  let profile: SiteProfile
+}
+
 extension WorkbenchAIStore {
 
   public func aiMetadataSuggestion(for draftID: UUID)
     -> AIPublishingMetadataSuggestion?
   {
-    guard let suggestion = aiMetadataSuggestionsByDraftID[draftID],
-      let baseline = aiMetadataSuggestionBaselinesByDraftID[draftID],
-      let profile = aiMetadataSuggestionProfilesByDraftID[draftID],
-      draftOperationStillMatches(baseline, profile: profile)
+    guard let entry = aiDraftSuggestionEntries[draftID],
+      draftOperationStillMatches(entry.baseline, profile: entry.profile)
     else {
       return nil
     }
-    return suggestion
+    return entry.suggestion
   }
 
   func bumpAIDraftSuggestionStateRevision() {
@@ -21,56 +27,27 @@ extension WorkbenchAIStore {
 
   /// Drops transient suggestion state for drafts that no longer belong to the
   /// current workspace snapshot. The root store calls this after replacing
-  /// its draft collection. Generation entries are removed after cancelling
+  /// its draft collection. Request records are invalidated before cancelling
   /// their network child tasks, so a late completion cannot reinstall state
   /// for a deleted draft.
   func reconcileAIDraftSuggestionState(validDraftIDs: Set<UUID>) {
-    let invalidRequests = aiRequestBaselines.filter { !validDraftIDs.contains($0.value.draft.id) }
-    for lane in invalidRequests.keys {
-      if let generation = currentAIRequestGeneration(lane) {
-        cancelAIRequest(lane, generation: generation)
-      }
+    let invalidRequests = aiRequests.filter { lane, request in
+      if case .metadata(let draftID) = lane, !validDraftIDs.contains(draftID) { return true }
+      return request.draftBinding.map { !validDraftIDs.contains($0.baseline.draft.id) } ?? false
     }
-    var knownDraftIDs = Set(aiMetadataSuggestionsByDraftID.keys)
-      .union(aiMetadataSuggestionBaselinesByDraftID.keys)
-      .union(aiMetadataSuggestionProfilesByDraftID.keys)
-      .union(aiMetadataSuggestionGenerationsByDraftID.keys)
-      .union(aiMetadataSuggestionRunningDraftIDs)
-      .union(aiMetadataSuggestionCancellationHandlersByDraftID.keys)
-    if let projectedDraftID = workspace.aiMetadataSuggestionDraftID {
-      knownDraftIDs.insert(projectedDraftID)
+    var didChange = !invalidRequests.isEmpty
+    for (lane, request) in invalidRequests {
+      cancelAIRequest(lane, generation: request.generation)
     }
-    let removedDraftIDs = knownDraftIDs.subtracting(validDraftIDs)
-    var didChange = false
 
-    for draftID in removedDraftIDs {
-      let lane = AIGenerationLane.metadata(draftID)
-      if let generation = currentAIRequestGeneration(lane) {
-        cancelAIRequest(lane, generation: generation)
-        didChange = true
-      }
-      if let cancellation =
-        aiMetadataSuggestionCancellationHandlersByDraftID
-        .removeValue(forKey: draftID)
-      {
-        cancellation()
-        didChange = true
-      }
-      if aiMetadataSuggestionsByDraftID.removeValue(forKey: draftID) != nil {
-        didChange = true
-      }
-      if aiMetadataSuggestionBaselinesByDraftID.removeValue(forKey: draftID) != nil {
-        didChange = true
-      }
-      if aiMetadataSuggestionProfilesByDraftID.removeValue(forKey: draftID) != nil {
-        didChange = true
-      }
-      if aiMetadataSuggestionGenerationsByDraftID.removeValue(forKey: draftID) != nil {
-        didChange = true
-      }
-      if aiMetadataSuggestionRunningDraftIDs.remove(draftID) != nil {
-        didChange = true
-      }
+    for draftID in Set(aiDraftSuggestionEntries.keys).subtracting(validDraftIDs) {
+      aiDraftSuggestionEntries.removeValue(forKey: draftID)
+      didChange = true
+    }
+    if let projectedDraftID = workspace.aiMetadataSuggestionDraftID,
+      !validDraftIDs.contains(projectedDraftID)
+    {
+      didChange = true
     }
 
     let nextMetadataRunning = !aiMetadataSuggestionRunningDraftIDs.isEmpty
@@ -87,24 +64,15 @@ extension WorkbenchAIStore {
     }
   }
 
-  func registerAIMetadataSuggestionCancellationHandler(
-    for draftID: UUID,
-    generation: UInt64,
-    handler: @escaping () -> Void
-  ) {
-    guard !Task.isCancelled,
-      aiMetadataSuggestionGenerationsByDraftID[draftID] == generation
-    else {
-      handler()
-      return
-    }
-    aiMetadataSuggestionCancellationHandlersByDraftID[draftID] = handler
+  func beginAIMetadataSuggestionOperation(for draftID: UUID) -> UInt64 {
+    beginAIRequest(.metadata(draftID))
   }
 
-  func beginAIMetadataSuggestionOperation(for draftID: UUID) -> UInt64 {
-    aiMetadataSuggestionCancellationHandlersByDraftID.removeValue(forKey: draftID)?()
-    let generation = nextAIRequestGeneration()
-    aiMetadataSuggestionGenerationsByDraftID[draftID] = generation
+  func finishAIMetadataSuggestionOperation(for draftID: UUID, generation: UInt64) {
+    finishAIRequest(.metadata(draftID), generation: generation)
+  }
+
+  func startAIMetadataSuggestionPresentation(for draftID: UUID) {
     aiMetadataSuggestionRunningDraftIDs.insert(draftID)
     workspaceIsAIMetadataSuggestionRunning = true
     if store.selectedDraftID == draftID {
@@ -112,12 +80,9 @@ extension WorkbenchAIStore {
     } else {
       bumpAIDraftSuggestionStateRevision()
     }
-    return generation
   }
 
-  func finishAIMetadataSuggestionOperation(for draftID: UUID, generation: UInt64) {
-    guard aiMetadataSuggestionGenerationsByDraftID[draftID] == generation else { return }
-    aiMetadataSuggestionCancellationHandlersByDraftID.removeValue(forKey: draftID)
+  func finishAIMetadataSuggestionPresentation(for draftID: UUID) {
     aiMetadataSuggestionRunningDraftIDs.remove(draftID)
     workspaceIsAIMetadataSuggestionRunning = !aiMetadataSuggestionRunningDraftIDs.isEmpty
     bumpAIDraftSuggestionStateRevision()
@@ -130,16 +95,16 @@ extension WorkbenchAIStore {
     generation: UInt64
   ) -> Bool {
     guard !Task.isCancelled,
-      aiMetadataSuggestionGenerationsByDraftID[draftID] == generation
+      currentAIRequestGeneration(.metadata(draftID)) == generation
     else {
       return false
     }
     guard let baseline = store.draftOperationBaseline(for: draftID) else {
       return false
     }
-    aiMetadataSuggestionsByDraftID[draftID] = suggestion
-    aiMetadataSuggestionBaselinesByDraftID[draftID] = baseline
-    aiMetadataSuggestionProfilesByDraftID[draftID] = store.profile(for: baseline.draft)
+    aiDraftSuggestionEntries[draftID] = AIDraftSuggestionEntry(
+      suggestion: suggestion, baseline: baseline, profile: store.profile(for: baseline.draft)
+    )
     if store.selectedDraftID == draftID {
       restoreDraftSuggestionProjectionForCurrentSelection()
     } else {
@@ -149,9 +114,7 @@ extension WorkbenchAIStore {
   }
 
   func removeAIMetadataSuggestion(for draftID: UUID) {
-    aiMetadataSuggestionsByDraftID.removeValue(forKey: draftID)
-    aiMetadataSuggestionBaselinesByDraftID.removeValue(forKey: draftID)
-    aiMetadataSuggestionProfilesByDraftID.removeValue(forKey: draftID)
+    aiDraftSuggestionEntries.removeValue(forKey: draftID)
     if store.selectedDraftID == draftID {
       restoreDraftSuggestionProjectionForCurrentSelection()
     } else {
@@ -166,7 +129,7 @@ extension WorkbenchAIStore {
     _ appliedSuggestion: AIPublishingMetadataSuggestion,
     for updatedDraft: ArticleDraft
   ) {
-    guard var remaining = aiMetadataSuggestionsByDraftID[updatedDraft.id] else { return }
+    guard var remaining = aiDraftSuggestionEntries[updatedDraft.id]?.suggestion else { return }
 
     if !appliedSuggestion.titles.isEmpty { remaining.titles = [] }
     if !appliedSuggestion.slugs.isEmpty { remaining.slugs = [] }
@@ -180,9 +143,9 @@ extension WorkbenchAIStore {
       return
     }
 
-    aiMetadataSuggestionsByDraftID[updatedDraft.id] = remaining
-    aiMetadataSuggestionBaselinesByDraftID[updatedDraft.id] = baseline
-    aiMetadataSuggestionProfilesByDraftID[updatedDraft.id] = store.profile(for: updatedDraft)
+    aiDraftSuggestionEntries[updatedDraft.id] = AIDraftSuggestionEntry(
+      suggestion: remaining, baseline: baseline, profile: store.profile(for: updatedDraft)
+    )
     if store.selectedDraftID == updatedDraft.id {
       restoreDraftSuggestionProjectionForCurrentSelection()
     } else {
@@ -260,23 +223,16 @@ extension WorkbenchAIStore {
       aiActionMessage = "找不到要应用 AI 元数据建议的文章。"
       return nil
     }
-    guard let retained = aiMetadataSuggestionsByDraftID[requestedDraft.id] else {
+    guard let entry = aiDraftSuggestionEntries[requestedDraft.id] else {
       aiActionMessage = "AI 元数据建议已过期，未应用。"
       return nil
     }
-    guard let baseline = aiMetadataSuggestionBaselinesByDraftID[requestedDraft.id],
-      let profile = aiMetadataSuggestionProfilesByDraftID[requestedDraft.id]
-    else {
+    guard draftOperationStillMatches(entry.baseline, profile: entry.profile) else {
       removeAIMetadataSuggestion(for: requestedDraft.id)
       aiActionMessage = "AI 元数据建议已过期，未应用。"
       return nil
     }
-    guard draftOperationStillMatches(baseline, profile: profile) else {
-      removeAIMetadataSuggestion(for: requestedDraft.id)
-      aiActionMessage = "AI 元数据建议已过期，未应用。"
-      return nil
-    }
-    guard AIApplicationContract.metadataSuggestion(suggestion, belongsTo: retained) else {
+    guard AIApplicationContract.metadataSuggestion(suggestion, belongsTo: entry.suggestion) else {
       aiActionMessage = "AI 元数据建议与当前文章不匹配，未应用。"
       return nil
     }

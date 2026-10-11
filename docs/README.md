@@ -50,6 +50,7 @@
 | `docs/notes-interchange-v1.md` | 跨 iOS/macOS 的笔记交换格式与隐私、导入边界 |
 | `docs/notes-icloud-sync-v2.md` | 跨 iOS/macOS 的 CloudKit 笔记同步记录格式、附件拆分与验收要求 |
 | `docs/workspace-backups.md` | Mac 工作区按类别备份、iCloud 状态与恢复预览说明 |
+| `docs/rss-history-backfill.md` | 当前阅读指南：单订阅手动历史补齐、来源支持、正文与检查点边界 |
 | `docs/workspace-exchange.md` | iOS/macOS 草稿与附件单文件交换格式、导入边界及云盘同步限制 |
 | `docs/ai-chat-evolution-design.md` | 当前架构说明：写作任务、连接管理、授权边界与 Agent 历史 |
 | `docs/view-directory-structure.md` | 当前维护指南：视图领域与源码目录 |

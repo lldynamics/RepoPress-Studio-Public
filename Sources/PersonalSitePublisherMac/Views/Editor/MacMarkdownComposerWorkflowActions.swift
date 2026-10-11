@@ -28,6 +28,18 @@ extension MacMarkdownComposerView {
       onPerformConvergedSelectionAIAction: performConvergedSelectionAIAction,
       onPerformConvergedArticleAIAction: performConvergedArticleAIAction,
       onPasteAIPromptToClipboard: pasteAIPromptToClipboard,
+      isAIEnabled: aiAvailability.isAIEnabled,
+      isBodySelectionActive: !isFrontMatterSelection && aiAvailability.hasSelectedText,
+      canRequestInlineAICompletion: !isFrontMatterSelection && selectedRange.length == 0
+        && aiAvailability.hasBodyText && !isSelectionAIActionRunning,
+      onPrepareVersionHistory: {
+        guard editorSessionState.commandTarget.flushPendingWrites(for: draft.id) else {
+          selectionActionMessage = String(localized: "请先完成当前输入，再查看历史版本。")
+          EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
+          return false
+        }
+        return true
+      },
       onFormatChineseTypography: formatChineseTypography,
       onCopyForWeChatAndZhihu: copyForWeChatAndZhihu,
       onShowImageInfo: activeInsertedImageMetadataBinding == nil

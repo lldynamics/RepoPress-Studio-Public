@@ -62,7 +62,7 @@ struct WorkspaceModuleSettingsSection: View {
           .accessibilityIdentifier(identifier)
       }
     }
-    .padding(.vertical, 18)
+    .padding(.vertical, WorkbenchSpacing.content)
   }
 
   private func label(title: LocalizedStringKey, subtitle: LocalizedStringKey) -> some View {

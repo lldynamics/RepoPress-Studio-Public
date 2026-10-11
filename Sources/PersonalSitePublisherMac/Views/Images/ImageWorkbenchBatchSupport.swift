@@ -301,7 +301,7 @@ struct ImageBatchOperationPreviewView: View {
         .accessibilityIdentifier("image-batch-preview-confirm")
       }
     }
-    .padding(22)
+    .padding(WorkbenchSpacing.page)
     .frame(minWidth: 640, idealWidth: 720, minHeight: 620, idealHeight: 720)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("图片批处理影响预览")

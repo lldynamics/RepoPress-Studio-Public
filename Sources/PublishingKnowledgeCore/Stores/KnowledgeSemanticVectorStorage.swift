@@ -167,6 +167,8 @@ final class KnowledgeSemanticVectorFlatIndexCache {
   private var values: [KnowledgeSemanticVectorIndexKey: KnowledgeSemanticVectorFlatIndex] = [:]
   private var recency: [KnowledgeSemanticVectorIndexKey] = []
   private var retainedByteCount = 0
+  private var isCacheRetentionEnabled = true
+  private var cacheRetentionGeneration: UInt64 = 0
 
   init(byteBudget: Int = KnowledgeSemanticVectorFlatIndexCache.defaultByteBudget) {
     self.byteBudget = max(1, byteBudget)
@@ -195,6 +197,7 @@ final class KnowledgeSemanticVectorFlatIndexCache {
   func insert(_ value: KnowledgeSemanticVectorFlatIndex) {
     lock.lock()
     defer { lock.unlock() }
+    guard isCacheRetentionEnabled else { return }
 
     removeValue(for: value.key)
     let byteCount = value.estimatedByteCount
@@ -216,6 +219,19 @@ final class KnowledgeSemanticVectorFlatIndexCache {
     recency.removeAll(keepingCapacity: true)
     retainedByteCount = 0
     lock.unlock()
+  }
+
+  func setCacheRetentionEnabled(_ isEnabled: Bool, generation: UInt64) {
+    lock.lock()
+    defer { lock.unlock() }
+    guard generation >= cacheRetentionGeneration else { return }
+    cacheRetentionGeneration = generation
+    isCacheRetentionEnabled = isEnabled
+    if !isEnabled {
+      values.removeAll(keepingCapacity: false)
+      recency.removeAll(keepingCapacity: false)
+      retainedByteCount = 0
+    }
   }
 
   private func touch(_ key: KnowledgeSemanticVectorIndexKey) {

@@ -526,14 +526,6 @@ public struct RemoteRepositoryPublishPreflightConflict: Identifiable, Codable, H
     self.actualSHA = actualSHA?.trimmedForPublishing.nilIfEmpty
   }
 
-  public var isUntrackedRemoteFile: Bool {
-    kind == .untrackedRemoteFile
-  }
-
-  public var isRemoteVersionConflict: Bool {
-    kind == .remoteVersionConflict
-  }
-
   /// Alias used by publish stores that treat all path-bearing work items
   /// uniformly.
   public var repositoryPath: String {

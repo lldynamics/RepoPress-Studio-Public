@@ -49,10 +49,6 @@ public final class WorkbenchShellFeatureFacade: ObservableObject {
 
 
 
-  public var isRepositoryScanning: Bool {
-    store.repositoryScanState.isScanning
-  }
-
   public var persistenceRecoveryMessage: String? {
     store.persistenceRecoveryMessage
   }

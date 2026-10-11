@@ -98,7 +98,7 @@ struct InspectorDisclosureSection<Content: View>: View {
       VStack(alignment: .leading, spacing: 9) {
         content
       }
-      .padding(.top, 8)
+      .padding(.top, WorkbenchSpacing.control)
       .frame(maxWidth: .infinity, alignment: .leading)
     } label: {
       HStack(spacing: 8) {
@@ -186,7 +186,7 @@ func actionMessage(_ message: String?) -> some View {
     Text(message)
       .font(.workbenchSupporting)
       .foregroundStyle(.secondary)
-      .padding(8)
+      .padding(WorkbenchSpacing.control)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }

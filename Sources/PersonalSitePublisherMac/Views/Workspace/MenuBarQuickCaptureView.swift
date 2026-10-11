@@ -83,7 +83,7 @@ struct MenuBarQuickCaptureView: View {
             .foregroundStyle(.secondary)
           Button("打开主窗口", action: openWorkbench)
         }
-        .padding(16)
+        .padding(WorkbenchSpacing.content)
         .frame(width: 320, alignment: .leading)
       }
     }
@@ -142,7 +142,7 @@ private struct MenuBarReadyView: View {
         .accessibilityLabel("速记内容")
         .focused($isCaptureFocused)
         .frame(height: 108)
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+        .overlay(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control).stroke(.quaternary))
         .onChange(of: capture.text) { _, _ in
           capture.textDidChange()
         }
@@ -191,7 +191,7 @@ private struct MenuBarReadyView: View {
         Button("打开主窗口", action: openWorkbench)
       }
     }
-    .padding(16)
+    .padding(WorkbenchSpacing.content)
     .frame(width: 320)
     .onAppear { isCaptureFocused = true }
     .task(id: status.activeProfile.id) {

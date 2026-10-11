@@ -82,6 +82,17 @@ extension PublishingStore {
           renderedContentDigest: ArticleDraft.repositoryDocumentDigest(publishedContent),
           verifiedAt: now
         )
+        // Private publication completes at the confirmed target-branch write;
+        // it has no public page for deployment verification to observe.
+        if updated.isPrivate, !updated.draft,
+          result.targetBranch == profile.branch, result.branchName == profile.branch,
+          !remoteVersion.trimmedForPublishing.isEmpty,
+          updated.repositoryBinding?.syncState == .synced,
+          draftBodyEditorBuffers[draft.id]?.isDirty != true
+        {
+          updated.status = .published
+          updated.repositoryImportFingerprint = updated.repositoryContentFingerprint
+        }
       }
       guard updated != draft else { return draft }
       updated.markUpdated(at: draft.updatedAt, replacing: draft)

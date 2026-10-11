@@ -10,7 +10,7 @@ struct WorkspaceCommandPalette: View {
   @Environment(\.settingsWorkspaceCommandAction) private var settingsWorkspaceCommandAction
   @WorkspaceModuleVisibilityStorage private var moduleVisibility
   @ObservedObject private var commandPresentation: WorkbenchCommandPresentationFeatureFacade
-  @ObservedObject private var draftListState: DraftListStore
+  private let draftListState: DraftListStore
   @ObservedObject private var publishing: WorkbenchPublishingFeatureFacade
   let store: WorkbenchStore
   let rssStore: RSSReaderStore
@@ -67,7 +67,7 @@ struct WorkspaceCommandPalette: View {
     self.onOpenKnowledgeResult = onOpenKnowledgeResult
     self.onOpenRSSArticle = onOpenRSSArticle
     _commandPresentation = ObservedObject(wrappedValue: store.commandPresentation)
-    _draftListState = ObservedObject(wrappedValue: store.draftList)
+    draftListState = store.draftList
     _publishing = ObservedObject(wrappedValue: store.publishing)
     _query = State(initialValue: initialArticleSearch?.query ?? "")
     _scope = State(initialValue: initialArticleSearch == nil ? .all : .articles)
@@ -108,7 +108,7 @@ struct WorkspaceCommandPalette: View {
         .accessibilityLabel("关闭")
         .accessibilityIdentifier("workspace-command-palette-close")
       }
-      .padding(16)
+      .padding(WorkbenchSpacing.content)
 
       Picker("搜索范围", selection: $scope) {
         ForEach(WorkspaceUnifiedSearchScope.availableScopes(for: moduleVisibility)) { scope in
@@ -117,8 +117,8 @@ struct WorkspaceCommandPalette: View {
       }
       .pickerStyle(.segmented)
       .labelsHidden()
-      .padding(.horizontal, 16)
-      .padding(.bottom, 12)
+      .padding(.horizontal, WorkbenchSpacing.content)
+      .padding(.bottom, WorkbenchSpacing.card)
       .accessibilityLabel("搜索范围")
       .accessibilityIdentifier("workspace-command-palette-scope")
 
@@ -128,8 +128,8 @@ struct WorkspaceCommandPalette: View {
           scope: $articleScope,
           onBatchReplace: { isBatchReplacePresented = true }
         )
-        .padding(.horizontal, 16)
-        .padding(.bottom, 12)
+        .padding(.horizontal, WorkbenchSpacing.content)
+        .padding(.bottom, WorkbenchSpacing.card)
       }
 
       Divider()
@@ -261,7 +261,7 @@ struct WorkspaceCommandPalette: View {
                 .frame(maxWidth: .infinity, minHeight: 220)
             }
           }
-          .padding(16)
+          .padding(WorkbenchSpacing.content)
         }
         .onChange(of: selectionState.scrollRevision) { _, _ in
           guard let selectedResultID else { return }
@@ -891,7 +891,7 @@ struct WorkspaceCommandPalette: View {
       HStack(spacing: 11) {
         Image(systemName: systemImage)
           .frame(width: 22)
-          .foregroundStyle(isSelected ? workbenchAccentColor : WorkbenchTheme.primary)
+          .foregroundStyle(isSelected ? workbenchAccentColor : Color.secondary)
         VStack(alignment: .leading, spacing: 2) {
           Text(title)
             .foregroundStyle(.primary)
@@ -911,8 +911,8 @@ struct WorkspaceCommandPalette: View {
             .foregroundStyle(.tertiary)
         }
       }
-      .padding(.horizontal, 10)
-      .padding(.vertical, 8)
+      .padding(.horizontal, WorkbenchSpacing.control)
+      .padding(.vertical, WorkbenchSpacing.control)
       .contentShape(Rectangle())
       .background(
         isSelected

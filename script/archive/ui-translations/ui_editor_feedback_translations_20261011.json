@@ -1,0 +1,42 @@
+{
+  "移到通用草稿…": {
+    "zh-Hans": "移到通用草稿…",
+    "en": "Move to General Drafts…"
+  },
+  "Slug 使用时间戳": {
+    "zh-Hans": "Slug 使用时间戳",
+    "en": "Slug uses a timestamp"
+  },
+  "当前网址使用时间戳。可在元数据中选择“用标题生成”，也可以保留此网址发布。": {
+    "zh-Hans": "当前网址使用时间戳。可在元数据中选择“用标题生成”，也可以保留此网址发布。",
+    "en": "This URL uses a timestamp. Choose “Generate from Title” in metadata, or keep this URL when publishing."
+  },
+  "可用标题生成更易读的网址，也可以保留此网址发布。": {
+    "zh-Hans": "可用标题生成更易读的网址，也可以保留此网址发布。",
+    "en": "Generate a more readable URL from the title, or keep this URL when publishing."
+  },
+  "用标题生成": {
+    "zh-Hans": "用标题生成",
+    "en": "Generate from Title"
+  },
+  "保留，不再提示": {
+    "zh-Hans": "保留，不再提示",
+    "en": "Keep and Stop Warning"
+  },
+  "保留正文标题，并关闭此站点的重复标题提示。": {
+    "zh-Hans": "保留正文标题，并关闭此站点的重复标题提示。",
+    "en": "Keep the body heading and turn off duplicate-title warnings for this site."
+  },
+  "从这里开始写作。": {
+    "zh-Hans": "从这里开始写作。",
+    "en": "Start writing here."
+  },
+  "当前主题可能会把 Front Matter title 渲染为 H1，页面上可能出现两个相同的主标题。可在“设置 → 当前站点的 AI 与写作偏好 → 写作检查”中关闭这条提示。": {
+    "zh-Hans": "当前主题可能会把 Front Matter title 渲染为 H1，页面上可能出现两个相同的主标题。可在“设置 → 当前站点的 AI 与写作偏好 → 写作检查”中关闭这条提示。",
+    "en": "Your theme may render the Front Matter title as an H1, creating two matching page headings. Turn off this warning in Settings → Current Site AI & Writing Preferences → Writing Checks."
+  },
+  "打开 AI 连接设置": {
+    "zh-Hans": "打开 AI 连接设置",
+    "en": "Open AI connection settings"
+  }
+}

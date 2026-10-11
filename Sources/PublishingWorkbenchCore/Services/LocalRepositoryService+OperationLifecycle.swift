@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 import PublishingGitCore
 
 extension LocalRepositoryService {
@@ -7,9 +8,11 @@ extension LocalRepositoryService {
   /// sequencer marker, not the unmerged-index count, is authoritative.
   public func operationLifecycle(profile: SiteProfile) -> RepositoryOperationLifecycle {
     do {
-      guard let lifecycle = try profile.withLocalRepositoryRootAccess({ rootURL in
-        try readOperationLifecycle(rootURL: rootURL)
-      }) else {
+      guard
+        let lifecycle = try profile.withLocalRepositoryRootAccess({ rootURL in
+          try readOperationLifecycle(rootURL: rootURL)
+        })
+      else {
         return RepositoryOperationLifecycle(
           rootPath: "",
           kind: .ambiguous,
@@ -68,7 +71,10 @@ extension LocalRepositoryService {
   /// have been staged. No merge command can be routed through this API.
   @discardableResult
   public func continueRebase(profile: SiteProfile) throws -> RepositoryOperationLifecycle {
-    try performLifecycleAction(
+    guard profile.gitExecutionPolicy?.requiresControlledCommitExecution != true else {
+      throw RepositoryGitExecutionPolicyError.unsupportedRebase
+    }
+    return try performLifecycleAction(
       profile: profile,
       expectedKind: .rebase,
       operationName: "继续变基",
@@ -116,52 +122,162 @@ extension LocalRepositoryService {
     guard profile.resolvedLocalRepositoryRootURL != nil else {
       throw RepositoryOperationLifecycleError.repositoryUnavailable
     }
-    guard let value = try profile.withLocalRepositoryRootAccess({ rootURL in
-      let before = try readOperationLifecycle(rootURL: rootURL)
-      try validateLifecycle(
-        before,
-        expectedKind: expectedKind,
-        requiresResolvedConflicts: requiresResolvedConflicts
-      )
-      guard before.branchName == profile.branch.trimmedForPublishing else {
-        throw RepositoryOperationLifecycleError.repositoryChanged
-      }
-
-      let result = runGitCommand(
-        arguments,
-        rootURL: rootURL,
-        acceptExistingCommitMessage: acceptExistingCommitMessage
-      )
-      if result.terminationStatus != 0 || result.didTimeOut || result.wasOutputTruncated {
-        if expectedKind == .rebase,
-          let after = try? readOperationLifecycle(rootURL: rootURL),
-          after.kind == .rebase,
-          after.unresolvedConflictCount > 0
-        {
-          return after
-        }
-        throw RepositoryOperationLifecycleError.commandFailed(
-          operation: operationName,
-          terminated: result.terminationStatus,
-          output: result.output
+    guard
+      let value = try profile.withLocalRepositoryRootAccess({ rootURL in
+        let before = try readOperationLifecycle(rootURL: rootURL)
+        try validateLifecycle(
+          before,
+          expectedKind: expectedKind,
+          requiresResolvedConflicts: requiresResolvedConflicts
         )
-      }
+        guard before.branchName == profile.branch.trimmedForPublishing else {
+          throw RepositoryOperationLifecycleError.repositoryChanged
+        }
 
-      let after = try readOperationLifecycle(rootURL: rootURL)
-      guard after.rootPath == before.rootPath else {
-        throw RepositoryOperationLifecycleError.repositoryChanged
-      }
-      guard after.branchName == before.branchName else {
-        throw RepositoryOperationLifecycleError.repositoryChanged
-      }
-      guard allowedPostOperationKinds.contains(after.kind) else {
-        throw RepositoryOperationLifecycleError.operationDidNotFinish(after.kind)
-      }
-      return after
-    }) else {
+        let result: GitCommandResult
+        if arguments.first == "commit",
+          profile.gitExecutionPolicy?.requiresControlledCommitExecution == true
+        {
+          result = try controlledMergeCommit(
+            profile: profile, rootURL: rootURL, message: arguments.last ?? ""
+          )
+        } else {
+          result = runGitCommand(
+            arguments,
+            rootURL: rootURL,
+            acceptExistingCommitMessage: acceptExistingCommitMessage
+          )
+        }
+        if result.terminationStatus != 0 || result.didTimeOut || result.wasOutputTruncated {
+          if expectedKind == .rebase,
+            let after = try? readOperationLifecycle(rootURL: rootURL),
+            after.kind == .rebase,
+            after.unresolvedConflictCount > 0
+          {
+            return after
+          }
+          throw RepositoryOperationLifecycleError.commandFailed(
+            operation: operationName,
+            terminated: result.terminationStatus,
+            output: result.output
+          )
+        }
+
+        let after = try readOperationLifecycle(rootURL: rootURL)
+        guard after.rootPath == before.rootPath else {
+          throw RepositoryOperationLifecycleError.repositoryChanged
+        }
+        guard after.branchName == before.branchName else {
+          throw RepositoryOperationLifecycleError.repositoryChanged
+        }
+        guard allowedPostOperationKinds.contains(after.kind) else {
+          throw RepositoryOperationLifecycleError.operationDidNotFinish(after.kind)
+        }
+        return after
+      })
+    else {
       throw RepositoryOperationLifecycleError.repositoryUnavailable
     }
     return value
+  }
+
+  /// Native merge completion uses a private copy of the reviewed index. Hooks
+  /// cannot stage an extra file into the actual commit or rewrite its message.
+  /// The real index stays intact, including any concurrent user staging.
+  private func controlledMergeCommit(
+    profile: SiteProfile, rootURL: URL, message: String
+  ) throws -> GitCommandResult {
+    let policyService = RepositoryGitExecutionPolicyService(gitCommandRunner: gitCommandRunner)
+    try policyService.validate(policy: profile.gitExecutionPolicy, rootURL: rootURL)
+    let directory = fileManager.temporaryDirectory
+      .appendingPathComponent("RepoPress-MergeCommit-\(UUID().uuidString)", isDirectory: true)
+    try fileManager.createDirectory(
+      at: directory, withIntermediateDirectories: true,
+      attributes: [.posixPermissions: NSNumber(value: Int16(0o700))]
+    )
+    defer { try? fileManager.removeItem(at: directory) }
+    let indexPath = try controlledMergeOutput(
+      ["rev-parse", "--git-path", "index"], rootURL: rootURL)
+    let realIndex = URL(fileURLWithPath: indexPath, relativeTo: rootURL).standardizedFileURL
+    let realIndexData = try SafeFileReader.data(
+      at: realIndex, maximumByteCount: 100 * 1_024 * 1_024)
+    let index = directory.appendingPathComponent("index")
+    try realIndexData.write(to: index)
+    let messageURL = directory.appendingPathComponent("COMMIT_EDITMSG")
+    try Data((message + "\n").utf8).write(to: messageURL)
+    let frozen = try mergeCommitFingerprint(rootURL: rootURL, indexURL: index)
+    try policyService.runPreCommitHooks(
+      policy: profile.gitExecutionPolicy, rootURL: rootURL, indexURL: index,
+      messageURL: messageURL, source: "message"
+    ) {
+      guard try mergeCommitFingerprint(rootURL: rootURL, indexURL: index) == frozen,
+        try SafeFileReader.data(at: realIndex, maximumByteCount: 100 * 1_024 * 1_024)
+          == realIndexData
+      else { throw RepositoryGitExecutionPolicyError.reviewedContentChanged }
+    }
+    guard try mergeCommitFingerprint(rootURL: rootURL, indexURL: index) == frozen,
+      try SafeFileReader.data(at: realIndex, maximumByteCount: 100 * 1_024 * 1_024) == realIndexData
+    else { throw RepositoryGitExecutionPolicyError.reviewedContentChanged }
+    let result = try policyService.commit(
+      ["commit", "-F", messageURL.path], rootURL: rootURL,
+      policy: profile.gitExecutionPolicy, indexURL: index
+    )
+    guard result.terminationStatus == 0, !result.didTimeOut, !result.wasOutputTruncated else {
+      return result
+    }
+    do {
+      try policyService.runHook(.postCommit, policy: profile.gitExecutionPolicy, rootURL: rootURL)
+    } catch {
+      let commitSHA = try controlledMergeOutput(["rev-parse", "HEAD"], rootURL: rootURL)
+      throw RepositoryOperationLifecycleError.commandFailed(
+        operation: CoreL10n.format("本地合并已提交（%@），post-commit hook 执行", commitSHA),
+        terminated: 1, output: error.localizedDescription
+      )
+    }
+    return result
+  }
+
+  private func mergeCommitFingerprint(rootURL: URL, indexURL: URL) throws -> [String] {
+    var fingerprint = try [
+      ["rev-parse", "HEAD"], ["rev-parse", "MERGE_HEAD"], ["write-tree"],
+      ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    ].map { try controlledMergeOutput($0, rootURL: rootURL, indexURL: indexURL) }
+    let paths = try controlledMergeOutput(
+      ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+      rootURL: rootURL, indexURL: indexURL
+    ).split(separator: "\0").map(String.init)
+    for path in Set(paths).sorted() {
+      let url = rootURL.appendingPathComponent(path).standardizedFileURL
+      guard url.path.hasPrefix(rootURL.standardizedFileURL.path + "/"),
+        url.resolvingSymlinksInPath().path == url.path,
+        !path.split(separator: "/").contains("..")
+      else { throw RepositoryGitExecutionPolicyError.reviewedContentChanged }
+      guard fileManager.fileExists(atPath: url.path) else {
+        fingerprint.append("missing:\(path)")
+        continue
+      }
+      let digest = try SafeFileReader.sha256(at: url, maximumByteCount: 100 * 1_024 * 1_024)
+      let permissions =
+        try fileManager.attributesOfItem(atPath: url.path)[.posixPermissions] as? NSNumber
+      fingerprint.append("\(path):\(digest.base64EncodedString()):\(permissions?.intValue ?? 0)")
+    }
+    return fingerprint
+  }
+
+  private func controlledMergeOutput(
+    _ arguments: [String], rootURL: URL, indexURL: URL? = nil
+  ) throws -> String {
+    let result = gitCommandRunner.run(
+      arguments, rootURL: rootURL, preserveStandardOutputWhitespace: true,
+      environmentOverrides: indexURL.map { ["GIT_INDEX_FILE": $0.path] } ?? [:]
+    )
+    guard result.terminationStatus == 0, !result.didTimeOut, !result.wasOutputTruncated else {
+      throw RepositoryOperationLifecycleError.commandFailed(
+        operation: GitCommandRunner.redactedCommandDescription(arguments),
+        terminated: result.terminationStatus, output: result.output
+      )
+    }
+    return result.standardOutput.trimmingCharacters(in: .newlines)
   }
 
   private func validateLifecycle(
@@ -223,7 +339,9 @@ extension LocalRepositoryService {
   private func verifiedRepositoryRoot(rootURL: URL) throws -> URL {
     var isDirectory: ObjCBool = false
     let suppliedRoot = rootURL.standardizedFileURL.resolvingSymlinksInPath()
-    guard fileManager.fileExists(atPath: suppliedRoot.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+    guard fileManager.fileExists(atPath: suppliedRoot.path, isDirectory: &isDirectory),
+      isDirectory.boolValue
+    else {
       throw RepositoryOperationLifecycleError.repositoryUnavailable
     }
 
@@ -253,7 +371,7 @@ extension LocalRepositoryService {
   private func currentBranchName(rootURL: URL) throws -> String? {
     let result = runGitCommand(["symbolic-ref", "--quiet", "--short", "HEAD"], rootURL: rootURL)
     if result.terminationStatus == 1 {
-      return nil // Detached HEAD is represented explicitly as no branch name.
+      return nil  // Detached HEAD is represented explicitly as no branch name.
     }
     guard result.terminationStatus == 0, !result.didTimeOut, !result.wasOutputTruncated else {
       throw RepositoryOperationLifecycleError.invalidRepository("无法确认当前分支。")
@@ -329,7 +447,8 @@ extension LocalRepositoryService {
   }
 
   private func unresolvedConflictCount(rootURL: URL) throws -> Int {
-    let result = runGitCommand(["diff", "--name-only", "--diff-filter=U", "-z", "--"], rootURL: rootURL)
+    let result = runGitCommand(
+      ["diff", "--name-only", "--diff-filter=U", "-z", "--"], rootURL: rootURL)
     guard result.terminationStatus == 0, !result.didTimeOut, !result.wasOutputTruncated else {
       throw RepositoryOperationLifecycleError.invalidRepository("无法读取未解决冲突索引。")
     }

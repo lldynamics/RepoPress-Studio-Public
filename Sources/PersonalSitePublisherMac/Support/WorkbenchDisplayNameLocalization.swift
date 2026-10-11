@@ -37,6 +37,11 @@ func workbenchLocalizedDisplayNameString<Value: WorkbenchDisplayNameLocalizable>
   )
 }
 
+extension ArticleState {
+  /// Article state labels are already localized by CoreL10n.
+  var workbenchLocalizedDisplayName: String { displayName }
+}
+
 extension ImageDimensions {
   var workbenchDimensionText: String { displayName }
 }
@@ -48,6 +53,11 @@ extension AssetResourceKind {
 
 extension AssetResourceReferenceIssueKind {
   /// Asset reference issue names are already localized by CoreL10n.
+  var workbenchLocalizedDisplayName: String { displayName }
+}
+
+extension AIPublishingChatTranslationTarget {
+  /// Translation target names are already localized by CoreL10n.
   var workbenchLocalizedDisplayName: String { displayName }
 }
 

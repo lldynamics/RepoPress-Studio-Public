@@ -1,11 +1,11 @@
 import AppKit
 import OSLog
-import PublishingWorkbenchCore
+import PublishingCoreSupport
+import PublishingKnowledgeCore
+import PublishingMarkdownCore
 
 final class MarkdownEditorScrollView: NSScrollView {
-  /// Paint-only geometry (block markers, attachment cards, paragraph
-  /// highlight) is cached in view coordinates. Centering the column changes
-  /// the text container inset during layout, so the owner must recompute it.
+  /// Paint-only geometry is cached in view coordinates; inset changes must recompute it.
   var onTextContainerInsetChange: (() -> Void)?
   private var textContainerInsetNotificationScheduled = false
 
@@ -43,6 +43,7 @@ final class MarkdownEditorScrollView: NSScrollView {
   private var previousViewportSize: NSSize?
   private var cachedLayoutWidth: CGFloat = 0
   private var cachedTextHeight: CGFloat?
+  private let documentGeometryObserver = MarkdownEditorDocumentGeometry.Observer()
   private var selectionToKeepVisible: NSRange?
   private var selectionRevealUsesCachedLayout = false
   private var heightInvalidationWorkItem: DispatchWorkItem?
@@ -293,6 +294,11 @@ final class MarkdownEditorScrollView: NSScrollView {
         && abs(cachedLayoutWidth - nextBodyWidth) > 0.5
       ? MarkdownEditorViewportAnchor.capture(in: self) : nil
     super.layout()
+    documentGeometryObserver.observe(textViewForSelection?.textLayoutManager) { [weak self] in
+      self?.cachedTextHeight = nil
+      self?.cachedFoldGeometry = nil
+      self?.needsLayout = true
+    }
     guard let textView = documentView as? NSTextView else { return }
     guard contentSize.width > 1, contentSize.height > 1 else { return }
 
@@ -379,15 +385,9 @@ final class MarkdownEditorScrollView: NSScrollView {
       ? (finalLiveResizeAnchor ?? normalViewportAnchor)?.origin(afterReflowIn: textView)
       : nil
     let textHeight =
-      textView.textLayoutManager.map { textLayoutManager in
+      textView.textLayoutManager.map { _ in
         if shouldRevealSelection {
-          let selection = textView.selectedRange()
-          let length = (textView.string as NSString).length
-          let location = min(max(0, selection.location - 1), max(0, length - 1))
-          let caretRange = NSRange(location: location, length: min(1, length))
-          if let range = MarkdownTextKit2RangeAdapter.textRange(for: caretRange, in: textView) {
-            textLayoutManager.ensureLayout(for: range)
-          }
+          MarkdownEditorDocumentGeometry.ensureSelectionLayout(in: textView)
         }
         if let cachedTextHeight {
           return cachedTextHeight
@@ -1199,22 +1199,19 @@ final class DroppableMarkdownTextView: NSTextView {
         guard case .formula(_, let mode, _) = drawing.content else { return nil }
         return mode
       }()
-      let cornerRadius: CGFloat = displayMode == .inline ? 5 : 10
-      let backgroundAlpha: CGFloat = displayMode == .inline ? 0.68 : 0.86
+      let cornerRadius = MarkdownInlineAttachmentPresentationStyle.cornerRadius(for: displayMode)
       let cardPath = NSBezierPath(
         roundedRect: drawing.frame,
         xRadius: cornerRadius,
         yRadius: cornerRadius
       )
-      NSColor.textBackgroundColor.withAlphaComponent(backgroundAlpha).setFill()
+      MarkdownInlineAttachmentPresentationStyle.backgroundColor.setFill()
       cardPath.fill()
-      NSColor.separatorColor.withAlphaComponent(0.45).setStroke()
-      cardPath.lineWidth = 1
-      cardPath.stroke()
 
       switch drawing.content {
       case .image:
-        let contentRect = drawing.frame.insetBy(dx: 8, dy: 8)
+        let inset = MarkdownInlineAttachmentPresentationStyle.imageInset
+        let contentRect = drawing.frame.insetBy(dx: inset, dy: inset)
         if let image = drawing.image, image.size.width > 0, image.size.height > 0 {
           let scale = min(
             contentRect.width / image.size.width,
@@ -1253,7 +1250,10 @@ final class DroppableMarkdownTextView: NSTextView {
           placeholder.draw(in: placeholderRect)
         }
       case .formula(let source, _, let fontSize):
-        let contentRect = drawing.frame.insetBy(dx: 12, dy: 4)
+        let contentRect = drawing.frame.insetBy(
+          dx: MarkdownInlineAttachmentPresentationStyle.formulaHorizontalInset,
+          dy: MarkdownInlineAttachmentPresentationStyle.formulaVerticalInset
+        )
         MarkdownInlineFormulaPresentation.attributedString(
           for: source,
           fontSize: fontSize
@@ -1262,7 +1262,6 @@ final class DroppableMarkdownTextView: NSTextView {
           options: [
             .usesLineFragmentOrigin,
             .usesFontLeading,
-            .truncatesLastVisibleLine,
           ]
         )
       }

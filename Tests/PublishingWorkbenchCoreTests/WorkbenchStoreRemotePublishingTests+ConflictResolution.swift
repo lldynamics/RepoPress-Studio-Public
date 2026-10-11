@@ -289,12 +289,38 @@ final class WorkbenchStoreRemotePublishingConflictResolutionTests:
   }
 
   func testMixedMergeAndKeepLocalCreateOneAtomicCommitAndOnePullRequest() async throws {
+    try await verifyMixedConflictReview(injectSaveFailure: false)
+  }
+
+  func testConflictReviewSaveFailureRetainsMergeAndRetriesOnlyLocalSave() async throws {
+    try await verifyMixedConflictReview(injectSaveFailure: true)
+  }
+
+  func testConflictReviewDriftAndSaveFailureRetainNewEditingAndEvidence() async throws {
+    try await verifyMixedConflictReview(injectSaveFailure: true, editBeforeCompletion: true)
+  }
+
+  func testConflictReviewRecoveryPreservesExternalProjectEditAndDoesNotResubmit() async throws {
+    try await verifyMixedConflictReview(
+      injectSaveFailure: true, externalProjectEditAfterCompletion: true)
+  }
+
+  private func verifyMixedConflictReview(
+    injectSaveFailure: Bool, editBeforeCompletion: Bool = false,
+    externalProjectEditAfterCompletion: Bool = false
+  ) async throws {
     let rootURL = try preparedGitRepositoryRoot(prefix: "KeepLocalConflictResolution")
-    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let persistence = try TestWorkbenchFactory.persistence(prefix: "KeepLocalConflictResolution")
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+      try? FileManager.default.removeItem(at: persistence.fileURL.deletingLastPathComponent())
+    }
     let tokenStore = repositoryTokenStoreForTest()
-    let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [])
+    let sequencedTransport = SequencedWorkbenchRemoteRepositoryTransport(responses: [])
+    let transport = ConflictReviewRecordWriteFailureTransport(
+      transport: sequencedTransport, persistenceURL: persistence.fileURL)
     let store = WorkbenchStore(
-      persistence: try TestWorkbenchFactory.persistence(prefix: "KeepLocalConflictResolution"),
+      persistence: persistence,
       remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
       repositoryTokenStore: tokenStore
     )
@@ -345,25 +371,51 @@ final class WorkbenchStoreRemotePublishingConflictResolutionTests:
       status: .ready,
       repositoryPath: secondPath
     )
+    // Imported Markdown may retain harmless formatting that differs from the
+    // canonical publish bytes. Keep exact disk and rendered baselines separate,
+    // so both drafts remain genuine changed files when the batch is refreshed.
+    let firstProjectDocument =
+      FrontMatterRenderer().renderDocument(draft: first, profile: profile) + "\n"
+    let secondProjectDocument =
+      FrontMatterRenderer().renderDocument(draft: second, profile: profile) + "\n"
+    try firstProjectDocument.write(
+      to: rootURL.appendingPathComponent(firstPath), atomically: true, encoding: .utf8)
+    try secondProjectDocument.write(
+      to: rootURL.appendingPathComponent(secondPath), atomically: true, encoding: .utf8)
     first.confirmRepositoryBinding(
       profile: profile,
       repositoryPath: firstPath,
       remoteRevision: "old-first",
-      renderedContentDigest: first.renderedRepositoryContentDigest(profile: profile)
+      renderedContentDigest: first.renderedRepositoryContentDigest(profile: profile),
+      projectFileContentDigest: ArticleDraft.repositoryDocumentDigest(firstProjectDocument)
     )
     second.confirmRepositoryBinding(
       profile: profile,
       repositoryPath: secondPath,
       remoteRevision: "old-second",
-      renderedContentDigest: second.renderedRepositoryContentDigest(profile: profile)
+      renderedContentDigest: second.renderedRepositoryContentDigest(profile: profile),
+      projectFileContentDigest: ArticleDraft.repositoryDocumentDigest(secondProjectDocument)
     )
     store.setDrafts([first, second])
     store.setSelectedDraftID(first.id)
-    store.refreshBatchPublishPlan()
+    await store.waitForPendingSiteDraftFileWrites()
+    await store.waitForPendingSave()
+    await store.refreshBatchPublishPlanAsync()
     let batchPlan = try XCTUnwrap(store.batchPublishPlan)
+    XCTAssertEqual(batchPlan.remotePublishableItems.map(\.draftID), [first.id, second.id])
     let package = try XCTUnwrap(store.remotePublishPackage(for: batchPlan))
     let files = package.files.filter { $0.kind == .markdown }
     XCTAssertEqual(files.map(\.repositoryPath), [firstPath, secondPath])
+    for file in files {
+      let draft = file.repositoryPath == firstPath ? first : second
+      let document = try String(
+        contentsOf: rootURL.appendingPathComponent(file.repositoryPath), encoding: .utf8)
+      XCTAssertEqual(
+        draft.repositoryBinding?.projectFileContentDigest,
+        ArticleDraft.repositoryDocumentDigest(document)
+      )
+      XCTAssertNotEqual(document, file.content)
+    }
     let mergedFirstDocument = try XCTUnwrap(
       files.first(where: { $0.repositoryPath == firstPath })?.content
     ).replacingOccurrences(of: "First Local", with: "First Resolved")
@@ -412,13 +464,23 @@ final class WorkbenchStoreRemotePublishingConflictResolutionTests:
       workbenchRemoteResponse(json: #"{"object":{"sha":"resolved-commit"}}"#),
       workbenchRemoteResponse(json: #"{"html_url":"https://github.com/owner/site/pull/42"}"#),
     ])
-    await transport.replaceResponses(responses)
+    await sequencedTransport.replaceResponses(responses)
+    await store.refreshBatchPublishPlanAsync()
+    let refreshedPlan = try XCTUnwrap(store.batchPublishPlan)
+    XCTAssertEqual(refreshedPlan.remotePublishableItems.map(\.draftID), [first.id, second.id])
+    let refreshedPackage = try XCTUnwrap(store.remotePublishPackage(for: refreshedPlan))
+    let reviewedFingerprint = RemoteRepositoryPublishService()
+      .conflictPackageFingerprint(package: package, profile: profile)
+    XCTAssertEqual(
+      RemoteRepositoryPublishService()
+        .conflictPackageFingerprint(package: refreshedPackage, profile: profile),
+      reviewedFingerprint
+    )
 
     let session = RemoteRepositoryConflictSession(
       profileID: profile.id,
       repositoryIdentity: DraftRepositoryIdentity(profile: profile),
-      packageFingerprint: RemoteRepositoryPublishService()
-        .conflictPackageFingerprint(package: package, profile: profile),
+      packageFingerprint: reviewedFingerprint,
       publishScope: .batch(batchPlan.remotePublishableItems.map(\.draftID)),
       conflicts: files.map { file in
         let path = file.repositoryPath
@@ -435,6 +497,32 @@ final class WorkbenchStoreRemotePublishingConflictResolutionTests:
       }
     )
     store.publishingStore.remoteRepositoryConflictSession = session
+    let concurrentBody = "A newer author edit after the remote review was accepted."
+    let editedDraftID = first.id
+    if injectSaveFailure {
+      await transport.armFailure { [weak store] in
+        guard let store else { return }
+        await store.waitForPendingSiteDraftFileWrites()
+        await store.waitForPendingSave()
+        XCTAssertTrue(store.currentSiteDraftFileSaveFailures.isEmpty)
+        if editBeforeCompletion {
+          var edited = try XCTUnwrap(store.draft(for: editedDraftID))
+          edited.bodyMarkdown = concurrentBody
+          store.updateDraft(edited)
+          await store.waitForPendingSiteDraftFileWrites()
+          await store.waitForPendingSave()
+          XCTAssertTrue(store.currentSiteDraftFileSaveFailures.isEmpty)
+          let localDocument = try String(
+            contentsOf: rootURL.appendingPathComponent(firstPath), encoding: .utf8)
+          XCTAssertTrue(localDocument.contains(concurrentBody))
+          let current = try XCTUnwrap(store.draft(for: editedDraftID))
+          XCTAssertEqual(
+            current.repositoryBinding?.projectFileContentDigest,
+            ArticleDraft.repositoryDocumentDigest(localDocument)
+          )
+        }
+      }
+    }
 
     let outcome = await store.resolveRemoteRepositoryConflicts(
       plan: RemoteRepositoryConflictResolutionPlan(
@@ -471,22 +559,141 @@ final class WorkbenchStoreRemotePublishingConflictResolutionTests:
     XCTAssertEqual(requests.filter { $0.url?.path.hasSuffix("/pulls") == true }.count, 1)
     XCTAssertEqual(store.remoteRepositoryPublishResult?.mode, .reviewRequest)
     XCTAssertEqual(store.remoteRepositoryPublishResult?.reviewURL, "https://github.com/owner/site/pull/42")
-    XCTAssertEqual(store.drafts.first(where: { $0.id == first.id })?.title, "First Resolved")
     let reviewedFirst = try XCTUnwrap(store.drafts.first(where: { $0.id == first.id }))
     let reviewedSecond = try XCTUnwrap(store.drafts.first(where: { $0.id == second.id }))
-    XCTAssertEqual(reviewedFirst.repositorySyncState(for: profile), .awaitingReview)
-    XCTAssertEqual(reviewedSecond.repositorySyncState(for: profile), .awaitingReview)
-    XCTAssertEqual(
-      reviewedFirst.repositoryBinding?.pendingReviewContentDigest,
-      ArticleDraft.repositoryDocumentDigest(mergedFirstDocument)
-    )
-    XCTAssertEqual(
-      reviewedSecond.repositoryBinding?.pendingReviewContentDigest,
-      ArticleDraft.repositoryDocumentDigest(
-        try XCTUnwrap(files.first(where: { $0.repositoryPath == secondPath })?.content)
+    XCTAssertEqual(reviewedSecond.bodyMarkdown, second.bodyMarkdown)
+    if editBeforeCompletion {
+      XCTAssertEqual(reviewedFirst.title, "First Local")
+      XCTAssertEqual(reviewedFirst.bodyMarkdown, concurrentBody)
+      XCTAssertNil(reviewedFirst.repositoryBinding?.pendingReviewContentDigest)
+      XCTAssertNil(reviewedSecond.repositoryBinding?.pendingReviewContentDigest)
+      XCTAssertTrue(outcome.message.contains("已保留新编辑"))
+    } else {
+      XCTAssertEqual(reviewedFirst.title, "First Resolved")
+      XCTAssertEqual(reviewedFirst.bodyMarkdown, first.bodyMarkdown)
+      let projectDocument = try String(
+        contentsOf: rootURL.appendingPathComponent(firstPath), encoding: .utf8)
+      XCTAssertEqual(
+        reviewedFirst.repositoryBinding?.projectFileContentDigest,
+        ArticleDraft.repositoryDocumentDigest(projectDocument)
       )
-    )
+      XCTAssertEqual(reviewedFirst.repositorySyncState(for: profile), .awaitingReview)
+      XCTAssertEqual(reviewedSecond.repositorySyncState(for: profile), .awaitingReview)
+      XCTAssertEqual(
+        reviewedFirst.repositoryBinding?.pendingReviewContentDigest,
+        ArticleDraft.repositoryDocumentDigest(mergedFirstDocument)
+      )
+      XCTAssertEqual(
+        reviewedSecond.repositoryBinding?.pendingReviewContentDigest,
+        ArticleDraft.repositoryDocumentDigest(
+          try XCTUnwrap(files.first(where: { $0.repositoryPath == secondPath })?.content)
+        )
+      )
+    }
     XCTAssertNil(store.remoteRepositoryConflictSession)
+    guard injectSaveFailure else { return }
+
+    let savedPlanWasPresent = await transport.planSavedBeforeFailure()
+    XCTAssertTrue(savedPlanWasPresent)
+    XCTAssertEqual(store.publishActionFeedback?.status, .warning)
+    XCTAssertTrue(outcome.message.contains("本地记录保存失败"))
+    XCTAssertTrue(store.publishActionMessage?.contains("本地记录保存失败") == true)
+    XCTAssertTrue(store.remoteRepositoryPublishProgress?.detail?.contains("本地记录保存失败") == true)
+    XCTAssertTrue(store.hasUnsavedChanges)
+    let result = try XCTUnwrap(store.remoteRepositoryPublishResult)
+    let execution = try XCTUnwrap(store.publishExecutionRecords.first)
+    let release = try XCTUnwrap(store.releaseRecords.first { $0.id == result.releaseRecordID })
+    XCTAssertEqual(execution.state, .needsVerification)
+    XCTAssertEqual(execution.releaseRecordID, release.id)
+    XCTAssertEqual(release.commitSHA, "resolved-commit")
+    XCTAssertEqual(release.reviewURL, result.reviewURL)
+    XCTAssertTrue(execution.events.contains { $0.stage == .creatingReview })
+    XCTAssertTrue(execution.events.contains { $0.stage == .failed })
+    XCTAssertTrue(
+      execution.plan.package.files.contains {
+        $0.repositoryPath == firstPath && $0.content == mergedFirstDocument
+      }
+    )
+
+    let projectFileURL = rootURL.appendingPathComponent(firstPath)
+    let externalProjectDocument =
+      "---\ntitle: External project edit\n---\n\nExact external bytes after conflict review.\r\n"
+    let externalProjectBytes = Data(externalProjectDocument.utf8)
+    if externalProjectEditAfterCompletion {
+      try externalProjectBytes.write(to: projectFileURL, options: .atomic)
+    }
+    var authorEdit = reviewedFirst
+    authorEdit.bodyMarkdown += "\n\nAnother author edit while local saving still needs recovery."
+    store.updateDraft(authorEdit)
+    await store.waitForPendingSiteDraftFileWrites()
+    await store.waitForPendingSave()
+    if externalProjectEditAfterCompletion {
+      let failure = try XCTUnwrap(
+        store.currentSiteDraftFileSaveFailures.first { $0.draftID == editedDraftID })
+      XCTAssertEqual(failure.reason, .externalChange)
+      XCTAssertEqual(try Data(contentsOf: projectFileURL), externalProjectBytes)
+    } else {
+      XCTAssertTrue(store.currentSiteDraftFileSaveFailures.isEmpty)
+    }
+    XCTAssertTrue(store.hasUnsavedChanges)
+    let latestDraft = try XCTUnwrap(store.draft(for: editedDraftID))
+    let latestSecond = try XCTUnwrap(store.draft(for: second.id))
+    XCTAssertEqual(latestDraft.bodyMarkdown, authorEdit.bodyMarkdown)
+    if externalProjectEditAfterCompletion {
+      XCTAssertEqual(
+        latestDraft.repositoryBinding?.projectFileContentDigest,
+        reviewedFirst.repositoryBinding?.projectFileContentDigest
+      )
+    }
+    try await transport.restorePrimaryFile()
+    if externalProjectEditAfterCompletion {
+      XCTAssertFalse(
+        store.flushPendingChanges(), "Workspace recovery must not override external bytes")
+      let failure = try XCTUnwrap(
+        store.currentSiteDraftFileSaveFailures.first { $0.draftID == editedDraftID })
+      XCTAssertEqual(failure.reason, .externalChange)
+      XCTAssertEqual(try Data(contentsOf: projectFileURL), externalProjectBytes)
+    } else {
+      XCTAssertTrue(store.flushPendingChanges(), store.lastSaveError ?? "Local retry failed")
+    }
+    await store.waitForPendingSave()
+    XCTAssertFalse(store.hasUnsavedChanges)
+    let saved = try persistence.loadPrimarySnapshot()
+    try assertPersistedEquivalent(saved.drafts.first { $0.id == latestDraft.id }, latestDraft)
+    try assertPersistedEquivalent(saved.drafts.first { $0.id == second.id }, latestSecond)
+    try assertPersistedEquivalent(saved.releaseRecords.first { $0.id == release.id }, release)
+    try assertPersistedEquivalent(
+      saved.publishExecutionRecords.first { $0.id == execution.id }, execution)
+    XCTAssertEqual(store.remoteRepositoryPublishResult, result)
+    let reloaded = WorkbenchStore(persistence: persistence)
+    try assertPersistedEquivalent(reloaded.draft(for: latestDraft.id), latestDraft)
+    try assertPersistedEquivalent(reloaded.draft(for: second.id), latestSecond)
+    try assertPersistedEquivalent(reloaded.releaseRecords.first { $0.id == release.id }, release)
+    try assertPersistedEquivalent(
+      reloaded.publishExecutionRecords.first { $0.id == execution.id }, execution)
+    if externalProjectEditAfterCompletion {
+      await reloaded.waitForPendingSiteDraftFileWrites()
+      XCTAssertEqual(try Data(contentsOf: projectFileURL), externalProjectBytes)
+      XCTAssertEqual(reloaded.draft(for: latestDraft.id)?.bodyMarkdown, authorEdit.bodyMarkdown)
+    }
+    let requestsAfterRetry = await transport.capturedRequests()
+    XCTAssertEqual(requestsAfterRetry.count, requests.count, "Local retry must not submit again.")
+  }
+
+  private func assertPersistedEquivalent<Value: Encodable>(
+    _ actual: Value?, _ expected: Value,
+    file: StaticString = #filePath, line: UInt = #line
+  ) throws {
+    let actual = try XCTUnwrap(actual, file: file, line: line)
+    // The storage contract encodes dates at ISO8601 second precision. Compare
+    // the full canonical payload so every field is covered at that precision.
+    let actualPayload = try JSONEncoder.workbench.encode(actual)
+    let expectedPayload = try JSONEncoder.workbench.encode(expected)
+    XCTAssertTrue(
+      actualPayload == expectedPayload,
+      "Persisted \(Value.self) differs from its canonical storage payload.",
+      file: file, line: line
+    )
   }
 
   func testResolvedPackageKeepsFrozenFileSetAndProjectsOnlyReviewedPaths() throws {
@@ -1070,4 +1277,63 @@ final class WorkbenchStoreRemotePublishingConflictResolutionTests:
       }
     )
   }
+}
+
+/// Replace the primary manifest with a directory only after HTTP review success.
+/// Moving its original file back restores the same persistence revision, so
+/// retry proves recovery from a write failure rather than injected storage drift.
+private actor ConflictReviewRecordWriteFailureTransport: RemoteRepositoryHTTPTransport {
+  private let transport: SequencedWorkbenchRemoteRepositoryTransport
+  private let persistenceURL: URL
+  private var beforeFailure: (@MainActor @Sendable () async throws -> Void)?
+  private var preservedPrimaryURL: URL?
+  private var savedPlanWasPresent = false
+
+  init(transport: SequencedWorkbenchRemoteRepositoryTransport, persistenceURL: URL) {
+    self.transport = transport
+    self.persistenceURL = persistenceURL
+  }
+
+  func armFailure(_ beforeFailure: @escaping @MainActor @Sendable () async throws -> Void) {
+    self.beforeFailure = beforeFailure
+  }
+
+  func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+    let response = try await transport.data(for: request)
+    if request.httpMethod == "POST", request.url?.path.hasSuffix("/pulls") == true,
+      let httpResponse = response.1 as? HTTPURLResponse,
+      (200..<300).contains(httpResponse.statusCode), let beforeFailure
+    {
+      self.beforeFailure = nil
+      try await beforeFailure()
+      let snapshot = try WorkbenchPersistence(fileURL: persistenceURL).loadPrimarySnapshot()
+      savedPlanWasPresent = snapshot.publishExecutionRecords.contains {
+        $0.state == .awaitingRemoteResult
+      }
+      let preservedURL = persistenceURL.appendingPathExtension("before-write-failure")
+      try FileManager.default.moveItem(at: persistenceURL, to: preservedURL)
+      do {
+        try FileManager.default.createDirectory(
+          at: persistenceURL, withIntermediateDirectories: false)
+      } catch {
+        try FileManager.default.moveItem(at: preservedURL, to: persistenceURL)
+        throw error
+      }
+      preservedPrimaryURL = preservedURL
+    }
+    return response
+  }
+
+  func restorePrimaryFile() throws {
+    guard let preservedPrimaryURL else {
+      throw CocoaError(.fileNoSuchFile)
+    }
+    try FileManager.default.removeItem(at: persistenceURL)
+    try FileManager.default.moveItem(at: preservedPrimaryURL, to: persistenceURL)
+    self.preservedPrimaryURL = nil
+  }
+
+  func planSavedBeforeFailure() -> Bool { savedPlanWasPresent }
+
+  func capturedRequests() async -> [URLRequest] { await transport.capturedRequests() }
 }

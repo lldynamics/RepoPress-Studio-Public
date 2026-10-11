@@ -1,5 +1,9 @@
 import Combine
+import Foundation
+import Observation
+import os
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 @MainActor
@@ -105,8 +109,10 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     let initialEditorMetadataRevision = draft.editorMetadataRevision
     _ = draftList.searchIndex(for: .activeSite)
     XCTAssertEqual(draftList.searchIndexBuildCount, 1)
-    var listChanges = 0
-    let cancellable = draftList.objectWillChange.sink { listChanges += 1 }
+    let presentationChanges = DraftListObservationChanges()
+    presentationChanges.track { _ = draftList.presentationRevision }
+    let taskChanges = DraftListObservationChanges()
+    taskChanges.track { _ = draftList.taskQueueStateVersion }
 
     let body = "正文 autosave 不应触碰草稿列表缓存。"
     _ = store.stageDraftBody(body, for: draft.id, baseRevision: 0)
@@ -119,6 +125,8 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     )
     XCTAssertEqual(draftList.presentationRevision, initialPresentationRevision)
     XCTAssertEqual(draftList.taskQueueStateVersion, initialTaskQueueStateVersion)
+    XCTAssertEqual(presentationChanges.count, 0)
+    XCTAssertEqual(taskChanges.count, 0)
     _ = draftList.searchIndex(for: .activeSite)
     XCTAssertEqual(draftList.searchIndexBuildCount, 1)
 
@@ -133,8 +141,8 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     XCTAssertEqual(draftList.taskQueueStateVersion, initialTaskQueueStateVersion + 1)
     _ = draftList.searchIndex(for: .activeSite)
     XCTAssertEqual(draftList.searchIndexBuildCount, 1)
-    XCTAssertEqual(listChanges, 1)
-    withExtendedLifetime(cancellable) {}
+    XCTAssertEqual(presentationChanges.count, 0)
+    XCTAssertEqual(taskChanges.count, 1)
   }
 
   func testDraftSearchIndexCachesCorporaAndInvalidatesForMetadataAndPrivacy() throws {
@@ -239,8 +247,8 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     _ = draftList.searchIndex(for: .activeSite)
     let initialRevision = draftList.presentationRevision
     let initialBuildCount = draftList.searchIndexBuildCount
-    var changes = 0
-    let cancellable = draftList.objectWillChange.sink { changes += 1 }
+    let changes = DraftListObservationChanges()
+    changes.track { _ = draftList.presentationRevision }
 
     var renamed = draft
     renamed.title = "一次元数据变更"
@@ -249,24 +257,28 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     XCTAssertEqual(draftList.presentationRevision, initialRevision + 1)
     _ = draftList.searchIndex(for: .activeSite)
     XCTAssertEqual(draftList.searchIndexBuildCount, initialBuildCount + 1)
+    XCTAssertEqual(changes.count, 1)
+    // Observation subscriptions are one shot. Re-arm after the immediate
+    // metadata edit to catch an unwanted second invalidation from preflight.
+    changes.track { _ = draftList.presentationRevision }
 
     if let preflightRefreshTask = store.preflightRefreshTask {
       await preflightRefreshTask.value
     }
+    await store.preflightRefreshTask?.value
 
     XCTAssertEqual(draftList.presentationRevision, initialRevision + 1)
-    XCTAssertEqual(changes, 1)
+    XCTAssertEqual(changes.count, 1)
     _ = draftList.searchIndex(for: .activeSite)
     XCTAssertEqual(draftList.searchIndexBuildCount, initialBuildCount + 1)
-    withExtendedLifetime(cancellable) {}
   }
 
   func testDraftListPrivacyMaskSettingsInvalidateItsOwnBoundary() {
     let store = makeIsolatedStore(safeMode: true)
     let draftList = store.draftList
     let initialPresentationRevision = draftList.presentationRevision
-    var listChanges = 0
-    let cancellable = draftList.objectWillChange.sink { listChanges += 1 }
+    let listChanges = DraftListObservationChanges()
+    listChanges.track { _ = draftList.presentationRevision }
 
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
@@ -275,8 +287,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     )
 
     XCTAssertGreaterThan(draftList.presentationRevision, initialPresentationRevision)
-    XCTAssertGreaterThan(listChanges, 0)
-    withExtendedLifetime(cancellable) {}
+    XCTAssertEqual(listChanges.count, 1)
   }
 
   func testDraftListIgnoresRepositoryMaterializationAndCASOnlyChanges() throws {
@@ -285,8 +296,11 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     let draftList = store.draftList
     let initialPresentationRevision = draftList.presentationRevision
     let initialTaskQueueStateVersion = draftList.taskQueueStateVersion
-    var listChanges = 0
-    let cancellable = draftList.objectWillChange.sink { listChanges += 1 }
+    let listChanges = DraftListObservationChanges()
+    listChanges.track {
+      _ = draftList.presentationRevision
+      _ = draftList.taskQueueStateVersion
+    }
 
     var repositoryOnly = draft
     repositoryOnly.repositoryPath = store.activeProfile.markdownPath(for: draft)
@@ -296,8 +310,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
 
     XCTAssertEqual(draftList.presentationRevision, initialPresentationRevision)
     XCTAssertEqual(draftList.taskQueueStateVersion, initialTaskQueueStateVersion)
-    XCTAssertEqual(listChanges, 0)
-    withExtendedLifetime(cancellable) {}
+    XCTAssertEqual(listChanges.count, 0)
   }
 
   func testDraftListAndEditorObserveOnlyTheirRelevantDraftMetadata() throws {
@@ -982,6 +995,203 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
       for: trackedDraft.id
     )
     XCTAssertEqual(editorChanges, 1)
+    withExtendedLifetime(cancellable) {}
+  }
+}
+
+/// Observation delivers a Sendable callback. Keep assertions on the test
+/// actor while recording callbacks safely without weakening Swift 6 checks.
+final class DraftListObservationChanges: Sendable {
+  private let invalidations = OSAllocatedUnfairLock(initialState: 0)
+
+  var count: Int {
+    invalidations.withLock { $0 }
+  }
+
+  @MainActor
+  func track(_ read: () -> Void) {
+    withObservationTracking(read) { [invalidations] in
+      invalidations.withLock { $0 += 1 }
+    }
+  }
+}
+
+@MainActor
+final class DraftListObservationTests: XCTestCase {
+  private func makeStore() throws -> WorkbenchStore {
+    WorkbenchStore(
+      persistence: try TestWorkbenchFactory.persistence(prefix: "DraftListObservationTests"),
+      safeMode: true
+    )
+  }
+
+  func testColdSearchCacheWritesAndRepeatedReadsDoNotInvalidateObservers() throws {
+    let store = try makeStore()
+    let draftList = store.draftList
+    let searchChanges = DraftListObservationChanges()
+    searchChanges.track { _ = draftList.searchIndex(for: .activeSite) }
+    let telemetryChanges = DraftListObservationChanges()
+    telemetryChanges.track { _ = draftList.searchIndexBuildCount }
+
+    _ = draftList.searchIndex(for: .activeSite)
+    _ = draftList.searchIndex(for: .allDrafts)
+    _ = draftList.searchIndex(for: .allDrafts)
+
+    XCTAssertEqual(draftList.searchIndexBuildCount, 2)
+    XCTAssertEqual(searchChanges.count, 0)
+    XCTAssertEqual(telemetryChanges.count, 0)
+    // A cold read still registered the presentation dependency even though
+    // populating either corpus's cache was excluded from Observation.
+    store.updatePrivacySettings(
+      PrivacyProtectionSettings(masksPrivateContent: !store.privacySettings.masksPrivateContent)
+    )
+    XCTAssertEqual(searchChanges.count, 1)
+    XCTAssertEqual(telemetryChanges.count, 0)
+  }
+
+  func testRepositoryReportOnlyInvalidatesTaskAndRepositoryConsumers() throws {
+    let store = try makeStore()
+    let draftList = store.draftList
+    let presentationChanges = DraftListObservationChanges()
+    presentationChanges.track { _ = draftList.presentationRevision }
+    let searchChanges = DraftListObservationChanges()
+    searchChanges.track { _ = draftList.searchIndex(for: .activeSite) }
+    let scopeChanges = DraftListObservationChanges()
+    scopeChanges.track { _ = draftList.contentScope }
+    let taskChanges = DraftListObservationChanges()
+    taskChanges.track { _ = draftList.taskQueueStateVersion }
+    let reportChanges = DraftListObservationChanges()
+    reportChanges.track { _ = draftList.repositoryReport }
+    let initialBuildCount = draftList.searchIndexBuildCount
+    let report = RepositoryScanReport(
+      rootPath: "/tmp/observation-site", detectedKind: nil, expectedKind: .hugo,
+      hasGitDirectory: false, contentRootExists: true, assetRootExists: true,
+      markdownFileCount: 0, imageFileCount: 0, changedFiles: [], preflightIssues: []
+    )
+
+    store.setRepositoryReport(report)
+
+    XCTAssertEqual(draftList.repositoryReport, report)
+    XCTAssertEqual(taskChanges.count, 1)
+    XCTAssertEqual(reportChanges.count, 1)
+    XCTAssertEqual(presentationChanges.count, 0)
+    XCTAssertEqual(searchChanges.count, 0)
+    XCTAssertEqual(scopeChanges.count, 0)
+    _ = draftList.searchIndex(for: .activeSite)
+    XCTAssertEqual(draftList.searchIndexBuildCount, initialBuildCount)
+  }
+
+  func testMetadataEditInvalidatesPresentationAndTaskConsumersIndependently() throws {
+    let store = try makeStore()
+    var draft = try XCTUnwrap(store.selectedDraft)
+    let draftList = store.draftList
+    let presentationChanges = DraftListObservationChanges()
+    presentationChanges.track { _ = draftList.presentationRevision }
+    let taskChanges = DraftListObservationChanges()
+    taskChanges.track { _ = draftList.taskQueueStateVersion }
+    let searchChanges = DraftListObservationChanges()
+    searchChanges.track { _ = draftList.searchIndex(for: .activeSite) }
+    let initialBuildCount = draftList.searchIndexBuildCount
+
+    draft.title = "Observation metadata title"
+    store.updateDraft(draft)
+
+    XCTAssertEqual(presentationChanges.count, 1)
+    XCTAssertEqual(taskChanges.count, 1)
+    XCTAssertEqual(searchChanges.count, 1)
+    XCTAssertEqual(
+      draftList.searchIndex(for: .activeSite).matching(query: "Observation metadata").map(\.id),
+      [draft.id]
+    )
+    XCTAssertEqual(draftList.searchIndexBuildCount, initialBuildCount + 1)
+  }
+
+  func testComputedContentScopeAndSearchObserveNavigationChanges() throws {
+    let store = try makeStore()
+    let draftList = store.draftList
+    let scopeChanges = DraftListObservationChanges()
+    scopeChanges.track { _ = draftList.contentScope }
+    let searchChanges = DraftListObservationChanges()
+    var initialRevision: UInt64 = 0
+    searchChanges.track {
+      initialRevision = draftList.searchIndex(for: .activeSite).sourceRevision
+    }
+
+    store.setDraftListContentScope(.general)
+
+    XCTAssertEqual(draftList.contentScope, .general)
+    XCTAssertEqual(scopeChanges.count, 1)
+    XCTAssertEqual(searchChanges.count, 1)
+    XCTAssertGreaterThan(draftList.searchIndex(for: .activeSite).sourceRevision, initialRevision)
+  }
+
+  func testProfilePathChangeInvalidatesObservedAllDraftSearch() throws {
+    let store = try makeStore()
+    var inactiveProfile = store.activeProfile
+    inactiveProfile.id = UUID()
+    inactiveProfile.markdownPathPattern = "archive/{slug}.md"
+    store.setProfiles([store.activeProfile, inactiveProfile])
+    let draft = ArticleDraft(
+      siteProfileID: inactiveProfile.id, title: "Inactive draft", slug: "observed-path")
+    store.setDrafts([draft])
+    let draftList = store.draftList
+    let changes = DraftListObservationChanges()
+    changes.track { _ = draftList.searchIndex(for: .allDrafts) }
+    let initialBuildCount = draftList.searchIndexBuildCount
+
+    inactiveProfile.markdownPathPattern = "notes/{slug}.md"
+    store.setProfiles([store.activeProfile, inactiveProfile])
+
+    XCTAssertEqual(changes.count, 1)
+    XCTAssertEqual(
+      draftList.searchIndex(for: .allDrafts).matching(query: "notes/observed-path").map(\.id),
+      [draft.id]
+    )
+    XCTAssertEqual(draftList.searchIndexBuildCount, initialBuildCount + 1)
+  }
+
+  func testPrivacyMaskChangeRebuildsObservedSearchWithoutExposingPrivateMetadata() throws {
+    let store = try makeStore()
+    store.updatePrivacySettings(PrivacyProtectionSettings(masksPrivateContent: false))
+    let draft = ArticleDraft(
+      siteProfileID: store.activeProfileID, title: "Hidden title", slug: "hidden-slug",
+      visibility: .private, summary: "hidden-summary"
+    )
+    store.setDrafts([draft])
+    let draftList = store.draftList
+    let changes = DraftListObservationChanges()
+    changes.track { _ = draftList.searchIndex(for: .activeSite) }
+    XCTAssertEqual(draftList.searchIndex(for: .activeSite).matching(query: "hidden-slug").count, 1)
+
+    store.updatePrivacySettings(PrivacyProtectionSettings(masksPrivateContent: true))
+
+    XCTAssertEqual(changes.count, 1)
+    XCTAssertTrue(draftList.searchIndex(for: .activeSite).matching(query: "hidden-slug").isEmpty)
+    XCTAssertTrue(draftList.searchIndex(for: .activeSite).matching(query: "hidden-summary").isEmpty)
+  }
+
+  func testStructuralChangeAndFingerprintSynchronizationPublishPresentationOnce() throws {
+    let store = try makeStore()
+    let draftList = store.draftList
+    let changes = DraftListObservationChanges()
+    changes.track { _ = draftList.presentationRevision }
+    var semanticChanges = 0
+    let cancellable = draftList.presentationDidChange.dropFirst().sink { _ in
+      semanticChanges += 1
+    }
+    let draft = ArticleDraft(siteProfileID: store.activeProfileID, title: "New list entry")
+
+    store.setDrafts(store.drafts + [draft])
+
+    XCTAssertEqual(changes.count, 1)
+    changes.track { _ = draftList.searchIndex(for: .activeSite) }
+    let initialBuildCount = draftList.searchIndexBuildCount
+    draftList.invalidatePresentationAndTaskQueueState(suppressDuplicatePresentation: true)
+
+    XCTAssertEqual(changes.count, 1)
+    XCTAssertEqual(semanticChanges, 1)
+    _ = draftList.searchIndex(for: .activeSite)
+    XCTAssertEqual(draftList.searchIndexBuildCount, initialBuildCount)
     withExtendedLifetime(cancellable) {}
   }
 }

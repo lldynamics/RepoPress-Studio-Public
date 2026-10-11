@@ -60,7 +60,7 @@ struct DraftRecoveryPanel: View {
         .keyboardShortcut(.cancelAction)
       }
     }
-    .padding(20)
+    .padding(WorkbenchSpacing.page)
     .frame(minWidth: 560, idealWidth: 640, minHeight: 360, idealHeight: 460)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("未保存草稿恢复")
@@ -139,6 +139,6 @@ private struct DraftRecoveryRow: View {
         .accessibilityHint(String(localized: "需要再次确认；也可以选择稍后处理以保留内容"))
       }
     }
-    .padding(.vertical, 6)
+    .padding(.vertical, WorkbenchSpacing.icon)
   }
 }

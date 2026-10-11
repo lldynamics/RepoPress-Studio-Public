@@ -60,7 +60,8 @@ extension WorkbenchStore {
   public func createGitHubRepositoryForActiveProfile(
     privateRepository: Bool = true
   ) async -> RemoteRepositoryCreationResult? {
-    await publishingStore.createGitHubRepositoryForActiveProfile(privateRepository: privateRepository, store: self)
+    await publishingStore.createGitHubRepositoryForActiveProfile(
+      privateRepository: privateRepository, store: self)
   }
 
   public func selectProfile(_ id: UUID) {
@@ -93,12 +94,11 @@ extension WorkbenchStore {
       draft.belongs(toSiteProfileID: activeProfileID)
         && !isUntouchedInitialSiteDraft(draft)
     }
-    let canReuseActiveProfile = activeProfile.purpose == .generalDraftBackup
-      || (
-        profiles.count == 1
-          && activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty
-          && !hasActiveProfileContent
-      )
+    let canReuseActiveProfile =
+      activeProfile.purpose == .generalDraftBackup
+      || (profiles.count == 1
+        && activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty
+        && !hasActiveProfileContent)
 
     if !canReuseActiveProfile {
       _ = createProfile(named: "本地草稿")
@@ -119,8 +119,9 @@ extension WorkbenchStore {
     }
 
     if canReuseActiveProfile,
-       let untouchedInitialDraftID,
-       var draft = drafts.first(where: { $0.id == untouchedInitialDraftID }) {
+      let untouchedInitialDraftID,
+      var draft = drafts.first(where: { $0.id == untouchedInitialDraftID })
+    {
       draft.assignToGeneralDraft(editingProfileID: activeProfileID)
       updateDraft(draft)
     }
@@ -136,7 +137,8 @@ extension WorkbenchStore {
   private func isUntouchedInitialSiteDraft(_ draft: ArticleDraft) -> Bool {
     !draft.isGeneralDraft
       && draft.title == "未命名文章"
-      && draft.bodyMarkdown == "# 未命名文章\n\n从这里开始写作。\n"
+      && (draft.bodyMarkdown.isEmpty
+        || draft.bodyMarkdown == "# 未命名文章\n\n从这里开始写作。\n")
       && draft.summary.isEmpty
       && draft.attachments.isEmpty
   }

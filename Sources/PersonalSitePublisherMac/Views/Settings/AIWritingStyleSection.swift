@@ -129,13 +129,13 @@ struct AIWritingStyleSection: View {
                 } label: {
                   Text(preset.localizedDisplayName)
                     .font(.caption.weight(presetBinding.wrappedValue == preset ? .bold : .medium))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, WorkbenchSpacing.control)
+                    .padding(.vertical, WorkbenchSpacing.tight)
                     .background(
                       presetBinding.wrappedValue == preset
                         ? WorkbenchTheme.brand.opacity(0.15)
                         : Color.primary.opacity(0.06),
-                      in: RoundedRectangle(cornerRadius: 6)
+                      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
                     )
                     .foregroundStyle(
                       presetBinding.wrappedValue == preset ? WorkbenchTheme.brand : Color.primary)

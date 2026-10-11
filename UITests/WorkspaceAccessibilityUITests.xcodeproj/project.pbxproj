@@ -175,6 +175,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
+				CODE_SIGN_ENTITLEMENTS = WorkspaceAccessibilityUITests/Runner.entitlements;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.jinfang.personal-site-publisher.accessibility-ui-tests";
 				SDKROOT = macosx;
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -273,6 +274,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
+				CODE_SIGN_ENTITLEMENTS = WorkspaceAccessibilityUITests/Runner.entitlements;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.jinfang.personal-site-publisher.accessibility-ui-tests";
 				SDKROOT = macosx;
 				SWIFT_EMIT_LOC_STRINGS = NO;

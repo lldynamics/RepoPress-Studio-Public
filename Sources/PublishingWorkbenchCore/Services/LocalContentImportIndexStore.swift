@@ -102,9 +102,9 @@ struct LocalContentImportIndexEntry: Codable, Equatable, Sendable {
 }
 
 struct LocalContentImportIndexSnapshot: Codable, Sendable {
-  // Version 4 adds generator-aware article-path filtering before cache hits.
-  // Old entries may contain section pages, so they must be rebuilt.
-  static let currentSchemaVersion = 4
+  // Version 5 retains Hugo translationKey in imported drafts. Older cache
+  // entries omitted this front matter field and must be parsed again.
+  static let currentSchemaVersion = 5
 
   var schemaVersion: Int
   var profileID: UUID

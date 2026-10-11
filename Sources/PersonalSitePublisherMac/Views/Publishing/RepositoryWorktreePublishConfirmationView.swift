@@ -43,7 +43,7 @@ struct RepositoryWorktreePublishConfirmationView: View {
     HStack(spacing: 12) {
       Image(systemName: "shippingbox.and.arrow.backward.fill")
         .font(.title2)
-        .foregroundStyle(.tint)
+        .foregroundStyle(.secondary)
       VStack(alignment: .leading, spacing: 3) {
         Text("确认发布仓库全部文件")
           .font(.headline)
@@ -80,7 +80,7 @@ struct RepositoryWorktreePublishConfirmationView: View {
         )
       )
     }
-    .padding(WorkbenchSpacing.section)
+    .padding(WorkbenchSpacing.content)
     .background(
       WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -102,7 +102,7 @@ struct RepositoryWorktreePublishConfirmationView: View {
           .textSelection(.enabled)
       }
     }
-    .padding(WorkbenchSpacing.section)
+    .padding(WorkbenchSpacing.content)
     .background(
       WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -117,10 +117,10 @@ struct RepositoryWorktreePublishConfirmationView: View {
         systemImage: confirmation.safetyReport.warnings.isEmpty
           ? "checkmark.shield.fill" : "exclamationmark.triangle.fill"
       )
-        .font(.headline)
-        .foregroundStyle(
-          confirmation.safetyReport.warnings.isEmpty ? WorkbenchTheme.success : WorkbenchTheme.warning
-        )
+      .font(.headline)
+      .foregroundStyle(
+        confirmation.safetyReport.warnings.isEmpty ? WorkbenchTheme.success : WorkbenchTheme.warning
+      )
       if confirmation.safetyReport.warnings.isEmpty {
         Text("未检测到需要额外复核的发布风险。")
           .font(.caption)
@@ -137,7 +137,7 @@ struct RepositoryWorktreePublishConfirmationView: View {
         }
       }
     }
-    .padding(WorkbenchSpacing.section)
+    .padding(WorkbenchSpacing.content)
     .background(
       WorkbenchTheme.warning.opacity(0.08),
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)

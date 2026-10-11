@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import XCTest
 import XCUIAutomation
@@ -46,7 +47,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
     let persistentIdentifiers = [
       "workspace-sidebar",
-      "workspace-task-navigation",
+      "workspace-primary-navigation-rail",
       "workspace-sidebar-rss",
       "workspace-sidebar-library",
       "workspace-sidebar-sync",
@@ -85,6 +86,21 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertGreaterThanOrEqual(window.frame.width, 960)
     XCTAssertLessThan(window.frame.width, 1180, "Expected compact Inspector band: \(window.frame)")
 
+    // Compact workspaces start rail-only. Reveal the context sidebar explicitly
+    // before checking destinations that live in that on-demand column.
+    let sidebarToggle = window.descendants(matching: .any)
+      .matching(identifier: "workspace-sidebar-toggle")
+      .firstMatch
+    XCTAssertTrue(sidebarToggle.waitForExistence(timeout: 10))
+    XCTAssertTrue(sidebarToggle.isEnabled)
+    sidebarToggle.click()
+    XCTAssertTrue(
+      window.descendants(matching: .any)
+        .matching(identifier: "workspace-sidebar")
+        .firstMatch
+        .waitForExistence(timeout: 10)
+    )
+
     let routes = [
       (
         section: "workspace-sidebar-rss",
@@ -112,9 +128,8 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       select(route.section, revealing: route.destination, in: window)
     }
 
-    // At 1080pt the Inspector can be revealed on demand. The full sidebar is
-    // replaced by the compact rail, whose five icon buttons must keep routing
-    // inside this same workbench window.
+    // At 1080pt the Inspector can be revealed on demand. The context sidebar
+    // yields, while the same five-route rail keeps routing in this window.
     let compactWindow = window
     let compactWindowIdentifier = compactWindow.identifier
     XCTAssertFalse(compactWindowIdentifier.isEmpty)
@@ -131,20 +146,20 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertTrue(inspectorToggle.isEnabled)
     inspectorToggle.click()
 
-    let compactRail = compactWindow.descendants(matching: .any)
-      .matching(identifier: "workspace-compact-navigation-rail")
+    let primaryRail = compactWindow.descendants(matching: .any)
+      .matching(identifier: "workspace-primary-navigation-rail")
       .firstMatch
-    XCTAssertTrue(compactRail.waitForExistence(timeout: 10))
+    XCTAssertTrue(primaryRail.waitForExistence(timeout: 10))
     for section in ["rss", "library", "sync", "writing", "images"] {
       let button = compactWindow.buttons
-        .matching(identifier: "workspace-compact-rail-\(section)")
+        .matching(identifier: "workspace-sidebar-\(section)")
         .firstMatch
       XCTAssertTrue(button.waitForExistence(timeout: 5))
-      XCTAssertTrue(button.isHittable, "Compact \(section) route must be directly hittable.")
+      XCTAssertTrue(button.isHittable, "Primary \(section) route must be directly hittable.")
     }
 
     let rssButton = compactWindow.buttons
-      .matching(identifier: "workspace-compact-rail-rss")
+      .matching(identifier: "workspace-sidebar-rss")
       .firstMatch
     rssButton.click()
     XCTAssertTrue(
@@ -157,7 +172,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertEqual(application.windows.firstMatch.identifier, compactWindowIdentifier)
 
     let writingButton = compactWindow.buttons
-      .matching(identifier: "workspace-compact-rail-writing")
+      .matching(identifier: "workspace-sidebar-writing")
       .firstMatch
     writingButton.click()
     XCTAssertTrue(editor.waitForExistence(timeout: 10))
@@ -411,14 +426,27 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertGreaterThanOrEqual(window.frame.width, 900)
     XCTAssertGreaterThanOrEqual(window.frame.height, 620)
 
+    // Compact workspaces begin with the navigation rail. Exercise the same
+    // explicit context-sidebar toggle used by the primary-route regression.
+    let sidebarToggle = window.descendants(matching: .any)
+      .matching(identifier: "workspace-sidebar-toggle").firstMatch
+    XCTAssertTrue(sidebarToggle.waitForExistence(timeout: 10))
+    XCTAssertTrue(sidebarToggle.isEnabled)
+    if !element(identifier: "workspace-sidebar").exists {
+      sidebarToggle.click()
+    }
+    XCTAssertTrue(element(identifier: "workspace-sidebar").waitForExistence(timeout: 10))
+
     let requiredIdentifiers = [
       "workspace-sidebar",
       "writing-draft-list",
       "markdown-document-editor",
       "markdown-editor-toolbar",
       "markdown-formatting-toolbar",
-      "markdown-insert-menu",
-      "markdown-format-menu",
+      "markdown-editor-floating-toolbar",
+      "markdown-article-title",
+      "markdown-article-status",
+      "markdown-editor-status-bar",
     ]
     for identifier in requiredIdentifiers {
       assertUniqueIdentifier(identifier)
@@ -430,14 +458,97 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       XCTAssertFalse(control.frame.isEmpty, "Accessibility frame must exist for \(identifier).")
     }
 
-    let hasInlineWritingTools = [
+    // A SwiftUI Menu also tags its internal menu element with the identifier,
+    // so uniqueness is checked on the menu button that users actually click.
+    let menuIdentifiers = [
+      "markdown-insert-menu",
+      "markdown-format-menu",
+      "markdown-article-path-menu",
+    ]
+    for identifier in menuIdentifiers {
+      XCTAssertTrue(
+        element(identifier: identifier).waitForExistence(timeout: 10),
+        "The \(identifier) menu must be reachable."
+      )
+      let clickable = [application.menuButtons, application.popUpButtons, application.buttons]
+        .map { $0.matching(identifier: identifier) }
+      XCTAssertEqual(
+        clickable.map(\.count).reduce(0, +), 1,
+        "Expected one clickable \(identifier) control."
+      )
+      let control = clickable.first { $0.count > 0 }?.firstMatch
+      // macOS exposes a menu button's name as its title rather than its label.
+      let name = [control?.label, control?.title].compactMap { $0 }.joined()
+      XCTAssertFalse(
+        name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        "Accessibility name must not be empty for \(identifier)."
+      )
+      XCTAssertFalse(control?.frame.isEmpty ?? true)
+    }
+
+    let hasInlineWritingToolIdentifiers = [
       "markdown-outline-button",
       "markdown-editor-more-actions-menu",
     ].allSatisfy { element(identifier: $0).exists }
+    let hasInlineWritingToolNames =
+      application.buttons["文章大纲"].exists
+      && application.menuButtons["更多操作"].exists
+    let hasCollapsedWritingTools =
+      element(identifier: "markdown-writing-tools-menu").exists
+      || application.menuButtons["写作工具"].exists
     XCTAssertTrue(
-      element(identifier: "markdown-writing-tools-menu").exists || hasInlineWritingTools,
+      hasCollapsedWritingTools || hasInlineWritingToolIdentifiers || hasInlineWritingToolNames,
       "Writing tools must remain accessible inline when they fit or through overflow otherwise."
     )
+
+    if hasCollapsedWritingTools {
+      let clickable = [application.menuButtons, application.popUpButtons, application.buttons]
+        .map { $0.matching(identifier: "markdown-writing-tools-menu") }
+      XCTAssertEqual(
+        clickable.map(\.count).reduce(0, +), 1,
+        "Expected one clickable collapsed writing-tools menu."
+      )
+      let writingTools =
+        clickable.first { $0.count > 0 }?.firstMatch
+        ?? application.menuButtons["写作工具"]
+      application.activate()
+      writingTools.click()
+      XCTAssertTrue(application.menuItems["文章大纲"].waitForExistence(timeout: 3))
+      application.typeKey(.escape, modifierFlags: [])
+    } else {
+      for (identifier, expectedItem) in [
+        ("markdown-editor-ai-actions-menu", "续写"),
+        ("markdown-editor-more-actions-menu", "专注模式"),
+      ] {
+        let clickable = [application.menuButtons, application.popUpButtons, application.buttons]
+          .map { $0.matching(identifier: identifier) }
+        XCTAssertEqual(
+          clickable.map(\.count).reduce(0, +), 1,
+          "Expected one clickable \(identifier) control."
+        )
+        guard let menu = clickable.first(where: { $0.count > 0 })?.firstMatch else {
+          XCTFail("The \(identifier) menu is missing from the inline writing tools.")
+          continue
+        }
+        application.activate()
+        menu.click()
+        XCTAssertTrue(
+          application.menuItems[expectedItem].waitForExistence(timeout: 3), expectedItem)
+        application.typeKey(.escape, modifierFlags: [])
+      }
+    }
+
+    let title = element(identifier: "markdown-article-title")
+    let metadata = element(identifier: "markdown-article-path-menu")
+    let floatingToolbar = element(identifier: "markdown-editor-floating-toolbar")
+    XCTAssertLessThanOrEqual(floatingToolbar.frame.maxY, title.frame.minY)
+    XCTAssertLessThanOrEqual(title.frame.maxY, metadata.frame.minY)
+    XCTAssertTrue(window.frame.contains(floatingToolbar.frame))
+    metadata.click()
+    XCTAssertTrue(application.menuItems["复制相对路径"].waitForExistence(timeout: 3))
+    XCTAssertTrue(application.menuItems["复制文件名"].exists)
+    XCTAssertTrue(application.menuItems["在 Finder 中显示"].exists)
+    application.typeKey(.escape, modifierFlags: [])
 
     let editor = element(identifier: "markdown-document-editor")
     editor.click()
@@ -448,6 +559,353 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     )
     application.typeKey(.escape, modifierFlags: [])
     XCTAssertTrue(editor.exists, "Escape must not remove the editor from the workspace.")
+  }
+
+  func testWritingSecondaryControlsKeepKeyboardAccessAndAdvancedMetadataCollapsed() throws {
+    launchApplication(surface: "writing", screenshotContentSize: CGSize(width: 1440, height: 900))
+
+    let editor = element(identifier: "markdown-document-editor")
+    XCTAssertTrue(editor.waitForExistence(timeout: 10))
+    // Park the pointer in the editor: no status-bar hover or overflow menu
+    // opening may be needed to install either keyboard command.
+    editor.click()
+    assertDisappears(element(identifier: "markdown-cursor-position-button"))
+    assertDisappears(element(identifier: "markdown-editor-branch"))
+    XCTAssertFalse(element(identifier: "markdown-version-history-button").exists)
+
+    application.typeKey("l", modifierFlags: [.command])
+    let lineField = element(identifier: "markdown-go-to-line-field")
+    XCTAssertTrue(
+      lineField.waitForExistence(timeout: 5),
+      "Command-L must open Go to Line before the first status-bar hover."
+    )
+    XCTAssertTrue(lineField.isHittable, "The hidden anchor must still present a usable popover.")
+    lineField.click()
+    application.typeKey("a", modifierFlags: [.command])
+    lineField.typeText("2")
+    application.typeKey(.return, modifierFlags: [])
+    assertDisappears(lineField)
+
+    application.typeKey("l", modifierFlags: [.command])
+    XCTAssertTrue(lineField.waitForExistence(timeout: 5))
+    XCTAssertEqual(
+      lineField.value as? String, "2",
+      "Reopening Go to Line must reflect the submitted cursor position."
+    )
+    application.buttons["取消"].click()
+    assertDisappears(lineField)
+
+    let statusBar = element(identifier: "markdown-editor-status-bar")
+    let writingWindow = application.windows.firstMatch
+    let statusFrame = statusBar.frame
+    let windowFrame = writingWindow.frame
+    let statusCenter = CGPoint(x: statusFrame.midX, y: statusFrame.midY)
+    XCTAssertFalse(statusFrame.isEmpty)
+    XCTAssertTrue(windowFrame.insetBy(dx: 1, dy: 1).contains(statusCenter))
+    for stage in ["before", "after"] {
+      if stage == "after" {
+        writingWindow.coordinate(withNormalizedOffset: .zero).withOffset(
+          CGVector(dx: statusCenter.x - windowFrame.minX, dy: statusCenter.y - windowFrame.minY)
+        ).hover()
+      }
+      let screenshot = XCTAttachment(screenshot: application.screenshot())
+      screenshot.name = "Status bar \(stage) coordinate hover"
+      screenshot.lifetime = .keepAlways
+      add(screenshot)
+      let hierarchy = XCTAttachment(
+        string: "Status frame: \(statusFrame); window frame: \(windowFrame)\n"
+          + "Mouse location (AppKit screen coordinates): \(NSEvent.mouseLocation)\n"
+          + "Screen frames (AppKit screen coordinates): \(NSScreen.screens.map(\.frame))\n"
+          + "Frontmost bundle: \(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "<nil>"); "
+          + "PID: \(NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0)\n"
+          + "Status isHittable: \(statusBar.isHittable)\n"
+          + application.debugDescription
+      )
+      hierarchy.name = "Status hierarchy \(stage) coordinate hover"
+      hierarchy.lifetime = .keepAlways
+      add(hierarchy)
+    }
+    let cursor = element(identifier: "markdown-cursor-position-button")
+    XCTAssertTrue(cursor.waitForExistence(timeout: 5))
+    XCTAssertEqual(cursor.value as? String, "行 2，列 1")
+    editor.hover()
+    assertDisappears(cursor)
+
+    let title = try XCTUnwrap(element(identifier: "markdown-article-title").value as? String)
+    let originalBody = try XCTUnwrap(editor.value as? String)
+    let duplicateHeading = "# \(title)\n"
+    // The native editor exposes its complete source, including folded Front
+    // Matter. Preserve that prefix while removing only the first body H1.
+    let headingRange = try XCTUnwrap(originalBody.range(of: duplicateHeading))
+    let sourcePrefix = originalBody[..<headingRange.lowerBound]
+    XCTAssertTrue(sourcePrefix.hasPrefix("+++") || sourcePrefix.hasPrefix("---"))
+    let duplicateNotice = element(identifier: "markdown-duplicate-body-title-notice")
+    XCTAssertTrue(duplicateNotice.waitForExistence(timeout: 5))
+    element(identifier: "markdown-remove-duplicate-body-title").click()
+    var bodyWithoutHeading = originalBody
+    bodyWithoutHeading.removeSubrange(headingRange)
+    XCTAssertEqual(
+      XCTWaiter.wait(
+        for: [
+          XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", bodyWithoutHeading), object: editor)
+        ], timeout: 5),
+      .completed,
+      "Removing the duplicate title must preserve every character after the opening H1."
+    )
+    XCTAssertEqual(element(identifier: "markdown-article-title").value as? String, title)
+    assertDisappears(duplicateNotice)
+    editor.click()
+    application.typeKey("z", modifierFlags: [.command])
+    XCTAssertEqual(
+      XCTWaiter.wait(
+        for: [
+          XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", originalBody), object: editor)
+        ], timeout: 5),
+      .completed,
+      "Native Undo must restore the exact original body."
+    )
+    XCTAssertEqual(element(identifier: "markdown-article-title").value as? String, title)
+    XCTAssertTrue(duplicateNotice.waitForExistence(timeout: 5))
+
+    application.typeKey("h", modifierFlags: [.command, .option, .control])
+    let history = element(identifier: "data-management-drafts-task")
+    XCTAssertTrue(
+      history.waitForExistence(timeout: 5),
+      "The article history shortcut must work without opening More Actions."
+    )
+    XCTAssertTrue(history.staticTexts[title].exists, "History must target the edited article.")
+    element(identifier: "data-management-drafts-task-close").click()
+    assertDisappears(history)
+
+    let tabs = element(identifier: "workspace-inspector-tabs")
+    if !tabs.exists {
+      element(identifier: "workspace-inspector-toggle").click()
+    }
+    XCTAssertTrue(tabs.waitForExistence(timeout: 5))
+    tabs.radioButtons["信息"].click()
+    let inspector = element(identifier: "article-inspector")
+    XCTAssertTrue(inspector.waitForExistence(timeout: 5))
+    let publishDates = inspector.datePickers.matching(
+      NSPredicate(format: "label CONTAINS %@", "文章发布时间")
+    )
+    XCTAssertEqual(publishDates.count, 1, "The article publication date must have one date picker.")
+    let commonMetadata = [
+      inspector.textFields["文章摘要"],
+      inspector.textFields["标签"],
+      inspector.textFields["分类"],
+      publishDates.firstMatch,
+      element(identifier: "article-state-picker"),
+    ]
+    for field in commonMetadata {
+      XCTAssertTrue(field.waitForExistence(timeout: 5))
+      XCTAssertFalse(field.frame.isEmpty)
+    }
+    for (previous, next) in zip(commonMetadata, commonMetadata.dropFirst()) {
+      XCTAssertLessThan(
+        previous.frame.minY, next.frame.minY,
+        "Common metadata must appear in summary, tags, categories, date, state order."
+      )
+    }
+    let advanced = element(identifier: "article-metadata-advanced")
+    XCTAssertTrue(advanced.waitForExistence(timeout: 5))
+    let slug = inspector.textFields["文章固定链接"]
+    XCTAssertFalse(slug.exists, "Slug must remain inside the initially collapsed Advanced group.")
+    XCTAssertFalse(element(identifier: "article-publish-reminder").exists)
+    let advancedLabel = advanced.disclosureTriangles["高级"].firstMatch
+    XCTAssertTrue(advancedLabel.waitForExistence(timeout: 5))
+    let inspectorScroll = inspector
+    clickScrollableControl(advancedLabel, in: inspectorScroll)
+    XCTAssertTrue(slug.waitForExistence(timeout: 5))
+    XCTAssertTrue(element(identifier: "article-publish-reminder").waitForExistence(timeout: 5))
+    XCTAssertTrue(slug.isEnabled)
+    let editedSlug = "writing-ui-folded-slug"
+    slug.click()
+    application.typeKey("a", modifierFlags: [.command])
+    let slugInputScreenshot = XCTAttachment(screenshot: application.screenshot())
+    slugInputScreenshot.name = "Slug field before replacement input"
+    slugInputScreenshot.lifetime = .keepAlways
+    add(slugInputScreenshot)
+    let slugInputHierarchy = XCTAttachment(string: application.debugDescription)
+    slugInputHierarchy.name = "Slug hierarchy before replacement input"
+    slugInputHierarchy.lifetime = .keepAlways
+    add(slugInputHierarchy)
+    application.typeText(editedSlug)
+    let slugEditAppeared = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "value == %@", editedSlug), object: slug
+    )
+    XCTAssertEqual(XCTWaiter.wait(for: [slugEditAppeared], timeout: 5), .completed)
+    // Fold directly without Return or an intermediate focus change: removing
+    // the focused field must commit its pending edit before it disappears.
+    clickScrollableControl(advancedLabel, in: inspectorScroll)
+    assertDisappears(slug)
+    assertDisappears(element(identifier: "article-publish-reminder"))
+    clickScrollableControl(advancedLabel, in: inspectorScroll)
+    XCTAssertTrue(slug.waitForExistence(timeout: 5))
+    XCTAssertEqual(slug.value as? String, editedSlug)
+    clickScrollableControl(advancedLabel, in: inspectorScroll)
+    assertDisappears(slug)
+
+    let saveStatus = element(identifier: "markdown-editor-save-status")
+    XCTAssertTrue(saveStatus.waitForExistence(timeout: 5))
+    let changesSaved = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "value CONTAINS %@", "已保存"), object: saveStatus
+    )
+    XCTAssertEqual(
+      XCTWaiter.wait(for: [changesSaved], timeout: 15), .completed,
+      "Editing and folding Slug must finish saving the isolated fixture."
+    )
+    XCTAssertFalse(element(identifier: "markdown-editor-save-failure").exists)
+
+    // Query clickable controls only: SwiftUI also gives its internal menu
+    // container the same identifier as the visible AI menu button.
+    let aiMenus = [application.menuButtons, application.popUpButtons, application.buttons]
+      .map { $0.matching(identifier: "markdown-editor-ai-actions-menu") }
+    XCTAssertEqual(aiMenus.map(\.count).reduce(0, +), 1)
+    let aiMenu = try XCTUnwrap(aiMenus.first { $0.count > 0 }?.firstMatch)
+    aiMenu.click()
+    let configure = application.menuItems.matching(identifier: "markdown-ai-configure-action")
+      .firstMatch
+    XCTAssertTrue(configure.waitForExistence(timeout: 5))
+    XCTAssertTrue(
+      configure.isEnabled, "The no-key fixture must offer an actionable configuration entry.")
+    let openAIMenu = application.menus
+      .containing(.menuItem, identifier: "markdown-ai-configure-action").firstMatch
+    XCTAssertTrue(openAIMenu.waitForExistence(timeout: 5))
+    let menuGroups = ["选区", "全文", "发布"].map { name in
+      openAIMenu.descendants(matching: .any)
+        .matching(NSPredicate(format: "label == %@ OR title == %@", name, name)).firstMatch
+    }
+    for group in menuGroups {
+      XCTAssertTrue(group.waitForExistence(timeout: 5))
+    }
+    let groupedActions = [
+      ["改写", "翻译"],
+      ["续写", "内容审查", "引用资料"],
+      ["摘要", "标题", "社交文案", "发布资产包"],
+    ]
+    for (index, titles) in groupedActions.enumerated() {
+      for actionTitle in titles {
+        let action = openAIMenu.menuItems[actionTitle]
+        XCTAssertTrue(action.waitForExistence(timeout: 5), actionTitle)
+        if !["改写", "翻译"].contains(actionTitle) {
+          XCTAssertFalse(action.isEnabled, "Missing credentials must disable \(actionTitle).")
+        }
+        XCTAssertGreaterThan(action.frame.minY, menuGroups[index].frame.minY)
+        if index + 1 < menuGroups.count {
+          XCTAssertLessThan(action.frame.minY, menuGroups[index + 1].frame.minY)
+        }
+      }
+    }
+    let selectionSubmenus = [
+      ("改写", ["自然", "读者友好", "正式", "轻松", "技术", "润色", "扩写", "压缩", "简化", "摘要", "删减冗余"]),
+      ("翻译", ["选区翻译中文", "选区翻译英文"]),
+    ]
+    for (submenuTitle, leafTitles) in selectionSubmenus {
+      let navigation = openAIMenu.menuItems[submenuTitle]
+      navigation.hover()
+      let submenu = navigation.menus.firstMatch
+      XCTAssertTrue(submenu.waitForExistence(timeout: 5), submenuTitle)
+      for leafTitle in leafTitles {
+        let leaf = submenu.menuItems.matching(
+          NSPredicate(format: "title == %@ OR label == %@", leafTitle, leafTitle)
+        ).firstMatch
+        XCTAssertTrue(leaf.waitForExistence(timeout: 5), leafTitle)
+        XCTAssertFalse(leaf.isEnabled, "Missing credentials must disable \(leafTitle).")
+      }
+    }
+    configure.click()
+    XCTAssertTrue(element(identifier: "settings-content").waitForExistence(timeout: 10))
+    XCTAssertTrue(element(identifier: "settings-ai-key-input").waitForExistence(timeout: 5))
+    currentSettingsWindow().buttons[XCUIIdentifierCloseWindow].click()
+    assertIdentifierDisappears("settings-content")
+  }
+
+  func testWritingFloatingToolbarStaysWithinEditorAndKeepsPathActionsReachable() throws {
+    launchApplication(surface: "writing", screenshotContentSize: CGSize(width: 1440, height: 820))
+    let toolbar = element(identifier: "markdown-editor-floating-toolbar")
+    let editor = element(identifier: "markdown-document-editor")
+    let title = element(identifier: "markdown-article-title")
+    let path = element(identifier: "markdown-article-path-menu")
+    XCTAssertTrue(toolbar.waitForExistence(timeout: 10))
+    XCTAssertTrue(editor.exists)
+    XCTAssertLessThan(toolbar.frame.width, editor.frame.width)
+    XCTAssertGreaterThanOrEqual(toolbar.frame.minX, editor.frame.minX)
+    XCTAssertLessThanOrEqual(toolbar.frame.maxX, editor.frame.maxX)
+    XCTAssertLessThanOrEqual(toolbar.frame.maxY, title.frame.minY)
+    XCTAssertLessThanOrEqual(title.frame.maxY, path.frame.minY)
+    path.click()
+    for action in ["复制相对路径", "复制绝对路径", "复制文件名", "在 Finder 中显示"] {
+      XCTAssertTrue(application.menuItems[action].waitForExistence(timeout: 3), action)
+    }
+    application.typeKey(.escape, modifierFlags: [])
+  }
+
+  func testWritingInspectorYieldsToTypingAndNarrowingBeforeArticleList() throws {
+    launchApplication(surface: "writing", screenshotContentSize: CGSize(width: 1440, height: 820))
+    let window = application.windows.firstMatch
+    // Raise the fixture through a clear title-bar area before checking controls.
+    window.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0))
+      .withOffset(CGVector(dx: 0, dy: 10)).click()
+    let inspector = element(identifier: "workspace-inspector")
+    let editor = element(identifier: "markdown-document-editor")
+    XCTAssertTrue(inspector.waitForExistence(timeout: 10))
+    let wideScreenshot = XCTAttachment(screenshot: window.screenshot())
+    wideScreenshot.name = "writing-layout-1440"
+    wideScreenshot.lifetime = .keepAlways
+    add(wideScreenshot)
+    let originalEditorWidth = editor.frame.width
+    editor.click()
+    editor.typeText("layout check")
+    assertIdentifierDisappears("workspace-inspector")
+    XCTAssertTrue(
+      (editor.value as? String)?.contains("layout check") == true,
+      "Collapsing the Inspector during typing must preserve the complete entered text."
+    )
+    XCTAssertTrue(element(identifier: "writing-draft-list").exists)
+    XCTAssertGreaterThan(editor.frame.width, originalEditorWidth + 200)
+
+    element(identifier: "workspace-inspector-toggle").click()
+    XCTAssertTrue(inspector.waitForExistence(timeout: 10))
+    let sizeChange = 1180 - window.frame.width
+    let corner = window.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1))
+      .withOffset(CGVector(dx: -2, dy: -2))
+    corner.press(forDuration: 0.1, thenDragTo: corner.withOffset(CGVector(dx: sizeChange, dy: 0)))
+    XCTAssertEqual(window.frame.width, 1180, accuracy: 2)
+    assertIdentifierDisappears("workspace-inspector")
+    XCTAssertTrue(element(identifier: "writing-draft-list").exists)
+    let narrowScreenshot = XCTAttachment(screenshot: window.screenshot())
+    narrowScreenshot.name = "writing-layout-1180"
+    narrowScreenshot.lifetime = .keepAlways
+    add(narrowScreenshot)
+
+    element(identifier: "workspace-inspector-toggle").click()
+    XCTAssertTrue(inspector.waitForExistence(timeout: 10))
+    XCTAssertFalse(element(identifier: "writing-draft-list").exists)
+  }
+
+  func testNarrowWritingInspectorRevealImmediatelyReplacesArticleList() throws {
+    launchApplication(
+      surface: "seo-social-preview", screenshotContentSize: CGSize(width: 1180, height: 820))
+    let window = application.windows.firstMatch
+    window.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0))
+      .withOffset(CGVector(dx: 0, dy: 10)).click()
+    let inspectorToggle = element(identifier: "workspace-inspector-toggle")
+    XCTAssertTrue(inspectorToggle.waitForExistence(timeout: 10))
+    XCTAssertTrue(element(identifier: "writing-draft-list").exists)
+    XCTAssertFalse(element(identifier: "workspace-inspector").exists)
+
+    inspectorToggle.click()
+    assertIdentifierExists("workspace-inspector")
+    assertIdentifierDisappears("writing-draft-list")
+    XCTAssertEqual(inspectorToggle.value as? String, "信息")
+    XCTAssertEqual(window.frame.width, 1180, accuracy: 2)
+
+    inspectorToggle.click()
+    assertIdentifierDisappears("workspace-inspector")
+    assertIdentifierExists("writing-draft-list")
+    XCTAssertEqual(window.frame.width, 1180, accuracy: 2)
   }
 
   func testEditorAppearanceButtonOpensTheEditorSettingsPage() throws {
@@ -489,7 +947,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
     for identifier in [
       "workspace-sidebar",
-      "workspace-task-navigation",
+      "workspace-primary-navigation-rail",
       "workspace-sidebar-rss",
       "rss-reader-sidebar",
       "rss-reader-workspace",
@@ -519,6 +977,86 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       windowCountBeforeSelection,
       "Selecting RSS must reuse the main workspace instead of opening another window."
     )
+  }
+
+  func testSavedLongArticleReopensAndAcceptsFirstWheelScroll() throws {
+    launchApplication(surface: nil)
+    let recommendedRoot = element(identifier: "workbench-data-root-use-recommended")
+    if recommendedRoot.waitForExistence(timeout: 5) { recommendedRoot.click() }
+    XCTAssertTrue(element(identifier: "workspace-sidebar").waitForExistence(timeout: 20))
+    select("workspace-sidebar-writing", revealing: "writing-draft-list")
+    element(identifier: "writing-create-article").click()
+    let editor = element(identifier: "markdown-document-editor")
+    XCTAssertTrue(editor.waitForExistence(timeout: 10))
+    let marker = "ColdReopen-\(UUID().uuidString)"
+    let longBody =
+      ([marker] + (1...1_600).map { "Paragraph \($0): saved long article scroll fixture." }
+      + ["End-\(marker)"]).joined(separator: "\n\n")
+
+    // Preserve the clipboard and restore it only while this test still owns
+    // it. Pasting uses the actual editor and persistence path without typing
+    // thousands of synthetic keystrokes or reseeding the launch fixture.
+    let pasteboard = NSPasteboard.general
+    let originalItems = (pasteboard.pasteboardItems ?? []).map { item in
+      item.types.compactMap { type in item.data(forType: type).map { (type, $0) } }
+    }
+    pasteboard.clearContents()
+    XCTAssertTrue(pasteboard.setString(longBody, forType: .string))
+    let fixtureChangeCount = pasteboard.changeCount
+    defer {
+      if pasteboard.changeCount == fixtureChangeCount {
+        pasteboard.clearContents()
+        let restored = originalItems.map { values in
+          let item = NSPasteboardItem()
+          for (type, data) in values { item.setData(data, forType: type) }
+          return item
+        }
+        if !restored.isEmpty { pasteboard.writeObjects(restored) }
+      }
+    }
+    editor.click()
+    application.typeKey("a", modifierFlags: [.command])
+    application.typeKey("v", modifierFlags: [.command])
+    XCTAssertTrue((editor.value as? String)?.contains("End-\(marker)") == true)
+    application.typeKey(.upArrow, modifierFlags: [.command])
+    application.typeKey("s", modifierFlags: [.command])
+    let saved = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "value CONTAINS %@", "已保存"),
+      object: element(identifier: "markdown-editor-save-status"))
+    XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 15), .completed)
+    application.terminate()
+
+    // Reuse the same isolated home, with demo mode disabled on both launches.
+    application.launch()
+    application.activate()
+    let reopenedEditor = element(identifier: "markdown-document-editor")
+    XCTAssertTrue(reopenedEditor.waitForExistence(timeout: 20))
+    XCTAssertTrue((reopenedEditor.value as? String)?.contains("End-\(marker)") == true)
+    let scrollView = application.scrollViews.containing(
+      .any, identifier: "markdown-document-editor"
+    ).firstMatch
+    XCTAssertTrue(scrollView.waitForExistence(timeout: 5))
+    let scrollBar = scrollView.scrollBars.firstMatch
+    XCTAssertTrue(
+      scrollBar.waitForExistence(timeout: 5),
+      "The reopened long article must expose its scroller immediately.")
+    XCTAssertNotNil(scrollBar.value)
+    let initialScrollValue = String(describing: scrollBar.value)
+    let before = XCTAttachment(screenshot: application.screenshot())
+    before.name = "Saved long article immediately after relaunch"
+    before.lifetime = .keepAlways
+    add(before)
+    scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+      .scroll(byDeltaX: 0, deltaY: -320)
+    let moved = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        scrollBar.value != nil && String(describing: scrollBar.value) != initialScrollValue
+      }, object: scrollBar)
+    XCTAssertEqual(XCTWaiter.wait(for: [moved], timeout: 5), .completed)
+    let after = XCTAttachment(screenshot: application.screenshot())
+    after.name = "Saved long article after first wheel scroll"
+    after.lifetime = .keepAlways
+    add(after)
   }
 
   func testReleaseBundleLaunchesWithoutScreenshotFixture() throws {
@@ -568,7 +1106,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "The fixture must expose a window instance identity.")
     let firstWindow = application.windows.matching(identifier: firstWindowIdentifier).firstMatch
     select("workspace-sidebar-writing", revealing: "writing-draft-list", in: firstWindow)
-    let firstArticle = firstWindow.staticTexts["RepoPress Studio 发布流程"]
+    let firstArticle = writingDraftRow(title: "RepoPress Studio 发布流程", in: firstWindow)
     XCTAssertTrue(firstArticle.waitForExistence(timeout: 10))
     firstArticle.click()
     let firstEditor = firstWindow.descendants(matching: .any)
@@ -594,7 +1132,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertTrue(secondWindow.waitForExistence(timeout: 10))
     secondWindow.click()
     select("workspace-sidebar-writing", revealing: "writing-draft-list", in: secondWindow)
-    let secondArticle = secondWindow.staticTexts["私密客户复盘草稿"]
+    let secondArticle = writingDraftRow(title: "私密客户复盘草稿", in: secondWindow)
     XCTAssertTrue(secondArticle.waitForExistence(timeout: 10))
     secondArticle.click()
     let secondEditor = secondWindow.descendants(matching: .any)
@@ -633,7 +1171,8 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertTrue(publishCurrent.waitForExistence(timeout: 10))
     XCTAssertTrue(
       publishCurrent.isEnabled, "The fixture must reach a review-only publish confirmation.")
-    clickVisibleDrawerControl(publishCurrent)
+    // The primary action sits in the drawer's fixed footer, outside the scroll view.
+    publishCurrent.click()
 
     let confirmation = application.sheets.firstMatch
     XCTAssertTrue(confirmation.waitForExistence(timeout: 10))
@@ -910,12 +1449,103 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertEqual(editor.value as? String, originalBody)
     XCTAssertFalse(application.sheets.firstMatch.exists)
 
-    application.typeKey("r", modifierFlags: [.option, .command])
+    element(identifier: "article-publish-repair-return").click()
     XCTAssertTrue(scope.waitForExistence(timeout: 10))
     XCTAssertEqual(String(describing: scope.radioButtons["当前文章"].value ?? ""), "1")
     assertIdentifierDisappears("article-publish-repair-bar")
     XCTAssertEqual(editor.value as? String, originalBody)
     XCTAssertFalse(application.sheets.firstMatch.exists, "Returning must never start a publish.")
+  }
+
+  func testMinimumWindowCanOpenAndClosePublishChecksWithoutPublishing() throws {
+    launchApplication(surface: "writing", screenshotContentSize: CGSize(width: 900, height: 620))
+    let editor = element(identifier: "markdown-document-editor")
+    XCTAssertTrue(editor.waitForExistence(timeout: 10))
+    XCTAssertEqual(application.windows.firstMatch.frame.width, 900, accuracy: 1)
+    let originalBody = try XCTUnwrap(editor.value as? String)
+    let prepare = element(identifier: "workspace-prepare-publish")
+    XCTAssertTrue(prepare.isEnabled)
+    prepare.click()
+    let sheet = element(identifier: "workspace-compact-publish-sheet")
+    XCTAssertTrue(sheet.waitForExistence(timeout: 10))
+    let scope = element(identifier: "publish-drawer-scope")
+    XCTAssertTrue(scope.waitForExistence(timeout: 10))
+    selectPublishScope("全部变更", in: scope)
+    assertUniqueIdentifier("publish-drawer-action-publish-all")
+    element(identifier: "compact-publish-close").click()
+    assertIdentifierDisappears("workspace-compact-publish-sheet")
+    XCTAssertEqual(editor.value as? String, originalBody)
+    XCTAssertFalse(application.sheets.firstMatch.exists)
+    application.typeKey("p", modifierFlags: [.option, .command])
+    XCTAssertTrue(sheet.waitForExistence(timeout: 10))
+    XCTAssertEqual(String(describing: scope.radioButtons["全部变更"].value ?? ""), "1")
+    element(identifier: "compact-publish-close").click()
+    assertIdentifierDisappears("workspace-compact-publish-sheet")
+    XCTAssertEqual(editor.value as? String, originalBody)
+  }
+
+  func testMinimumWindowPublishRepairClosesItsSheetBeforeOpeningTheRepair() throws {
+    launchApplication(surface: "writing", screenshotContentSize: CGSize(width: 900, height: 620))
+    let editor = element(identifier: "markdown-document-editor")
+    XCTAssertTrue(editor.waitForExistence(timeout: 10))
+    XCTAssertEqual(application.windows.firstMatch.frame.width, 900, accuracy: 1)
+    let originalBody = try XCTUnwrap(editor.value as? String)
+    element(identifier: "workspace-prepare-publish").click()
+    XCTAssertTrue(
+      element(identifier: "workspace-compact-publish-sheet").waitForExistence(timeout: 10))
+    let metadataIssue = application.descendants(matching: .any).matching(
+      NSPredicate(
+        format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+        "publish-readiness-action-", "编辑元数据"
+      )
+    ).firstMatch
+    XCTAssertTrue(metadataIssue.waitForExistence(timeout: 10))
+    clickVisibleDrawerControl(metadataIssue)
+    assertIdentifierDisappears("workspace-compact-publish-sheet")
+    XCTAssertTrue(element(identifier: "article-publish-repair-bar").waitForExistence(timeout: 10))
+    XCTAssertTrue(element(identifier: "article-inspector").waitForExistence(timeout: 10))
+    application.sheets.firstMatch.buttons["完成"].click()
+    XCTAssertFalse(application.sheets.firstMatch.exists)
+    element(identifier: "article-publish-repair-return").click()
+    XCTAssertTrue(
+      element(identifier: "workspace-compact-publish-sheet").waitForExistence(timeout: 10))
+    let scope = element(identifier: "publish-drawer-scope")
+    XCTAssertEqual(String(describing: scope.radioButtons["当前文章"].value ?? ""), "1")
+    element(identifier: "compact-publish-close").click()
+    assertIdentifierDisappears("workspace-compact-publish-sheet")
+    XCTAssertEqual(editor.value as? String, originalBody)
+  }
+
+  func testMinimumWindowPublishConfirmationCanBeCancelledInsideThePublishSheet() throws {
+    launchApplication(
+      surface: "sync-api-publish", screenshotContentSize: CGSize(width: 900, height: 620))
+    let window = application.windows.firstMatch
+    XCTAssertEqual(window.frame.width, 900, accuracy: 1)
+    select("workspace-sidebar-writing", revealing: "markdown-document-editor", in: window)
+    application.typeKey("s", modifierFlags: [.control, .command])
+    let article = writingDraftRow(title: "RepoPress Studio 发布流程", in: window)
+    XCTAssertTrue(article.waitForExistence(timeout: 10))
+    article.click()
+    let editor = element(identifier: "markdown-document-editor")
+    let originalBody = try XCTUnwrap(editor.value as? String)
+    select("workspace-sidebar-sync", revealing: "repository-workspace", in: window)
+    element(identifier: "workspace-prepare-publish").click()
+    XCTAssertTrue(
+      element(identifier: "workspace-compact-publish-sheet").waitForExistence(timeout: 10))
+    selectPublishScope("当前文章", in: element(identifier: "publish-drawer-scope"))
+    let publish = element(identifier: "publish-drawer-action-publish-current")
+    XCTAssertTrue(publish.isEnabled)
+    publish.click()
+    let cancel = application.sheets.descendants(matching: .button).matching(identifier: "取消")
+      .firstMatch
+    XCTAssertTrue(cancel.waitForExistence(timeout: 10))
+    cancel.click()
+    XCTAssertTrue(
+      element(identifier: "workspace-compact-publish-sheet").waitForExistence(timeout: 10))
+    element(identifier: "compact-publish-close").click()
+    assertIdentifierDisappears("workspace-compact-publish-sheet")
+    select("workspace-sidebar-writing", revealing: "markdown-document-editor", in: window)
+    XCTAssertEqual(editor.value as? String, originalBody)
   }
 
   func testPublishDrawerKeepsDecisionChecksAndDiffOnly() throws {
@@ -933,8 +1563,15 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     assertUniqueIdentifier("publish-drawer-action-publish-all")
 
     let scope = element(identifier: "publish-drawer-scope")
-    selectPublishScope("应用文章", in: scope)
+    selectPublishScope("全部变更", in: scope)
+    for step in 1...4 {
+      assertUniqueIdentifier("publish-inspector-step-\(step)")
+    }
+    let advanced = element(identifier: "publish-drawer-local-actions")
+    clickVisibleDrawerControl(advanced)
+    clickVisibleDrawerControl(element(identifier: "publish-inspector-managed-articles"))
     assertUniqueIdentifier("publish-drawer-unified-summary")
+    clickVisibleDrawerControl(advanced)
     selectPublishScope("当前文章", in: scope)
     for identifier in [
       "publish-drawer-readiness-checklist",
@@ -943,6 +1580,16 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     ] {
       assertUniqueIdentifier(identifier)
     }
+    let primaryAction = element(identifier: "publish-drawer-action-publish-current")
+    let scrollContent = element(identifier: "publish-drawer-scroll-content")
+    XCTAssertGreaterThanOrEqual(
+      primaryAction.frame.minY, scrollContent.frame.maxY,
+      "The scope's primary action must stay in the fixed footer below the scrolling checks."
+    )
+    let drawerShot = XCTAttachment(screenshot: application.windows.firstMatch.screenshot())
+    drawerShot.name = "publish-drawer-current-article"
+    drawerShot.lifetime = .keepAlways
+    add(drawerShot)
     let localActions = application.disclosureTriangles["publish-drawer-local-actions"]
     XCTAssertTrue(localActions.waitForExistence(timeout: 5))
     clickVisibleDrawerControl(localActions)
@@ -967,7 +1614,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     screenshot.lifetime = .keepAlways
     add(screenshot)
 
-    let drawer = element(identifier: "workspace-publish-drawer-overlay")
+    let drawer = element(identifier: "workspace-publish-inspector")
     for removedSectionTitle in [
       "分支管理",
       "提交历史",
@@ -1159,7 +1806,8 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     launchApplication(surface: "writing")
     // Demo seeding points at this repository but does not import new files.
     // Use the real discovery flow to register the fixture's image references.
-    select("workspace-open-settings", revealing: "settings-content")
+    showSettingsWindow()
+    assertIdentifierExists("settings-content")
     let settings = currentSettingsWindow()
     select(
       "settings-tab-defaultRules", revealing: "repository-draft-discovery-scan-now", in: settings)
@@ -1419,12 +2067,76 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "repository-sidebar-stage-checks",
       "content-health-workspace",
       "content-health-stage-overview",
-      "content-health-severity-filter",
+      "content-health-count-errors",
+      "content-health-count-warnings",
+      "content-health-count-maintenance",
+      "content-health-count-passed",
+      "content-health-search",
+      "content-health-recheck",
+      "content-health-grouping",
       "content-health-source-filter",
       "content-health-ai-filter",
     ] {
       assertUniqueIdentifier(identifier)
     }
+
+    XCTAssertEqual(application.buttons.matching(identifier: "content-health-count-passed").count, 0)
+    let errors = element(identifier: "content-health-count-errors")
+    errors.click()
+    assertUniqueIdentifier("content-health-count-errors")
+    XCTAssertTrue(
+      (element(identifier: "content-health-count-errors").value as? String ?? "").contains("已筛选"))
+    element(identifier: "content-health-count-errors").click()
+    assertUniqueIdentifier("content-health-count-errors")
+    XCTAssertTrue(
+      (element(identifier: "content-health-count-errors").value as? String ?? "").contains("未筛选"))
+
+    let siteCounts = ["errors", "warnings", "maintenance", "passed"].map {
+      (element(identifier: "content-health-count-\($0)").value as? String ?? "")
+        .components(separatedBy: "，").first ?? ""
+    }
+    element(identifier: "content-health-count-maintenance").click()
+    assertIdentifierDisappears("content-health-grouping")
+    let filteredCounts = ["errors", "warnings", "maintenance", "passed"].map {
+      (element(identifier: "content-health-count-\($0)").value as? String ?? "")
+        .components(separatedBy: "，").first ?? ""
+    }
+    XCTAssertEqual(filteredCounts, siteCounts, "List filters must preserve full-site card counts.")
+    element(identifier: "content-health-count-maintenance").click()
+    assertUniqueIdentifier("content-health-grouping")
+
+    let search = element(identifier: "content-health-search")
+    search.click()
+    search.typeText("987654321098765432109876543210")
+    assertUniqueIdentifier("content-health-all-clear")
+    XCTAssertFalse(element(identifier: "content-health-issue-list").exists)
+    application.typeKey("a", modifierFlags: [.command])
+    application.typeKey(.delete, modifierFlags: [])
+    assertUniqueIdentifier("content-health-issue-list")
+    let issueButtons = application.buttons.matching(
+      NSPredicate(format: "identifier BEGINSWITH %@", "content-health-select-issue-"))
+    XCTAssertTrue(issueButtons.firstMatch.waitForExistence(timeout: 10))
+    XCTAssertGreaterThanOrEqual(
+      issueButtons.count, 2, "The fixture must expose two issues for keyboard traversal.")
+    let firstIssue = issueButtons.element(boundBy: 0)
+    let secondIssue = issueButtons.element(boundBy: 1)
+    firstIssue.click()
+    XCTAssertTrue(firstIssue.isSelected)
+    assertUniqueIdentifier("content-health-selected-issue-inspector")
+    assertUniqueIdentifier("content-health-selected-issue-heading")
+    let issueHeading = element(identifier: "content-health-selected-issue-heading")
+    let firstTitle = firstIssue.label.replacingOccurrences(of: "选择问题：", with: "")
+    XCTAssertTrue(issueHeading.label.contains(firstTitle))
+    application.typeKey(.downArrow, modifierFlags: [])
+    XCTAssertTrue(secondIssue.isSelected, "Down must move selection to the next issue.")
+    XCTAssertFalse(firstIssue.isSelected)
+    let secondTitle = secondIssue.label.replacingOccurrences(of: "选择问题：", with: "")
+    let headingUpdated = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "label CONTAINS %@", secondTitle), object: issueHeading)
+    XCTAssertEqual(XCTWaiter.wait(for: [headingUpdated], timeout: 3), .completed)
+    application.typeKey(.upArrow, modifierFlags: [])
+    XCTAssertTrue(firstIssue.isSelected)
+    XCTAssertFalse(secondIssue.isSelected)
 
     XCTAssertEqual(
       element(identifier: "repository-sidebar-stage-checks").value as? String,
@@ -1444,9 +2156,11 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     let checksStage = element(identifier: "repository-sidebar-stage-checks")
     XCTAssertEqual(
       XCTWaiter.wait(
-        for: [XCTNSPredicateExpectation(
-          predicate: NSPredicate(format: "value == %@", "已选中"), object: checksStage
-        )], timeout: 10
+        for: [
+          XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "已选中"), object: checksStage
+          )
+        ], timeout: 10
       ), .completed
     )
 
@@ -1498,7 +2212,31 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     )
   }
 
-  func testAIInspectorKeyboardShortcutTogglesInMainWindow() {
+  func testAIInspectorMenuOpensAndSelectsInMainWindow() {
+    launchApplication(surface: "writing")
+    XCTAssertTrue(element(identifier: "ai-assistant-toolbar-button").waitForExistence(timeout: 10))
+    let mainWindow = application.windows.firstMatch
+    let initialWindowCount = application.windows.count
+    let inspector = mainWindow.descendants(matching: .any)
+      .matching(identifier: "ai-assistant-inspector").firstMatch
+    XCTAssertFalse(inspector.exists)
+    openAssistantFromMenu()
+    XCTAssertTrue(inspector.waitForExistence(timeout: 10))
+    openAssistantFromMenu()
+    XCTAssertTrue(inspector.exists, "Repeating the menu command must keep the AI tab open.")
+    element(identifier: "workspace-inspector-tabs").radioButtons["信息"].click()
+    XCTAssertTrue(element(identifier: "article-inspector").waitForExistence(timeout: 10))
+    openAssistantFromMenu()
+    XCTAssertTrue(inspector.waitForExistence(timeout: 10))
+    element(identifier: "workspace-inspector-toggle").click()
+    assertIdentifierDisappears("workspace-inspector")
+    openAssistantFromMenu()
+    XCTAssertTrue(inspector.waitForExistence(timeout: 10))
+    XCTAssertTrue(mainWindow.exists)
+    XCTAssertEqual(application.windows.count, initialWindowCount)
+  }
+
+  func testAIInspectorKeyboardShortcutOpensAndSelectsInMainWindow() {
     launchApplication(surface: "writing")
 
     let mainWindow = application.windows.firstMatch
@@ -1519,6 +2257,11 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       .firstMatch
     XCTAssertFalse(inspector.exists, "The AI Inspector must start hidden.")
 
+    openAssistantFromMenu()
+    XCTAssertTrue(inspector.waitForExistence(timeout: 10))
+    element(identifier: "workspace-inspector-toggle").click()
+    assertIdentifierDisappears("workspace-inspector")
+
     application.typeKey("a", modifierFlags: [.option, .command])
     guard inspector.waitForExistence(timeout: 10) else {
       XCTFail("Option-Command-A must open the AI Inspector in the current window.")
@@ -1528,15 +2271,22 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertEqual(application.windows.count, initialWindowCount)
 
     application.typeKey("a", modifierFlags: [.option, .command])
-    let dismissed = XCTNSPredicateExpectation(
-      predicate: NSPredicate(format: "exists == false"),
-      object: inspector
-    )
+    XCTAssertTrue(inspector.exists, "Repeating Option-Command-A must keep the AI tab open.")
+    let inspectorWidth = element(identifier: "workspace-inspector").frame.width
     XCTAssertEqual(
-      XCTWaiter.wait(for: [dismissed], timeout: 5),
-      .completed,
-      "Option-Command-A must close the AI Inspector without a pointer fallback."
-    )
+      inspectorWidth, 420, accuracy: 1, "The unified inspector must open at its 420pt ideal width.")
+    element(identifier: "workspace-inspector-tabs").radioButtons["信息"].click()
+    XCTAssertTrue(element(identifier: "article-inspector").waitForExistence(timeout: 10))
+    XCTAssertEqual(
+      element(identifier: "workspace-inspector").frame.width, inspectorWidth, accuracy: 1)
+    application.typeKey("a", modifierFlags: [.option, .command])
+    XCTAssertTrue(inspector.waitForExistence(timeout: 10))
+    XCTAssertEqual(
+      element(identifier: "workspace-inspector").frame.width, inspectorWidth, accuracy: 1)
+    element(identifier: "workspace-inspector-toggle").click()
+    assertIdentifierDisappears("workspace-inspector")
+    application.typeKey("a", modifierFlags: [.option, .command])
+    XCTAssertTrue(inspector.waitForExistence(timeout: 10))
     XCTAssertTrue(mainWindow.exists)
     XCTAssertEqual(application.windows.count, initialWindowCount)
   }
@@ -1546,6 +2296,8 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
     let initialWindowCount = application.windows.count
     let mainWindow = application.windows.firstMatch
+    mainWindow.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0))
+      .withOffset(CGVector(dx: 0, dy: 10)).click()
     guard
       let writingAIEntry = waitForHittableElement(
         timeout: 10,
@@ -1564,6 +2316,11 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       mainWindowAIInspector.exists,
       "The AI Inspector must be absent before the writing-page entry is clicked."
     )
+    element(identifier: "workspace-inspector-tabs").radioButtons["AI 助手"].click()
+    XCTAssertTrue(mainWindowAIInspector.waitForExistence(timeout: 10))
+    element(identifier: "ai-assistant-options").click()
+    element(identifier: "ai-assistant-close").click()
+    assertIdentifierDisappears("ai-assistant-inspector")
     guard
       let toolbarButton = waitForHittableElement(
         timeout: 10,
@@ -1609,11 +2366,11 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
     assertUniqueIdentifier("ai-assistant-inspector")
     for identifier in [
-      "ai-assistant-context-mode",
+      "ai-assistant-context-menu",
       "ai-assistant-conversation-picker",
       "ai-assistant-input",
       "ai-assistant-send-button",
-      "ai-assistant-close",
+      "ai-assistant-options",
     ] {
       assertUniqueIdentifier(identifier)
     }
@@ -1623,12 +2380,14 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "Opening AI collaboration must not create another window."
     )
 
-    let contextMode = element(identifier: "ai-assistant-context-mode")
-    let contextValue = try XCTUnwrap(contextMode.value as? String)
-    XCTAssertTrue(
-      ["当前文章", "Current Article"].contains(contextValue),
-      "The collaboration workspace should open in the current-article context."
-    )
+    let contextMenu = element(identifier: "ai-assistant-context-menu")
+    let contextValue = try XCTUnwrap(contextMenu.value as? String)
+    let draftTitle = try XCTUnwrap(element(identifier: "markdown-article-title").value as? String)
+    XCTAssertTrue(contextValue.contains(draftTitle), "The context must identify the current article.")
+    contextMenu.click()
+    XCTAssertTrue(application.menuItems["当前文章"].waitForExistence(timeout: 3))
+    XCTAssertTrue(application.menuItems["通用聊天"].exists)
+    application.typeKey(.escape, modifierFlags: [])
 
     let sendButton = element(identifier: "ai-assistant-send-button")
     XCTAssertFalse(sendButton.isEnabled, "An empty composer must not be sendable.")
@@ -1644,6 +2403,17 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     application.typeKey(XCUIKeyboardKey.tab.rawValue, modifierFlags: [])
     let unsentDraft = try XCTUnwrap(input.value as? String)
     XCTAssertFalse(unsentDraft.isEmpty, "Typing must leave a composer draft to preserve.")
+
+    let tabs = element(identifier: "workspace-inspector-tabs")
+    tabs.radioButtons["信息"].click()
+    XCTAssertTrue(element(identifier: "article-inspector").waitForExistence(timeout: 10))
+    toolbarButton.click()
+    XCTAssertEqual(element(identifier: "ai-assistant-input").value as? String, unsentDraft)
+    element(identifier: "ai-assistant-options").click()
+    element(identifier: "ai-assistant-close").click()
+    assertIdentifierDisappears("ai-assistant-inspector")
+    toolbarButton.click()
+    XCTAssertEqual(element(identifier: "ai-assistant-input").value as? String, unsentDraft)
 
     toggleAIInspectorForUITest(toolbarButton, shouldBePresented: false)
     XCTAssertFalse(
@@ -1669,7 +2439,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     )
   }
 
-  func testPublishDrawerYieldsToToolbarInspectorDestinations() throws {
+  func testUnifiedInspectorSwitchesToolbarDestinations() throws {
     launchApplication(surface: "writing")
 
     let mainWindow = application.windows.firstMatch
@@ -1691,12 +2461,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
         query: {
           mainWindow.descendants(matching: .any)
             .matching(identifier: "workspace-inspector-toggle")
-        }),
-      let settingsButton = waitForHittableElement(
-        timeout: 10,
-        query: {
-          mainWindow.descendants(matching: .any)
-            .matching(identifier: "workspace-open-settings")
         })
     else {
       XCTFail("The primary toolbar actions must all remain directly clickable.")
@@ -1724,7 +2488,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     )
     XCTAssertTrue(
       taskCenterButton.waitForExistence(timeout: 10),
-      "The task center must stay directly available in the trailing toolbar group."
+      "The task center must stay directly available at the bottom of the primary rail."
     )
     XCTAssertTrue(
       commandSearch.waitForExistence(timeout: 10),
@@ -1741,20 +2505,23 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertLessThan(sidebarButton.frame.midX, profileMenu.frame.midX)
     XCTAssertLessThan(profileMenu.frame.midX, commandSearch.frame.midX)
     XCTAssertLessThan(commandSearch.frame.midX, previewButton.frame.midX)
-    XCTAssertLessThan(previewButton.frame.midX, taskCenterButton.frame.midX)
-    XCTAssertLessThan(taskCenterButton.frame.midX, aiButton.frame.midX)
+    XCTAssertLessThan(taskCenterButton.frame.midX, profileMenu.frame.midX)
+    XCTAssertLessThan(previewButton.frame.midX, aiButton.frame.midX)
     XCTAssertLessThan(aiButton.frame.midX, inspectorButton.frame.midX)
-    XCTAssertLessThan(inspectorButton.frame.midX, settingsButton.frame.midX)
-    XCTAssertLessThan(settingsButton.frame.midX, publishButton.frame.midX)
+    XCTAssertLessThan(inspectorButton.frame.midX, publishButton.frame.midX)
+    XCTAssertFalse(
+      identifierExists("workspace-open-settings", in: mainWindow),
+      "Settings opens from the app menu (⌘,), not a toolbar button."
+    )
 
     publishButton.click()
     XCTAssertTrue(
-      element(identifier: "workspace-publish-drawer-overlay").waitForExistence(timeout: 10),
+      element(identifier: "workspace-publish-inspector").waitForExistence(timeout: 10),
       "Prepare Publish must open the publish drawer."
     )
 
     aiButton.click()
-    assertIdentifierDisappears("workspace-publish-drawer-overlay")
+    assertIdentifierDisappears("workspace-publish-inspector")
     XCTAssertTrue(
       element(identifier: "ai-assistant-inspector").waitForExistence(timeout: 10),
       "The AI toolbar action must replace, rather than sit behind, the publish drawer."
@@ -1762,27 +2529,28 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
     publishButton.click()
     XCTAssertTrue(
-      element(identifier: "workspace-publish-drawer-overlay").waitForExistence(timeout: 10),
+      element(identifier: "workspace-publish-inspector").waitForExistence(timeout: 10),
       "Prepare Publish must remain available after leaving the AI Inspector."
     )
 
     inspectorButton.click()
-    assertIdentifierDisappears("workspace-publish-drawer-overlay")
-    XCTAssertTrue(
-      element(identifier: "article-inspector").waitForExistence(timeout: 10),
-      "The article Inspector toolbar action must replace, rather than sit behind, the publish drawer."
-    )
+    assertIdentifierDisappears("workspace-inspector")
+    publishButton.click()
+    XCTAssertTrue(element(identifier: "workspace-inspector-tabs").waitForExistence(timeout: 10))
+    let tabs = element(identifier: "workspace-inspector-tabs")
+    tabs.radioButtons["信息"].click()
+    XCTAssertTrue(element(identifier: "article-inspector").waitForExistence(timeout: 10))
 
     publishButton.click()
     XCTAssertTrue(
-      element(identifier: "workspace-publish-drawer-overlay").waitForExistence(timeout: 10),
+      element(identifier: "workspace-publish-inspector").waitForExistence(timeout: 10),
       "Prepare Publish must remain available after leaving the article Inspector."
     )
 
-    settingsButton.click()
+    showSettingsWindow()
     XCTAssertTrue(
       element(identifier: "settings-content").waitForExistence(timeout: 10),
-      "The Settings toolbar action must open the standard Settings window."
+      "The app menu Settings action must open the standard Settings window."
     )
     XCTAssertFalse(
       identifierExists("settings-return-to-workbench", in: application),
@@ -1795,10 +2563,10 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
     let expectedNames: [(identifier: String, labels: Set<String>)] = [
       ("workspace-sidebar-toggle", ["隐藏侧栏", "显示侧栏"]),
-      ("workspace-publishing-status", ["文章状态"]),
       ("workspace-command-search", ["全局搜索"]),
       ("workspace-preview", ["预览"]),
       ("workspace-task-center-toggle", ["任务", "任务中心"]),
+      ("workspace-prepare-publish", ["发布"]),
     ]
 
     for (identifier, labels) in expectedNames {
@@ -1969,6 +2737,207 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "The moved search result must scroll the global preset into the visible viewport."
     )
     XCTAssertFalse(identifierExists("settings-profile-bar", in: settingsWindow))
+  }
+
+  func testAIConnectionReconfigurationRequiresConfirmationAndKeepsCancelledSettings() throws {
+    openSettings()
+    select("settings-tab-ai", revealing: "ai-settings")
+
+    let address = element(identifier: "settings-ai-base-url")
+    let model = element(identifier: "settings-ai-model")
+    XCTAssertTrue(address.waitForExistence(timeout: 10))
+    XCTAssertTrue(model.waitForExistence(timeout: 10))
+    let originalAddress = try XCTUnwrap(address.value as? String)
+    let originalModel = try XCTUnwrap(model.value as? String)
+
+    let preset = element(identifier: "settings-ai-provider-preset")
+    preset.click()
+    XCTAssertTrue(application.menuItems["DeepSeek"].waitForExistence(timeout: 5))
+    application.menuItems["DeepSeek"].click()
+    let confirmation = element(identifier: "settings-ai-reconfigure-confirmation")
+    XCTAssertTrue(confirmation.waitForExistence(timeout: 10))
+    XCTAssertTrue(element(identifier: "settings-ai-reconfigure-sites").exists)
+    element(identifier: "settings-ai-reconfigure-cancel").click()
+    assertDisappears(confirmation, timeout: 5)
+    XCTAssertEqual(address.value as? String, originalAddress)
+    XCTAssertEqual(model.value as? String, originalModel)
+
+    preset.click()
+    XCTAssertTrue(application.menuItems["DeepSeek"].waitForExistence(timeout: 5))
+    application.menuItems["DeepSeek"].click()
+    XCTAssertTrue(confirmation.waitForExistence(timeout: 10))
+    element(identifier: "settings-ai-reconfigure-confirm").click()
+    assertDisappears(confirmation, timeout: 5)
+    XCTAssertNotEqual(model.value as? String, originalModel)
+    XCTAssertFalse(address.exists, "Official endpoint controls should start collapsed.")
+
+    let advanced = element(identifier: "settings-ai-provider-advanced")
+    XCTAssertTrue(advanced.waitForExistence(timeout: 5))
+    XCTAssertEqual(String(describing: advanced.value ?? ""), "0")
+    // Use the observed window coordinates to avoid XCTest scrolling this
+    // already visible Form row's virtualized parent before sending the event.
+    let settingsWindow = currentSettingsWindow()
+    let disclosureScreenshot = XCTAttachment(screenshot: settingsWindow.screenshot())
+    disclosureScreenshot.name = "ai-provider-advanced-before-expansion"
+    disclosureScreenshot.lifetime = .keepAlways
+    add(disclosureScreenshot)
+    settingsWindow.coordinate(withNormalizedOffset: .zero).withOffset(
+      CGVector(
+        dx: advanced.frame.midX - settingsWindow.frame.minX,
+        dy: advanced.frame.midY - settingsWindow.frame.minY
+      )
+    ).click()
+    XCTAssertEqual(String(describing: advanced.value ?? ""), "1")
+    XCTAssertTrue(address.waitForExistence(timeout: 5))
+    XCTAssertEqual(address.value as? String, "https://api.deepseek.com")
+  }
+
+  func testSavingAIKeyAndContinuingLeavesRemoteConsentPending() throws {
+    openSettings()
+    select("settings-tab-ai", revealing: "ai-settings")
+
+    let keyInput = element(identifier: "settings-ai-key-input")
+    XCTAssertTrue(keyInput.waitForExistence(timeout: 10))
+    keyInput.click()
+    keyInput.typeText("fixture-api-key-not-real")
+    let saveAndContinue = element(identifier: "settings-ai-key-save-continue")
+    XCTAssertTrue(saveAndContinue.waitForExistence(timeout: 5))
+    XCTAssertTrue(saveAndContinue.isEnabled)
+    XCTAssertTrue(saveAndContinue.isHittable)
+    let settingsWindow = currentSettingsWindow()
+    settingsWindow.coordinate(withNormalizedOffset: .zero).withOffset(
+      CGVector(
+        dx: saveAndContinue.frame.midX - settingsWindow.frame.minX,
+        dy: saveAndContinue.frame.midY - settingsWindow.frame.minY
+      )
+    ).click()
+
+    XCTAssertTrue(application.staticTexts["已保存 API Key"].waitForExistence(timeout: 10))
+    XCTAssertTrue(application.buttons["同意并启用此 AI 服务"].exists)
+    XCTAssertFalse(application.buttons["撤销授权"].exists)
+    XCTAssertFalse(application.staticTexts["已允许发送"].exists)
+    XCTAssertFalse(application.staticTexts["当前服务与模型已通过连接验证。可以开始使用 AI 功能。"].exists)
+  }
+
+  func testCodexBrowserFailureRecoversWithDeviceCodeAndCancel() throws {
+    launchCodexFixture("browserFailure")
+    let login = application.buttons["settings-ai-codex-account-login"]
+    waitUntilEnabled(login)
+    login.click()
+    let failure = application.descendants(matching: .any).matching(
+      NSPredicate(format: "label CONTAINS %@", "无法打开 ChatGPT 登录页面")
+    ).firstMatch
+    XCTAssertTrue(failure.waitForExistence(timeout: 10))
+    waitUntilEnabled(application.buttons["settings-ai-codex-device-login"])
+    application.buttons["settings-ai-codex-device-login"].click()
+    XCTAssertTrue(element(identifier: "settings-ai-codex-device-code-value").waitForExistence(timeout: 10))
+    XCTAssertTrue(element(identifier: "settings-ai-codex-device-code-value").label.contains("ABCD-EFGH"))
+    application.buttons["settings-ai-codex-account-cancel-login"].click()
+    assertDisappears(element(identifier: "settings-ai-codex-device-code-value"), timeout: 10)
+    waitUntilEnabled(login)
+    attachCodexFixtureScreenshot("browser-failure-device-cancel")
+  }
+
+  func testCodexDeviceCodeFailureClearsCodeAndCanRetry() throws {
+    launchCodexFixture("device")
+    let deviceLogin = application.buttons["settings-ai-codex-device-login"]
+    waitUntilEnabled(deviceLogin)
+    deviceLogin.click()
+    XCTAssertTrue(element(identifier: "settings-ai-codex-device-code-value").waitForExistence(timeout: 10))
+    application.buttons["fixture-login-fail"].click()
+    assertDisappears(element(identifier: "settings-ai-codex-device-code-value"), timeout: 10)
+    waitUntilEnabled(deviceLogin)
+    deviceLogin.click()
+    XCTAssertTrue(element(identifier: "settings-ai-codex-device-code-value").waitForExistence(timeout: 10))
+    application.buttons["settings-ai-codex-account-cancel-login"].click()
+    assertDisappears(element(identifier: "settings-ai-codex-device-code-value"), timeout: 10)
+    attachCodexFixtureScreenshot("device-code-failure-retry")
+  }
+
+  func testCodexLoginRequiresScopedConsentBeforeConnectionTest() throws {
+    launchCodexFixture("device")
+    let deviceLogin = application.buttons["settings-ai-codex-device-login"]
+    waitUntilEnabled(deviceLogin)
+    deviceLogin.click()
+    XCTAssertTrue(element(identifier: "settings-ai-codex-device-code-value").waitForExistence(timeout: 10))
+    application.buttons["fixture-login-success"].click()
+    let later = application.buttons["稍后"].firstMatch
+    XCTAssertTrue(later.waitForExistence(timeout: 10))
+    later.click()
+    waitForFixtureLabel("fixture-test-count", equals: "0")
+    waitUntilEnabled(application.buttons["settings-ai-codex-account-consent"])
+    XCTAssertFalse(element(identifier: "settings-ai-codex-device-code-value").exists)
+    attachCodexFixtureScreenshot("login-awaiting-consent")
+  }
+
+  func testCodexModelRefreshDoesNotCancelConnectionTest() throws {
+    launchCodexFixture("ready")
+    let test = application.buttons["settings-ai-codex-account-test"]
+    waitUntilEnabled(test)
+    let count = Int(element(identifier: "fixture-model-read-count").label) ?? 0
+    test.click()
+    waitForFixtureLabel("fixture-test-state", equals: "等待")
+    let refresh = application.buttons["settings-ai-codex-model-refresh"]
+    waitUntilEnabled(refresh)
+    refresh.click()
+    let reads = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "label == %@", String(count + 1)),
+      object: element(identifier: "fixture-model-read-count"))
+    XCTAssertEqual(XCTWaiter.wait(for: [reads], timeout: 10), .completed)
+    waitForFixtureLabel("fixture-test-state", equals: "等待")
+    application.buttons["fixture-test-complete"].click()
+    waitForFixtureLabel("fixture-test-state", equals: "通过")
+    let result = application.descendants(matching: .any).matching(
+      NSPredicate(format: "label CONTAINS %@", "ChatGPT 连接正常")
+    ).firstMatch
+    XCTAssertTrue(result.waitForExistence(timeout: 10))
+    attachCodexFixtureScreenshot("model-refresh-keeps-connection-test")
+  }
+
+  func testCodexConnectionSwitchDiscardsLateTestResult() throws {
+    launchCodexFixture("ready")
+    let test = application.buttons["settings-ai-codex-account-test"]
+    waitUntilEnabled(test)
+    test.click()
+    waitForFixtureLabel("fixture-test-state", equals: "等待")
+    application.buttons["fixture-switch-connection"].click()
+    waitUntilEnabled(application.buttons["settings-ai-codex-account-test"])
+    waitForFixtureLabel("fixture-test-state", equals: "等待")
+    application.buttons["fixture-test-complete"].click()
+    waitForFixtureLabel("fixture-test-state", equals: "丢弃")
+    XCTAssertFalse(application.descendants(matching: .any).matching(
+      NSPredicate(format: "label CONTAINS %@", "ChatGPT 连接正常")
+    ).firstMatch.exists)
+    attachCodexFixtureScreenshot("connection-switch-discards-late-result")
+  }
+
+  private func launchCodexFixture(_ mode: String) {
+    application.launchEnvironment["PERSONAL_SITE_PUBLISHER_CODEX_ACCOUNT_FIXTURE"] = mode
+    launchApplication(surface: "writing", screenshotContentSize: CGSize(width: 1200, height: 1100))
+    XCTAssertTrue(element(identifier: "settings-ai-codex-account").waitForExistence(timeout: 15))
+  }
+
+  private func waitUntilEnabled(_ element: XCUIElement) {
+    XCTAssertTrue(element.waitForExistence(timeout: 10))
+    let ready = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "enabled == true"), object: element)
+    XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+    XCTAssertTrue(element.isHittable)
+  }
+
+  private func waitForFixtureLabel(_ identifier: String, equals value: String) {
+    let state = element(identifier: identifier)
+    XCTAssertTrue(state.waitForExistence(timeout: 10))
+    let ready = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "label == %@", value), object: state)
+    XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+  }
+
+  private func attachCodexFixtureScreenshot(_ name: String) {
+    let attachment = XCTAttachment(screenshot: application.screenshot())
+    attachment.name = name
+    attachment.lifetime = .keepAlways
+    add(attachment)
   }
 
   func testDataManagementSheetsOpenAndCloseWithoutRunningTheirActions() throws {
@@ -2555,7 +3524,11 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     application.activate()
     // Exercise the toolbar itself. A system-wide shortcut registered by another
     // application can intercept the key event and cover the tested window.
-    toolbarButton.click()
+    if shouldBePresented {
+      toolbarButton.click()
+    } else {
+      element(identifier: "workspace-inspector-toggle").click()
+    }
 
     let inspector = element(identifier: "ai-assistant-inspector")
     let expectedState = XCTNSPredicateExpectation(
@@ -2567,6 +3540,22 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       .completed,
       "The AI toolbar click must change the Inspector to the requested presentation state."
     )
+  }
+
+  private func writingDraftRow(title: String, in window: XCUIElement) -> XCUIElement {
+    let list = window.descendants(matching: .any).matching(identifier: "writing-draft-list")
+      .firstMatch
+    return list.descendants(matching: .any)
+      .matching(NSPredicate(format: "label BEGINSWITH %@", "\(title) ·")).firstMatch
+  }
+
+  private func openAssistantFromMenu() {
+    application.activate()
+    application.menuBars.menuBarItems["AI"].click()
+    let openAssistant = application.menuItems["打开 AI 助手"]
+    XCTAssertTrue(openAssistant.waitForExistence(timeout: 5))
+    XCTAssertTrue(openAssistant.isEnabled, "The active window must expose its AI command.")
+    openAssistant.click()
   }
 
   private func selectPublishScope(_ title: String, in picker: XCUIElement) {
@@ -2882,6 +3871,14 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
   }
 
   private func testDataRoot() -> URL {
-    FileManager.default.temporaryDirectory
+    let configuredRuntimeHomes = [
+      ProcessInfo.processInfo.environment["PERSONAL_SITE_PUBLISHER_RUNTIME_HOME"],
+      Bundle(for: Self.self).object(forInfoDictionaryKey: "PersonalSitePublisherRuntimeHome") as? String,
+    ].compactMap { $0 }
+    if let runtimeHome = configuredRuntimeHomes.first(where: { !$0.isEmpty && $0.hasPrefix("/") }) {
+      return URL(fileURLWithPath: runtimeHome, isDirectory: true)
+        .appendingPathComponent("AccessibilityUITestData", isDirectory: true)
+    }
+    return FileManager.default.temporaryDirectory
   }
 }

@@ -47,14 +47,14 @@ extension AIChatContextInspectorView {
           }
         }
       }
-      .padding(.horizontal, 14)
-      .padding(.vertical, 10)
+      .padding(.horizontal, WorkbenchSpacing.content)
+      .padding(.vertical, WorkbenchSpacing.control)
       .background(
         WorkbenchTheme.warning.opacity(WorkbenchOpacity.noticeBackground),
-        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel, style: .continuous)
       )
-      .padding(.horizontal, 12)
-      .padding(.vertical, 8)
+      .padding(.horizontal, WorkbenchSpacing.card)
+      .padding(.vertical, WorkbenchSpacing.control)
       .accessibilityElement(children: .contain)
       .accessibilityLabel(codexPresentation.title)
       .accessibilityValue(codexPresentation.detail)
@@ -81,8 +81,8 @@ extension AIChatContextInspectorView {
         Button(String(localized: "ai-assistant.configure")) { openAICredentialsSettings() }
           .controlSize(.small)
       }
-      .padding(.horizontal, 14)
-      .padding(.vertical, 7)
+      .padding(.horizontal, WorkbenchSpacing.content)
+      .padding(.vertical, WorkbenchSpacing.control)
       .background(WorkbenchTheme.warning.opacity(WorkbenchOpacity.noticeBackground))
       .accessibilityElement(children: .contain)
       .accessibilityLabel(connectionReadiness.title)

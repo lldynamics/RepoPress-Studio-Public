@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import Observation
 
 /// A narrow observation boundary for the Writing list.
 ///
@@ -9,24 +10,25 @@ import Foundation
 /// tree.  List-visible metadata still invalidates this store, while task
 /// badges and repository/privacy context have explicit, independent inputs.
 @MainActor
-public final class DraftListStore: ObservableObject {
+@Observable
+public final class DraftListStore {
   private let documents: DocumentStore
   private let navigation: any DraftListNavigationReadModel
   private let auxiliary: any DraftListAuxiliaryReadModel
-  private var cancellables = Set<AnyCancellable>()
+  @ObservationIgnored private var cancellables = Set<AnyCancellable>()
   let presentationDidChange = CurrentValueSubject<UInt64, Never>(0)
 
   public private(set) var presentationRevision: UInt64 = 0
   public private(set) var taskQueueStateVersion = 0
-  private(set) var searchIndexBuildCount = 0
-  private var searchIndexCache: [SearchIndexCacheKey: DraftSearchIndex] = [:]
-  private var lastPresentationInput: PresentationInput?
+  @ObservationIgnored private(set) var searchIndexBuildCount = 0
+  @ObservationIgnored private var searchIndexCache: [SearchIndexCacheKey: DraftSearchIndex] = [:]
+  @ObservationIgnored private var lastPresentationInput: PresentationInput?
   // @Published emits from willSet. A structural publisher can therefore send
   // the list its one required notification before the store exposes the new
   // value to a fingerprint read. The next explicit boundary synchronizes the
   // fingerprint without issuing a duplicate notification.
-  private var presentationInputNeedsSynchronization = false
-  private var presentationInputSynchronizationGeneration: UInt64 = 0
+  @ObservationIgnored private var presentationInputNeedsSynchronization = false
+  @ObservationIgnored private var presentationInputSynchronizationGeneration: UInt64 = 0
 
   public init(
     documents: DocumentStore,
@@ -69,16 +71,20 @@ public final class DraftListStore: ObservableObject {
     _ = recordCurrentPresentationInputIfChanged()
   }
 
+  /// Compatibility read only. Selection observation belongs to each window's
+  /// navigation boundary; selecting a draft does not invalidate list metadata.
   public var selectedDraftID: UUID? {
     navigation.selectedDraftID
   }
 
   public var contentScope: DraftListContentScope {
-    navigation.contentScope
+    _ = presentationRevision
+    return navigation.contentScope
   }
 
   public var repositoryReport: RepositoryScanReport? {
-    auxiliary.repositoryReport
+    _ = taskQueueStateVersion
+    return auxiliary.repositoryReport
   }
 
   /// Returns a long-lived index for the requested corpus.  Metadata, privacy,
@@ -124,7 +130,6 @@ public final class DraftListStore: ObservableObject {
 
   /// Invalidates task badges without changing the folder/search projection.
   func invalidateTaskQueueState() {
-    objectWillChange.send()
     taskQueueStateVersion += 1
   }
 
@@ -132,7 +137,6 @@ public final class DraftListStore: ObservableObject {
     presentationInputNeedsSynchronization = true
     presentationInputSynchronizationGeneration &+= 1
     let synchronizationGeneration = presentationInputSynchronizationGeneration
-    objectWillChange.send()
     presentationRevision &+= 1
     presentationDidChange.send(presentationRevision)
     searchIndexCache.removeAll(keepingCapacity: true)
@@ -151,8 +155,10 @@ public final class DraftListStore: ObservableObject {
   }
 
   func invalidatePresentationAndTaskQueueState(
-    suppressDuplicatePresentation: Bool = false
+    suppressDuplicatePresentation _: Bool = false
   ) {
+    // The compatibility flag is redundant with property-level observation:
+    // unchanged presentation inputs always leave presentation consumers warm.
     // Metadata edits schedule both an immediate cache refresh and a delayed
     // preflight refresh.  The latter must not rebuild the same list a second
     // time when no list input has changed in between. Repository/task-only
@@ -166,7 +172,6 @@ public final class DraftListStore: ObservableObject {
     }
     if lastPresentationInput != input {
       lastPresentationInput = input
-      objectWillChange.send()
       presentationRevision &+= 1
       presentationDidChange.send(presentationRevision)
       taskQueueStateVersion += 1
@@ -175,12 +180,9 @@ public final class DraftListStore: ObservableObject {
     }
 
     // A delayed metadata preflight carries the same list input as the
-    // immediate edit. Advance the semantic task token but avoid a second full
-    // list invalidation; standalone invalidations still notify task badges.
+    // immediate edit. Advance the semantic task token; Observation updates
+    // task consumers without invalidating presentation or search consumers.
     taskQueueStateVersion += 1
-    if !suppressDuplicatePresentation {
-      objectWillChange.send()
-    }
   }
 
   private struct SearchIndexCacheKey: Hashable {

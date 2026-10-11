@@ -32,6 +32,8 @@ extension ContentView {
     if effectiveFocusMode {
       isFocusMode = false
     }
+    windowSession.inspectorTab = .assistant
+    store.setInspectorPresented(true)
     return store.ai.openChatWorkspace(
       for: draftID, quickPrompt: quickPrompt, ownerWindowID: windowSession.windowID)
   }

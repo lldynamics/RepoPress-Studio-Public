@@ -103,7 +103,7 @@ struct AIChatDraftDiffPreviewSheet: View {
         }
         Spacer()
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
       Divider()
 
       VStack(alignment: .leading, spacing: 10) {
@@ -119,14 +119,16 @@ struct AIChatDraftDiffPreviewSheet: View {
                   .foregroundStyle(.secondary)
                 AIChangeComparisonView(before: change.before, after: change.after)
               }
-              .padding(9)
+              .padding(WorkbenchSpacing.control)
 
               if change.id != metadataChanges.last?.id {
                 Divider()
               }
             }
           }
-          .background(.quaternary.opacity(0.20), in: RoundedRectangle(cornerRadius: 8))
+          .background(
+            .quaternary.opacity(0.20),
+            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
 
           Divider()
         }
@@ -165,18 +167,21 @@ struct AIChatDraftDiffPreviewSheet: View {
             .frame(minWidth: wrapLines ? nil : 780, maxWidth: .infinity, alignment: .leading)
             .textSelection(.enabled)
           }
-          .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+          .background(
+            Color(nsColor: .textBackgroundColor),
+            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+          )
           .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
               .stroke(.separator, lineWidth: 1)
           }
         }
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
 
       Divider()
       footerControls
-        .padding(12)
+        .padding(WorkbenchSpacing.card)
     }
     .frame(minWidth: 640, idealWidth: 1_020, minHeight: 620, idealHeight: 760)
     .workbenchGlassContainer(material: .regularMaterial)
@@ -299,7 +304,7 @@ private struct AIChatLineDiffRow: View {
         .font(.caption.monospaced())
         .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .center)
-        .padding(.vertical, 5)
+        .padding(.vertical, WorkbenchSpacing.tight)
         .background(.quaternary.opacity(0.35))
     } else {
       HStack(alignment: .top, spacing: 0) {
@@ -314,7 +319,7 @@ private struct AIChatLineDiffRow: View {
           .lineLimit(wrapLines ? nil : 1)
           .fixedSize(horizontal: !wrapLines, vertical: wrapLines)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(.trailing, 12)
+          .padding(.trailing, WorkbenchSpacing.card)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
       .padding(.vertical, 2)
@@ -329,7 +334,7 @@ private struct AIChatLineDiffRow: View {
       .font(.caption.monospacedDigit())
       .foregroundStyle(.tertiary)
       .frame(width: 42, alignment: .trailing)
-      .padding(.trailing, 7)
+      .padding(.trailing, WorkbenchSpacing.control)
   }
 
   private var prefix: String {

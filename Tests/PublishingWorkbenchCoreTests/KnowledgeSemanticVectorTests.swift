@@ -121,6 +121,91 @@ final class KnowledgeSemanticVectorTests: XCTestCase {
     XCTAssertEqual(cache.estimatedByteCount, 0)
   }
 
+  func testFlatIndexCacheReleasesSnapshotsAndRejectsStalePressurePolicies() {
+    let index = makeFlatIndex(
+      key: KnowledgeSemanticVectorIndexKey(modelIdentifier: "pressure", dimension: 2),
+      vector: [1, 0]
+    )
+    let cache = KnowledgeSemanticVectorFlatIndexCache()
+    cache.insert(index)
+    XCTAssertGreaterThan(cache.estimatedByteCount, 0)
+
+    cache.setCacheRetentionEnabled(false, generation: 2)
+    XCTAssertEqual(cache.count, 0)
+    XCTAssertEqual(cache.estimatedByteCount, 0)
+    // A search may finish building its local snapshot after pressure arrives.
+    cache.insert(index)
+    XCTAssertNil(cache.value(for: index.key))
+    cache.setCacheRetentionEnabled(true, generation: 1)
+    cache.insert(index)
+    XCTAssertEqual(cache.count, 0)
+
+    cache.setCacheRetentionEnabled(true, generation: 3)
+    cache.insert(index)
+    cache.setCacheRetentionEnabled(false, generation: 2)
+    XCTAssertNotNil(cache.value(for: index.key))
+    XCTAssertEqual(cache.estimatedByteCount, index.estimatedByteCount)
+  }
+
+  func testLibraryPressurePolicyDoesNotOpenDatabaseAndSurvivesLazyInitialization() throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("semantic-pressure-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let service = KnowledgeLibraryService(rootURL: rootURL)
+    service.setCacheRetentionEnabled(false, generation: 2)
+    service.setCacheRetentionEnabled(true, generation: 1)
+    XCTAssertNil(service.cachedDatabase)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: rootURL.path))
+
+    let cache = try service.database().semanticFlatVectorIndexes
+    let index = makeFlatIndex(
+      key: KnowledgeSemanticVectorIndexKey(modelIdentifier: "lazy-pressure", dimension: 2),
+      vector: [1, 0]
+    )
+    cache.insert(index)
+    XCTAssertEqual(cache.count, 0)
+    service.setCacheRetentionEnabled(true, generation: 3)
+    cache.insert(index)
+    service.setCacheRetentionEnabled(false, generation: 2)
+    XCTAssertEqual(cache.count, 1)
+    service.setCacheRetentionEnabled(false, generation: 4)
+    XCTAssertEqual(cache.count, 0)
+    XCTAssertEqual(cache.estimatedByteCount, 0)
+  }
+
+  func testSemanticSearchStillDeliversResultsWhileCacheRetentionIsDisabled() throws {
+    let rootURL = try temporaryDirectory(named: "semantic-pressure-search")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let service = KnowledgeLibraryService(rootURL: rootURL)
+    let database = try service.database()
+    _ = try insertSemanticDocument(
+      into: database,
+      documentID: "00000000-0000-0000-0000-000000000041",
+      updatedAt: 100,
+      vector: [1, 0]
+    )
+    let query = KnowledgeSemanticVector(
+      modelIdentifier: "test-model", values: [1, 0], minimumSimilarity: 0.5)
+    let initial = try database.semanticSearch(
+      queryVector: query, limit: 5, onlyRemoteAIAllowed: false)
+    XCTAssertFalse(initial.isEmpty)
+    XCTAssertEqual(database.semanticFlatVectorIndexes.count, 1)
+
+    service.setCacheRetentionEnabled(false, generation: 1)
+    for _ in 0..<2 {
+      let uncached = try database.semanticSearch(
+        queryVector: query, limit: 5, onlyRemoteAIAllowed: false)
+      XCTAssertEqual(uncached.map(\.chunk.id), initial.map(\.chunk.id))
+      XCTAssertEqual(uncached.map(\.score), initial.map(\.score))
+      XCTAssertEqual(database.semanticFlatVectorIndexes.count, 0)
+    }
+    service.setCacheRetentionEnabled(true, generation: 2)
+    let restored = try database.semanticSearch(
+      queryVector: query, limit: 5, onlyRemoteAIAllowed: false)
+    XCTAssertEqual(restored.map(\.chunk.id), initial.map(\.chunk.id))
+    XCTAssertEqual(database.semanticFlatVectorIndexes.count, 1)
+  }
+
   func testSemanticSearchUsesTopKOrderingAndDeterministicTies() throws {
     let rootURL = try temporaryDirectory(named: "semantic-top-k")
     defer { try? FileManager.default.removeItem(at: rootURL) }

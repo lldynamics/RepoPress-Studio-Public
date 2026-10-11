@@ -3,6 +3,16 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 extension MacMarkdownComposerView {
+  var inlineDiagnostics: [MarkdownInlineDiagnostic] {
+    guard appliedMarkdownAnalysisGeneration == markdownAnalysisGeneration else { return [] }
+    return markdownAnalysis.diagnostics
+  }
+
+  var outlineItems: [MarkdownOutlineItem] {
+    guard appliedMarkdownAnalysisGeneration == markdownAnalysisGeneration else { return [] }
+    return markdownAnalysis.outlineItems
+  }
+
   func showOutline() {
     showWritingContextPanel(.outline)
   }
@@ -313,47 +323,12 @@ extension MacMarkdownComposerView {
     applyAdvancedMarkdownEdit(edit)
   }
 
-  func applyMarkdownLineEditing(_ command: MarkdownLineEditingCommand) {
-    guard requireBodyEditingContext() else { return }
-    guard
-      let edit = MarkdownAdvancedEditingService().lineEdit(
-        in: editorBody,
-        selectedRange: selectedRange,
-        command: command
-      )
-    else {
-      selectionActionMessage = "当前选区不能执行这项行操作。"
-      return
-    }
-    applyAdvancedMarkdownEdit(edit)
-  }
-
   private func applyAdvancedMarkdownEdit(_ edit: MarkdownSmartEdit) {
     selectedRange = edit.selectedRange
     editorEditRequest = MarkdownTextEditRequest(
       expectedText: editorBody,
       edit: edit
     )
-  }
-
-  func wrapSelection(prefix: String, suffix: String, placeholder: String) {
-    guard requireBodyEditingContext() else { return }
-    let mutation = selectionEditingService.wrappingSelection(
-      in: previewDraft,
-      selectedRange: selectedRange,
-      prefix: prefix,
-      suffix: suffix,
-      placeholder: placeholder
-    )
-    selectedRange = mutation.selectedRange
-    _ = requestUndoableBodyUpdate(mutation.draft)
-  }
-
-  func prefixCurrentLine(_ prefix: String) {
-    guard requireBodyEditingContext() else { return }
-    replaceCurrentLines { line in
-      line.hasPrefix(prefix) ? line : prefix + line
-    }
   }
 
   func replaceCurrentLines(_ transform: (String) -> String) {

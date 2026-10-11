@@ -1,0 +1,198 @@
+{
+  "补齐历史文章": {
+    "zh-Hans": "补齐历史文章",
+    "en": "Backfill Historical Articles"
+  },
+  "从作者公开目录寻找历史链接，每批处理 20 篇。可发现的链接与正文获取结果分别统计；部分网站无法补齐全部历史。": {
+    "zh-Hans": "从作者公开目录寻找历史链接，每批处理 20 篇。可发现的链接与正文获取结果分别统计；部分网站无法补齐全部历史。",
+    "en": "Find historical links in the author’s public directory, processing 20 articles per batch. Link discovery and full-text results are counted separately; some sites cannot provide their entire history."
+  },
+  "公开文章目录地址": {
+    "zh-Hans": "公开文章目录地址",
+    "en": "Public article directory URL"
+  },
+  "仅读取该订阅网站内明确标记的文章链接与下一页，不跟随其他网站。已有文章、阅读状态与写作草稿会保留。": {
+    "zh-Hans": "仅读取该订阅网站内明确标记的文章链接与下一页，不跟随其他网站。已有文章、阅读状态与写作草稿会保留。",
+    "en": "Read only explicitly marked article links and next pages within this subscription’s site. Existing articles, reading state, and writing drafts are preserved."
+  },
+  "其他订阅正在补齐，请等待或打开该订阅查看进度。": {
+    "zh-Hans": "其他订阅正在补齐，请等待或打开该订阅查看进度。",
+    "en": "Another subscription is being backfilled. Wait or open that subscription to view its progress."
+  },
+  "正在补齐历史文章": {
+    "zh-Hans": "正在补齐历史文章",
+    "en": "Backfilling historical articles"
+  },
+  "发现链接": {
+    "zh-Hans": "发现链接",
+    "en": "Links discovered"
+  },
+  "新增文章": {
+    "zh-Hans": "新增文章",
+    "en": "Articles added"
+  },
+  "重复文章": {
+    "zh-Hans": "重复文章",
+    "en": "Existing articles"
+  },
+  "正文可用": {
+    "zh-Hans": "正文可用",
+    "en": "Full text available"
+  },
+  "正文失败": {
+    "zh-Hans": "正文失败",
+    "en": "Full-text failures"
+  },
+  "可以继续的时间：%@": {
+    "zh-Hans": "可以继续的时间：%@",
+    "en": "Available to continue: %@"
+  },
+  "取消补齐": {
+    "zh-Hans": "取消补齐",
+    "en": "Cancel Backfill"
+  },
+  "重试失败正文": {
+    "zh-Hans": "重试失败正文",
+    "en": "Retry Failed Full Text"
+  },
+  "继续补齐": {
+    "zh-Hans": "继续补齐",
+    "en": "Continue Backfill"
+  },
+  "重新发现历史链接": {
+    "zh-Hans": "重新发现历史链接",
+    "en": "Rediscover Historical Links"
+  },
+  "开始补齐": {
+    "zh-Hans": "开始补齐",
+    "en": "Start Backfill"
+  },
+  "请填写有效的公开目录网页地址。": {
+    "zh-Hans": "请填写有效的公开目录网页地址。",
+    "en": "Enter a valid public directory URL."
+  },
+  "订阅已删除或地址已改变，历史补齐已停止。": {
+    "zh-Hans": "订阅已删除或地址已改变，历史补齐已停止。",
+    "en": "The subscription was removed or its URL changed. History backfill has stopped."
+  },
+  "目录内容无法安全识别。": {
+    "zh-Hans": "目录内容无法安全识别。",
+    "en": "The directory content could not be safely recognized."
+  },
+  "目录链接过多，已停止发现历史文章。": {
+    "zh-Hans": "目录链接过多，已停止发现历史文章。",
+    "en": "The directory has too many links. Historical article discovery has stopped."
+  },
+  "无法定位网站的公开访问规则。": {
+    "zh-Hans": "无法定位网站的公开访问规则。",
+    "en": "The site’s public access rules could not be located."
+  },
+  "无法安全读取网站的访问规则。": {
+    "zh-Hans": "无法安全读取网站的访问规则。",
+    "en": "The site’s access rules could not be safely read."
+  },
+  "网站要求更长的访问间隔，当前无法自动补齐。": {
+    "zh-Hans": "网站要求更长的访问间隔，当前无法自动补齐。",
+    "en": "The site requires a longer request interval. Automatic history backfill is currently unavailable."
+  },
+  "网站访问规则不允许读取该页面。": {
+    "zh-Hans": "网站访问规则不允许读取该页面。",
+    "en": "The site’s access rules do not permit reading this page."
+  },
+  "页面离开了所选网站或超过读取上限。": {
+    "zh-Hans": "页面离开了所选网站或超过读取上限。",
+    "en": "The page leaves the selected site or exceeds the response limit."
+  },
+  "重定向离开了所选网站或违反其访问规则。": {
+    "zh-Hans": "重定向离开了所选网站或违反其访问规则。",
+    "en": "The redirect leaves the selected site or violates its access rules."
+  },
+  "页面没有返回可识别的公开网页内容。": {
+    "zh-Hans": "页面没有返回可识别的公开网页内容。",
+    "en": "The page did not return recognizable public web content."
+  },
+  "全文提取需要网页响应正文。": {
+    "zh-Hans": "全文提取需要网页响应正文。",
+    "en": "Full-text extraction requires a web response body."
+  },
+  "文章标识冲突，已保留原有记录。": {
+    "zh-Hans": "文章标识冲突，已保留原有记录。",
+    "en": "The article identifier conflicts with an existing record, which has been preserved."
+  },
+  "历史补齐检查点无法读取。": {
+    "zh-Hans": "历史补齐检查点无法读取。",
+    "en": "The history backfill checkpoint could not be read."
+  },
+  "历史补齐检查点超出安全上限。": {
+    "zh-Hans": "历史补齐检查点超出安全上限。",
+    "en": "The history backfill checkpoint exceeds safety limits."
+  },
+  "历史补齐检查点无法保存。": {
+    "zh-Hans": "历史补齐检查点无法保存。",
+    "en": "The history backfill checkpoint could not be saved."
+  },
+  "上次补齐已中断，可以继续。": {
+    "zh-Hans": "上次补齐已中断，可以继续。",
+    "en": "The previous backfill was interrupted and can be continued."
+  },
+  "历史补齐需要可用的订阅与 SQLite 数据库。": {
+    "zh-Hans": "历史补齐需要可用的订阅与 SQLite 数据库。",
+    "en": "History backfill requires an available subscription and SQLite database."
+  },
+  "请填写该订阅网站内的公开目录地址。": {
+    "zh-Hans": "请填写该订阅网站内的公开目录地址。",
+    "en": "Enter a public directory URL within this subscription’s site."
+  },
+  "文章索引尚未加载完成，请稍后重试。": {
+    "zh-Hans": "文章索引尚未加载完成，请稍后重试。",
+    "en": "The article index is still loading. Try again shortly."
+  },
+  "网站要求等待，稍后可以继续。": {
+    "zh-Hans": "网站要求等待，稍后可以继续。",
+    "en": "The site requires a waiting period. You can continue later."
+  },
+  "正在读取网站访问规则。": {
+    "zh-Hans": "正在读取网站访问规则。",
+    "en": "Reading the site’s access rules."
+  },
+  "网站声明不允许跟随链接或保存内容，已停止补齐。": {
+    "zh-Hans": "网站声明不允许跟随链接或保存内容，已停止补齐。",
+    "en": "The site prohibits following links or saving content. Backfill has stopped."
+  },
+  "正在发现公开目录中的文章链接。": {
+    "zh-Hans": "正在发现公开目录中的文章链接。",
+    "en": "Discovering article links in the public directory."
+  },
+  "未找到可识别的公开文章目录；该来源目前无法补齐历史。": {
+    "zh-Hans": "未找到可识别的公开文章目录；该来源目前无法补齐历史。",
+    "en": "No recognizable public article directory was found. History backfill is currently unavailable for this source."
+  },
+  "正在补齐文章与正文。": {
+    "zh-Hans": "正在补齐文章与正文。",
+    "en": "Backfilling articles and full text."
+  },
+  "已处理发现的链接；正文失败项可以重试，不代表全站历史已齐全。": {
+    "zh-Hans": "已处理发现的链接；正文失败项可以重试，不代表全站历史已齐全。",
+    "en": "The discovered links have been processed. Full-text failures can be retried; this does not confirm complete site history."
+  },
+  "本批已结束，可以继续处理剩余链接。": {
+    "zh-Hans": "本批已结束，可以继续处理剩余链接。",
+    "en": "This batch has finished. You can continue processing the remaining links."
+  },
+  "已达到目录发现上限，更多历史尚未核实。": {
+    "zh-Hans": "已达到目录发现上限，更多历史尚未核实。",
+    "en": "The directory discovery limit was reached. Further history remains unverified."
+  },
+  "已取消；成功保存的结果保留，可以继续。": {
+    "zh-Hans": "已取消；成功保存的结果保留，可以继续。",
+    "en": "Cancelled. Successfully saved results are preserved, and you can continue."
+  },
+  "网站暂时不允许继续读取，等待后可手动继续。": {
+    "zh-Hans": "网站暂时不允许继续读取，等待后可手动继续。",
+    "en": "The site temporarily prevents further requests. You can continue manually after waiting."
+  },
+  "原文页面不允许保存内容。": {
+    "zh-Hans": "原文页面不允许保存内容。",
+    "en": "The original page does not permit saving its content."
+  }
+}

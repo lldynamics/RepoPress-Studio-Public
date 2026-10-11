@@ -54,7 +54,6 @@ public final class WorkspaceBackupService: Sendable {
   public static let retiredFeatureArchivesRelativePrefix = "workbench/RetiredFeatureArchives"
   public static let operationHistoryRelativePath = "operation-history/operation-log.json"
   public static let knowledgePackageName = "knowledge.pslibrarybackup"
-  public static let rssDirectoryName = "rss"
   public static let rssDatabaseRelativePath = "rss/reader.sqlite"
   public static let rssMediaRelativePrefix = "rss/RSSMedia"
   public static let attachmentsDirectoryName = "attachments"

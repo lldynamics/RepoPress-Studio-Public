@@ -43,7 +43,7 @@ final class UnifiedPublishSummaryPresentationTests: XCTestCase {
       warningIssues: []
     )
 
-    let summary = UnifiedPublishSummaryPresentation.make(
+    let summary = UnifiedPublishReadinessPresentation.make(
       plan: plan,
       preview: preview,
       profile: profile,
@@ -70,7 +70,7 @@ final class UnifiedPublishSummaryPresentationTests: XCTestCase {
       repositoryPublishStrategy: .reviewRequest
     )
 
-    let summary = UnifiedPublishSummaryPresentation.make(
+    let summary = UnifiedPublishReadinessPresentation.make(
       plan: nil,
       preview: nil,
       profile: profile,

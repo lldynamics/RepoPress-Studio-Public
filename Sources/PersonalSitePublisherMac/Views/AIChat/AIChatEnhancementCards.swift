@@ -101,8 +101,10 @@ struct AIChatStructuredEditReviewCard: View {
           }
           .controlSize(.small)
         }
-        .padding(8)
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
+        .padding(WorkbenchSpacing.control)
+        .background(
+          Color.primary.opacity(0.045),
+          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
       }
 
       HStack {
@@ -128,10 +130,10 @@ struct AIChatStructuredEditReviewCard: View {
       }
       .controlSize(.small)
     }
-    .padding(9)
+    .padding(WorkbenchSpacing.control)
     .background(
-      WorkbenchTheme.primary.opacity(0.06),
-      in: RoundedRectangle(cornerRadius: 10)
+      WorkbenchSurface.groupedCard,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel)
     )
   }
 
@@ -196,7 +198,8 @@ struct AIChatTranslationDraftCard: View {
       }
       .controlSize(.small)
     }
-    .padding(9)
-    .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
+    .padding(WorkbenchSpacing.control)
+    .background(
+      Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel))
   }
 }

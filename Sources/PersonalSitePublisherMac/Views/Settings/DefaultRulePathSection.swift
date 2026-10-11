@@ -144,7 +144,7 @@ struct DefaultRulePathSection: View {
     HStack(spacing: 6) {
       Image(systemName: icon)
         .font(.workbenchMetadata)
-        .foregroundStyle(WorkbenchTheme.brand)
+        .foregroundStyle(.secondary)
 
       Text("\(label)：")
         .font(.caption)
@@ -157,7 +157,7 @@ struct DefaultRulePathSection: View {
         .truncationMode(.middle)
     }
     .padding(.vertical, 2)
-    .padding(.horizontal, 8)
+    .padding(.horizontal, WorkbenchSpacing.control)
     .background(
       Color(nsColor: .controlBackgroundColor).opacity(0.6),
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
@@ -200,22 +200,22 @@ struct DefaultRulePathSection: View {
         placeholderBadge("{sourceSlug}", desc: String(localized: "原稿文件名"))
       }
     }
-    .padding(.vertical, 4)
+    .padding(.vertical, WorkbenchSpacing.tight)
   }
 
   private func placeholderBadge(_ placeholder: String, desc: String) -> some View {
     HStack(spacing: 2) {
       Text(placeholder)
         .font(.workbenchMetadata.monospaced().weight(.semibold))
-        .foregroundStyle(WorkbenchTheme.brand)
+        .foregroundStyle(.primary)
       Text("(\(desc))")
         .font(.workbenchMetadata)
         .foregroundStyle(.secondary)
     }
-    .padding(.horizontal, 6)
+    .padding(.horizontal, WorkbenchSpacing.icon)
     .padding(.vertical, 2)
     .background(
-      WorkbenchTheme.brand.opacity(0.08),
+      Color.secondary.opacity(0.08),
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.chartBar)
     )
   }

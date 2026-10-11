@@ -1,3 +1,5 @@
+import AppKit
+import Combine
 import PublishingGitCore
 import XCTest
 
@@ -32,20 +34,13 @@ final class PublishDrawerPresentationTests: XCTestCase {
     await fulfillment(of: [cancelled], timeout: 1)
   }
 
-  func testPublishDrawerOverlayUsesStableTrailingWidthWithoutGrowingPastItsIdeal() {
-    XCTAssertEqual(
-      WorkspacePublishDrawerLayoutPolicy.width(for: 1_200),
-      WorkspacePublishDrawerLayoutPolicy.idealWidth
-    )
-    XCTAssertEqual(
-      WorkspacePublishDrawerLayoutPolicy.width(for: 960),
-      432,
-      accuracy: 0.001
-    )
-    XCTAssertEqual(
-      WorkspacePublishDrawerLayoutPolicy.width(for: 320),
-      320,
-      accuracy: 0.001
+  func testInspectorTabsShareOneResizableWidthRange() {
+    XCTAssertEqual(WorkbenchLayoutMode.inspectorMinimumWidth, 280)
+    XCTAssertEqual(WorkbenchLayoutMode.inspectorIdealWidth, 320)
+    XCTAssertEqual(WorkbenchLayoutMode.inspectorMaximumWidth, 560)
+    XCTAssertLessThan(
+      WorkbenchLayoutMode.inspectorMinimumWidth, WorkbenchLayoutMode.inspectorMaximumWidth,
+      "Users must be able to drag the Inspector narrower or wider."
     )
   }
 
@@ -427,7 +422,302 @@ final class PublishDrawerPresentationTests: XCTestCase {
   }
 }
 
+@MainActor
+final class WorkspaceArticlePublishSessionTests: XCTestCase {
+  func testAttachedConfirmationSheetSharesItsOwnerAndOtherWindowsDoNot() {
+    _ = NSApplication.shared
+    let owner = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
+      styleMask: [.titled], backing: .buffered, defer: false)
+    let sheet = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 400, height: 200),
+      styleMask: [.titled], backing: .buffered, defer: false)
+    let other = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
+      styleMask: [.titled], backing: .buffered, defer: false)
+    owner.beginSheet(sheet)
+    defer {
+      owner.endSheet(sheet)
+      sheet.orderOut(nil)
+      owner.orderOut(nil)
+      other.orderOut(nil)
+    }
+    XCTAssertTrue(WorkspaceArticlePublishSession.isOwnedWindow(owner, owner: owner))
+    XCTAssertTrue(WorkspaceArticlePublishSession.isOwnedWindow(sheet, owner: owner))
+    XCTAssertFalse(WorkspaceArticlePublishSession.isOwnedWindow(other, owner: owner))
+    XCTAssertFalse(WorkspaceArticlePublishSession.isOwnedWindow(sheet, owner: other))
+    XCTAssertFalse(WorkspaceArticlePublishSession.isOwnedWindow(nil, owner: owner))
+  }
+
+  func testWindowOrSiteSwitchBackStillInvalidatesOldPreparationAndAllowsNewOne() async {
+    for switchSite in [false, true] {
+      let initial = context()
+      let window = WorkspaceWindowSession(
+        windowID: initial.windowID, selectedSection: .writing, selectedDraftID: initial.draftID)
+      window.setKeyWindow(true) { _, _ in }
+      let profiles = CurrentValueSubject<UUID, Never>(initial.profileID)
+      let session = WorkspaceArticlePublishSession()
+      session.observeWindow(window, profileChanges: profiles.eraseToAnyPublisher())
+      let old = SuspendedPublishSessionOperation()
+      let replacement = SuspendedPublishSessionOperation()
+      var deliveries = 0
+      let current: @MainActor () -> WorkspaceArticlePublishSession.Context? = {
+        guard window.isKeyWindow, window.selectedSection == .writing,
+          let draftID = window.selectedDraftID
+        else { return nil }
+        return .init(windowID: window.windowID, draftID: draftID, profileID: profiles.value)
+      }
+      XCTAssertTrue(
+        session.prepare(
+          context: initial, currentContext: current,
+          operation: {
+            await old.run()
+            return .drawer
+          },
+          onResult: { _ in deliveries += 1 }))
+      await old.waitUntilStarted()
+      if switchSite {
+        profiles.send(UUID())
+        profiles.send(initial.profileID)
+      } else {
+        window.selectDraft(UUID()) { _ in }
+        window.selectDraft(initial.draftID) { _ in }
+      }
+      XCTAssertFalse(session.isPreparing)
+      XCTAssertTrue(
+        session.prepare(
+          context: initial, currentContext: current,
+          operation: {
+            await replacement.run()
+            return .drawer
+          },
+          onResult: { _ in deliveries += 1 }))
+      await replacement.waitUntilStarted()
+      old.resume()
+      await old.waitUntilFinished()
+      XCTAssertEqual(deliveries, 0)
+      XCTAssertTrue(session.isPreparing)
+      replacement.resume()
+      await session.waitUntilIdle()
+      XCTAssertEqual(deliveries, 1)
+    }
+  }
+
+  func testCancellationBeforeSchedulingDoesNotStartPreparationOrRepair() async {
+    let session = WorkspaceArticlePublishSession()
+    let context = context()
+    let repairID = UUID()
+    var operations = 0
+    XCTAssertTrue(
+      session.prepare(
+        context: context, currentContext: { context },
+        operation: {
+          operations += 1
+          return .drawer
+        }, onResult: { _ in XCTFail("Cancelled result") }))
+    XCTAssertTrue(
+      session.refreshChecks(
+        context: context, repairID: repairID, currentContext: { context },
+        currentRepairID: { repairID },
+        operation: { operations += 1 }, onResult: { XCTFail("Cancelled repair") }))
+    session.cancel()
+    for _ in 0..<20 { await Task.yield() }
+    XCTAssertEqual(operations, 0)
+    XCTAssertFalse(session.isPreparing)
+    XCTAssertFalse(session.isRefreshingChecks)
+  }
+
+  func testCancelledPreparationCannotClearOrDeliverIntoReplacementOperation() async {
+    let session = WorkspaceArticlePublishSession()
+    let context = context()
+    let old = SuspendedPublishSessionOperation()
+    let replacement = SuspendedPublishSessionOperation()
+    var deliveries = 0
+    XCTAssertTrue(
+      session.prepare(
+        context: context, currentContext: { context },
+        operation: {
+          await old.run()
+          return .drawer
+        },
+        onResult: { _ in deliveries += 1 }))
+    await old.waitUntilStarted()
+    session.cancel()
+    XCTAssertFalse(session.isPreparing)
+    XCTAssertTrue(
+      session.prepare(
+        context: context, currentContext: { context },
+        operation: {
+          await replacement.run()
+          return .drawer
+        },
+        onResult: { _ in deliveries += 1 }))
+    await replacement.waitUntilStarted()
+
+    old.resume()
+    await old.waitUntilFinished()
+    XCTAssertTrue(session.isPreparing)
+    XCTAssertEqual(deliveries, 0)
+    replacement.resume()
+    await session.waitUntilIdle()
+    XCTAssertFalse(session.isPreparing)
+    XCTAssertEqual(deliveries, 1)
+  }
+
+  func testChangingWindowDraftOrSiteRejectsPreparedResult() async {
+    let initial = context()
+    let replacements = [
+      context(windowID: UUID(), draftID: initial.draftID, profileID: initial.profileID),
+      context(windowID: initial.windowID, draftID: UUID(), profileID: initial.profileID),
+      context(windowID: initial.windowID, draftID: initial.draftID, profileID: UUID()),
+    ]
+    for replacement in replacements {
+      let session = WorkspaceArticlePublishSession()
+      let gate = SuspendedPublishSessionOperation()
+      var current = initial
+      var delivered = false
+      XCTAssertTrue(
+        session.prepare(
+          context: initial, currentContext: { current },
+          operation: {
+            await gate.run()
+            return .drawer
+          },
+          onResult: { _ in delivered = true }))
+      await gate.waitUntilStarted()
+      current = replacement
+      gate.resume()
+      await session.waitUntilIdle()
+      XCTAssertFalse(delivered)
+      XCTAssertFalse(session.isPreparing)
+      XCTAssertNil(session.pendingReview)
+    }
+  }
+
+  func testClosingWindowCancelsPreparationAndRepairWithoutLateDelivery() async {
+    let session = WorkspaceArticlePublishSession()
+    let context = context()
+    let repairID = UUID()
+    let preparation = SuspendedPublishSessionOperation()
+    let repair = SuspendedPublishSessionOperation()
+    var deliveries = 0
+    XCTAssertTrue(
+      session.prepare(
+        context: context, currentContext: { context },
+        operation: {
+          await preparation.run()
+          return .drawer
+        },
+        onResult: { _ in deliveries += 1 }))
+    XCTAssertTrue(
+      session.refreshChecks(
+        context: context, repairID: repairID, currentContext: { context },
+        currentRepairID: { repairID }, operation: { await repair.run() },
+        onResult: { deliveries += 1 }))
+    await preparation.waitUntilStarted()
+    await repair.waitUntilStarted()
+    session.cancel()
+    XCTAssertFalse(session.isPreparing)
+    XCTAssertFalse(session.isRefreshingChecks)
+    preparation.resume()
+    repair.resume()
+    await preparation.waitUntilFinished()
+    await repair.waitUntilFinished()
+    XCTAssertEqual(deliveries, 0)
+  }
+
+  func testChangedRepairIdentityRejectsLateCheckResult() async {
+    let session = WorkspaceArticlePublishSession()
+    let context = context()
+    let initialRepairID = UUID()
+    var currentRepairID: UUID? = initialRepairID
+    let gate = SuspendedPublishSessionOperation()
+    var delivered = false
+    XCTAssertTrue(
+      session.refreshChecks(
+        context: context, repairID: initialRepairID, currentContext: { context },
+        currentRepairID: { currentRepairID }, operation: { await gate.run() },
+        onResult: { delivered = true }))
+    await gate.waitUntilStarted()
+    currentRepairID = UUID()
+    gate.resume()
+    await session.waitUntilIdle()
+    XCTAssertFalse(delivered)
+    XCTAssertFalse(session.isRefreshingChecks)
+  }
+
+  private func context(
+    windowID: UUID = UUID(), draftID: UUID = UUID(), profileID: UUID = UUID()
+  ) -> WorkspaceArticlePublishSession.Context {
+    .init(windowID: windowID, draftID: draftID, profileID: profileID)
+  }
+}
+
+/// Deliberately finishes even when its caller is cancelled, like a late
+/// provider callback. Tests control both suspension and completion.
+@MainActor
+private final class SuspendedPublishSessionOperation {
+  private var continuation: CheckedContinuation<Void, Never>?
+  private var startWaiters: [CheckedContinuation<Void, Never>] = []
+  private var finishWaiters: [CheckedContinuation<Void, Never>] = []
+  private var started = false
+  private var finished = false
+
+  func run() async {
+    await withCheckedContinuation { continuation in
+      self.continuation = continuation
+      started = true
+      for waiter in startWaiters { waiter.resume() }
+      startWaiters.removeAll()
+    }
+    finished = true
+    for waiter in finishWaiters { waiter.resume() }
+    finishWaiters.removeAll()
+  }
+
+  func waitUntilStarted() async {
+    guard !started else { return }
+    await withCheckedContinuation { startWaiters.append($0) }
+  }
+
+  func waitUntilFinished() async {
+    guard !finished else { return }
+    await withCheckedContinuation { finishWaiters.append($0) }
+  }
+
+  func resume() {
+    continuation?.resume()
+    continuation = nil
+  }
+}
+
 final class SingleArticlePublishFastPathPolicyTests: XCTestCase {
+  @MainActor
+  func testCancellationBeforeSchedulingCannotStartDirectPublish() async throws {
+    let snapshot = makeSnapshot(includesImage: false)
+    let profile = SiteProfile(
+      id: snapshot.context.profileID, name: "Isolated site", repoOwner: "owner", repoName: "site")
+    let draft = ArticleDraft(
+      id: snapshot.context.draftID, siteProfileID: profile.id, title: "Article",
+      bodyMarkdown: "Body")
+    let review = try SinglePublishReviewSnapshot(draft: draft, profile: profile, snapshot: snapshot)
+    let context = WorkspaceArticlePublishSession.Context(
+      windowID: UUID(), draftID: draft.id, profileID: profile.id)
+    let session = WorkspaceArticlePublishSession()
+    var started = false
+    XCTAssertTrue(
+      session.publish(
+        context: context, review: review, currentContext: { context },
+        operation: {
+          started = true
+          return nil
+        }, onResult: { _ in XCTFail("Cancelled publish") }))
+    session.cancel()
+    for _ in 0..<20 { await Task.yield() }
+    XCTAssertFalse(started)
+    XCTAssertFalse(session.isPublishing)
+  }
+
   func testCleanArticleOnlyChangeCanOpenConfirmationDirectly() {
     let snapshot = makeSnapshot()
     XCTAssertTrue(
@@ -476,7 +766,8 @@ final class SingleArticlePublishFastPathPolicyTests: XCTestCase {
 
   private func makeSnapshot(
     remotePreview: RemoteRepositoryPublishPreview? = nil,
-    localWriteReadiness: LocalPublishActionReadiness = .ready
+    localWriteReadiness: LocalPublishActionReadiness = .ready,
+    includesImage: Bool = true
   ) -> DraftPublishPreviewSnapshot {
     let draftID = UUID()
     let profileID = UUID()
@@ -485,9 +776,10 @@ final class SingleArticlePublishFastPathPolicyTests: XCTestCase {
       title: "Article",
       markdownPath: "content/article.md",
       files: [
-        PublishPackageFile(kind: .markdown, repositoryPath: "content/article.md", content: "Body"),
-        PublishPackageFile(kind: .image, repositoryPath: "static/article.png"),
-      ],
+        PublishPackageFile(kind: .markdown, repositoryPath: "content/article.md", content: "Body")
+      ]
+        + (includesImage
+          ? [PublishPackageFile(kind: .image, repositoryPath: "static/article.png")] : []),
       commitMessage: "Publish article",
       reviewBranchName: "article-review",
       reviewTitle: "Article review",
@@ -523,7 +815,7 @@ final class SingleArticlePublishFastPathPolicyTests: XCTestCase {
         writeReadiness: localWriteReadiness,
         commitReadiness: .ready,
         changedFileCount: 1,
-        fileCount: 2,
+        fileCount: package.files.count,
         writeBlockingIssues: [],
         commitBlockingIssues: [],
         warningIssues: []
@@ -538,5 +830,50 @@ final class SingleArticlePublishFastPathPolicyTests: XCTestCase {
         webURL: nil
       )
     )
+  }
+}
+
+@MainActor
+final class PublishDrawerOperationControllerTests: XCTestCase {
+  func testCompletionRestoresSectionOnlyWhileThePanelOwnsSharedNavigation() {
+    let fileURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("PublishDrawerOperationController-\(UUID().uuidString).json")
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: fileURL),
+      safeMode: true
+    )
+    let controller = PublishDrawerOperationController()
+
+    store.selectSection(.writing)
+    let uninterrupted = controller.claimSharedNavigation(from: store.publishing)
+    store.selectSection(.library)
+    controller.restoreSharedSection(uninterrupted, using: store.publishing)
+    XCTAssertEqual(store.publishing.selectedSection, .writing)
+
+    // The panel is hidden mid-publish, the user navigates, then the panel is
+    // shown again before the old operation finishes: its claim stays revoked.
+    let interrupted = controller.claimSharedNavigation(from: store.publishing)
+    controller.setOwnsSharedNavigation(false)
+    store.selectSection(.library)
+    controller.setOwnsSharedNavigation(true)
+    controller.restoreSharedSection(interrupted, using: store.publishing)
+    XCTAssertEqual(store.publishing.selectedSection, .library)
+
+    // A claim made after the panel regained ownership restores normally.
+    let fresh = controller.claimSharedNavigation(from: store.publishing)
+    store.selectSection(.images)
+    controller.restoreSharedSection(fresh, using: store.publishing)
+    XCTAssertEqual(store.publishing.selectedSection, .library)
+
+    // A claim taken while hidden never restores: not while hidden, and not
+    // after the panel regains ownership.
+    controller.setOwnsSharedNavigation(false)
+    let whileHidden = controller.claimSharedNavigation(from: store.publishing)
+    store.selectSection(.images)
+    controller.restoreSharedSection(whileHidden, using: store.publishing)
+    XCTAssertEqual(store.publishing.selectedSection, .images)
+    controller.setOwnsSharedNavigation(true)
+    controller.restoreSharedSection(whileHidden, using: store.publishing)
+    XCTAssertEqual(store.publishing.selectedSection, .images)
   }
 }

@@ -175,8 +175,8 @@ struct LocalSitePreviewPanelView: View {
           .foregroundStyle(.tertiary)
       }
     }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 8)
+    .padding(.horizontal, WorkbenchSpacing.card)
+    .padding(.vertical, WorkbenchSpacing.control)
     .background(WorkbenchBackgroundStyle.card)
   }
 
@@ -202,9 +202,11 @@ struct LocalSitePreviewPanelView: View {
         Text(plan.command)
           .font(.caption.monospaced())
           .textSelection(.enabled)
-          .padding(10)
+          .padding(WorkbenchSpacing.card)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 8))
+          .background(
+            WorkbenchBackgroundStyle.control,
+            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
       }
 
       if !plan.diagnostics.dependencies.isEmpty {
@@ -271,8 +273,10 @@ struct LocalSitePreviewPanelView: View {
           .foregroundStyle(.secondary)
       }
     }
-    .padding(18)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: 12))
+    .padding(WorkbenchSpacing.content)
+    .background(
+      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel)
+    )
   }
 
   private func dependencyIcon(_ status: LocalSitePreviewDependencyStatus) -> String {

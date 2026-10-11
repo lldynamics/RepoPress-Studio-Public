@@ -39,7 +39,8 @@ struct WorkspaceTaskInspector: View {
         store: store,
         rssStore: rssStore,
         section: section,
-        availableTabs: availableTabs
+        availableTabs: availableTabs,
+        presentation: presentation
       )
     }
   }
@@ -105,7 +106,7 @@ struct RepositoryContextInspectorView: View {
         }
         Spacer()
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
 
       Divider()
 
@@ -114,7 +115,7 @@ struct RepositoryContextInspectorView: View {
           blockerSection
           selectedFileSection
         }
-        .padding(14)
+        .padding(WorkbenchSpacing.content)
         .frame(maxWidth: .infinity, alignment: .leading)
       }
     }
@@ -228,7 +229,7 @@ struct RepositoryContextInspectorView: View {
               .frame(maxWidth: .infinity, alignment: .leading)
           }
           .frame(maxHeight: 260)
-          .padding(.top, 6)
+          .padding(.top, WorkbenchSpacing.icon)
         }
         .font(.caption.weight(.medium))
         .accessibilityIdentifier("repository-inspector-selected-file-diff")
@@ -266,7 +267,7 @@ struct RepositoryContextInspectorView: View {
         .foregroundStyle(.secondary)
       content()
     }
-    .padding(12)
+    .padding(WorkbenchSpacing.card)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))

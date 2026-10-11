@@ -39,8 +39,8 @@ struct RepositoryPermissionSettingsView: View {
         .help("关闭仓库连接诊断")
         .accessibilityLabel("关闭仓库连接诊断")
       }
-      .padding(.horizontal, 18)
-      .padding(.vertical, 14)
+      .padding(.horizontal, WorkbenchSpacing.content)
+      .padding(.vertical, WorkbenchSpacing.content)
 
       Divider()
 

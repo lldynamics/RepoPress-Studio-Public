@@ -20,7 +20,7 @@ struct WorkspaceQuickSearchView: View {
   private let imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>?
   private let imageBrowserSession: RepositoryImageBrowserSession?
   private let repositoryContextStage: Binding<RepositoryContextStage>?
-  @ObservedObject private var draftListState: DraftListStore
+  private let draftListState: DraftListStore
   @State private var query = ""
   @FocusState private var isSearchFocused: Bool
 
@@ -46,7 +46,7 @@ struct WorkspaceQuickSearchView: View {
     self.imageWorkbenchContextStage = imageWorkbenchContextStage
     self.imageBrowserSession = imageBrowserSession
     self.repositoryContextStage = repositoryContextStage
-    _draftListState = ObservedObject(wrappedValue: store.draftList)
+    draftListState = store.draftList
   }
 
   var body: some View {
@@ -210,6 +210,9 @@ struct WorkspaceQuickSearchView: View {
     }
   }
 
+  /// Empty and loading states sit a little lower than the list they replace.
+  private static let emptyStateTopInset = WorkbenchSpacing.spacious + WorkbenchSpacing.tight
+
   private var showsSearchField: Bool {
     scope != .imageResources && contentHealthFilter == nil
   }
@@ -248,7 +251,7 @@ struct WorkspaceQuickSearchView: View {
         .accessibilityIdentifier("workspace-quick-search-clear")
       }
     }
-    .padding(.horizontal, 9)
+    .padding(.horizontal, WorkbenchSpacing.control)
     .frame(minHeight: 30)
     .background(
       WorkbenchBackgroundStyle.control,
@@ -306,7 +309,7 @@ struct WorkspaceQuickSearchView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .padding(.horizontal, WorkbenchSpacing.page)
-    .padding(.top, 28)
+    .padding(.top, Self.emptyStateTopInset)
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("image-resource-sidebar-state")
   }
@@ -395,7 +398,7 @@ struct WorkspaceQuickSearchView: View {
       .accessibilityIdentifier("workspace-quick-search-create-draft")
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    .padding(.top, 28)
+    .padding(.top, Self.emptyStateTopInset)
   }
 
   private var noResultsState: some View {
@@ -413,7 +416,7 @@ struct WorkspaceQuickSearchView: View {
       .buttonStyle(.link)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    .padding(.top, 28)
+    .padding(.top, Self.emptyStateTopInset)
   }
 
   private var aiFixQueueLoadingState: some View {
@@ -430,7 +433,7 @@ struct WorkspaceQuickSearchView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .padding(.horizontal, WorkbenchSpacing.page)
-    .padding(.top, 28)
+    .padding(.top, Self.emptyStateTopInset)
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("content-health-sidebar-ai-fix-loading")
   }
@@ -451,7 +454,7 @@ struct WorkspaceQuickSearchView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .padding(.horizontal, WorkbenchSpacing.page)
-    .padding(.top, 28)
+    .padding(.top, Self.emptyStateTopInset)
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("content-health-sidebar-ai-fix-failure")
   }
@@ -472,7 +475,7 @@ struct WorkspaceQuickSearchView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .padding(.horizontal, WorkbenchSpacing.page)
-    .padding(.top, 28)
+    .padding(.top, Self.emptyStateTopInset)
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("content-health-sidebar-ai-fix-cancelled")
   }
@@ -493,7 +496,7 @@ struct WorkspaceQuickSearchView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .padding(.horizontal, WorkbenchSpacing.page)
-    .padding(.top, 28)
+    .padding(.top, Self.emptyStateTopInset)
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("content-health-sidebar-ai-fix-empty")
   }

@@ -51,7 +51,7 @@ struct KnowledgeNoteSnapshotBackupSheet: View {
               .font(.footnote)
               .foregroundStyle(.secondary)
           }
-          .padding(8)
+          .padding(WorkbenchSpacing.control)
         }
 
         GroupBox("创建快照") {
@@ -65,7 +65,7 @@ struct KnowledgeNoteSnapshotBackupSheet: View {
                 .disabled(isWorking)
             }
           }
-          .padding(8)
+          .padding(WorkbenchSpacing.control)
         }
 
         GroupBox("恢复历史版本") {
@@ -93,7 +93,7 @@ struct KnowledgeNoteSnapshotBackupSheet: View {
             }
             if isSnapshotBrowserExpanded { snapshotBrowser }
           }
-          .padding(8)
+          .padding(WorkbenchSpacing.control)
         }
 
         if automaticSnapshotSuccessAt > 0 {
@@ -136,7 +136,7 @@ struct KnowledgeNoteSnapshotBackupSheet: View {
             .foregroundStyle(.green)
         }
       }
-      .padding(24)
+      .padding(WorkbenchSpacing.spacious)
     }
     .frame(minWidth: 620, minHeight: 590)
     .interactiveDismissDisabled(isWorking)
@@ -195,7 +195,7 @@ struct KnowledgeNoteSnapshotBackupSheet: View {
         }
       }
     }
-    .padding(.top, 4)
+    .padding(.top, WorkbenchSpacing.tight)
   }
 
   private var automaticUploadStatusDescription: String {

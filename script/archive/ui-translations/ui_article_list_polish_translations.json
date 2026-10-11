@@ -1,0 +1,12 @@
+{
+  "%lld 项问题": {
+    "en": {"one": "%lld issue", "other": "%lld issues"},
+    "zh-Hans": "%lld 项问题"
+  },
+  "其他新建选项、版本、回收站与备份": "More ways to create, plus versions, Trash, and backups",
+  "其他新建选项与数据管理": "More create options and data management",
+  "新建站点文章（⌘N）": "New site article (⌘N)",
+  "未同步": "Not synced",
+  "本周": "This week",
+  "版本、回收站与备份…": "Versions, Trash, and Backups…"
+}

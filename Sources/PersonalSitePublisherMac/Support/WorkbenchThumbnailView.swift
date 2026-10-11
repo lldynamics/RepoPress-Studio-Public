@@ -140,6 +140,8 @@ actor WorkbenchThumbnailCache {
   private var values: [Key: CacheEntry] = [:]
   private var cachedBytes = 0
   private var accessCounter: UInt64 = 0
+  private var cacheRetentionEnabled = true
+  private var cacheRetentionGeneration: UInt64 = 0
   private var inFlight: [Key: Flight] = [:]
   private var visibleQueue: [Key] = []
   private var prefetchQueue: [Key] = []
@@ -195,6 +197,20 @@ actor WorkbenchThumbnailCache {
   var queuedDecodeCount: Int { visibleQueue.count + prefetchQueue.count }
   var currentDecodeCount: Int { activeDecodeCount }
   var subscriberCount: Int { inFlight.values.reduce(0) { $0 + $1.subscribers.count } }
+
+  func setCacheRetentionEnabled(_ isEnabled: Bool, generation: UInt64) {
+    guard generation >= cacheRetentionGeneration else { return }
+    cacheRetentionGeneration = generation
+    guard cacheRetentionEnabled != isEnabled else { return }
+    cacheRetentionEnabled = isEnabled
+    if !isEnabled {
+      // Pressure releases only retained results. Active decodes, queues and
+      // subscriptions still deliver their results to the requesting views.
+      values.removeAll(keepingCapacity: false)
+      cachedBytes = 0
+      accessCounter = 0
+    }
+  }
 
   private func subscribe(
     to key: Key,
@@ -337,6 +353,7 @@ actor WorkbenchThumbnailCache {
   }
 
   private func insert(_ value: WorkbenchDecodedImage, for key: Key) {
+    guard cacheRetentionEnabled else { return }
     let byteCost = Self.byteCost(of: value)
     if let previous = values.removeValue(forKey: key) {
       cachedBytes = max(cachedBytes - previous.byteCost, 0)
@@ -415,7 +432,7 @@ struct WorkbenchThumbnailView: View {
               .controlSize(.small)
           } else {
             Image(systemName: "photo")
-              .font(.system(size: 24))
+              .font(.system(size: WorkbenchIconSize.section))
               .foregroundStyle(.secondary)
           }
         }

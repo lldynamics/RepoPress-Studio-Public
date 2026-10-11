@@ -49,11 +49,11 @@ public actor CodexAppServerClient {
   private var startupTaskID: UUID?
   private var readerTask: Task<Void, Never>?
   private var isInitialized = false
-  private var transportEnded = false
-  private var transportEndError = CodexAppServerError.endOfStream
-  private var transportGeneration = 0
+  var transportEnded = false
+  var transportEndError = CodexAppServerError.endOfStream
+  var transportGeneration = 0
   private var lineBuffer = Data()
-  private var activeUserOperations = 0
+  var activeUserOperations = 0
   private var runtimeReconnectRequested = false
   private var runtimeReconnectTask: Task<Void, Never>?
 
@@ -78,25 +78,11 @@ public actor CodexAppServerClient {
   private var threadIDByTurnID: [String: String] = [:]
   private var turnTimeoutTasks: [String: Task<Void, Never>] = [:]
 
-  private enum LoginOutcome {
-    case succeeded
-    case failed(CodexAppServerError)
-  }
-
-  private var loginOutcomes: [String: LoginOutcome] = [:]
-  private var loginWaiters: [String: CheckedContinuation<Void, Error>] = [:]
-  private var loginTimeoutTasks: [String: Task<Void, Never>] = [:]
-  private var activeLoginIDs = Set<String>()
-  /// Completed notifications can race with a local cancellation RPC. Keep a
-  /// small tombstone set so a late success cannot be buffered and mistaken for
-  /// a future wait using the same login identifier.
-  private var ignoredLoginOutcomeIDs = Set<String>()
-  private var ignoredLoginOutcomeOrder: [String] = []
-  private let loginTimeout: Duration
+  var loginState = CodexAppServerLoginState()
+  var accountEventState = CodexAppServerAccountEventState()
+  let loginTimeout: Duration
   private let requestTimeout: Duration
   private let turnTimeout: Duration
-
-  private static let maximumIgnoredLoginOutcomeCount = 64
 
   private static let textOnlyThreadDeveloperInstructions =
     "Answer only from the supplied text. Never inspect the filesystem, run commands, or use tools."
@@ -164,7 +150,7 @@ public actor CodexAppServerClient {
   /// Internal observability for regression tests. The production UI does not
   /// need to know whether a continuation is installed.
   var loginWaiterCount: Int {
-    loginWaiters.count
+    loginState.waiters.count
   }
 
   var activeTurnSnapshot: ActiveTurnSnapshot? {
@@ -174,6 +160,10 @@ public actor CodexAppServerClient {
       }
     }
     return nil
+  }
+
+  deinit {
+    for continuation in accountEventState.subscribers.values { continuation.finish() }
   }
 
   public func start() async throws {
@@ -187,102 +177,9 @@ public actor CodexAppServerClient {
     return parseAccountStatus(value)
   }
 
-  public func startChatGPTLogin() async throws -> CodexAppServerLoginResult {
-    activeUserOperations += 1
-    defer { endUserOperation() }
-    let value = try await request(
-      method: "account/login/start",
-      params: .object([
-        "appBrand": .string("chatgpt"),
-        "type": .string("chatgpt"),
-        "useHostedLoginSuccessPage": .bool(true),
-      ])
-    )
-    guard let object = value.objectValue else {
-      throw CodexAppServerError.invalidResponse
-    }
-    let loginObject = object["login"]?.objectValue ?? object
-    let loginID = firstString(in: loginObject, keys: ["loginId", "loginID", "id"])
-    let authURLString = firstString(in: loginObject, keys: ["authUrl", "authURL", "url"])
-    guard let loginID, !loginID.isEmpty,
-      let authURLString, let authURL = Self.validatedLoginURL(authURLString)
-    else {
-      throw CodexAppServerError.invalidResponse
-    }
-    registerLogin(loginID: loginID)
-    return CodexAppServerLoginResult(loginID: loginID, authURL: authURL)
-  }
-
-  public func startChatGPTDeviceCodeLogin() async throws -> CodexAppServerDeviceCodeLoginResult {
-    activeUserOperations += 1
-    defer { endUserOperation() }
-    let value = try await request(
-      method: "account/login/start",
-      params: .object(["type": .string("chatgptDeviceCode")])
-    )
-    guard let object = value.objectValue else {
-      throw CodexAppServerError.invalidResponse
-    }
-    let loginObject = object["login"]?.objectValue ?? object
-    let loginID = firstString(in: loginObject, keys: ["loginId", "loginID", "id"])
-    let verificationURLString = firstString(
-      in: loginObject,
-      keys: ["verificationUrl", "verificationURL", "url"]
-    )
-    let userCode = firstString(in: loginObject, keys: ["userCode", "code"])
-    guard let loginID, !loginID.isEmpty,
-      let verificationURLString,
-      let verificationURL = Self.validatedLoginURL(verificationURLString),
-      let userCode, !userCode.isEmpty
-    else {
-      throw CodexAppServerError.invalidResponse
-    }
-    registerLogin(loginID: loginID)
-    return CodexAppServerDeviceCodeLoginResult(
-      loginID: loginID,
-      verificationURL: verificationURL,
-      userCode: userCode
-    )
-  }
-
-  public func waitForLoginCompletion(loginID: String) async throws {
-    activeUserOperations += 1
-    defer { endUserOperation() }
-    try await withTaskCancellationHandler(
-      operation: {
-        try await withCheckedThrowingContinuation { continuation in
-          if let outcome = loginOutcomes.removeValue(forKey: loginID) {
-            resumeLoginWaiter(continuation, with: outcome)
-          } else if loginWaiters[loginID] != nil {
-            continuation.resume(throwing: CodexAppServerError.invalidResponse)
-          } else {
-            loginWaiters[loginID] = continuation
-            scheduleLoginTimeout(loginID: loginID)
-          }
-        }
-      },
-      onCancel: {
-        Task { [weak self] in
-          await self?.cancelLogin(loginID: loginID)
-        }
-      })
-  }
-
-  public func cancelLogin(loginID: String) async {
-    activeUserOperations += 1
-    defer { endUserOperation() }
-    let waiter = loginWaiters.removeValue(forKey: loginID)
-    loginOutcomes.removeValue(forKey: loginID)
-    let wasActive = activeLoginIDs.remove(loginID) != nil
-    cancelLoginTimeout(loginID: loginID)
-    waiter?.resume(throwing: CodexAppServerError.cancelled)
-    guard wasActive || waiter != nil else { return }
-    markLoginOutcomeIgnored(loginID)
-    await sendLoginCancellation(loginID: loginID)
-  }
-
   public func logout() async throws {
     _ = try await request(method: "account/logout", params: .object([:]))
+    if !transportEnded { publishAccountInvalidation(.accountChanged) }
   }
 
   public func rateLimits() async throws -> CodexAppServerRateLimits {
@@ -454,7 +351,7 @@ public actor CodexAppServerClient {
     runtimeReconnectRequested || runtimeReconnectTask != nil
   }
 
-  private func endUserOperation() {
+  func endUserOperation() {
     activeUserOperations -= 1
     if runtimeReconnectRequested {
       Task { [weak self] in _ = await self?.reconnectRuntimeIfIdle() }
@@ -464,8 +361,7 @@ public actor CodexAppServerClient {
   private func reconnectRuntimeIfIdle() async -> Bool {
     guard runtimeReconnectRequested else { return true }
     guard runtimeReconnectTask == nil, activeUserOperations == 0,
-      pendingRequests.isEmpty, turnStates.isEmpty, activeLoginIDs.isEmpty,
-      loginOutcomes.isEmpty, loginWaiters.isEmpty,
+      pendingRequests.isEmpty, turnStates.isEmpty, !loginState.hasBlockingSessions,
       startupTask == nil
     else { return false }
     runtimeReconnectRequested = false
@@ -489,6 +385,7 @@ public actor CodexAppServerClient {
     transportEnded = true
     transportEndError = .endOfStream
     transportGeneration &+= 1
+    publishAccountInvalidation(.connectionClosed)
     failAll(with: .endOfStream)
     await transport.terminate()
   }
@@ -599,6 +496,7 @@ public actor CodexAppServerClient {
       isInitialized = false
       transportEnded = true
       transportEndError = mappedError
+      publishAccountInvalidation(.connectionClosed)
       readerTask?.cancel()
       readerTask = nil
       failAll(with: mappedError)
@@ -607,19 +505,22 @@ public actor CodexAppServerClient {
     }
   }
 
-  private func request(
+  func request(
     method: String,
-    params: CodexAppServerJSONValue?
+    params: CodexAppServerJSONValue?,
+    loginAttemptID: UUID? = nil
   ) async throws -> CodexAppServerJSONValue {
     activeUserOperations += 1
     defer { endUserOperation() }
     try await ensureStarted()
-    return try await requestWithoutStartup(method: method, params: params)
+    return try await requestWithoutStartup(
+      method: method, params: params, loginAttemptID: loginAttemptID)
   }
 
-  private func requestWithoutStartup(
+  func requestWithoutStartup(
     method: String,
-    params: CodexAppServerJSONValue?
+    params: CodexAppServerJSONValue?,
+    loginAttemptID: UUID? = nil
   ) async throws -> CodexAppServerJSONValue {
     try Task.checkCancellation()
     nextRequestID += 1
@@ -646,6 +547,10 @@ public actor CodexAppServerClient {
           guard !Task.isCancelled else {
             continuation.resume(throwing: CodexAppServerError.cancelled)
             return
+          }
+          if let loginAttemptID {
+            prepareLoginStart(
+              attemptID: loginAttemptID, requestID: requestID, generation: requestGeneration)
           }
           pendingRequests[requestID] = continuation
           scheduleRequestTimeout(requestID: requestID)
@@ -723,6 +628,7 @@ public actor CodexAppServerClient {
   }
 
   private func cancelPendingRequest(requestID: Int) {
+    cancelLoginStart(requestID: requestID)
     requestTimeoutTasks.removeValue(forKey: requestID)?.cancel()
     pendingRequestSends.removeValue(forKey: requestID)?.cancel()
     guard let continuation = pendingRequests.removeValue(forKey: requestID) else { return }
@@ -730,6 +636,7 @@ public actor CodexAppServerClient {
   }
 
   private func failPendingRequest(requestID: Int, error: CodexAppServerError) {
+    cancelLoginStart(requestID: requestID)
     requestTimeoutTasks.removeValue(forKey: requestID)?.cancel()
     pendingRequestSends.removeValue(forKey: requestID)?.cancel()
     guard let continuation = pendingRequests.removeValue(forKey: requestID) else { return }
@@ -751,6 +658,7 @@ public actor CodexAppServerClient {
   }
 
   private func timeoutPendingRequest(requestID: Int) {
+    cancelLoginStart(requestID: requestID)
     pendingRequestSends.removeValue(forKey: requestID)?.cancel()
     guard let continuation = pendingRequests.removeValue(forKey: requestID) else {
       requestTimeoutTasks.removeValue(forKey: requestID)?.cancel()
@@ -1056,6 +964,7 @@ public actor CodexAppServerClient {
       return
     }
     guard let requestID = envelope.id else { return }
+    handleLoginStartResponse(envelope)
     // A cancelled request may still receive a late response. It belongs to an
     // already-consumed request ID and must not tear down the shared process.
     requestTimeoutTasks.removeValue(forKey: requestID)?.cancel()
@@ -1180,6 +1089,7 @@ public actor CodexAppServerClient {
   }
 
   private func handleNotification(method: String, params: CodexAppServerJSONValue?) {
+    if handleAccountNotification(method: method, params: params) { return }
     guard let params else { return }
     let object = params.objectValue ?? [:]
     let nestedTurn = object["turn"]?.objectValue ?? [:]
@@ -1201,9 +1111,10 @@ public actor CodexAppServerClient {
       let errorObject = object["error"]?.objectValue ?? [:]
       let errorMessage =
         firstString(in: errorObject, keys: ["message", "reason"])
+        ?? object["error"]?.stringValue
         ?? firstString(in: object, keys: ["errorMessage", "message", "reason"])
       let succeeded = object["success"]?.boolValue ?? (errorMessage == nil)
-      let outcome: LoginOutcome
+      let outcome: CodexAppServerLoginState.Outcome
       if succeeded {
         outcome = .succeeded
       } else {
@@ -1310,107 +1221,6 @@ public actor CodexAppServerClient {
     }
   }
 
-  private func finishLogin(loginID: String, outcome: LoginOutcome) {
-    if ignoredLoginOutcomeIDs.contains(loginID) {
-      activeLoginIDs.remove(loginID)
-      loginOutcomes.removeValue(forKey: loginID)
-      return
-    }
-    activeLoginIDs.remove(loginID)
-    cancelLoginTimeout(loginID: loginID)
-    if let waiter = loginWaiters.removeValue(forKey: loginID) {
-      resumeLoginWaiter(waiter, with: outcome)
-    } else {
-      loginOutcomes[loginID] = outcome
-    }
-  }
-
-  private func registerLogin(loginID: String) {
-    clearIgnoredLoginOutcome(loginID)
-    // A notification can arrive in the same read loop turn as the start
-    // response. In that case the outcome is already buffered and the server
-    // has no active login to cancel.
-    if loginOutcomes[loginID] == nil {
-      activeLoginIDs.insert(loginID)
-    }
-  }
-
-  private func scheduleLoginTimeout(loginID: String) {
-    loginTimeoutTasks[loginID]?.cancel()
-    let timeout = loginTimeout
-    loginTimeoutTasks[loginID] = Task { [weak self] in
-      do {
-        try await Task.sleep(for: timeout)
-      } catch {
-        return
-      }
-      guard !Task.isCancelled else { return }
-      await self?.timeoutLogin(loginID: loginID)
-    }
-  }
-
-  private func cancelLoginTimeout(loginID: String) {
-    loginTimeoutTasks.removeValue(forKey: loginID)?.cancel()
-  }
-
-  private func timeoutLogin(loginID: String) async {
-    activeUserOperations += 1
-    defer { endUserOperation() }
-    guard let waiter = loginWaiters.removeValue(forKey: loginID) else {
-      // Completion or task cancellation won the actor race and already
-      // consumed the continuation. In particular, do not cancel remotely a
-      // second time from this stale timeout task.
-      cancelLoginTimeout(loginID: loginID)
-      return
-    }
-    loginOutcomes.removeValue(forKey: loginID)
-    let wasActive = activeLoginIDs.remove(loginID) != nil
-    // This is the timeout task itself. Removing it is enough; cancelling it
-    // would also cancel the best-effort server cleanup that follows.
-    loginTimeoutTasks.removeValue(forKey: loginID)
-    waiter.resume(throwing: CodexAppServerError.loginTimedOut)
-    guard wasActive else { return }
-    markLoginOutcomeIgnored(loginID)
-    await sendLoginCancellation(loginID: loginID)
-  }
-
-  private func markLoginOutcomeIgnored(_ loginID: String) {
-    guard ignoredLoginOutcomeIDs.insert(loginID).inserted else { return }
-    ignoredLoginOutcomeOrder.append(loginID)
-    while ignoredLoginOutcomeOrder.count > Self.maximumIgnoredLoginOutcomeCount {
-      let evicted = ignoredLoginOutcomeOrder.removeFirst()
-      ignoredLoginOutcomeIDs.remove(evicted)
-    }
-  }
-
-  private func clearIgnoredLoginOutcome(_ loginID: String) {
-    guard ignoredLoginOutcomeIDs.remove(loginID) != nil else { return }
-    ignoredLoginOutcomeOrder.removeAll { $0 == loginID }
-  }
-
-  private func sendLoginCancellation(loginID: String) async {
-    do {
-      _ = try await request(
-        method: "account/login/cancel",
-        params: .object(["loginId": .string(loginID)])
-      )
-    } catch {
-      // Local completion has already happened; remote cancellation is best effort.
-    }
-  }
-
-  private func resumeLoginWaiter(
-    _ waiter: CheckedContinuation<Void, Error>,
-    with outcome: LoginOutcome
-  ) {
-    switch outcome {
-    case .succeeded:
-      waiter.resume()
-    case .failed(let error):
-      waiter.resume(throwing: error)
-    }
-  }
-
   private func resolveThreadID(threadID: String?, turnID: String?) -> String? {
     if let threadID, turnStates[threadID] != nil {
       return threadID
@@ -1434,11 +1244,13 @@ public actor CodexAppServerClient {
     isInitialized = false
     transportEnded = true
     transportEndError = error
+    publishAccountInvalidation(.connectionClosed)
     lineBuffer.removeAll(keepingCapacity: false)
     failAll(with: error)
     let endedTransport = transport
     Task {
       await endedTransport.terminate()
+      _ = await self.reconnectRuntimeIfIdle()
     }
   }
 
@@ -1469,78 +1281,6 @@ public actor CodexAppServerClient {
       state.waiter?.resume(throwing: error)
     }
 
-    let waiters = loginWaiters.values
-    loginWaiters.removeAll()
-    loginOutcomes.removeAll()
-    let timeoutTasks = loginTimeoutTasks.values
-    loginTimeoutTasks.removeAll()
-    activeLoginIDs.removeAll()
-    ignoredLoginOutcomeIDs.removeAll()
-    ignoredLoginOutcomeOrder.removeAll()
-    for task in timeoutTasks {
-      task.cancel()
-    }
-    for waiter in waiters {
-      waiter.resume(throwing: error)
-    }
-  }
-
-  private func parseAccountStatus(_ value: CodexAppServerJSONValue) -> CodexAppServerAccountStatus {
-    let root = value.objectValue ?? [:]
-    let accountValue = root["account"]
-    let account = accountValue?.objectValue ?? (accountValue == nil ? root : [:])
-    let accountID = firstString(in: account, keys: ["id", "accountId", "accountID"])
-    let accountType = firstString(in: account, keys: ["type", "accountType"])
-    let email = firstString(in: account, keys: ["email", "emailAddress"])
-    let planType = firstString(in: account, keys: ["planType", "plan", "subscription"])
-    let explicitAuthenticated =
-      root["authenticated"]?.boolValue
-      ?? root["isAuthenticated"]?.boolValue
-      ?? account["authenticated"]?.boolValue
-      ?? account["isAuthenticated"]?.boolValue
-
-    let hasAccountData =
-      accountID != nil || email != nil || planType != nil
-      || (accountType != nil && accountType != "apiKey")
-    let isAccountObjectPresent =
-      (accountValue?.objectValue != nil) && !(accountValue?.objectValue?.isEmpty ?? true)
-
-    let authenticated: Bool
-    if let explicitAuthenticated {
-      authenticated = explicitAuthenticated
-    } else if isAccountObjectPresent && hasAccountData {
-      authenticated = true
-    } else if let requiresAuth = root["requiresOpenaiAuth"]?.boolValue
-      ?? root["requiresAuth"]?.boolValue
-    {
-      authenticated = !requiresAuth
-    } else {
-      authenticated = hasAccountData
-    }
-
-    return CodexAppServerAccountStatus(
-      isAuthenticated: authenticated,
-      accountID: accountID,
-      accountType: accountType,
-      email: email,
-      planType: planType
-    )
-  }
-
-  private func parseRateLimits(_ value: CodexAppServerJSONValue) -> CodexAppServerRateLimits {
-    let root = value.objectValue ?? [:]
-    let object = root["rateLimits"]?.objectValue ?? root
-    let primary = parseRateLimitWindow(object["primary"] ?? object["primaryWindow"])
-    let secondary = parseRateLimitWindow(object["secondary"] ?? object["secondaryWindow"])
-    let credits =
-      object["creditsRemaining"]?.doubleValue
-      ?? object["credits"]?.objectValue?["remaining"]?.doubleValue
-    let planType = firstString(in: object, keys: ["planType", "plan"])
-    return CodexAppServerRateLimits(
-      primary: primary,
-      secondary: secondary,
-      creditsRemaining: credits,
-      planType: planType
-    )
+    failAllLogins(with: error)
   }
 }

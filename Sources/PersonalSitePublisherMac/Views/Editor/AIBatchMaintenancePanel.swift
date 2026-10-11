@@ -51,13 +51,15 @@ struct AIBatchMaintenancePanel: View {
           selection
           if let message = maintenance.message {
             Text(message).font(.callout).foregroundStyle(.secondary)
-              .frame(maxWidth: .infinity, alignment: .leading).padding(10)
-              .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 8))
+              .frame(maxWidth: .infinity, alignment: .leading).padding(WorkbenchSpacing.card)
+              .background(
+                WorkbenchBackgroundStyle.control,
+                in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
           }
           queueSummary
           results
         }
-        .padding(20)
+        .padding(WorkbenchSpacing.page)
       }
       .navigationTitle("AI 批量维护")
       .toolbar {
@@ -143,7 +145,7 @@ struct AIBatchMaintenancePanel: View {
         )
         .accessibilityIdentifier("ai-batch-maintenance-create")
       }
-      .padding(4)
+      .padding(WorkbenchSpacing.tight)
     }
   }
 
@@ -190,7 +192,7 @@ struct AIBatchMaintenancePanel: View {
             }
           }
         }
-        .padding(4)
+        .padding(WorkbenchSpacing.tight)
       }
     }
   }
@@ -266,8 +268,10 @@ struct AIBatchMaintenancePanel: View {
         }
       }
     }
-    .padding(10)
-    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 8))
+    .padding(WorkbenchSpacing.card)
+    .background(
+      WorkbenchBackgroundStyle.control,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
   @ViewBuilder private func resultPreview(

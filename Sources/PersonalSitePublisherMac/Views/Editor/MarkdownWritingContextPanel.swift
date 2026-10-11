@@ -30,15 +30,15 @@ struct MarkdownWritingContextPanelContainer<Content: View>: View {
         .help(String(localized: "关闭"))
         .accessibilityLabel("关闭")
       }
-      .padding(.horizontal, 12)
-      .padding(.vertical, 10)
+      .padding(.horizontal, WorkbenchSpacing.card)
+      .padding(.vertical, WorkbenchSpacing.control)
 
       Divider()
 
       ScrollView {
         content
           .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(10)
+          .padding(WorkbenchSpacing.card)
       }
     }
     .frame(minWidth: 360, idealWidth: 460, maxWidth: 520, maxHeight: .infinity)

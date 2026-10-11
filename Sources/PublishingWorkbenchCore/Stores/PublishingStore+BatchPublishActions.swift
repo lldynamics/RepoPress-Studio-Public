@@ -636,9 +636,6 @@ extension PublishingStore {
         onProgress: progressHandler
       )
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
-      remoteRepositoryConflictSession = nil
-      store.setRemoteRepositoryPublishResult(result)
-      store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
       let verifiedItems = publishableItems.map { item in
         var updated = item
         updated.package = item.package.freezingArticleVerification(
@@ -653,19 +650,10 @@ extension PublishingStore {
         result: result
       )
       result.releaseRecordID = releaseRecord.id
-      store.setRemoteRepositoryPublishResult(result)
-      prependReleaseRecord(releaseRecord)
-      finishPublishExecution(operation.id, record: releaseRecord, store: store)
-      if !deferDraftLifecycleMutation {
-        let packages = publishableItems.map(\.package)
-        confirmDirectRemotePublishLifecycle(packages: packages, profile: profile, result: result)
-        if mode == .reviewRequest {
-          markRemotePublishReviewSuccess(packages: packages, profile: profile)
-        }
-      }
-      if mode != .previewBranch {
-        store.recordRemoteRepositoryPublishInAutoSync(result, profileID: profile.id)
-      }
+      let persistence = recordAcceptedRemotePublish(
+        result: result, releaseRecord: releaseRecord, executionID: operation.id,
+        packages: publishableItems.map(\.package), profile: profile,
+        deferDraftLifecycleMutation: deferDraftLifecycleMutation, store: store)
       let adoptedCount = result.automaticallyAdoptedPaths.count
       let adoptedSummary =
         adoptedCount > 0
@@ -681,26 +669,13 @@ extension PublishingStore {
         )
         guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       }
-      let completionFeedback = remotePublishCompletionFeedback(
+      applyRemotePublishCompletion(
         mode: mode,
         operationSummary: operationSummary,
-        deploymentStatus: deploymentStatus
+        deploymentStatus: deploymentStatus,
+        persistence: persistence,
+        store: store
       )
-      setPublishingActionMessage(
-        completionFeedback.message,
-        status: completionFeedback.status
-      )
-      store.save()
-      store.setRemoteRepositoryPublishProgress(
-        .init(
-          stage: .completed,
-          progress: 1,
-          message: remotePublishCompletedProgressMessage(
-            mode: mode,
-            deploymentStatus: deploymentStatus
-          ),
-          detail: completionFeedback.message
-        ))
       return result
     } catch {
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }

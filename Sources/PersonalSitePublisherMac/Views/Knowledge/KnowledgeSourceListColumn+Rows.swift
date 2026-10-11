@@ -9,8 +9,8 @@ extension KnowledgeSourceListColumn {
       searchResultList
     } else if listPresentation.documentRows.isEmpty {
       emptyFolderState
-      .padding(12)
-      .frame(maxHeight: .infinity, alignment: .top)
+        .padding(WorkbenchSpacing.card)
+        .frame(maxHeight: .infinity, alignment: .top)
     } else {
       VStack(spacing: 0) {
         if selectedDocumentIDs.count > 1 {
@@ -202,7 +202,7 @@ extension KnowledgeSourceListColumn {
           .foregroundStyle(.secondary)
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-      .padding(.top, 28)
+      .padding(.top, WorkbenchSpacing.spacious + WorkbenchSpacing.tight)
       .accessibilityElement(children: .combine)
       .accessibilityLabel("正在搜索资料全文和本地语义索引")
     } else if listPresentation.searchResults.isEmpty {
@@ -218,7 +218,7 @@ extension KnowledgeSourceListColumn {
           knowledge.updateSearchText("")
         }
       )
-      .padding(12)
+      .padding(WorkbenchSpacing.card)
       .frame(maxHeight: .infinity, alignment: .top)
     } else {
       List(selection: searchResultSelection) {

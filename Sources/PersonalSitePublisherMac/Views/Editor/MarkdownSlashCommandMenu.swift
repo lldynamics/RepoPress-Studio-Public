@@ -50,8 +50,8 @@ struct MarkdownSlashCommandMenu: View {
             .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
-        .padding(.horizontal, 10)
+        .padding(.vertical, WorkbenchSpacing.content)
+        .padding(.horizontal, WorkbenchSpacing.control)
       } else {
         ScrollViewReader { proxy in
           ScrollView {
@@ -63,7 +63,7 @@ struct MarkdownSlashCommandMenu: View {
                 } label: {
                   HStack(spacing: 10) {
                     Image(systemName: item.systemImage)
-                      .font(.system(size: 13, weight: .medium))
+                      .font(.system(size: WorkbenchIconSize.inline, weight: .medium))
                       .frame(width: 24, height: 24)
                       .foregroundStyle(isSelected ? workbenchAccentColor : Color.secondary)
 
@@ -79,10 +79,10 @@ struct MarkdownSlashCommandMenu: View {
 
                     Spacer()
                   }
-                  .padding(.horizontal, 8)
-                  .padding(.vertical, 5)
+                  .padding(.horizontal, WorkbenchSpacing.control)
+                  .padding(.vertical, WorkbenchSpacing.tight)
                   .background(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
                       .fill(isSelected ? Color.primary.opacity(0.08) : Color.clear)
                   )
                 }
@@ -94,7 +94,7 @@ struct MarkdownSlashCommandMenu: View {
                 .id(index)
               }
             }
-            .padding(4)
+            .padding(WorkbenchSpacing.tight)
           }
           .frame(maxHeight: 240)
           .onChange(of: selectedIndex) { _, index in
@@ -107,10 +107,10 @@ struct MarkdownSlashCommandMenu: View {
     .frame(minWidth: 220, idealWidth: 250, maxWidth: 280)
     .background(
       .thinMaterial,
-      in: RoundedRectangle(cornerRadius: 10)
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel)
     )
     .overlay(
-      RoundedRectangle(cornerRadius: 10)
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel)
         .stroke(Color.primary.opacity(0.12), lineWidth: 1)
     )
     .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 4)

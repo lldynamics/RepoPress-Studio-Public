@@ -94,8 +94,8 @@ struct SettingsConfigurationHealthCard: View {
         Label(LocalizedStringKey(overallStatusText), systemImage: overallStatusImage)
           .font(.caption.weight(.semibold))
           .foregroundStyle(overallStatusColor)
-          .padding(.horizontal, 10)
-          .padding(.vertical, 5)
+          .padding(.horizontal, WorkbenchSpacing.control)
+          .padding(.vertical, WorkbenchSpacing.tight)
           .background(
             overallStatusColor.opacity(isComplete ? 0 : WorkbenchOpacity.noticeBackground),
             in: Capsule()

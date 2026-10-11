@@ -518,7 +518,9 @@ extension MacMarkdownComposerView {
         attachmentIDs: Set(insertedImageMetadataDrafts.map(\.id))
       )
     else { return }
-    guard store.focusImageInspector(draftID: draft.id, attachmentID: attachmentID) else {
+    guard
+      store.focusImageInspector(draftID: draft.id, attachmentID: attachmentID, section: .writing)
+    else {
       selectionActionMessage = "找不到刚插入的图片，请刷新图片详情栏后重试。"
       return
     }

@@ -276,6 +276,7 @@ private struct ContentHealthProfileFingerprintSnapshot: Encodable {
   let includeDraftFlagInFrontMatter: Bool
   let includeCoverInFrontMatter: Bool
   let slugValidationRule: SiteSlugValidationRule
+  let contentHealthSuppressions: [ContentHealthSuppression]
 
   init(profile: SiteProfile) {
     id = profile.id
@@ -292,6 +293,7 @@ private struct ContentHealthProfileFingerprintSnapshot: Encodable {
     includeDraftFlagInFrontMatter = profile.includeDraftFlagInFrontMatter
     includeCoverInFrontMatter = profile.includeCoverInFrontMatter
     slugValidationRule = profile.slugValidationRule
+    contentHealthSuppressions = (profile.contentHealthSuppressions ?? []).sorted { $0.id < $1.id }
   }
 }
 

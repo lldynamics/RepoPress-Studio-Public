@@ -311,6 +311,159 @@ final class WorkbenchThumbnailViewTests: XCTestCase {
     XCTAssertEqual(reloadedSecondCallCount, 2)
   }
 
+  func testCacheRetentionReleasesResultsAndResumesCachingAfterRecovery() async throws {
+    let image = try makeDecodedImage()
+    let byteCost = image.value.bytesPerRow * image.value.height
+    let decoder = CountingThumbnailDecoder(image: image)
+    let cache = WorkbenchThumbnailCache(decoder: { request in await decoder.decode(request) })
+    let request = request(named: "retention-recovery")
+
+    let initialResult = await cache.image(for: request)
+    let initialEntries = await cache.cachedEntryCount
+    let initialBytes = await cache.cachedByteCount
+    XCTAssertNotNil(initialResult)
+    XCTAssertEqual(initialEntries, 1)
+    XCTAssertEqual(initialBytes, byteCost)
+
+    await cache.setCacheRetentionEnabled(false, generation: 1)
+    await cache.setCacheRetentionEnabled(false, generation: 1)
+    let releasedEntries = await cache.cachedEntryCount
+    let releasedBytes = await cache.cachedByteCount
+    XCTAssertEqual(releasedEntries, 0)
+    XCTAssertEqual(releasedBytes, 0)
+
+    let firstUncachedResult = await cache.image(for: request)
+    let secondUncachedResult = await cache.image(for: request)
+    let uncachedEntries = await cache.cachedEntryCount
+    let uncachedBytes = await cache.cachedByteCount
+    let disabledDecodeCount = await decoder.callCount(for: request)
+    XCTAssertNotNil(firstUncachedResult)
+    XCTAssertNotNil(secondUncachedResult)
+    XCTAssertEqual(uncachedEntries, 0)
+    XCTAssertEqual(uncachedBytes, 0)
+    XCTAssertEqual(disabledDecodeCount, 3)
+
+    await cache.setCacheRetentionEnabled(true, generation: 2)
+    let recoveredResult = await cache.image(for: request)
+    await cache.setCacheRetentionEnabled(true, generation: 2)
+    let cacheHitResult = await cache.image(for: request)
+    let recoveredEntries = await cache.cachedEntryCount
+    let recoveredBytes = await cache.cachedByteCount
+    let recoveredDecodeCount = await decoder.callCount(for: request)
+    XCTAssertNotNil(recoveredResult)
+    XCTAssertNotNil(cacheHitResult)
+    XCTAssertEqual(recoveredEntries, 1)
+    XCTAssertEqual(recoveredBytes, byteCost)
+    XCTAssertEqual(recoveredDecodeCount, 4)
+  }
+
+  func testCacheRetentionIgnoresOlderPressureGenerations() async throws {
+    let image = try makeDecodedImage()
+    let decoder = CountingThumbnailDecoder(image: image)
+    let cache = WorkbenchThumbnailCache(decoder: { request in await decoder.decode(request) })
+    let request = request(named: "retention-generation")
+
+    await cache.setCacheRetentionEnabled(false, generation: 2)
+    await cache.setCacheRetentionEnabled(true, generation: 1)
+    let disabledResult = await cache.image(for: request)
+    let disabledEntries = await cache.cachedEntryCount
+    let disabledBytes = await cache.cachedByteCount
+    XCTAssertNotNil(disabledResult)
+    XCTAssertEqual(disabledEntries, 0)
+    XCTAssertEqual(disabledBytes, 0)
+
+    await cache.setCacheRetentionEnabled(true, generation: 3)
+    let recoveredResult = await cache.image(for: request)
+    await cache.setCacheRetentionEnabled(false, generation: 2)
+    let cacheHitResult = await cache.image(for: request)
+    let retainedEntries = await cache.cachedEntryCount
+    let retainedBytes = await cache.cachedByteCount
+    let decodeCount = await decoder.callCount(for: request)
+    XCTAssertNotNil(recoveredResult)
+    XCTAssertNotNil(cacheHitResult)
+    XCTAssertEqual(retainedEntries, 1)
+    XCTAssertEqual(retainedBytes, image.value.bytesPerRow * image.value.height)
+    XCTAssertEqual(decodeCount, 2)
+  }
+
+  func testCacheRetentionPressureKeepsActiveSharedAndQueuedDecodesAlive() async throws {
+    let image = try makeDecodedImage()
+    let decoder = SuspendedThumbnailDecoder()
+    let cache = WorkbenchThumbnailCache(
+      maximumConcurrentDecodes: 1,
+      decoder: { request in await decoder.decode(request) }
+    )
+    let warmed = request(named: "pressure-warmed")
+    let active = request(named: "pressure-active")
+    let queued = request(named: "pressure-queued")
+
+    let warmTask = Task { await cache.image(for: warmed) }
+    defer { warmTask.cancel() }
+    let warmDidStart = await waitUntil { await decoder.startedCount == 1 }
+    XCTAssertTrue(warmDidStart)
+    guard warmDidStart else { return }
+    await decoder.release(warmed, with: image)
+    let warmResult = await warmTask.value
+    let warmEntries = await cache.cachedEntryCount
+    XCTAssertNotNil(warmResult)
+    XCTAssertEqual(warmEntries, 1)
+
+    let activeTask = Task { await cache.image(for: active) }
+    defer { activeTask.cancel() }
+    let activeDidStart = await waitUntil { await decoder.startedCount == 2 }
+    XCTAssertTrue(activeDidStart)
+    guard activeDidStart else { return }
+    let sharedTask = Task { await cache.image(for: active) }
+    let queuedTask = Task { await cache.image(for: queued, priority: .prefetch) }
+    defer {
+      sharedTask.cancel()
+      queuedTask.cancel()
+    }
+    let requestsArrived = await waitUntil {
+      let subscribers = await cache.subscriberCount
+      let queuedCount = await cache.queuedDecodeCount
+      return subscribers == 3 && queuedCount == 1
+    }
+    XCTAssertTrue(requestsArrived)
+    guard requestsArrived else { return }
+
+    await cache.setCacheRetentionEnabled(false, generation: 1)
+    await cache.setCacheRetentionEnabled(false, generation: 2)
+    let releasedEntries = await cache.cachedEntryCount
+    let releasedBytes = await cache.cachedByteCount
+    let activeCount = await cache.currentDecodeCount
+    let queuedCount = await cache.queuedDecodeCount
+    let subscriberCount = await cache.subscriberCount
+    let pressureCancellations = await decoder.cancellationCount
+    XCTAssertEqual(releasedEntries, 0)
+    XCTAssertEqual(releasedBytes, 0)
+    XCTAssertEqual(activeCount, 1)
+    XCTAssertEqual(queuedCount, 1)
+    XCTAssertEqual(subscriberCount, 3)
+    XCTAssertEqual(pressureCancellations, 0)
+    guard activeCount == 1, queuedCount == 1, subscriberCount == 3 else { return }
+
+    await decoder.release(active, with: image)
+    let activeResult = await activeTask.value
+    let sharedResult = await sharedTask.value
+    let queuedDidStart = await waitUntil { await decoder.startedCount == 3 }
+    XCTAssertNotNil(activeResult)
+    XCTAssertNotNil(sharedResult)
+    XCTAssertTrue(queuedDidStart)
+    guard queuedDidStart else { return }
+    await decoder.release(queued, with: image)
+    let queuedResult = await queuedTask.value
+    let finalEntries = await cache.cachedEntryCount
+    let finalBytes = await cache.cachedByteCount
+    let finalCancellations = await decoder.cancellationCount
+    let maximumActiveCount = await decoder.maximumActiveCount
+    XCTAssertNotNil(queuedResult)
+    XCTAssertEqual(finalEntries, 0)
+    XCTAssertEqual(finalBytes, 0)
+    XCTAssertEqual(finalCancellations, 0)
+    XCTAssertEqual(maximumActiveCount, 1)
+  }
+
   private func request(named name: String) -> WorkbenchThumbnailRequest {
     WorkbenchThumbnailRequest(
       fileURL: URL(fileURLWithPath: "/tmp/workbench-thumbnail-cache-\(name).png"),

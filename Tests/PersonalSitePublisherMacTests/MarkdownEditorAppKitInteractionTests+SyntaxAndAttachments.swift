@@ -1319,7 +1319,7 @@ final class MarkdownEditorAppKitInteractionSyntaxAndAttachmentTests:
         effectiveRange: nil
       ) as? NSParagraphStyle)?.minimumLineHeight
     )
-    XCTAssertEqual(formulaLineHeight, 64, accuracy: 0.5)
+    XCTAssertEqual(formulaLineHeight, 24, accuracy: 0.5)
     XCTAssertEqual(imageLineHeight, 180, accuracy: 0.5)
 
     // This is the external-source/cache invalidation boundary used before a
@@ -1342,6 +1342,91 @@ final class MarkdownEditorAppKitInteractionSyntaxAndAttachmentTests:
       ) as? NSParagraphStyle)?.minimumLineHeight ?? .greatestFiniteMagnitude,
       180
     )
+  }
+
+  func testDisplayFormulaFitsItsActualTextKitReservationWithoutMultiplyingFenceHeight() throws {
+    let cases: [(source: String, formula: String, contentLines: Int, minimumLineHeight: CGFloat)] =
+      [
+        ("$$E = mc^2$$", "E = mc^2", 1, 44),
+        ("$$\nE = mc^2\n$$", "E = mc^2", 1, 24),
+        ("$$\na + b\nc + d\ne + f\n$$", "a + b\nc + d\ne + f", 3, 24),
+      ]
+    for fixture in cases {
+      let source = fixture.source + "\n\nEOF\n"
+      let coordinator = makeCoordinator(source: source, bodyMarkdown: source, bodyUTF16Offset: 0)
+      let textView = DroppableMarkdownTextView.makeTextKit2(
+        containerSize: NSSize(width: 320, height: 480)
+      )
+      textView.string = source
+      let fullRange = NSRange(location: 0, length: source.utf16.count)
+      textView.textStorage?.setAttributes(
+        coordinator.syntaxHighlightPalette.defaultAttributes, range: fullRange)
+      let selection = NSRange(location: source.utf16.count, length: 0)
+      textView.setSelectedRange(selection)
+
+      coordinator.applyInlineAttachmentDrawings(in: textView, applicationRange: fullRange)
+
+      let drawing = try XCTUnwrap(coordinator.inlineAttachmentDrawingDescriptors["attachment:0"])
+      let sourceRect = try XCTUnwrap(
+        MarkdownTextKit2RangeAdapter.rect(for: drawing.documentRange, in: textView))
+      let followingRect = try XCTUnwrap(
+        MarkdownTextKit2RangeAdapter.rect(
+          for: (source as NSString).range(of: "EOF"), in: textView))
+      let presentation = MarkdownInlineFormulaPresentation.attributedString(
+        for: fixture.formula, fontSize: 19)
+      let presentationSize = MarkdownInlineFormulaPresentation.size(
+        for: fixture.formula, displayMode: .display, fontSize: 19,
+        availableWidth: drawing.frame.width)
+      XCTAssertEqual(
+        presentation.string.components(separatedBy: "\n").count, fixture.contentLines)
+      let storage = try XCTUnwrap(textView.textStorage)
+      storage.enumerateAttribute(.paragraphStyle, in: drawing.documentRange) { value, _, _ in
+        XCTAssertEqual((value as? NSParagraphStyle)?.minimumLineHeight, fixture.minimumLineHeight)
+      }
+      if fixture.contentLines == 1 {
+        // The compactness requirement is for a single rendered line. A
+        // multiline formula must reserve all of its source/content lines.
+        XCTAssertLessThan(drawing.frame.height, 100, fixture.source)
+      }
+      XCTAssertGreaterThanOrEqual(drawing.frame.height, presentationSize.height, fixture.source)
+      XCTAssertLessThanOrEqual(drawing.frame.height, sourceRect.height, fixture.source)
+      XCTAssertLessThanOrEqual(drawing.frame.maxY, followingRect.minY, fixture.source)
+      XCTAssertEqual(textView.string, source)
+      XCTAssertEqual(textView.selectedRange(), selection)
+    }
+  }
+
+  func testLongDisplayFormulaReservesAllWrappedContentBeforeFollowingText() throws {
+    let formulaSource = String(repeating: #"\alpha + x^2 + "#, count: 40) + "z"
+    let formula = "$$\n" + formulaSource + "\n$$"
+    let source = formula + "\n\nEOF"
+    let coordinator = makeCoordinator(source: source, bodyMarkdown: source, bodyUTF16Offset: 0)
+    let textView = DroppableMarkdownTextView.makeTextKit2(
+      frame: NSRect(x: 0, y: 0, width: 240, height: 480),
+      containerSize: NSSize(width: 240, height: CGFloat.greatestFiniteMagnitude)
+    )
+    textView.textContainer?.widthTracksTextView = false
+    textView.textContainer?.heightTracksTextView = false
+    textView.string = source
+    let fullRange = NSRange(location: 0, length: source.utf16.count)
+    textView.textStorage?.setAttributes(
+      coordinator.syntaxHighlightPalette.defaultAttributes, range: fullRange)
+    textView.setSelectedRange(NSRange(location: source.utf16.count, length: 0))
+
+    coordinator.applyInlineAttachmentDrawings(in: textView, applicationRange: fullRange)
+
+    let drawing = try XCTUnwrap(coordinator.inlineAttachmentDrawingDescriptors["attachment:0"])
+    let followingRect = try XCTUnwrap(
+      MarkdownTextKit2RangeAdapter.rect(
+        for: (source as NSString).range(of: "EOF"), in: textView))
+    let presentationSize = MarkdownInlineFormulaPresentation.size(
+      for: formulaSource, displayMode: .display, fontSize: 19,
+      availableWidth: drawing.frame.width
+    )
+    XCTAssertGreaterThan(presentationSize.height, 100)
+    XCTAssertGreaterThanOrEqual(drawing.frame.height, presentationSize.height)
+    XCTAssertLessThanOrEqual(drawing.frame.maxY, followingRect.minY)
+    XCTAssertEqual(textView.string, source)
   }
 
   func testInlineAttachmentGeometryRelocatesBeforeItAndClearsWhenItIsReplaced() throws {
@@ -1412,7 +1497,7 @@ final class MarkdownEditorAppKitInteractionSyntaxAndAttachmentTests:
         effectiveRange: nil
       ) as? NSParagraphStyle)?.minimumLineHeight
     )
-    XCTAssertEqual(shiftedLineHeight, 64, accuracy: 0.5)
+    XCTAssertEqual(shiftedLineHeight, 24, accuracy: 0.5)
 
     textView.replaceCharacters(in: shiftedFormulaRange, with: "plain")
     let deletedSource = (shiftedSource as NSString).replacingCharacters(
@@ -1450,7 +1535,7 @@ final class MarkdownEditorAppKitInteractionSyntaxAndAttachmentTests:
         effectiveRange: nil
       ) as? NSParagraphStyle)?.minimumLineHeight
     )
-    XCTAssertEqual(retainedSecondLineHeight, 64, accuracy: 0.5)
+    XCTAssertEqual(retainedSecondLineHeight, 24, accuracy: 0.5)
     let replacementRange = (deletedSource as NSString).range(of: "plain")
     XCTAssertLessThan(
       (textView.textStorage?.attribute(
@@ -1638,7 +1723,7 @@ final class MarkdownEditorAppKitInteractionSyntaxAndAttachmentTests:
         effectiveRange: nil
       ) as? NSParagraphStyle)?.minimumLineHeight
     )
-    XCTAssertEqual(shiftedLineHeight, 64, accuracy: 0.5)
+    XCTAssertEqual(shiftedLineHeight, 24, accuracy: 0.5)
   }
 
   func testImageCompletionDiscardsAnAttachmentMovedByAnEdit() async throws {
@@ -1867,7 +1952,7 @@ final class MarkdownEditorAppKitInteractionSyntaxAndAttachmentTests:
 
     XCTAssertEqual(coordinator.inlineAttachmentGeometryReservations.count, 2)
     XCTAssertTrue(coordinator.inlineAttachmentDrawingDescriptors.isEmpty)
-    for (marker, expectedHeight) in [("$$\nE = mc^2\n$$", 64.0), ("![cover](cover.png)", 180.0)] {
+    for (marker, expectedHeight) in [("$$\nE = mc^2\n$$", 24.0), ("![cover](cover.png)", 180.0)] {
       let range = (source as NSString).range(of: marker)
       let style = try XCTUnwrap(
         textView.textStorage?.attribute(
@@ -2221,6 +2306,78 @@ final class MarkdownEditorAppKitInteractionSyntaxAndAttachmentTests:
     XCTAssertEqual(count, 0)
     XCTAssertEqual(cachedByteCount, 0)
     XCTAssertFalse(containsFixture)
+  }
+
+  func testInlineAttachmentImageCacheRetentionReleasesAndRecovers() async throws {
+    let fixtureURL = try makeInlineAttachmentImageFixture(width: 64, height: 32)
+    defer { try? FileManager.default.removeItem(at: fixtureURL) }
+    let cache = MarkdownInlineAttachmentImageCache(decodedByteBudget: 1 * 1_024 * 1_024)
+
+    let initialResult = await cache.image(at: fixtureURL, maximumPixelSize: 128)
+    let initial = try XCTUnwrap(initialResult)
+    let initialCount = await cache.count
+    let initialBytes = await cache.cachedDecodedByteCount
+    XCTAssertEqual(initialCount, 1)
+    XCTAssertEqual(initialBytes, initial.decodedByteCount)
+
+    await cache.setCacheRetentionEnabled(false, generation: 1)
+    await cache.setCacheRetentionEnabled(false, generation: 1)
+    let releasedCount = await cache.count
+    let releasedBytes = await cache.cachedDecodedByteCount
+    let containsReleasedImage = await cache.containsCachedImage(at: fixtureURL)
+    XCTAssertEqual(releasedCount, 0)
+    XCTAssertEqual(releasedBytes, 0)
+    XCTAssertFalse(containsReleasedImage)
+
+    let firstUncachedResult = await cache.image(at: fixtureURL, maximumPixelSize: 128)
+    let secondUncachedResult = await cache.image(at: fixtureURL, maximumPixelSize: 128)
+    let firstUncached = try XCTUnwrap(firstUncachedResult)
+    let secondUncached = try XCTUnwrap(secondUncachedResult)
+    let disabledCount = await cache.count
+    let disabledBytes = await cache.cachedDecodedByteCount
+    let containsDisabledImage = await cache.containsCachedImage(at: fixtureURL)
+    XCTAssertEqual(firstUncached.image.width, initial.image.width)
+    XCTAssertEqual(secondUncached.decodedByteCount, initial.decodedByteCount)
+    XCTAssertEqual(disabledCount, 0)
+    XCTAssertEqual(disabledBytes, 0)
+    XCTAssertFalse(containsDisabledImage)
+
+    await cache.setCacheRetentionEnabled(true, generation: 2)
+    let recoveredResult = await cache.image(at: fixtureURL, maximumPixelSize: 128)
+    let recovered = try XCTUnwrap(recoveredResult)
+    await cache.setCacheRetentionEnabled(true, generation: 2)
+    let recoveredCount = await cache.count
+    let recoveredBytes = await cache.cachedDecodedByteCount
+    let containsRecoveredImage = await cache.containsCachedImage(at: fixtureURL)
+    XCTAssertEqual(recoveredCount, 1)
+    XCTAssertEqual(recoveredBytes, recovered.decodedByteCount)
+    XCTAssertTrue(containsRecoveredImage)
+  }
+
+  func testInlineAttachmentImageCacheRetentionIgnoresOlderGenerations() async throws {
+    let fixtureURL = try makeInlineAttachmentImageFixture(width: 64, height: 32)
+    defer { try? FileManager.default.removeItem(at: fixtureURL) }
+    let cache = MarkdownInlineAttachmentImageCache(decodedByteBudget: 1 * 1_024 * 1_024)
+
+    await cache.setCacheRetentionEnabled(false, generation: 2)
+    await cache.setCacheRetentionEnabled(true, generation: 1)
+    let disabledResult = await cache.image(at: fixtureURL, maximumPixelSize: 128)
+    let disabledCount = await cache.count
+    let disabledBytes = await cache.cachedDecodedByteCount
+    XCTAssertNotNil(disabledResult)
+    XCTAssertEqual(disabledCount, 0)
+    XCTAssertEqual(disabledBytes, 0)
+
+    await cache.setCacheRetentionEnabled(true, generation: 3)
+    let recoveredResult = await cache.image(at: fixtureURL, maximumPixelSize: 128)
+    let recovered = try XCTUnwrap(recoveredResult)
+    await cache.setCacheRetentionEnabled(false, generation: 2)
+    let retainedCount = await cache.count
+    let retainedBytes = await cache.cachedDecodedByteCount
+    let containsRetainedImage = await cache.containsCachedImage(at: fixtureURL)
+    XCTAssertEqual(retainedCount, 1)
+    XCTAssertEqual(retainedBytes, recovered.decodedByteCount)
+    XCTAssertTrue(containsRetainedImage)
   }
 
   private func makeInlineAttachmentImageFixture(width: Int, height: Int) throws -> URL {

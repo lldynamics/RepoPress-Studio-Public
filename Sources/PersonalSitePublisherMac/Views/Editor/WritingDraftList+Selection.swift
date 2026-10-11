@@ -13,17 +13,6 @@ extension WritingDraftColumn {
     )
   }
 
-  var unpublishConfirmationPresented: Binding<Bool> {
-    Binding(
-      get: { draftPendingUnpublish != nil },
-      set: { isPresented in
-        if !isPresented {
-          draftPendingUnpublish = nil
-        }
-      }
-    )
-  }
-
   var skeletonPlaceholderCount: Int {
     8
   }
@@ -68,7 +57,7 @@ extension WritingDraftColumn {
         systemName: draftListCache.sourceDraftIDs.isEmpty
           ? "doc.badge.plus" : "doc.text.magnifyingglass"
       )
-      .font(.system(size: 28))
+      .font(.system(size: WorkbenchIconSize.section))
       .foregroundStyle(.secondary)
 
       Text(draftListEmptyTitle)
@@ -97,7 +86,11 @@ extension WritingDraftColumn {
       }
     }
     .frame(maxWidth: .infinity, minHeight: 220)
-    .listRowInsets(EdgeInsets(top: 20, leading: 16, bottom: 20, trailing: 16))
+    .listRowInsets(
+      EdgeInsets(
+        top: WorkbenchSpacing.page, leading: WorkbenchSpacing.content,
+        bottom: WorkbenchSpacing.page, trailing: WorkbenchSpacing.content)
+    )
     .listRowSeparator(.hidden)
     .listRowBackground(Color.clear)
     .accessibilityElement(children: .contain)

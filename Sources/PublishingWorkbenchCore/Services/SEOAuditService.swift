@@ -244,7 +244,8 @@ public struct SEOAuditService: Sendable {
           severity: .warning,
           title: CoreL10n.text("正文 H1 与标题重复"),
           message: CoreL10n.text(
-            "当前主题可能会把 Front Matter title 渲染为 H1，页面上可能出现两个相同的主标题。可在此站点的 SEO 摘要中关闭这条提示。"),
+            "当前主题可能会把 Front Matter title 渲染为 H1，页面上可能出现两个相同的主标题。可在“设置 → 当前站点的 AI 与写作偏好 → 写作检查”中关闭这条提示。"
+          ),
           field: "body"
         )
       )

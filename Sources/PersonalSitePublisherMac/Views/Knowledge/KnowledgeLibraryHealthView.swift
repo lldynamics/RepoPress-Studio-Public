@@ -24,7 +24,7 @@ struct KnowledgeLibraryHealthView: View {
         Button("完成") { dismiss() }
           .keyboardShortcut(.cancelAction)
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
 
       Divider()
 
@@ -63,7 +63,7 @@ struct KnowledgeLibraryHealthView: View {
             )
           }
         }
-        .padding(20)
+        .padding(WorkbenchSpacing.page)
         .frame(maxWidth: 880, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .top)
       }
@@ -91,12 +91,18 @@ struct KnowledgeLibraryHealthView: View {
       HStack(spacing: 10) {
         metric("资料", value: health.documentCount, systemImage: "books.vertical")
         metric("检索片段", value: health.indexedChunkCount, systemImage: "text.quote")
-        metric("旧版资料", value: health.outdatedParserDocumentCount, systemImage: "clock.arrow.circlepath")
-        metric("低质量片段", value: health.lowQualityChunkCount, systemImage: "line.3.horizontal.decrease.circle")
+        metric(
+          "旧版资料", value: health.outdatedParserDocumentCount, systemImage: "clock.arrow.circlepath")
+        metric(
+          "低质量片段", value: health.lowQualityChunkCount,
+          systemImage: "line.3.horizontal.decrease.circle")
       }
     }
-    .padding(15)
-    .background(Color.secondary.opacity(0.055), in: RoundedRectangle(cornerRadius: 11))
+    .padding(WorkbenchSpacing.content)
+    .background(
+      Color.secondary.opacity(0.055),
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel)
+    )
     .accessibilityElement(children: .contain)
   }
 
@@ -169,9 +175,11 @@ struct KnowledgeLibraryHealthView: View {
           .font(.callout.weight(.semibold))
           .workbenchTruncatedIdentity(documentTitle)
         Spacer()
-        Text("v\(preview.currentRevision.parserVersion) → v\(KnowledgeLibraryService.parserVersion)")
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
+        Text(
+          "v\(preview.currentRevision.parserVersion) → v\(KnowledgeLibraryService.parserVersion)"
+        )
+        .font(.caption.monospaced())
+        .foregroundStyle(.secondary)
       }
       if preview.difference.hasChanges {
         HStack(spacing: 6) {
@@ -179,7 +187,7 @@ struct KnowledgeLibraryHealthView: View {
             Text("+\(preview.difference.addedLineCount)")
               .font(.workbenchMetadata.monospacedDigit().weight(.semibold))
               .foregroundStyle(WorkbenchTheme.success)
-              .padding(.horizontal, 6)
+              .padding(.horizontal, WorkbenchSpacing.icon)
               .padding(.vertical, 2)
               .background(WorkbenchTheme.success.opacity(0.12), in: Capsule())
           }
@@ -187,7 +195,7 @@ struct KnowledgeLibraryHealthView: View {
             Text("−\(preview.difference.removedLineCount)")
               .font(.workbenchMetadata.monospacedDigit().weight(.semibold))
               .foregroundStyle(WorkbenchTheme.risk)
-              .padding(.horizontal, 6)
+              .padding(.horizontal, WorkbenchSpacing.icon)
               .padding(.vertical, 2)
               .background(WorkbenchTheme.risk.opacity(0.12), in: Capsule())
           }
@@ -206,8 +214,10 @@ struct KnowledgeLibraryHealthView: View {
           .foregroundStyle(.tertiary)
       }
     }
-    .padding(11)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: 9))
+    .padding(WorkbenchSpacing.card)
+    .background(
+      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
     .accessibilityElement(children: .combine)
   }
 

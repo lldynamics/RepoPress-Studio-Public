@@ -39,7 +39,7 @@ struct RemoteRepositoryConflictResolverView: View {
             quickChoices(item)
             baseSection(item)
           }
-          .padding(16)
+          .padding(WorkbenchSpacing.content)
         }
         Divider()
         footer(item)
@@ -90,7 +90,7 @@ struct RemoteRepositoryConflictResolverView: View {
         .keyboardShortcut(.cancelAction)
         .disabled(isResolving)
     }
-    .padding(16)
+    .padding(WorkbenchSpacing.content)
   }
 
   private var selectedItem: RemoteRepositoryConflictItem? {
@@ -264,7 +264,7 @@ struct RemoteRepositoryConflictResolverView: View {
           .font(.system(.body, design: .monospaced))
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .topLeading)
-          .padding(8)
+          .padding(WorkbenchSpacing.control)
       }
       .frame(minHeight: 100, maxHeight: 220)
       .background(
@@ -300,7 +300,7 @@ struct RemoteRepositoryConflictResolverView: View {
       .keyboardShortcut(.return, modifiers: [.command])
       .accessibilityIdentifier("remote-conflict-apply-all")
     }
-    .padding(16)
+    .padding(WorkbenchSpacing.content)
   }
 
   private var transactionActionTitle: String {
@@ -373,7 +373,7 @@ struct RemoteRepositoryConflictResolverView: View {
           .font(.system(.body, design: .monospaced))
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .topLeading)
-          .padding(8)
+          .padding(WorkbenchSpacing.control)
       }
       .frame(minHeight: 320)
       .background(

@@ -588,3 +588,691 @@ private actor ReconnectPendingGate {
   func isPending() -> Bool { pending }
   func release() { pending = false }
 }
+
+@MainActor
+final class CodexAccountLoginCoordinatorTests: XCTestCase {
+  private let authenticated = CodexAppServerAccountStatus(
+    isAuthenticated: true, accountID: "fixture", accountType: "chatgpt")
+
+  func testOnlyOneOwnerCanStartAnAccountOperation() async {
+    let service = ControlledAccountLoginService()
+    var refreshed = false
+    let account = authenticated
+    let coordinator = CodexAccountLoginCoordinator(
+      service: service, accountDidChange: { refreshed = true }, accountStatus: { account })
+    let owner = UUID()
+    XCTAssertTrue(start(coordinator, owner: owner))
+    XCTAssertFalse(start(coordinator, owner: UUID()))
+    XCTAssertFalse(coordinator.logout(owner: UUID()))
+    let waiting = await service.waitUntilWaiting()
+    XCTAssertTrue(waiting)
+    coordinator.cancelLogin(owner: UUID())
+    XCTAssertEqual(coordinator.phase, .waiting)
+    XCTAssertEqual(coordinator.ownerID, owner)
+    await service.completeWait()
+    await coordinator.waitForCurrentOperation()
+    XCTAssertTrue(refreshed)
+    XCTAssertEqual(coordinator.completion?.ownerID, owner)
+    XCTAssertEqual(coordinator.completion?.result, .loggedIn)
+  }
+
+  func testOwnerCancellationWaitsForLateTaskBeforeAdmittingReplacement() async {
+    let service = ControlledAccountLoginService()
+    let account = authenticated
+    let coordinator = CodexAccountLoginCoordinator(
+      service: service, accountDidChange: {}, accountStatus: { account })
+    let first = UUID()
+    XCTAssertTrue(start(coordinator, owner: first))
+    let waiting = await service.waitUntilWaiting()
+    XCTAssertTrue(waiting)
+    let originalOperation = coordinator.operationID
+    coordinator.cancelLogin(owner: first)
+    XCTAssertEqual(coordinator.phase, .cancelling)
+    XCTAssertFalse(start(coordinator, owner: UUID()))
+    await service.completeWait()
+    await coordinator.waitForCurrentOperation()
+    XCTAssertNil(coordinator.completion)
+    XCTAssertNil(coordinator.deviceCode)
+    XCTAssertEqual(coordinator.phase, .idle)
+    let cancellations = await service.cancellationCount
+    XCTAssertEqual(cancellations, 1)
+    let second = UUID()
+    XCTAssertTrue(start(coordinator, owner: second))
+    XCTAssertNotEqual(coordinator.operationID, originalOperation)
+    let secondWaiting = await service.waitUntilWaiting()
+    XCTAssertTrue(secondWaiting)
+    await service.completeWait()
+    await coordinator.waitForCurrentOperation()
+    XCTAssertEqual(coordinator.completion?.ownerID, second)
+    XCTAssertEqual(coordinator.phase, .succeeded)
+  }
+
+  func testBrowserOpenFailureCancelsTheSessionWithoutWaiting() async {
+    let service = ControlledAccountLoginService()
+    let coordinator = CodexAccountLoginCoordinator(
+      service: service, accountDidChange: {}, accountStatus: { nil })
+    XCTAssertTrue(start(coordinator, owner: UUID(), opened: false))
+    await coordinator.waitForCurrentOperation()
+    XCTAssertEqual(coordinator.phase, .failed)
+    XCTAssertTrue(coordinator.isError)
+    XCTAssertNil(coordinator.completion)
+    let cancellations = await service.cancellationCount
+    let waits = await service.waitCount
+    XCTAssertEqual(cancellations, 1)
+    XCTAssertEqual(waits, 0)
+  }
+
+  func testOwnerCancellationDuringBrowserFailureCleanupDoesNotBecomeFailure() async {
+    let service = ControlledAccountLoginService(holdCancellation: true)
+    let coordinator = CodexAccountLoginCoordinator(
+      service: service, accountDidChange: {}, accountStatus: { nil })
+    let owner = UUID()
+    XCTAssertTrue(start(coordinator, owner: owner, opened: false))
+    let cancelling = await service.waitUntilCancelling()
+    XCTAssertTrue(cancelling)
+    coordinator.cancelLogin(owner: owner)
+    XCTAssertEqual(coordinator.phase, .cancelling)
+    XCTAssertFalse(start(coordinator, owner: UUID()))
+    await service.releaseCancellation()
+    await coordinator.waitForCurrentOperation()
+    XCTAssertEqual(coordinator.phase, .idle)
+    XCTAssertFalse(coordinator.isError)
+    XCTAssertNil(coordinator.completion)
+    let cancellations = await service.cancellationCount
+    XCTAssertEqual(cancellations, 1)
+  }
+
+  func testClientCancellationAndExpiryKeepCoordinatorBusyUntilRemoteCleanup() async throws {
+    for expires in [false, true] {
+      let transport = ControlledLoginTransport(holdCancellation: true)
+      let client = CodexAppServerClient(transport: transport)
+      let coordinator = CodexAccountLoginCoordinator(
+        service: client, accountDidChange: {}, accountStatus: { nil })
+      let owner = UUID()
+      XCTAssertTrue(start(coordinator, owner: owner))
+      let sent = await transport.waitForMessage("account/login/start")
+      XCTAssertTrue(sent)
+      await transport.replyToLogin()
+      let clock = ContinuousClock()
+      let deadline = clock.now.advanced(by: .seconds(2))
+      while await client.loginState.waiters.isEmpty, clock.now < deadline {
+        try await clock.sleep(for: .milliseconds(1))
+      }
+      let waiting = await !client.loginState.waiters.isEmpty
+      XCTAssertTrue(waiting)
+      var expiry: Task<Void, Never>?
+      if expires {
+        let capturedTimerID = await client.loginState.expiryTokens["controlled-login"]
+        let timerID = try XCTUnwrap(capturedTimerID)
+        let generation = await client.transportGeneration
+        expiry = Task {
+          await client.expireLogin(
+            loginID: "controlled-login", timerID: timerID, generation: generation)
+        }
+      } else {
+        coordinator.cancelLogin(owner: owner)
+      }
+      let cancelling = await transport.waitForMessage("account/login/cancel")
+      XCTAssertTrue(cancelling)
+      // Observe the whole held-response interval, including the resumed waiter.
+      let observationEnd = clock.now.advanced(by: .milliseconds(30))
+      while clock.now < observationEnd {
+        XCTAssertTrue(coordinator.isBusy)
+        if !coordinator.isBusy { break }
+        XCTAssertFalse(start(coordinator, owner: UUID()))
+        XCTAssertFalse(coordinator.logout(owner: UUID()))
+        try await clock.sleep(for: .milliseconds(1))
+      }
+      await transport.replyToCancellation()
+      await expiry?.value
+      await coordinator.waitForCurrentOperation()
+      XCTAssertEqual(coordinator.phase, expires ? .failed : .idle)
+      let cancellations = await transport.count("account/login/cancel")
+      XCTAssertEqual(cancellations, 1)
+      XCTAssertFalse(coordinator.isBusy)
+      await client.shutdown()
+    }
+  }
+
+  func testDeviceBrowserFailureKeepsCodeForManualRecoveryAndCopiesOnce() async {
+    let service = ControlledAccountLoginService()
+    let account = authenticated
+    let coordinator = CodexAccountLoginCoordinator(
+      service: service, accountDidChange: {}, accountStatus: { account })
+    var copied: [String] = []
+    XCTAssertTrue(
+      coordinator.login(
+        owner: UUID(), mode: .deviceCode, openURL: { _ in false },
+        copyDeviceCode: { copied.append($0) }))
+    let waiting = await service.waitUntilWaiting()
+    XCTAssertTrue(waiting)
+    XCTAssertEqual(coordinator.phase, .waiting)
+    XCTAssertTrue(coordinator.isError)
+    XCTAssertEqual(coordinator.deviceCode?.userCode, "ABCD-EFGH")
+    XCTAssertEqual(copied, ["ABCD-EFGH"])
+    await service.completeWait()
+    await coordinator.waitForCurrentOperation()
+    XCTAssertEqual(coordinator.phase, .succeeded)
+    XCTAssertNil(coordinator.deviceCode)
+    XCTAssertFalse(coordinator.isError)
+  }
+
+  func testDeviceWaitFailureClearsTheExpiredCode() async {
+    let service = ControlledAccountLoginService()
+    let coordinator = CodexAccountLoginCoordinator(
+      service: service, accountDidChange: {}, accountStatus: { nil })
+    XCTAssertTrue(
+      coordinator.login(
+        owner: UUID(), mode: .deviceCode, openURL: { _ in true }, copyDeviceCode: { _ in }))
+    let waiting = await service.waitUntilWaiting()
+    XCTAssertTrue(waiting)
+    XCTAssertNotNil(coordinator.deviceCode)
+    await service.failWait()
+    await coordinator.waitForCurrentOperation()
+    XCTAssertEqual(coordinator.phase, .failed)
+    XCTAssertNil(coordinator.deviceCode)
+    XCTAssertTrue(coordinator.isError)
+    XCTAssertNil(coordinator.completion)
+  }
+
+  func testCompletionRequiresRefreshedAuthenticatedChatGPTAccount() async {
+    let service = ControlledAccountLoginService()
+    var refreshed = false
+    let coordinator = CodexAccountLoginCoordinator(
+      service: service, accountDidChange: { refreshed = true }, accountStatus: { nil })
+    XCTAssertTrue(start(coordinator, owner: UUID()))
+    let waiting = await service.waitUntilWaiting()
+    XCTAssertTrue(waiting)
+    await service.completeWait()
+    await coordinator.waitForCurrentOperation()
+    XCTAssertTrue(refreshed)
+    XCTAssertEqual(coordinator.phase, .failed)
+    XCTAssertNil(coordinator.completion)
+  }
+
+  func testLogoutIsSerializedAndPublishesCompletionAfterRefresh() async {
+    let service = ControlledAccountLoginService()
+    var refreshed = false
+    let coordinator = CodexAccountLoginCoordinator(
+      service: service, accountDidChange: { refreshed = true }, accountStatus: { nil })
+    let owner = UUID()
+    XCTAssertTrue(coordinator.logout(owner: owner))
+    XCTAssertFalse(start(coordinator, owner: UUID()))
+    await coordinator.waitForCurrentOperation()
+    XCTAssertTrue(refreshed)
+    XCTAssertEqual(coordinator.completion?.ownerID, owner)
+    XCTAssertEqual(coordinator.completion?.result, .loggedOut)
+    let logouts = await service.logoutCount
+    XCTAssertEqual(logouts, 1)
+  }
+
+  private func start(
+    _ coordinator: CodexAccountLoginCoordinator, owner: UUID, opened: Bool = true
+  ) -> Bool {
+    coordinator.login(
+      owner: owner, mode: .browser, openURL: { _ in opened }, copyDeviceCode: { _ in })
+  }
+}
+
+private actor ControlledAccountLoginService: CodexAccountLoginServing {
+  private var waiter: CheckedContinuation<Void, Error>?
+  private let holdCancellation: Bool
+  private var cancellationWaiter: CheckedContinuation<Void, Never>?
+  private(set) var waitCount = 0
+  private(set) var cancellationCount = 0
+  private(set) var logoutCount = 0
+
+  init(holdCancellation: Bool = false) { self.holdCancellation = holdCancellation }
+
+  func startChatGPTLogin() async throws -> CodexAppServerLoginResult {
+    .init(loginID: UUID().uuidString, authURL: URL(string: "https://auth.example.test/browser")!)
+  }
+  func startChatGPTDeviceCodeLogin() async throws -> CodexAppServerDeviceCodeLoginResult {
+    .init(
+      loginID: UUID().uuidString, verificationURL: URL(string: "https://auth.example.test/device")!,
+      userCode: "ABCD-EFGH")
+  }
+  func waitForLoginCompletion(loginID: String) async throws {
+    waitCount += 1
+    try await withCheckedThrowingContinuation { waiter = $0 }
+  }
+  func cancelLogin(loginID: String) async {
+    cancellationCount += 1
+    if holdCancellation { await withCheckedContinuation { cancellationWaiter = $0 } }
+  }
+  func releaseCancellation() {
+    cancellationWaiter?.resume()
+    cancellationWaiter = nil
+  }
+  func waitUntilCancelling() async -> Bool {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(2))
+    while cancellationWaiter == nil {
+      guard clock.now < deadline else { return false }
+      try? await clock.sleep(for: .milliseconds(1))
+    }
+    return true
+  }
+  func logout() async throws { logoutCount += 1 }
+  func completeWait() {
+    waiter?.resume()
+    waiter = nil
+  }
+  func failWait() {
+    waiter?.resume(throwing: CodexAppServerError.loginTimedOut)
+    waiter = nil
+  }
+  func waitUntilWaiting() async -> Bool {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(2))
+    while waiter == nil {
+      guard clock.now < deadline else { return false }
+      try? await clock.sleep(for: .milliseconds(1))
+    }
+    return true
+  }
+}
+
+extension CodexConnectionControllerTests {
+  func testAccountEventsDiscardInFlightIdentityAndCoalesceBurstIntoFreshRead() async {
+    let source = ControllerAccountEventSource()
+    let accounts = ControllerAccountReadPlan(
+      [
+        .init(isAuthenticated: true, accountID: "old", accountType: "chatgpt"),
+        .init(isAuthenticated: true, accountID: "new", accountType: "chatgpt"),
+      ], holding: [1])
+    let controller = eventController(source: source, accounts: accounts)
+    let initial = Task { await controller.refresh() }
+    let reading = await waitForControllerCondition { await accounts.count == 1 }
+    XCTAssertTrue(reading)
+    for index in 1...100 {
+      source.emit(
+        .init(
+          generation: 1, accountRevision: UInt64(index), sequence: UInt64(index),
+          kind: .accountChanged))
+    }
+    let invalidated = await waitForControllerCondition { controller.accountEventSequence == 100 }
+    XCTAssertTrue(invalidated)
+    XCTAssertNil(controller.accountStatus)
+    XCTAssertNil(controller.rateLimits)
+    await accounts.release(1)
+    await initial.value
+    let reads = await accounts.count
+    XCTAssertEqual(reads, 2)
+    XCTAssertEqual(controller.accountStatus?.accountID, "new")
+    XCTAssertEqual(controller.phase, .ready)
+    source.finish()
+  }
+
+  func testAccountChangeDuringFreshReadRequiresAnotherFreshRead() async {
+    let source = ControllerAccountEventSource()
+    let accounts = ControllerAccountReadPlan(
+      [
+        .init(isAuthenticated: true, accountID: "old", accountType: "chatgpt"),
+        .init(isAuthenticated: true, accountID: "stale", accountType: "chatgpt"),
+        .init(isAuthenticated: true, accountID: "current", accountType: "chatgpt"),
+      ], holding: [2])
+    let controller = eventController(source: source, accounts: accounts)
+    await controller.refresh()
+    source.emit(.init(generation: 1, accountRevision: 1, sequence: 1, kind: .accountChanged))
+    let reading = await waitForControllerCondition { await accounts.count == 2 }
+    XCTAssertTrue(reading)
+    XCTAssertNil(controller.accountStatus)
+    source.emit(.init(generation: 1, accountRevision: 2, sequence: 2, kind: .accountChanged))
+    let invalidated = await waitForControllerCondition { controller.accountRevision == 2 }
+    XCTAssertTrue(invalidated)
+    await accounts.release(2)
+    await controller.refresh()
+    let reads = await accounts.count
+    XCTAssertEqual(reads, 3)
+    XCTAssertEqual(controller.accountStatus?.accountID, "current")
+    source.finish()
+  }
+
+  func testQuotaEventWinsOverEarlierReadWithoutInvalidatingAccount() async {
+    let source = ControllerAccountEventSource()
+    let quota = ControllerQuotaReadPlan([10], holding: [1])
+    let controller = eventController(source: source, quota: quota)
+    await controller.refresh()
+    let reading = await waitForControllerCondition { await quota.count == 1 }
+    XCTAssertTrue(reading)
+    let revision = controller.accountRevision
+    source.emit(
+      .init(
+        generation: 1, accountRevision: 0, sequence: 1,
+        kind: .rateLimitsUpdated(.init(primary: .init(usedPercent: 80)))))
+    let updated = await waitForControllerCondition {
+      controller.rateLimits?.primary?.usedPercent == 80
+    }
+    XCTAssertTrue(updated)
+    var waiting = false
+    let sharedRead = Task {
+      waiting = true
+      await controller.refreshRateLimits()
+    }
+    let joined = await waitForControllerCondition { waiting }
+    XCTAssertTrue(joined)
+    await quota.release(1)
+    await sharedRead.value
+    XCTAssertEqual(controller.rateLimits?.primary?.usedPercent, 80)
+    XCTAssertEqual(controller.accountRevision, revision)
+    let reads = await quota.count
+    XCTAssertEqual(reads, 1)
+    source.finish()
+  }
+
+  func testDroppedAccountEventRevisionInvalidatesBeforeApplyingQuota() async {
+    let source = ControllerAccountEventSource()
+    let accounts = ControllerAccountReadPlan(
+      [
+        .init(isAuthenticated: true, accountID: "old", accountType: "chatgpt"),
+        .init(isAuthenticated: true, accountID: "new", accountType: "chatgpt"),
+      ], holding: [2])
+    let controller = eventController(source: source, accounts: accounts)
+    await controller.refresh()
+    source.emit(
+      .init(
+        generation: 1, accountRevision: 5, sequence: 100,
+        kind: .rateLimitsUpdated(.init(primary: .init(usedPercent: 80)))))
+    let reading = await waitForControllerCondition { await accounts.count == 2 }
+    XCTAssertTrue(reading)
+    XCTAssertNil(controller.accountStatus)
+    XCTAssertNil(controller.rateLimits)
+    await accounts.release(2)
+    await controller.refresh()
+    XCTAssertEqual(controller.accountStatus?.accountID, "new")
+    XCTAssertEqual(controller.rateLimits?.primary?.usedPercent, 80)
+    source.finish()
+  }
+
+  func testOldQuotaReadCannotRestorePreviousAccountsQuota() async {
+    let source = ControllerAccountEventSource()
+    let accounts = ControllerAccountReadPlan(
+      [
+        .init(isAuthenticated: true, accountID: "old", accountType: "chatgpt"),
+        .init(isAuthenticated: true, accountID: "new", accountType: "chatgpt"),
+      ])
+    let quota = ControllerQuotaReadPlan([10, 20], holding: [1])
+    let controller = eventController(source: source, accounts: accounts, quota: quota)
+    await controller.refresh()
+    let reading = await waitForControllerCondition { await quota.count == 1 }
+    XCTAssertTrue(reading)
+    await controller.accountDidChange()
+    let updated = await waitForControllerCondition {
+      controller.rateLimits?.primary?.usedPercent == 20
+    }
+    XCTAssertTrue(updated)
+    await quota.release(1)
+    await Task.yield()
+    XCTAssertEqual(controller.accountStatus?.accountID, "new")
+    XCTAssertEqual(controller.rateLimits?.primary?.usedPercent, 20)
+    source.finish()
+  }
+
+  func testConnectionClosedDiscardsPendingReadWithoutAutomaticRestart() async {
+    let source = ControllerAccountEventSource()
+    let accounts = ControllerAccountReadPlan(
+      [
+        .init(isAuthenticated: true, accountID: "old", accountType: "chatgpt"),
+        .init(isAuthenticated: true, accountID: "stale", accountType: "chatgpt"),
+      ], holding: [2])
+    let controller = eventController(source: source, accounts: accounts)
+    await controller.refresh()
+    let pending = Task { await controller.refresh() }
+    let reading = await waitForControllerCondition { await accounts.count == 2 }
+    XCTAssertTrue(reading)
+    source.emit(.init(generation: 1, accountRevision: 1, sequence: 1, kind: .connectionClosed))
+    let closed = await waitForControllerCondition { controller.phase == .failed }
+    XCTAssertTrue(closed)
+    await accounts.release(2)
+    await pending.value
+    await controller.refreshOnForeground()
+    XCTAssertEqual(controller.phase, .failed)
+    XCTAssertNil(controller.accountStatus)
+    XCTAssertNil(controller.rateLimits)
+    let reads = await accounts.count
+    XCTAssertEqual(reads, 2)
+    source.finish()
+  }
+
+  func testQuotaReadsAreSharedAndFailureDoesNotHideAuthenticatedAccount() async {
+    let source = ControllerAccountEventSource()
+    let quota = ControllerQuotaReadPlan([10], holding: [1])
+    let controller = eventController(source: source, quota: quota)
+    await controller.refresh()
+    let reading = await waitForControllerCondition { await quota.count == 1 }
+    XCTAssertTrue(reading)
+    var firstJoined = false
+    var secondJoined = false
+    let first = Task {
+      firstJoined = true
+      return await controller.refreshRateLimits()
+    }
+    let second = Task {
+      secondJoined = true
+      return await controller.refreshRateLimits()
+    }
+    let joined = await waitForControllerCondition { firstJoined && secondJoined }
+    XCTAssertTrue(joined)
+    await quota.release(1)
+    let firstResult = await first.value
+    let secondResult = await second.value
+    XCTAssertTrue(firstResult)
+    XCTAssertTrue(secondResult)
+    let reads = await quota.count
+    XCTAssertEqual(reads, 1)
+    source.finish()
+
+    let runtime = compatibleRuntime()
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "CodexQuotaFailure-\(UUID().uuidString)")
+    let service = CodexRuntimeSetupService(
+      directory: root, release: .approved, download: { _, _ in }, validate: { _, _ in })
+    let failed = CodexConnectionController(
+      service: service, inspect: { runtime },
+      readAccount: { .init(isAuthenticated: true, accountType: "chatgpt") },
+      readRateLimits: { throw CodexAppServerError.invalidResponse })
+    await failed.refresh()
+    let result = await failed.refreshRateLimits()
+    XCTAssertFalse(result)
+    XCTAssertEqual(failed.phase, .ready)
+    XCTAssertTrue(failed.accountStatus?.isAuthenticated ?? false)
+    XCTAssertNil(failed.rateLimits)
+  }
+
+  func testOutOfOrderSequenceAndOlderGenerationCannotReplaceQuota() async {
+    let source = ControllerAccountEventSource()
+    let accounts = ControllerAccountReadPlan([
+      .init(isAuthenticated: true, accountID: "current", accountType: "chatgpt")
+    ])
+    let controller = eventController(source: source, accounts: accounts)
+    await controller.refresh()
+    source.emit(
+      .init(
+        generation: 2, accountRevision: 0, sequence: 2,
+        kind: .rateLimitsUpdated(.init(primary: .init(usedPercent: 80)))))
+    let received = await waitForControllerCondition { controller.accountEventSequence == 2 }
+    XCTAssertTrue(received)
+    source.emit(
+      .init(
+        generation: 2, accountRevision: 0, sequence: 1,
+        kind: .rateLimitsUpdated(.init(primary: .init(usedPercent: 11)))))
+    source.emit(
+      .init(
+        generation: 1, accountRevision: 0, sequence: 3,
+        kind: .rateLimitsUpdated(.init(primary: .init(usedPercent: 12)))))
+    source.emit(
+      .init(
+        generation: 2, accountRevision: 0, sequence: 4,
+        kind: .rateLimitsUpdated(.init(primary: .init(usedPercent: 80)))))
+    let drained = await waitForControllerCondition { controller.accountEventSequence == 4 }
+    XCTAssertTrue(drained)
+    let reads = await accounts.count
+    XCTAssertEqual(reads, 1)
+    XCTAssertEqual(controller.rateLimits?.primary?.usedPercent, 80)
+    XCTAssertEqual(controller.accountRevision, 0)
+    source.finish()
+  }
+
+  func testAccountEventDuringPreparationStatusReadGetsFreshIdentityBeforeFinishing() async {
+    let source = ControllerAccountEventSource()
+    let accounts = ControllerAccountReadPlan(
+      [
+        .init(isAuthenticated: true, accountID: "stale", accountType: "chatgpt"),
+        .init(isAuthenticated: true, accountID: "current", accountType: "chatgpt"),
+      ], holding: [1])
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "CodexPreparationEvents-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let service = CodexRuntimeSetupService(
+      directory: root, release: .approved,
+      download: { _, _ in throw CodexRuntimeSetupError.failed("simulated update failure") },
+      validate: { _, _ in })
+    let runtime = compatibleRuntime()
+    let controller = CodexConnectionController(
+      service: service, inspect: { runtime }, readAccount: { await accounts.read() },
+      accountEvents: { source.stream })
+    controller.prepare()
+    let reading = await waitForControllerCondition { await accounts.count == 1 }
+    XCTAssertTrue(reading)
+    XCTAssertTrue(controller.isPreparing)
+    source.emit(.init(generation: 1, accountRevision: 1, sequence: 1, kind: .accountChanged))
+    let invalidated = await waitForControllerCondition { controller.accountEventSequence == 1 }
+    XCTAssertTrue(invalidated)
+    await accounts.release(1)
+    let finished = await waitForControllerCondition { !controller.isPreparing }
+    XCTAssertTrue(finished)
+    XCTAssertEqual(controller.phase, .ready)
+    XCTAssertEqual(controller.accountStatus?.accountID, "current")
+    let reads = await accounts.count
+    XCTAssertEqual(reads, 2)
+    source.finish()
+  }
+
+  func testForegroundChecksRequirePreviousUseAndShareMinimumInterval() async {
+    let counter = RefreshCounter()
+    let controller = makeController(
+      runtime: compatibleRuntime(),
+      account: .success(.init(isAuthenticated: true, accountType: "chatgpt")), counter: counter)
+    await controller.refreshOnForeground()
+    var inspections = await counter.inspections
+    XCTAssertEqual(inspections, 0)
+    await controller.refresh()
+    for _ in 0..<20 { await controller.refreshOnForeground() }
+    inspections = await counter.inspections
+    XCTAssertEqual(inspections, 1)
+  }
+
+  func testEventSubscriptionDoesNotRetainControllerAndStopsOnDeinit() async {
+    let source = ControllerAccountEventSource()
+    let quota = ControllerQuotaReadPlan([10], holding: [1])
+    var controller: CodexConnectionController? = eventController(source: source, quota: quota)
+    weak let weakController = controller
+    await controller?.refresh()
+    let reading = await waitForControllerCondition { await quota.count == 1 }
+    XCTAssertTrue(reading)
+    controller = nil
+    XCTAssertNil(weakController)
+    let terminated = await waitForControllerCondition { await source.termination.didTerminate }
+    XCTAssertTrue(terminated)
+    await quota.release(1)
+    source.finish()
+  }
+
+  private func eventController(
+    source: ControllerAccountEventSource,
+    accounts: ControllerAccountReadPlan = .init([
+      .init(isAuthenticated: true, accountID: "fixture", accountType: "chatgpt")
+    ]),
+    quota: ControllerQuotaReadPlan = .init([10])
+  ) -> CodexConnectionController {
+    let runtime = compatibleRuntime()
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "CodexControllerEvents-\(UUID().uuidString)")
+    let service = CodexRuntimeSetupService(
+      directory: root, release: .approved, download: { _, _ in }, validate: { _, _ in })
+    return CodexConnectionController(
+      service: service, inspect: { runtime }, readAccount: { await accounts.read() },
+      readRateLimits: { await quota.read() }, accountEvents: { source.stream })
+  }
+
+  private func waitForControllerCondition(
+    _ predicate: @MainActor () async -> Bool
+  ) async -> Bool {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(2))
+    while !(await predicate()) {
+      guard clock.now < deadline else { return false }
+      try? await clock.sleep(for: .milliseconds(1))
+    }
+    return true
+  }
+}
+
+private final class ControllerAccountEventSource: Sendable {
+  let stream: AsyncStream<CodexAppServerAccountEvent>
+  let continuation: AsyncStream<CodexAppServerAccountEvent>.Continuation
+  let termination = ControllerEventTermination()
+  init() {
+    let pair = AsyncStream<CodexAppServerAccountEvent>.makeStream(
+      bufferingPolicy: .bufferingNewest(16))
+    stream = pair.stream
+    continuation = pair.continuation
+    continuation.onTermination = { [termination] _ in Task { await termination.mark() } }
+  }
+  func emit(_ event: CodexAppServerAccountEvent) { continuation.yield(event) }
+  func finish() { continuation.finish() }
+}
+
+private actor ControllerEventTermination {
+  private(set) var didTerminate = false
+  func mark() { didTerminate = true }
+}
+
+private actor ControllerAccountReadPlan {
+  private let accounts: [CodexAppServerAccountStatus]
+  private let holding: Set<Int>
+  private var releases: Set<Int> = []
+  private var waiters: [Int: CheckedContinuation<Void, Never>] = [:]
+  private(set) var count = 0
+  init(_ accounts: [CodexAppServerAccountStatus], holding: Set<Int> = []) {
+    self.accounts = accounts
+    self.holding = holding
+  }
+  func read() async -> CodexAppServerAccountStatus {
+    count += 1
+    let index = count
+    if holding.contains(index), !releases.contains(index) {
+      await withCheckedContinuation { waiters[index] = $0 }
+    }
+    return accounts[min(index - 1, accounts.count - 1)]
+  }
+  func release(_ index: Int) {
+    releases.insert(index)
+    waiters.removeValue(forKey: index)?.resume()
+  }
+}
+
+private actor ControllerQuotaReadPlan {
+  private let values: [Double]
+  private let holding: Set<Int>
+  private var releases: Set<Int> = []
+  private var waiters: [Int: CheckedContinuation<Void, Never>] = [:]
+  private(set) var count = 0
+  init(_ values: [Double], holding: Set<Int> = []) {
+    self.values = values
+    self.holding = holding
+  }
+  func read() async -> CodexAppServerRateLimits {
+    count += 1
+    let index = count
+    if holding.contains(index), !releases.contains(index) {
+      await withCheckedContinuation { waiters[index] = $0 }
+    }
+    return .init(primary: .init(usedPercent: values[min(index - 1, values.count - 1)]))
+  }
+  func release(_ index: Int) {
+    releases.insert(index)
+    waiters.removeValue(forKey: index)?.resume()
+  }
+}

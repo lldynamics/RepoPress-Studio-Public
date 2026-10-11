@@ -172,18 +172,6 @@ public final class WorkbenchDataRootPathStore: @unchecked Sendable {
     return migrated
   }
 
-  @discardableResult
-  public func bindStoredRoot(
-    to dataID: UUID,
-    updatedAt: Date = Date()
-  ) throws -> WorkbenchDataRootPathRecord? {
-    guard var record = try storedRecord() else { return nil }
-    record.dataID = dataID
-    record.updatedAt = updatedAt
-    try persist(record)
-    return record
-  }
-
   /// Resolves the stored path, probes the root, and verifies its manifest
   /// identity before returning a resolution. A missing path is represented by
   /// `.new`; a different existing manifest throws and is never opened.

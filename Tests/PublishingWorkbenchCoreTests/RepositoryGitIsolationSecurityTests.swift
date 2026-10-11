@@ -1,7 +1,8 @@
 import Foundation
+import PublishingCoreSupport
+import PublishingDomainContracts
+import PublishingGitCore
 import XCTest
-
-@testable import PublishingWorkbenchCore
 
 final class RepositoryGitIsolationSecurityTests: XCTestCase {
   func testSyncAndAsyncGitStatusDisableRepositoryFsmonitor() async throws {

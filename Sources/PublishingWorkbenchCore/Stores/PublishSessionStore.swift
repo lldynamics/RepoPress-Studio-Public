@@ -1,7 +1,7 @@
 import Combine
-import PublishingPreviewCore
 import Foundation
 import PublishingDomainContracts
+import PublishingPreviewCore
 
 /// Owns state that exists only while preparing, previewing, or completing a
 /// publish operation. `PublishingStore` keeps compatibility accessors while
@@ -38,7 +38,27 @@ public final class PublishSessionStore: ObservableObject {
   var localSitePreviewStopOperationID: UUID?
   var localSitePreviewGeneration: UInt64 = 0
   var localSitePreviewFileWatcher: LocalSitePreviewFileWatcher?
-  var draftPublishPreviewSnapshots: [UUID: DraftPublishPreviewSnapshot] = [:]
+  var draftPublishPreviewSnapshots: [UUID: DraftPublishPreviewSnapshot] = [:] {
+    didSet {
+      if oldValue != draftPublishPreviewSnapshots { scheduleDraftPublishStatusNotification() }
+    }
+  }
+  var draftPreflightSnapshots: [UUID: DraftPreflightSnapshot] = [:]
+  var draftPreflightGenerations: [UUID: UInt64] = [:]
+  var draftPreflightRefreshTasks: [UUID: DraftPreflightRefreshOperation] = [:]
+  var draftPreflightAccessOrder: [UUID] = []
+  /// The last installed result per draft. Unlike `draftPreflightSnapshots` it
+  /// survives input invalidation, so while a refresh is pending the badge and
+  /// checklist keep the previous complete result instead of a partial count.
+  private(set) var draftPreflightLastKnownResults: [UUID: DraftPreflightResult] = [:]
+  private var draftPreflightLastKnownOrder: [UUID] = []
+  var draftPreflightGeneration: UInt64 = 0
+  var draftPreflightRepositoryInputGeneration: UInt64 = 0
+  var draftPreflightDraftInputGeneration: UInt64 = 0
+  var isPublishingDerivedWordCount = false
+  var draftPreflightInputCancellables = Set<AnyCancellable>()
+  let draftPublishStatusDidChange = PassthroughSubject<Void, Never>()
+  private var draftPublishStatusNotificationTask: Task<Void, Never>?
   var draftPublishPreviewInputBaselines: [UUID: DraftPublishPreviewInputBaseline] = [:]
   var draftPublishPreviewRefreshTasks: [UUID: Task<Void, Never>] = [:]
   var draftPublishPreviewRefreshGenerations: [UUID: UInt64] = [:]
@@ -48,6 +68,61 @@ public final class PublishSessionStore: ObservableObject {
   var batchPublishPlanRefreshGeneration: UInt64 = 0
   var batchPublishPlanRefreshInput: BatchPublishPlanRefreshInput?
   var batchPublishPlanConsumers: Set<UUID> = []
+
+  /// Delivers cache notifications after the surrounding @Published willSet
+  /// chain has committed its input. Background windows can then read the
+  /// draft-scoped values without observing another window's selection.
+  func scheduleDraftPublishStatusNotification() {
+    guard draftPublishStatusNotificationTask == nil else { return }
+    draftPublishStatusNotificationTask = Task { [weak self] in
+      guard let self else { return }
+      self.draftPublishStatusNotificationTask = nil
+      self.draftPublishStatusDidChange.send()
+    }
+  }
+
+  func rememberDraftPreflightResult(_ result: DraftPreflightResult) {
+    let draftID = result.context.draftID
+    draftPreflightLastKnownResults[draftID] = result
+    draftPreflightLastKnownOrder.removeAll { $0 == draftID }
+    draftPreflightLastKnownOrder.append(draftID)
+    while draftPreflightLastKnownOrder.count > 64 {
+      draftPreflightLastKnownResults.removeValue(
+        forKey: draftPreflightLastKnownOrder.removeFirst())
+    }
+  }
+
+  func pruneDraftPreflightLastKnownResults(keeping draftIDs: Set<UUID>) {
+    guard draftPreflightLastKnownResults.keys.contains(where: { !draftIDs.contains($0) })
+    else { return }
+    draftPreflightLastKnownOrder.removeAll { !draftIDs.contains($0) }
+    draftPreflightLastKnownResults = draftPreflightLastKnownResults.filter {
+      draftIDs.contains($0.key)
+    }
+  }
+
+  func invalidateDraftPreflightInputs() {
+    draftPreflightDraftInputGeneration &+= 1
+    clearDraftPreflightState()
+  }
+
+  func clearDraftPreflightState() {
+    for operation in draftPreflightRefreshTasks.values { operation.cancel() }
+    draftPreflightRefreshTasks.removeAll(keepingCapacity: true)
+    draftPreflightSnapshots.removeAll(keepingCapacity: true)
+    draftPreflightGenerations.removeAll(keepingCapacity: true)
+    draftPreflightAccessOrder.removeAll(keepingCapacity: true)
+    scheduleDraftPublishStatusNotification()
+  }
+
+  /// Suppresses only the synchronous document publication of derived counts.
+  /// Restoring the prior value also preserves nested subscriber publications.
+  func withDerivedWordCountPublication(_ publication: () -> Void) {
+    let previous = isPublishingDerivedWordCount
+    isPublishingDerivedWordCount = true
+    defer { isPublishingDerivedWordCount = previous }
+    publication()
+  }
 
   init(
     releaseRecords: [ReleaseRecord],

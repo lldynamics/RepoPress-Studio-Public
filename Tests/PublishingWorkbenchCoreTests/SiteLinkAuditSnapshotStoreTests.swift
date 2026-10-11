@@ -122,6 +122,9 @@ final class SiteLinkAuditSnapshotStoreTests: XCTestCase {
     store.invalidateSiteLinkAuditSnapshot()
     let currentKey = store.siteLinkAuditKey(drafts: store.drafts, profile: profile)
     XCTAssertNotEqual(staleKey, currentKey)
+    let list = store.draftList
+    let presentationRevision = list.presentationRevision
+    let taskRevision = list.taskQueueStateVersion
 
     store.replaceSiteLinkAuditSnapshotIfCurrent(
       staleReport,
@@ -130,6 +133,7 @@ final class SiteLinkAuditSnapshotStoreTests: XCTestCase {
       profile: profile
     )
     XCTAssertNil(store.cachedSiteLinkAuditReport(drafts: store.drafts, profile: profile))
+    XCTAssertEqual(list.taskQueueStateVersion, taskRevision)
 
     let currentReport = SiteLinkAuditService().report(drafts: store.drafts, profile: profile)
     store.replaceSiteLinkAuditSnapshotIfCurrent(
@@ -142,6 +146,17 @@ final class SiteLinkAuditSnapshotStoreTests: XCTestCase {
       store.cachedSiteLinkAuditReport(drafts: store.drafts, profile: profile)?.items,
       currentReport.items
     )
+    XCTAssertEqual(list.taskQueueStateVersion, taskRevision + 1)
+    XCTAssertEqual(list.presentationRevision, presentationRevision)
+    XCTAssertEqual(store.siteLinkAuditSnapshotStore.replacementCount, 1)
+
+    // A second article using these same inputs must keep task/search caches warm.
+    store.replaceSiteLinkAuditSnapshotIfCurrent(
+      currentReport, key: currentKey, drafts: store.drafts, profile: profile
+    )
+    XCTAssertEqual(list.taskQueueStateVersion, taskRevision + 1)
+    XCTAssertEqual(list.presentationRevision, presentationRevision)
+    XCTAssertEqual(store.siteLinkAuditSnapshotStore.replacementCount, 1)
   }
 
   func testConcurrentConsumersCoalesceOneSiteReportReplacement() async throws {
@@ -178,6 +193,43 @@ final class SiteLinkAuditSnapshotStoreTests: XCTestCase {
     let secondReport = try await second.value
     XCTAssertEqual(firstReport.items, secondReport.items)
     XCTAssertEqual(store.siteLinkAuditSnapshotStore.replacementCount, 1)
+  }
+
+  func testPreflightInstallationCoalescesWithAnAlreadyScheduledSiteAudit() async throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: temporaryPersistenceURL()), safeMode: true
+    )
+    let profile = store.activeProfile
+    let drafts = [
+      ArticleDraft(
+        siteProfileID: profile.id, title: "Source", slug: "source",
+        bodyMarkdown: "[Missing](/missing/)"
+      )
+    ]
+    store.setDrafts(drafts)
+    let key = store.siteLinkAuditKey(drafts: drafts, profile: profile)
+    let report = SiteLinkAuditService().report(drafts: drafts, profile: profile)
+    let list = store.draftList
+    let taskRevision = list.taskQueueStateVersion
+    let presentationRevision = list.presentationRevision
+
+    store.scheduleSiteLinkAuditSnapshotRefresh(drafts: drafts, profile: profile, key: key)
+    let scheduled = try XCTUnwrap(store.siteLinkAuditRefreshTask)
+    // No actor suspension until the competing preflight has installed its report.
+    store.replaceSiteLinkAuditSnapshotIfCurrent(
+      report, key: key, drafts: drafts, profile: profile
+    )
+    XCTAssertEqual(store.siteLinkAuditSnapshotStore.replacementCount, 1)
+    XCTAssertEqual(list.taskQueueStateVersion, taskRevision + 1)
+    _ = await scheduled.value
+
+    XCTAssertEqual(store.siteLinkAuditSnapshotStore.replacementCount, 1)
+    XCTAssertEqual(list.taskQueueStateVersion, taskRevision + 1)
+    XCTAssertEqual(list.presentationRevision, presentationRevision)
+    XCTAssertNil(store.siteLinkAuditRefreshTask)
+    XCTAssertNil(store.siteLinkAuditRefreshKey)
+    XCTAssertEqual(
+      store.cachedSiteLinkAuditReport(drafts: drafts, profile: profile)?.items, report.items)
   }
 
   func testStaleDraftSnapshotCannotPopulateCurrentLinkAuditCache() async throws {

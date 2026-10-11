@@ -6,12 +6,29 @@ enum AIGenerationLane: Hashable, Sendable {
   case metadata(UUID)
   case writingStyle
   case connectionTest
+  case modelDiscovery(UUID)
 }
 
 struct AINonStreamingAuthorizationBinding: Sendable {
   let profileID: UUID
   let connectionID: UUID?
   let config: AIProviderConfig
+}
+
+struct AINonStreamingDraftBinding {
+  let baseline: DraftOperationBaseline
+  let profile: SiteProfile
+}
+
+/// One lane owns its generation and every resource needed to finish or cancel
+/// it. Removing a record invalidates late completions and releases its context.
+struct AINonStreamingRequestRecord {
+  let generation: UInt64
+  var cancellation: (() -> Void)?
+  var actionOperationID: UUID?
+  var draftBinding: AINonStreamingDraftBinding?
+  var contextCheck: (() -> Bool)?
+  var authorization: AINonStreamingAuthorizationBinding?
 }
 
 extension WorkbenchAIStore {
@@ -25,7 +42,7 @@ extension WorkbenchAIStore {
       connectionID: profile.aiConnectionProfileID,
       config: store.aiProviderConfig(for: profile)
     )
-    aiRequestAuthorizationBindings[lane] = binding
+    aiRequests[lane]?.authorization = binding
     return binding
   }
 
@@ -39,9 +56,9 @@ extension WorkbenchAIStore {
     generation: UInt64
   ) throws {
     try checkAIRequest(lane, generation: generation)
-    guard aiRequestAuthorizationBindings[lane]?.profileID == binding.profileID,
-      aiRequestAuthorizationBindings[lane]?.connectionID == binding.connectionID,
-      aiRequestAuthorizationBindings[lane]?.config == binding.config,
+    guard aiRequests[lane]?.authorization?.profileID == binding.profileID,
+      aiRequests[lane]?.authorization?.connectionID == binding.connectionID,
+      aiRequests[lane]?.authorization?.config == binding.config,
       let liveProfile = store.profiles.first(where: { $0.id == binding.profileID }),
       liveProfile.aiConnectionProfileID == binding.connectionID
     else { throw AIOutboundPayloadConfirmationError.drifted }
@@ -79,17 +96,17 @@ extension WorkbenchAIStore {
       revokedConfig: revokedConfig, requiresAPIKeyOnly: requiresAPIKeyOnly,
       requiresCapturedCredential: requiresCapturedCredential
     )
-    for (lane, binding) in Array(aiRequestAuthorizationBindings) {
-      guard connectionID == nil || binding.connectionID == connectionID,
+    for (lane, request) in aiRequests {
+      guard let binding = request.authorization,
+        connectionID == nil || binding.connectionID == connectionID,
         profileID == nil || binding.profileID == profileID,
         revokedConfig == nil
           || binding.config.dataSharingConsentIdentifier
             == revokedConfig?.dataSharingConsentIdentifier,
         !remoteOnly || !binding.config.isLocalEndpoint,
-        !requiresAPIKeyOnly || binding.config.requiresAPIKey,
-        let generation = currentAIRequestGeneration(lane)
+        !requiresAPIKeyOnly || binding.config.requiresAPIKey
       else { continue }
-      cancelAIRequest(lane, generation: generation)
+      cancelAIRequest(lane, generation: request.generation)
     }
   }
 
@@ -109,26 +126,28 @@ extension WorkbenchAIStore {
   }
 
   func currentAIRequestGeneration(_ lane: AIGenerationLane) -> UInt64? {
-    switch lane {
-    case .metadata(let id): return aiMetadataSuggestionGenerationsByDraftID[id]
-    default: return aiRequestGenerations[lane]
-    }
+    aiRequests[lane]?.generation
   }
 
-  func beginAIRequest(_ lane: AIGenerationLane, showsActionLoading: Bool = false) -> UInt64 {
+  func beginAIRequest(
+    _ lane: AIGenerationLane,
+    showsActionLoading: Bool = false,
+    updatesPresentation: Bool = true
+  ) -> UInt64 {
     if let previous = currentAIRequestGeneration(lane) {
       cancelAIRequest(lane, generation: previous)
     }
-    let generation: UInt64
+    let generation = nextAIRequestGeneration()
+    aiRequests[lane] = AINonStreamingRequestRecord(
+      generation: generation,
+      actionOperationID: showsActionLoading ? beginAIActionOperation() : nil
+    )
+    if updatesPresentation { aiRequestPresentationGeneration = generation }
     switch lane {
-    case .metadata(let id): generation = beginAIMetadataSuggestionOperation(for: id)
-    default:
-      generation = nextAIRequestGeneration()
-      aiRequestGenerations[lane] = generation
+    case .metadata(let id): startAIMetadataSuggestionPresentation(for: id)
+    case .writingStyle: isAIWritingStyleExtractionRunning = true
+    default: break
     }
-    aiRequestPresentationGeneration = generation
-    if showsActionLoading { aiRequestActionOperations[lane] = beginAIActionOperation() }
-    if lane == .writingStyle { isAIWritingStyleExtractionRunning = true }
     return generation
   }
 
@@ -168,21 +187,20 @@ extension WorkbenchAIStore {
   func bindAIRequest(
     _ lane: AIGenerationLane, baseline: DraftOperationBaseline, profile: SiteProfile
   ) {
-    aiRequestBaselines[lane] = baseline
-    aiRequestProfiles[lane] = profile
+    aiRequests[lane]?.draftBinding = AINonStreamingDraftBinding(
+      baseline: baseline, profile: profile
+    )
     let config = store.aiProviderConfig(for: profile)
-    aiRequestContextChecks[lane] = { [weak self] in
+    aiRequests[lane]?.contextCheck = { [weak self] in
       guard let self else { return false }
       return self.store.aiProviderConfig(for: profile) == config
     }
   }
 
   private func aiRequestContextMatches(_ lane: AIGenerationLane) -> Bool {
-    guard aiRequestContextChecks[lane]?() != false else { return false }
-    guard let baseline = aiRequestBaselines[lane], let profile = aiRequestProfiles[lane] else {
-      return true
-    }
-    return draftOperationStillMatches(baseline, profile: profile)
+    guard let request = aiRequests[lane], request.contextCheck?() != false else { return false }
+    guard let binding = request.draftBinding else { return true }
+    return draftOperationStillMatches(binding.baseline, profile: binding.profile)
   }
 
   func canPresentAIRequest(_ lane: AIGenerationLane, generation: UInt64) -> Bool {
@@ -193,42 +211,30 @@ extension WorkbenchAIStore {
   }
 
   func finishAIRequest(_ lane: AIGenerationLane, generation: UInt64) {
-    guard currentAIRequestGeneration(lane) == generation else { return }
-    aiRequestCancellations.removeValue(forKey: lane)
-    aiRequestBaselines.removeValue(forKey: lane)
-    aiRequestProfiles.removeValue(forKey: lane)
-    aiRequestContextChecks.removeValue(forKey: lane)
-    aiRequestAuthorizationBindings.removeValue(forKey: lane)
+    guard let request = aiRequests[lane], request.generation == generation else { return }
+    aiRequests.removeValue(forKey: lane)
     if aiPublishingActionRequest?.generation == generation {
       aiPublishingActionRequest = nil
     }
-    if let operation = aiRequestActionOperations.removeValue(forKey: lane) {
+    if let operation = request.actionOperationID {
       finishAIActionOperation(operation)
     }
     switch lane {
-    case .metadata(let id): finishAIMetadataSuggestionOperation(for: id, generation: generation)
+    case .metadata(let id): finishAIMetadataSuggestionPresentation(for: id)
     case .writingStyle: isAIWritingStyleExtractionRunning = false
     default: break
     }
   }
 
   func cancelAIRequest(_ lane: AIGenerationLane, generation: UInt64) {
-    guard currentAIRequestGeneration(lane) == generation else { return }
-    aiRequestCancellations[lane]?()
+    guard let request = aiRequests[lane], request.generation == generation else { return }
     finishAIRequest(lane, generation: generation)
-    switch lane {
-    case .metadata(let id): aiMetadataSuggestionGenerationsByDraftID.removeValue(forKey: id)
-    default: aiRequestGenerations.removeValue(forKey: lane)
-    }
+    request.cancellation?()
   }
 
   func cancelAIGenerationRequests() {
-    let lanes = Set(aiRequestGenerations.keys)
-      .union(aiMetadataSuggestionGenerationsByDraftID.keys.map(AIGenerationLane.metadata))
-    for lane in lanes {
-      if let generation = currentAIRequestGeneration(lane) {
-        cancelAIRequest(lane, generation: generation)
-      }
+    for (lane, request) in aiRequests {
+      cancelAIRequest(lane, generation: request.generation)
     }
   }
 
@@ -246,13 +252,7 @@ extension WorkbenchAIStore {
       return try await operation()
     }
     let cancel = { worker.cancel() }
-    aiRequestCancellations[lane] = cancel
-    switch lane {
-    case .metadata(let id):
-      registerAIMetadataSuggestionCancellationHandler(
-        for: id, generation: generation, handler: cancel)
-    default: break
-    }
+    aiRequests[lane]?.cancellation = cancel
     return try await withTaskCancellationHandler {
       do {
         let value = try await worker.value

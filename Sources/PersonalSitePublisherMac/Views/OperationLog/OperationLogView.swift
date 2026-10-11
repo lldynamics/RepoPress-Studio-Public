@@ -89,8 +89,8 @@ struct OperationLogView: View {
         .accessibilityIdentifier("operation-log-search")
       filterToolbar
     }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 10)
+    .padding(.horizontal, WorkbenchSpacing.card)
+    .padding(.vertical, WorkbenchSpacing.control)
   }
 
   private func operationList(

@@ -12,7 +12,7 @@ Quartz 4 静态预览的固定 Python 运行器保存在 `Sources/PublishingWork
 
 | 文件 | 职责 | 主要调用者 / 验证方式 |
 |---|---|---|
-| `build_and_run.sh` | 构建、签名并启动 RepoPress Studio；把共享菜单扩展放入 `Contents/PlugIns`、快捷指令扩展放入 `Contents/Extensions`，先签扩展再签主应用；支持调试、发布、验证、启动性能等模式，并把最终应用放入 `dist/`。 | 维护者、本地发布流程；`test_build_and_run_lock.sh` 验证并发 bundle 锁，`--verify` 验证构建产物与窗口。 |
+| `build_and_run.sh` | 构建、签名并启动 RepoPress Studio；把共享菜单扩展放入 `Contents/PlugIns`、快捷指令扩展放入 `Contents/Extensions`，先签扩展再签主应用；生成主应用 `repopress` URL 注册，供文章及站点检查快捷动作交接；支持调试、发布、验证、启动性能等模式，并把最终应用放入 `dist/`。 | 维护者、本地发布流程；`test_build_and_run_lock.sh` 验证并发 bundle 锁，`--verify` 验证构建产物与窗口。 |
 | `check_release_gate.sh` | 质量门统一兼容入口，把选择参数交给清单驱动的发布门。 | 本地维护、CI；`test_release_gate_selection.py` 与 `test_release_gate_runner_contract.py` 验证选择和契约。支持 `--quick`、`--tooling`、`--profile`（`direct`、`all`）、`--list`、`--check ID`。 |
 | `package_direct_release.sh` | 组装并校验两个系统入口扩展的注册声明，再独立重签扩展与主应用、公证并验证 macOS 直接分发包。 | 直接分发发布者；`test_package_direct_release.sh` 验证隔离 fixture、参数和失败语义。 |
 
@@ -22,13 +22,13 @@ Quartz 4 静态预览的固定 Python 运行器保存在 `Sources/PublishingWork
 
 | 文件 | 职责 | 主要调用者 / 验证方式 |
 |---|---|---|
-| `check_accessibility.sh` | 检查 SwiftUI/AppKit 源码的可访问性标签、控件契约和必需资源。 | `check_release_gate.sh` quick/CI；由脚本内静态断言验证。 |
+| `check_accessibility.sh` | 检查 SwiftUI/AppKit 源码的可访问性标签、控件契约和必需资源；发布写入限定在抽屉，拆分的单篇操作仅允许一次携带冻结审阅预期的首选策略发布。 | `check_release_gate.sh` quick/CI；由脚本内静态断言验证，界面组件拆分时同步其精确归属。 |
 | `check_accessibility_runtime.sh` | 运行 macOS 无障碍 UI 回归，支持通过脚本 help 中的 `--only-testing` 参数定向回归；可构建隔离 fixture 或验证指定应用。 | 发行 profile / CI；非截图回归要求显式应用路径，失败即退出非零。 |
 | `check_build_version.sh` | 校验 `BuildVersion.xcconfig`、Info.plist 与应用版本字段一致。 | 构建/发布门；`test_build_version_gate.sh`。 |
 | `check_ci_quality_workflow.sh` | 检查 GitHub Actions 质量、工具链和共享 Swift 工作流的固定 action。 | CI 配置维护；脚本断言。 |
 | `check_launch_performance.sh` | 通过标准构建入口执行启动基线检查。 | 发行性能流程；调用 `build_and_run.sh --launch-baseline`，失败返回非零。 |
-| `check_localization_gate.sh` | 检查 Swift 编译器导出的应用本地化键、补充提取键、App 与 Core 中的 `CoreL10n` 资源引用和目录完整性。 | quick/本地化维护；与 `sync_ui_localizations.py` 配合，脚本断言失败即阻断。 |
-| `check_public_snapshot.sh` | 检查公开快照的源边界、敏感路径、共享 Swift 包子树和其来源摘要。 | 公开快照发布前；`test_public_snapshot_export.sh` 与脚本静态断言。 |
+| `check_localization_gate.sh` | 检查 Swift 编译器导出的应用本地化键、补充提取键、App 与 Core 中的 `CoreL10n` 资源引用，以及快捷指令扩展的操作文案、短语和目录完整性。 | quick/本地化维护；与 `sync_ui_localizations.py` 配合，脚本断言失败即阻断。 |
+| `check_public_snapshot.sh` | 检查公开快照的源边界、敏感路径、共享 Swift 包子树和其来源摘要；`--remote-history` 对已有公开 checkout 拉取全部远端分支与标签并检查完整历史。 | 公开快照发布前；`test_public_snapshot_export.sh` 验证分支、标签、浅克隆和拉取失败；操作语义见[直发指南](../docs/direct-release.md)。 |
 | `check_quality_baseline_policy.py` | 拒绝质量基线被无声放宽，保证阈值单调或有明确迁移；新生产 Swift 文件不得超过 600 行，已登记的大文件缩短后须同步收紧上限。`--tighten-source-lines` 只下调过时上限并移除已降至 600 行以内的条目，常规检查只读。 | release gate；`test_quality_baseline_policy.py`。 |
 | `check_repository_source_boundary.sh` | 检查仓库源码边界、SwiftPM 构建锁、两个系统入口扩展、UI 测试输入、链接目录和发布模式下的来源完整性。普通模式只报告 checked paths 下没有未跟踪的构建/发布输入；`--release` 还要求当前 HEAD 对应的提交工作树完全干净。 | quick/发布；`test_repository_source_boundary.sh`。 |
 | `check_swift_accessibility_fields.py` | 查找 `TextField`/`TextEditor` 缺少直接 accessibility label 的 Swift 源码。 | `check_accessibility.sh`；`test_swift_accessibility_fields.py`。 |
@@ -40,8 +40,8 @@ Quartz 4 静态预览的固定 Python 运行器保存在 `Sources/PublishingWork
 | `check_swift_safety.py` | 拒绝未审查的强制操作、`try?` 和 `@unchecked Sendable`。 | quick；`test_swift_safety_gate.py`。 |
 | `check_swift_strict_build.sh` | 按清单语言模式执行严格并发构建，默认编译测试，也可限定一个 target。 | direct profile 或定向 `--check swift-strict-build`；`test_swift_strict_build_gate.sh`。 |
 | `check_test_isolation.py` | 拒绝测试使用应用默认持久化位置，保障测试隔离。 | quick；`test_check_test_isolation.py`。 |
-| `check_typography.py` | 检查工作台最小可读字号与相关字体契约。 | quick；`test_typography_gate.py`。 |
-| `check_ui_product_contract.sh` | 检查视图目录分层、关键工作台视图路径与产品 UI 契约。 | direct profile / 定向检查；`test_ui_product_contract.py`。 |
+| `check_typography.py` | 检查工作台最小可读字号与相关字体契约；图标尺寸必须使用 `WorkbenchIconSize`。 | quick；`test_typography_gate.py`。 |
+| `check_ui_product_contract.sh` | 检查视图目录分层、关键工作台视图路径与产品 UI 契约；所有视图的内边距和圆角必须使用 `WorkbenchSpacing` / `WorkbenchCornerRadius` 规范值或其组合，只有 1–2pt 的细线级内边距可以写数字；一次性形状用带说明的具名常量。 | direct profile / 定向检查；`test_ui_product_contract.py`。 |
 | `check_ui_runtime.sh` | 校验已组装应用 bundle、两个扩展的注册声明、manifest 与可选启动运行时证据。 | release/profile；依赖 `release_artifact_manifest.py`，失败即非零。 |
 
 ## 构建、发布与专题工具
@@ -55,17 +55,21 @@ Quartz 4 静态预览的固定 Python 运行器保存在 `Sources/PublishingWork
 | `benchmark_swift_module_builds.py` | 测量 SwiftPM target 构建拓扑、耗时和摘要，不修改工作树。 | 性能专题；`test_benchmark_swift_module_builds.py`。 |
 | `capture_release_performance_trace.sh` | 启动或复用发布应用，采集 Instruments 性能 trace 及目录证据。 | 性能专题；`test_capture_release_performance_trace.sh`。 |
 | `capture_trace_provenance.py` | 为 trace 输出源树和 bundle 摘要，避免嵌入工作树内容。 | trace 编排；检查 JSON 中的 digest/版本字段。 |
-| `export_public_snapshot.sh` | 从开发树导出空目录中的公开快照并执行边界检查。 | 公开快照发布；`test_public_snapshot_export.sh`，发布前另跑 `check_public_snapshot.sh`。 |
+| `export_public_snapshot.sh` | 从开发树导出空目录中的公开快照并执行边界检查；传入 `--public-repository` 时先运行完整远端历史检查，失败不创建输出。 | 公开快照发布；`test_public_snapshot_export.sh`，操作步骤由[直发指南](../docs/direct-release.md)维护。 |
 | `generate_direct_appcast.sh` | 使用 Sparkle 工具为直接分发归档生成 appcast。 | 直接发布专题；检查签名、公钥、URL 和生成文件。 |
 | `run_release_performance_benchmarks.py` | 运行独立 Release 性能测试，拒绝跳过/缺失证据并写自包含 JSON。 | release 性能 profile；`test_release_performance_benchmarks.py`。 |
 | `run_swift_tests.sh` | 固定调用 Swift 测试进程执行器，提供完整测试清单入口。 | release gate/CI；`test_run_swift_tests.py`。 |
 | `sign_sparkle_framework.sh` | 对 Sparkle framework 执行签名、验证和开发者 ID 约束。 | 直接分发打包；检查 `codesign`/`plutil` 输出和退出码。 |
 | `stamp_article_version.py` | 将构建 HTML 绑定到精确 UTF-8 Markdown 源的摘要和版本。 | 站点/文章构建；`test_stamp_article_version.py`。 |
-| `sync_ui_localizations.py` | 编译应用 target 导出 `stringsdata`，补充源码提取并同步应用 UI catalog、校验 Core 展示资源；清理主表时保留 App 或 Core 仍引用的译文。 | 本地化专题；`test_sync_ui_localizations.py`。默认直接维护主表；临时协作片段须在同次变更用 `--merge-reviewed-translations` 合并归档。 |
+| `sync_ui_localizations.py` | 编译应用 target 导出 `stringsdata`，补充源码提取并同步应用 UI catalog、快捷指令扩展的 `Localizable` / `AppShortcuts` catalog，校验 Core 展示资源；清理主表时保留三者仍引用的译文。 | 本地化专题；`test_sync_ui_localizations.py`。默认直接维护主表；临时协作片段须在同次变更用 `--merge-reviewed-translations` 合并归档。 |
 
 本地化检查会用 SwiftPM 的 `native` 构建驱动编译 `PersonalSitePublisherMac`，确保编译器遵循本次独立的 `stringsdata` 导出目录；Swift Build 驱动会将这些记录重定向到其共享中间目录，不能把该目录中的历史文件当作本次证据。检查按源码逐一读取编译器导出的 `Localizable` 键，缺少任何应用源码的导出即失败。旧的 `genstrings` 和显式源码提取仅补充编译器未推断的键。编译器键保留 `%@`、`%lld` 等实际类型，再与主词典生成的中英文 catalog 比对。导出文件仅放在忽略的临时构建目录中，检查结束后移除。
 
+快捷指令扩展的标题、参数、摘要和对话文案使用 `ShortcutExtension/Localizable.xcstrings`；系统唤起短语按操作分组保存在 `ShortcutExtension/AppShortcuts.xcstrings`。两份 catalog 与应用、Core 共用翻译主表，提取和校验保留 `${applicationName}`、`${url}` 等命名参数的身份；参数错配、缺失译文或过时操作短语均会使检查失败。
+
 构建启动入口校验 `--show-bin-path` 返回的配置目录，接受 native 驱动的 `debug` / `release` 及 Swift Build 驱动的 `Debug` / `Release`。返回目录必须对应本次请求的构建配置；不同配置或无法识别的目录仍会中止打包。
+
+macOS 无障碍 UI 回归的构建和运行共用 `PERSONAL_SITE_PUBLISHER_RUNTIME_HOME`；该值应为绝对路径，入口把同一路径传给 Xcode build setting 和运行环境，测试通过已有 Info.plist 映射定位 `AccessibilityUITestData`，再为每例创建独立 UUID 目录并清理。UI test target 的 [Runner.entitlements](../UITests/WorkspaceAccessibilityUITests/Runner.entitlements) 只为该夹具子目录增加读写例外，保留 Xcode Runner 的沙盒；产品和 test host 权限不变。不要分别覆盖构建与运行路径，或把 Runner 私有容器中的夹具交给外部应用。标准入口未显式配置时使用 `HOME` 并始终传值；绕过入口直接运行测试、且没有有效配置时，helper 保留系统临时目录 fallback。验证同时核对 Runner 实际签名中的展开路径，并在原生回归中要求编辑完成保存且不出现保存失败提示；目录权限、保存或界面断言失败仍返回非零。
 
 ## 内部实现与共享组件
 
@@ -116,7 +120,7 @@ Quartz 4 静态预览的固定 Python 运行器保存在 `Sources/PublishingWork
 | `test_swift_release_build_gate.sh` | 验证发布构建 gate 转发参数、环境和失败语义。 | `check_swift_release_build.sh`；Bash fixture。 |
 | `test_swift_safety_gate.py` | 验证 Swift 安全规则、例外清单和回归 fixture。 | `check_swift_safety.py`；Python fixture。 |
 | `test_swift_strict_build_gate.sh` | 验证 Swift 严格并发构建参数和 target 选择。 | `check_swift_strict_build.sh`；Bash fixture。 |
-| `test_sync_ui_localizations.py` | 验证本地化提取、主表同步和 reviewed merge。 | `sync_ui_localizations.py`；Python fixture。 |
+| `test_sync_ui_localizations.py` | 验证应用与快捷指令扩展的本地化提取、命名参数、操作短语分组、主表同步和 reviewed merge。 | `sync_ui_localizations.py`；Python fixture。 |
 | `test_typography_gate.py` | 验证最小字号和 typography 违规定位。 | `check_typography.py`；Python fixture。 |
 | `test_ui_product_contract.py` | 用真实视图和故意回归 fixture 验证 UI 产品契约。 | `check_ui_product_contract.sh`；Python fixture。 |
 

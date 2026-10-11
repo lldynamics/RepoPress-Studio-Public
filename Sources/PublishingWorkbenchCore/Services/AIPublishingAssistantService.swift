@@ -431,47 +431,6 @@ public struct AIPublishingAssistantService: Sendable {
     )
   }
 
-  public func preparingAutomationPlan(
-    in message: AIPublishingChatMessage,
-    request: AIPublishingChatRequest
-  ) -> AIPublishingChatMessage {
-    guard request.contextMode == .site else { return message }
-    if let reformatReply = AIPublishingChatReformatService.prepareReply(
-      message,
-      request: request
-    ) {
-      return reformatReply
-    }
-    if let structuredEditReply = AIPublishingChatStructuredEditService.prepareReply(
-      message,
-      request: request
-    ) {
-      return structuredEditReply
-    }
-    if let translationDraftReply = AIPublishingChatTranslationDraftService.prepareReply(
-      message,
-      request: request
-    ) {
-      return translationDraftReply
-    }
-    if let directEditReply = AIPublishingChatDirectEditService.prepareReply(
-      message,
-      request: request
-    ) {
-      return directEditReply
-    }
-    let parsed = WorkbenchAutomationPlanParser.parse(
-      message.content,
-      currentDraft: request.draft,
-      draftVersions: request.automationDraftVersions
-    )
-    guard let plan = parsed.plan else { return message }
-    var prepared = message
-    prepared.content = parsed.displayContent
-    prepared.automationPlan = plan
-    return prepared
-  }
-
   /// Applies only the protected edit post-processors used by the article
   /// editor. Marker-based automation plans are intentionally left to the
   /// native tool-calling agent path and are never parsed on ordinary replies.

@@ -19,7 +19,7 @@ struct WorkbenchDisclosureGroupStyle: DisclosureGroupStyle {
           configuration.label
           Spacer(minLength: 0)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, WorkbenchSpacing.icon)
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)

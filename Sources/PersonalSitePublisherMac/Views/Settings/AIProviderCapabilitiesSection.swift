@@ -103,8 +103,8 @@ struct AIProviderCapabilitiesSection: View {
           .foregroundStyle(color(for: support))
       }
     }
-    .padding(.horizontal, 9)
-    .padding(.vertical, 7)
+    .padding(.horizontal, WorkbenchSpacing.control)
+    .padding(.vertical, WorkbenchSpacing.control)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       color(for: support).opacity(0.08),

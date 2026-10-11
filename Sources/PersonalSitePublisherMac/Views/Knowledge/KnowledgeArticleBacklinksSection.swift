@@ -73,8 +73,10 @@ struct KnowledgeArticleBacklinksSection: View {
         }
       }
     }
-    .padding(12)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: 10))
+    .padding(WorkbenchSpacing.card)
+    .background(
+      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel)
+    )
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("knowledge-article-backlinks-section")
     .accessibilityLabel("本文引用的资料")
@@ -116,8 +118,8 @@ struct KnowledgeArticleBacklinksSection: View {
             .foregroundStyle(.secondary)
         }
       }
-      .padding(.top, 6)
-      .padding(.leading, 26)
+      .padding(.top, WorkbenchSpacing.icon)
+      .padding(.leading, WorkbenchSpacing.spacious)
     } label: {
       Button {
         onOpenDocument(group.documentID)

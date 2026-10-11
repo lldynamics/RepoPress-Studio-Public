@@ -463,3 +463,361 @@ final class ArticleTranslationIntegrationTests: XCTestCase {
     XCTAssertEqual(merge.drafts[0].translationLink, linked.translationLink)
   }
 }
+
+final class TranslationDraftCreationTests: XCTestCase {
+  func testHugoKeyRoundTripsYAMLAndTOMLThroughImportEditingAndSnapshot() throws {
+    for style in FrontMatterStyle.allCases {
+      var profile = hugoProfile()
+      profile.frontMatterStyle = style
+      let original = ArticleDraft(
+        siteProfileID: profile.id, title: "Original", slug: "original",
+        translationKey: "shared-\"quoted\"-\\key", bodyMarkdown: "Body"
+      )
+      let document = FrontMatterRenderer().renderDocument(draft: original, profile: profile)
+      XCTAssertTrue(document.contains("translationKey"))
+      let imported = try LocalContentImportService(isContentIndexEnabled: false)
+        .parseProjectDocument(
+          document, repositoryPath: "content/posts/original.md",
+          rootURL: FileManager.default.temporaryDirectory, profile: profile)
+      XCTAssertEqual(imported.translationKey, original.translationKey)
+      let editor = MarkdownFrontMatterEditingService()
+      let result = editor.applying(
+        editor.render(draft: imported, profile: profile),
+        to: imported, profile: profile)
+      XCTAssertTrue(result.isValid)
+      XCTAssertEqual(result.draft.translationKey, original.translationKey)
+      let restored = try JSONDecoder().decode(
+        ArticleDraft.self, from: JSONEncoder().encode(result.draft))
+      XCTAssertEqual(restored.translationKey, original.translationKey)
+      var noKey = restored
+      noKey.translationKey = nil
+      XCTAssertNotEqual(noKey.repositoryContentFingerprint, restored.repositoryContentFingerprint)
+      XCTAssertNotEqual(noKey.metadataProjection, restored.metadataProjection)
+      let withoutKey = editor.render(draft: noKey, profile: profile)
+      XCTAssertNil(editor.applying(withoutKey, to: restored, profile: profile).draft.translationKey)
+    }
+  }
+
+  func testZolaDoesNotImportRenderOrCopyHugoKey() throws {
+    var profile = SiteProfile.defaultProfile
+    profile.applyPublishingDefaults(for: .zola)
+    let document = """
+      +++
+      title = "Zola"
+      date = "2026-10-09"
+      translationKey = "hugo-only"
+      +++
+
+      Body
+      """
+    let imported = try LocalContentImportService(isContentIndexEnabled: false)
+      .parseProjectDocument(
+        document, repositoryPath: "content/posts/2026/zola.md",
+        rootURL: FileManager.default.temporaryDirectory, profile: profile)
+    XCTAssertNil(imported.translationKey)
+    var source = imported
+    source.translationKey = "stored-from-an-earlier-hugo-profile"
+    let plan = try makePlan(source: source, profile: profile)
+    XCTAssertNil(plan.sourceTranslationKey)
+    XCTAssertNil(plan.translatedDraft.translationKey)
+    XCTAssertFalse(
+      FrontMatterRenderer().render(draft: source, profile: profile).contains("translationKey"))
+    XCTAssertFalse(
+      MarkdownFrontMatterEditingService().render(draft: source, profile: profile).contains(
+        "translationKey"))
+    XCTAssertEqual(
+      MarkdownFrontMatterEditingService().applying(
+        document.components(separatedBy: "\n\n")[0],
+        to: source, profile: profile
+      ).draft.translationKey, source.translationKey)
+  }
+
+  func testPlanAndCancellationArePureAndConfirmedCreationSharesSourceKey() throws {
+    let profile = hugoProfile()
+    let source = makeSource(profile: profile)
+    let original = source
+    let plan = try makePlan(source: source, profile: profile)
+    XCTAssertEqual(source, original)
+    XCTAssertNil(source.translationKey)
+    XCTAssertNotNil(plan.translatedDraft.translationKey)
+    XCTAssertNil(plan.translatedDraft.publishReminderAt)
+    let canceledPlan = try JSONDecoder().decode(
+      AITranslationDraftPlan.self, from: JSONEncoder().encode(plan))
+    XCTAssertEqual(canceledPlan, plan)
+    XCTAssertEqual(source, original)
+
+    let creation = try AITranslationDraftPlanningService.materializeCreation(
+      plan, currentSource: source, profile: profile, existingDrafts: [source])
+    let keyedSource = try XCTUnwrap(creation.updatedSource)
+    XCTAssertEqual(keyedSource.translationKey, creation.translatedDraft.translationKey)
+    XCTAssertEqual(keyedSource.translationContentFingerprint, source.translationContentFingerprint)
+    XCTAssertEqual(keyedSource.bodyMarkdown, source.bodyMarkdown)
+    XCTAssertEqual(keyedSource.publishReminderAt, source.publishReminderAt)
+    XCTAssertNil(creation.translatedDraft.publishReminderAt)
+    XCTAssertEqual(
+      creation.translatedDraft.translationFreshness(source: keyedSource, profile: profile), .current
+    )
+  }
+
+  func testExistingHugoKeyAndBundleIndexPathArePreserved() throws {
+    var profile = hugoProfile()
+    profile.markdownPathPattern = "content/posts/{slug}/index.md"
+    var source = makeSource(profile: profile)
+    source.translationKey = "manually-chosen-key"
+    let plan = try makePlan(source: source, profile: profile)
+    XCTAssertEqual(plan.sourceTranslationKey, source.translationKey)
+    XCTAssertEqual(plan.destinationMarkdownPath, "content/posts/source/index.en.md")
+    let creation = try AITranslationDraftPlanningService.materializeCreation(
+      plan, currentSource: source, profile: profile, existingDrafts: [source])
+    XCTAssertNil(creation.updatedSource)
+    XCTAssertEqual(creation.translatedDraft.translationKey, source.translationKey)
+    XCTAssertEqual(
+      profile.markdownPath(for: creation.translatedDraft), plan.destinationMarkdownPath)
+  }
+
+  func testConfirmationRejectsDuplicatePathLanguageAndChangedPathSettings() throws {
+    let profile = hugoProfile()
+    let source = makeSource(profile: profile)
+    let plan = try makePlan(source: source, profile: profile)
+    var occupied = ArticleDraft(
+      siteProfileID: profile.id, title: "Other", slug: "other", bodyMarkdown: "Other")
+    occupied.repositoryPath = plan.destinationMarkdownPath
+    XCTAssertThrowsError(
+      try AITranslationDraftPlanningService.materializeCreation(
+        plan, currentSource: source, profile: profile, existingDrafts: [source, occupied])
+    ) { error in
+      XCTAssertEqual(error as? AITranslationDraftPlanningError, .destinationPathExists)
+    }
+    var movedProfile = profile
+    movedProfile.translationMarkdownPathPattern = "content/{language}/posts/{sourceSlug}.md"
+    XCTAssertThrowsError(
+      try AITranslationDraftPlanningService.materializeCreation(
+        plan, currentSource: source, profile: movedProfile, existingDrafts: [source])
+    ) { error in
+      XCTAssertEqual(error as? AITranslationDraftPlanningError, .destinationPathChanged)
+    }
+    let newPlan = try makePlan(source: source, profile: movedProfile)
+    XCTAssertEqual(newPlan.destinationMarkdownPath, "content/en/posts/source.md")
+    XCTAssertThrowsError(
+      try AITranslationDraftPlanningService.materializeCreation(
+        newPlan, currentSource: source, profile: movedProfile,
+        existingDrafts: [source, plan.translatedDraft])
+    ) { error in
+      XCTAssertEqual(error as? AITranslationDraftPlanningError, .targetLanguageAlreadyExists)
+    }
+  }
+
+  func testImportMergeKeepsRepositoryKeyRelationshipAndLocalReminder() throws {
+    let profile = hugoProfile()
+    let source = makeSource(profile: profile)
+    var existing = try makePlan(source: source, profile: profile).translatedDraft
+    existing.repositoryPath = "content/posts/source.en.md"
+    existing.publishReminderAt = Date(timeIntervalSince1970: 12345)
+    var imported = existing
+    imported.id = UUID()
+    imported.translationLink = nil
+    imported.translationKey = "key-from-repository"
+    imported.publishReminderAt = nil
+    imported.bodyMarkdown = "Repository edit"
+    let merged = LocalContentImportMergeService().makePlan(
+      existingDrafts: [existing],
+      result: LocalContentImportResult(importedDrafts: [imported], skippedPaths: []))
+    XCTAssertEqual(merged.drafts.count, 1)
+    XCTAssertEqual(merged.drafts[0].translationKey, imported.translationKey)
+    XCTAssertEqual(merged.drafts[0].translationLink, existing.translationLink)
+    XCTAssertEqual(merged.drafts[0].publishReminderAt, existing.publishReminderAt)
+  }
+
+  func testOldSnapshotWithoutKeyAndPlanFieldsRemainCompatible() throws {
+    let profile = hugoProfile()
+    let source = makeSource(profile: profile)
+    let plan = try makePlan(source: source, profile: profile)
+    var object = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: JSONEncoder().encode(plan)) as? [String: Any])
+    object.removeValue(forKey: "sourceTranslationKey")
+    object.removeValue(forKey: "destinationMarkdownPath")
+    var translated = try XCTUnwrap(object["translatedDraft"] as? [String: Any])
+    translated.removeValue(forKey: "translationKey")
+    object["translatedDraft"] = translated
+    let legacy = try JSONDecoder().decode(
+      AITranslationDraftPlan.self,
+      from: JSONSerialization.data(withJSONObject: object))
+    XCTAssertNil(legacy.sourceTranslationKey)
+    XCTAssertNil(legacy.translatedDraft.translationKey)
+    let creation = try AITranslationDraftPlanningService.materializeCreation(
+      legacy, currentSource: source, profile: profile, existingDrafts: [source])
+    XCTAssertEqual(creation.updatedSource?.translationKey, creation.translatedDraft.translationKey)
+  }
+
+  func testOldImportCacheIsReparsedToRecoverHugoKey() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let root = directory.appendingPathComponent("project", isDirectory: true)
+    let cache = directory.appendingPathComponent("cache", isDirectory: true)
+    let content = root.appendingPathComponent("content/posts", isDirectory: true)
+    try FileManager.default.createDirectory(at: content, withIntermediateDirectories: true)
+    let profile = hugoProfile()
+    let source = ArticleDraft(
+      siteProfileID: profile.id, title: "Source", slug: "source",
+      translationKey: "key-from-markdown", bodyMarkdown: "Body")
+    let file = content.appendingPathComponent("source.md")
+    try FrontMatterRenderer().renderDocument(draft: source, profile: profile).write(
+      to: file, atomically: true, encoding: .utf8)
+    let importer = LocalContentImportService(contentIndexDirectoryURL: cache)
+    let first = importer.importDrafts(rootURL: root, profile: profile)
+    XCTAssertEqual(first.importedDrafts.first?.translationKey, source.translationKey)
+    let indexStore = LocalContentImportIndexStore(directoryURL: cache)
+    var oldIndex = indexStore.snapshot(profile: profile, rootURL: root)
+    oldIndex.schemaVersion = 4
+    oldIndex.entries = oldIndex.entries.mapValues { entry in
+      var entry = entry
+      entry.draft.translationKey = nil
+      return entry
+    }
+    indexStore.save(oldIndex)
+    let refreshed = importer.importDrafts(rootURL: root, profile: profile)
+    XCTAssertEqual(refreshed.importedDrafts.first?.translationKey, source.translationKey)
+  }
+
+  @MainActor
+  func testDismissingEntryPreviewLeavesWorkspaceSourceAndVersionsUnchanged() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: directory.appendingPathComponent("workspace.json")), safeMode: true)
+    var profile = store.activeProfile
+    profile.applyPublishingDefaults(for: .hugo)
+    store.updateActiveProfile(profile)
+    store.updateDraft(makeSource(profile: profile))
+    XCTAssertTrue(store.saveCurrentStateSynchronously())
+    let source = try XCTUnwrap(store.selectedDraft)
+    let beforeDrafts = store.drafts
+    let beforeVersions = store.publishingStore.draftVersions
+    _ = try store.ai.translationCreationPreview(
+      source: source,
+      target: AIPublishingChatTranslationDraftService.supportedTargets[0])
+    XCTAssertEqual(store.drafts, beforeDrafts)
+    XCTAssertEqual(store.publishingStore.draftVersions, beforeVersions)
+    XCTAssertEqual(store.selectedDraftID, source.id)
+    XCTAssertFalse(store.hasUnsavedChanges)
+  }
+
+  @MainActor
+  func testConfirmAtomicallyPersistsSourceKeyTranslationAndPreviousSourceVersion() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let persistence = WorkbenchPersistence(
+      fileURL: directory.appendingPathComponent("workspace.json"))
+    let store = WorkbenchStore(persistence: persistence, safeMode: true)
+    var profile = store.activeProfile
+    profile.applyPublishingDefaults(for: .hugo)
+    store.updateActiveProfile(profile)
+    let source = makeSource(profile: profile)
+    store.updateDraft(source)
+    XCTAssertTrue(store.saveCurrentStateSynchronously())
+    let current = try XCTUnwrap(store.drafts.first { $0.id == source.id })
+    let plan = try makePlan(source: current, profile: profile)
+    let translated = try XCTUnwrap(store.ai.createLinkedTranslationDraft(from: plan))
+    let saved = try XCTUnwrap(persistence.load())
+    let savedSource = try XCTUnwrap(saved.drafts.first { $0.id == source.id })
+    let savedTranslation = try XCTUnwrap(saved.drafts.first { $0.id == translated.id })
+    XCTAssertEqual(savedSource.translationKey, savedTranslation.translationKey)
+    XCTAssertNotNil(savedSource.translationKey)
+    XCTAssertEqual(savedSource.bodyMarkdown, source.bodyMarkdown)
+    XCTAssertEqual(savedSource.publishReminderAt, source.publishReminderAt)
+    XCTAssertNil(savedTranslation.publishReminderAt)
+    XCTAssertTrue(
+      saved.draftVersions.contains { $0.draftID == source.id && $0.draft.translationKey == nil })
+    XCTAssertFalse(store.hasUnsavedChanges)
+    let countBeforeRepeat = store.drafts.count
+    XCTAssertEqual(store.ai.createLinkedTranslationDraft(from: plan)?.id, translated.id)
+    XCTAssertEqual(store.drafts.count, countBeforeRepeat)
+  }
+
+  @MainActor
+  func testPrimarySaveFailureLeavesDraftsVersionsAndSelectionUnchanged() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let fileURL = directory.appendingPathComponent("workspace.json")
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: fileURL), safeMode: true)
+    var profile = store.activeProfile
+    profile.applyPublishingDefaults(for: .hugo)
+    store.updateActiveProfile(profile)
+    store.updateDraft(makeSource(profile: profile))
+    XCTAssertTrue(store.saveCurrentStateSynchronously())
+    let source = try XCTUnwrap(store.selectedDraft)
+    let plan = try makePlan(source: source, profile: profile)
+    let beforeDrafts = store.drafts
+    let beforeVersions = store.publishingStore.draftVersions
+    let beforeSelection = store.selectedDraftID
+    try FileManager.default.removeItem(at: fileURL)
+    try FileManager.default.createDirectory(at: fileURL, withIntermediateDirectories: false)
+    XCTAssertNil(store.ai.createLinkedTranslationDraft(from: plan))
+    XCTAssertEqual(store.drafts, beforeDrafts)
+    XCTAssertEqual(store.publishingStore.draftVersions, beforeVersions)
+    XCTAssertEqual(store.selectedDraftID, beforeSelection)
+    XCTAssertTrue(store.hasUnsavedChanges)
+    XCTAssertNotNil(store.persistenceStore.lastSaveError)
+  }
+
+  @MainActor
+  func testRecoveryProtectionDoesNotCreateEitherDraftOrVersion() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: directory.appendingPathComponent("workspace.json")), safeMode: true)
+    var profile = store.activeProfile
+    profile.applyPublishingDefaults(for: .hugo)
+    store.updateActiveProfile(profile)
+    store.updateDraft(makeSource(profile: profile))
+    let source = try XCTUnwrap(store.selectedDraft)
+    let plan = try makePlan(source: source, profile: profile)
+    let beforeDrafts = store.drafts
+    let beforeVersions = store.publishingStore.draftVersions
+    store.persistenceStore.protectWritesForUnrecoverableSnapshot(message: "test")
+    XCTAssertNil(store.ai.createLinkedTranslationDraft(from: plan))
+    XCTAssertEqual(store.drafts, beforeDrafts)
+    XCTAssertEqual(store.publishingStore.draftVersions, beforeVersions)
+    XCTAssertEqual(store.selectedDraftID, source.id)
+  }
+
+  func testEntryCommandsUseExistingExplicitTranslationParsing() throws {
+    for target in AIPublishingChatTranslationDraftService.supportedTargets {
+      let command = try XCTUnwrap(
+        AIPublishingChatTranslationDraftService.creationRequest(target: target))
+      let parsed = try XCTUnwrap(AIPublishingChatTranslationDraftService.target(for: command))
+      XCTAssertEqual(parsed.languageCode, target.languageCode)
+    }
+  }
+
+  private func hugoProfile() -> SiteProfile {
+    var profile = SiteProfile.defaultProfile
+    profile.applyPublishingDefaults(for: .hugo)
+    return profile
+  }
+
+  private func makeSource(profile: SiteProfile) -> ArticleDraft {
+    var source = ArticleDraft(
+      siteProfileID: profile.id, title: "原稿", slug: "source",
+      summary: "原摘要", bodyMarkdown: "# 原稿\n\n原文正文")
+    source.publishReminderAt = Date(timeIntervalSince1970: 2_000_000_000)
+    return source
+  }
+
+  private func makePlan(source: ArticleDraft, profile: SiteProfile) throws -> AITranslationDraftPlan
+  {
+    try AITranslationDraftPlanningService.plan(
+      source: source, profile: profile,
+      targetLanguageCode: "en", translatedTitle: "Translation", translatedSummary: "Summary",
+      translatedBodyMarkdown: "# Translation\n\nTranslated body")
+  }
+
+  private func temporaryDirectory() throws -> URL {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "translation-creation-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    return url
+  }
+}

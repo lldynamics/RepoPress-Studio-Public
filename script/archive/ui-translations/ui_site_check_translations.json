@@ -1,0 +1,101 @@
+{
+  "AI 修复：%@": {
+    "zh-Hans": "AI 修复：%@",
+    "en": "AI repair: %@"
+  },
+  "上次扫描 %@ · %@ · %lld 篇文章": {
+    "zh-Hans": "上次扫描 %@ · %@ · %lld 篇文章",
+    "en": {
+      "one": "Last scan %@ · %@ · %lld article",
+      "other": "Last scan %@ · %@ · %lld articles"
+    }
+  },
+  "分组方式": {
+    "zh-Hans": "分组方式",
+    "en": "Group by"
+  },
+  "受影响的文章：%@": {
+    "zh-Hans": "受影响的文章：%@",
+    "en": "Affected articles: %@"
+  },
+  "可 AI 修复": {
+    "zh-Hans": "可 AI 修复",
+    "en": "AI repairable"
+  },
+  "处理维护事项：%@": {
+    "zh-Hans": "处理维护事项：%@",
+    "en": "Handle maintenance tasks: %@"
+  },
+  "复制任务：%@": {
+    "zh-Hans": "复制任务：%@",
+    "en": "Copy task: %@"
+  },
+  "定位问题：%@": {
+    "zh-Hans": "定位问题：%@",
+    "en": "Locate issue: %@"
+  },
+  "已通过，文章统计": {
+    "zh-Hans": "已通过，文章统计",
+    "en": "Passed, article count"
+  },
+  "强制重新核验外部链接": {
+    "zh-Hans": "强制重新核验外部链接",
+    "en": "Force external link verification"
+  },
+  "当前筛选下没有待处理的问题。": {
+    "zh-Hans": "当前筛选下没有待处理的问题。",
+    "en": "No issues need attention with the current filters."
+  },
+  "按问题分组": {
+    "zh-Hans": "按问题分组",
+    "en": "By issue"
+  },
+  "点击切换筛选，再次点击取消": {
+    "zh-Hans": "点击切换筛选，再次点击取消",
+    "en": "Click to apply the filter; click again to clear it"
+  },
+  "点击问题后，可使用上下箭头选择问题": {
+    "zh-Hans": "点击问题后，可使用上下箭头选择问题",
+    "en": "After selecting an issue, use the up and down arrows to select issues"
+  },
+  "站点提示": {
+    "zh-Hans": "站点提示",
+    "en": "Site notes"
+  },
+  "站点检查": {
+    "zh-Hans": "站点检查",
+    "en": "Site checks"
+  },
+  "筛选问题或文章": {
+    "zh-Hans": "筛选问题或文章",
+    "en": "Filter issues or articles"
+  },
+  "维护事项为上次扫描结果。": {
+    "zh-Hans": "维护事项为上次扫描结果。",
+    "en": "Maintenance tasks are from the previous scan."
+  },
+  "维护扫描结果已过期，请重新检查。": {
+    "zh-Hans": "维护扫描结果已过期，请重新检查。",
+    "en": "Maintenance results are out of date. Run the check again."
+  },
+  "记录处理：%@": {
+    "zh-Hans": "记录处理：%@",
+    "en": "Record handling: %@"
+  },
+  "选择问题：%@": {
+    "zh-Hans": "选择问题：%@",
+    "en": "Select issue: %@"
+  },
+  "重新检查选项": {
+    "zh-Hans": "重新检查选项",
+    "en": "Recheck options"
+  },
+  "%lld，已筛选": {
+    "zh-Hans": "%lld，已筛选",
+    "en": "%lld, filtered"
+  },
+  "%lld，未筛选": {
+    "zh-Hans": "%lld，未筛选",
+    "en": "%lld, not filtered"
+  }
+}

@@ -148,7 +148,7 @@ struct KnowledgeLibraryInspectorPanel: View {
             onDeleteAnnotation: onDeleteAnnotation,
             showsHeader: false
           )
-          .padding(.top, 8)
+          .padding(.top, WorkbenchSpacing.control)
         } label: {
           Label(
             "标注与反向链接（\(knowledge.annotations.count + knowledge.backlinkGroups.count)）",
@@ -165,7 +165,7 @@ struct KnowledgeLibraryInspectorPanel: View {
             showsHeader: false,
             maximumVisibleRecommendations: showsAllRelatedContent ? nil : 3
           )
-            .padding(.top, 8)
+          .padding(.top, WorkbenchSpacing.control)
           if knowledge.relatedChapters.count > 3 {
             Button(
               showsAllRelatedContent
@@ -178,7 +178,7 @@ struct KnowledgeLibraryInspectorPanel: View {
               showsAllRelatedContent.toggle()
             }
             .buttonStyle(.link)
-            .padding(.top, 4)
+            .padding(.top, WorkbenchSpacing.tight)
           }
         } label: {
           HStack {
@@ -217,13 +217,13 @@ struct KnowledgeLibraryInspectorPanel: View {
             Button("来源更新与版本历史…", action: onOpenSourceHistory)
               .buttonStyle(.link)
           }
-          .padding(.top, 8)
+          .padding(.top, WorkbenchSpacing.control)
         } label: {
           Label("正文质量与版本", systemImage: "checkmark.shield")
             .font(.callout.weight(.semibold))
         }
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
       .frame(maxWidth: .infinity, alignment: .topLeading)
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("knowledge-library-inspector")

@@ -1,8 +1,9 @@
 import AppKit
 import OSLog
+import PublishingCoreSupport
 import PublishingDomainContracts
+import PublishingKnowledgeCore
 import PublishingMarkdownCore
-import PublishingWorkbenchCore
 import SwiftUI
 
 struct MacMarkdownTextView: NSViewRepresentable {
@@ -24,9 +25,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
   var inlineAIReviewPresentation: MarkdownEditorInlineAIReviewPresentation? = nil
   var ghostText: String
   var ssgSnippets: [MarkdownSnippet]
-  /// Consumers that persist only normalized progress can explicitly disable
-  /// the exact AppKit source-line lookup. The default preserves existing
-  /// source-line reporting for other callers.
+  /// Consumers persisting only normalized progress can disable exact AppKit source-line
+  /// lookup; the default preserves source-line reporting.
   var reportsScrollSourceLine = true
   var scrollSyncUpdate: MarkdownScrollSyncUpdate?
   var scrollRestorationUpdate: MarkdownScrollSyncUpdate?
@@ -413,6 +413,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
   static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) {
     coordinator.flushPendingBindingWritesForDismantle()
     coordinator.invalidateContextualAnchorPublication()
+    coordinator.statisticsSession.invalidate()
     MacMarkdownEditorTerminationFlushRegistry.unregister(coordinator)
     coordinator.inlineAttachmentDrawingApplicationTask?.cancel()
     coordinator.cancelReadOnlyPresentationTasks()
@@ -489,19 +490,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     )
     var hasLoggedSyntaxTelemetryActivation = false
     var loggedSyntaxFallbackCount = 0
-    var statisticsTask: Task<Void, Never>?
-    var statisticsGeneration = 0
-    var statisticsContextGeneration = 0
-    var statisticsText: String?
-    var statisticsDocumentRevision: UInt64?
-    var statisticsBodyUTF16Offset: Int?
-    var statistics = MarkdownEditorStatistics.empty
-    // These counters make the editor's update path observable in focused
-    // AppKit tests. They are intentionally kept on the coordinator so tests
-    // can distinguish a local delta from a scheduled document-wide scan.
-    var statisticsFullScanCount = 0
-    var statisticsIncrementalUpdateCount = 0
-    var statisticsRevisionValidatedUpdateCount = 0
+    let statisticsSession: MarkdownEditorStatisticsSession
     var pendingTextEdit: MarkdownTextEdit?
     var pendingTextEditRequiresInference = false
     var isApplyingRepresentedText = false
@@ -573,8 +562,6 @@ struct MacMarkdownTextView: NSViewRepresentable {
     // 180 ms statistics delivery could start a second window-wide layout.
     // The live body channel above still stages every accepted edit immediately.
     let bindingFlushClock: any Clock<Duration>
-    let statisticsClock: any Clock<Duration>
-    let statisticsDelay = MarkdownEditorStatisticsDelayPolicy.incrementalDeliveryDelay
     var isApplyingAutomaticPairing = false
 
     init(
@@ -609,7 +596,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       self.bodyMarkdown = bodyMarkdown
       self.bodyUTF16Offset = bodyUTF16Offset
       self.bindingFlushClock = bindingFlushClock
-      self.statisticsClock = statisticsClock
+      statisticsSession = MarkdownEditorStatisticsSession(clock: statisticsClock)
       let delimitedBodyUTF16Offset = Self.delimitedBodyUTF16Offset(in: text.wrappedValue)
       cachedDocumentEnvelope = (
         revision: 0,
@@ -652,6 +639,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
         onPositionChanged: onScrollPositionChanged
       )
       super.init()
+      statisticsSession.currentContext = { [weak self] in self?.statisticsDocumentContext }
+      statisticsSession.onStatisticsChanged = { [weak self] in self?.deliverStatistics($0) }
       MacMarkdownEditorTerminationFlushRegistry.register(self)
     }
 
@@ -710,16 +699,9 @@ struct MacMarkdownTextView: NSViewRepresentable {
       }
       let attachmentsChanged = self.attachments != attachments
       let bodyOffsetChanged = self.bodyUTF16Offset != bodyUTF16Offset
-      if bodyChanged || bodyOffsetChanged {
-        // An in-flight scan must not certify a different represented context.
-        // An already certified live document remains valid across a body echo:
-        // actual text replacements advance syntaxDocumentRevision separately.
-        statisticsContextGeneration += 1
-      }
-      if bodyOffsetChanged {
-        statisticsDocumentRevision = nil
-        statisticsBodyUTF16Offset = nil
-      }
+      statisticsSession.updateDocumentContext(
+        bodyChanged: bodyChanged, bodyOffsetChanged: bodyOffsetChanged
+      )
       self.bodyMarkdown = bodyMarkdown
       self.bodyUTF16Offset = bodyUTF16Offset
       let hasDelimitedFrontMatter = cachedDelimitedBodyUTF16Offset(in: representedText) != nil
@@ -1179,7 +1161,6 @@ struct MacMarkdownTextView: NSViewRepresentable {
       inlineAttachmentImageTasks.values.forEach { $0.cancel() }
       readOnlyPresentationTask?.cancel()
       readOnlyPresentationImageTasks.forEach { $0.cancel() }
-      statisticsTask?.cancel()
       focusRequestTask?.cancel()
       bindingFlushTask?.cancel()
     }

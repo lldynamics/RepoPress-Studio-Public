@@ -550,3 +550,20 @@ extension MacMarkdownComposerView {
     nonmutating set { analysisState.markdownAnalysisTask = newValue }
   }
 }
+
+struct MarkdownDuplicateTitleRemovalSnapshot {
+  let requestID: UUID
+  let draftID: UUID
+  let metadataRevision: UInt64
+  let bodyRevision: UInt64
+
+  func admits(
+    draftID: UUID, metadataRevision: UInt64, storedMetadataRevision: UInt64?,
+    buffer: DraftBodyEditorBuffer, expectedBody: String, hasFrontMatterConflict: Bool
+  ) -> Bool {
+    self.draftID == draftID && buffer.draftID == draftID
+      && self.metadataRevision == metadataRevision && storedMetadataRevision == metadataRevision
+      && buffer.revision == bodyRevision && buffer.bodyMarkdown == expectedBody
+      && !hasFrontMatterConflict
+  }
+}

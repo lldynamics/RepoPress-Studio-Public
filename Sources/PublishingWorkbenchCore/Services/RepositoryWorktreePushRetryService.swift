@@ -14,7 +14,7 @@ public struct RepositoryWorktreePushRetryService: Sendable {
     let sourcePath: String?
   }
 
-  private let git: GitCommandRunner
+  let git: GitCommandRunner
   private let safetyAnalyzer: RepositoryPublishSafetyAnalyzer
   private let sitePreflightService: RepositoryPublishPreflightService
 
@@ -30,6 +30,9 @@ public struct RepositoryWorktreePushRetryService: Sendable {
 
   public func prepare(profile: SiteProfile) throws -> RepositoryWorktreePushRetryConfirmation {
     let snapshot = try inspect(profile: profile)
+    try RepositoryGitExecutionPolicyService(gitCommandRunner: git).validate(
+      policy: profile.gitExecutionPolicy, rootURL: URL(fileURLWithPath: snapshot.repositoryRoot)
+    )
     let safetyReport = safetyAnalyzer.analyze(
       snapshot: worktreeSafetySnapshot(from: snapshot),
       profile: profile
@@ -54,7 +57,8 @@ public struct RepositoryWorktreePushRetryService: Sendable {
       snapshot: snapshot,
       safetyReport: safetyReport,
       sitePreflightResult: preflight,
-      fileReviews: fileReviews
+      fileReviews: fileReviews,
+      executionPolicy: profile.gitExecutionPolicy
     )
   }
 
@@ -62,6 +66,9 @@ public struct RepositoryWorktreePushRetryService: Sendable {
     profile: SiteProfile,
     confirmation: RepositoryWorktreePushRetryConfirmation
   ) throws -> RepositoryWorktreePublishResult {
+    guard confirmation.executionPolicy == profile.gitExecutionPolicy else {
+      throw RepositoryWorktreePublishError.snapshotDrift
+    }
     guard confirmation.snapshot.isHistoryReviewComplete,
       RepositoryWorktreeFileReview.isComplete(
         entries: confirmation.snapshot.entries, reviews: confirmation.fileReviews
@@ -79,6 +86,21 @@ public struct RepositoryWorktreePushRetryService: Sendable {
     let pushOriginBeforePush = try validatedPushOrigin(profile: profile, root: rootURL)
     guard pushOriginBeforePush == snapshot.pushOriginURL else {
       throw RepositoryWorktreePublishError.snapshotDrift
+    }
+    do {
+      try RepositoryWorktreeGitExecutionPolicyService(git: git).prePush(
+        policy: confirmation.executionPolicy, branch: snapshot.branch, root: rootURL,
+        commitSHA: snapshot.localHeadSHA, remoteSHA: snapshot.remoteBranchSHA,
+        origin: pushOriginBeforePush
+      ) {
+        guard try inspect(profile: profile) == snapshot else {
+          throw RepositoryGitExecutionPolicyError.reviewedContentChanged
+        }
+      }
+    } catch {
+      throw RepositoryWorktreePublishError.commitSucceededButPushFailed(
+        commitSHA: snapshot.localHeadSHA, message: error.localizedDescription
+      )
     }
     let result = git.run(
       [
@@ -554,22 +576,4 @@ public struct RepositoryWorktreePushRetryService: Sendable {
     return attributes.count >= 3 && attributes[2].lowercased() == "lfs"
   }
 
-  private func output(
-    _ arguments: [String],
-    root: URL,
-    preserveWhitespace: Bool = false
-  ) throws -> String {
-    let result = git.run(
-      arguments,
-      rootURL: root,
-      preserveStandardOutputWhitespace: preserveWhitespace
-    )
-    guard result.terminationStatus == 0, !result.didTimeOut, !result.wasOutputTruncated else {
-      throw RepositoryWorktreePublishError.gitFailed(
-        command: GitCommandRunner.redactedCommandDescription(arguments),
-        output: result.output
-      )
-    }
-    return result.standardOutput
-  }
 }

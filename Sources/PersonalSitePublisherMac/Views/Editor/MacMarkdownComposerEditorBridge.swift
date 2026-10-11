@@ -41,6 +41,9 @@ extension MacMarkdownComposerView {
   /// the optimistic base for the next keystroke, so a true multi-window
   /// conflict cannot be silently rebased over another writer.
   func handleLiveEditorBodyChange(from previousBody: String, to updatedBody: String) {
+    if previousBody != updatedBody {
+      workspaceWindowSession?.collapseInspectorForBodyEditing(draftID: draft.id)
+    }
     guard frontMatterIssue == nil else { return }
     guard
       let result = store.stageDraftBody(

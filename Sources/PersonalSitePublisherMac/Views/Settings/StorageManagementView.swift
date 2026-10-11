@@ -4,17 +4,6 @@ import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
 
-enum StorageManagementPresentation {
-  case standalone
-  case embedded
-}
-
-enum StorageManagementScope {
-  case all
-  case storageAndCleanup
-  case backupAndRestore
-}
-
 @MainActor
 struct StorageManagementView: View {
   @ObservedObject private var dataManagement: WorkbenchDataManagementFeatureFacade
@@ -227,7 +216,7 @@ struct StorageManagementView: View {
       storageVisualCapacityBar(snapshot: snapshot)
       storageLegend(snapshot: snapshot)
     }
-    .padding(.vertical, 4)
+    .padding(.vertical, WorkbenchSpacing.tight)
 
     LabeledContent(
       String(localized: "资料库"),
@@ -262,34 +251,36 @@ struct StorageManagementView: View {
     return GeometryReader { geo in
       HStack(spacing: 2) {
         if knowledgeFrac > 0.005 {
-          RoundedRectangle(cornerRadius: 3)
+          RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge)
             .fill(Color.blue)
             .frame(width: max(4, geo.size.width * CGFloat(knowledgeFrac)))
         }
         if rssFrac > 0.005 {
-          RoundedRectangle(cornerRadius: 3)
+          RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge)
             .fill(Color.orange)
             .frame(width: max(4, geo.size.width * CGFloat(rssFrac)))
         }
         if attachFrac > 0.005 {
-          RoundedRectangle(cornerRadius: 3)
+          RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge)
             .fill(Color.purple)
             .frame(width: max(4, geo.size.width * CGFloat(attachFrac)))
         }
         if backupFrac > 0.005 {
-          RoundedRectangle(cornerRadius: 3)
+          RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge)
             .fill(Color.green)
             .frame(width: max(4, geo.size.width * CGFloat(backupFrac)))
         }
         if otherFrac > 0.005 {
-          RoundedRectangle(cornerRadius: 3)
+          RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge)
             .fill(Color.secondary.opacity(0.5))
             .frame(width: max(4, geo.size.width * CGFloat(otherFrac)))
         }
       }
     }
     .frame(height: 10)
-    .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
+    .background(
+      Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge)
+    )
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(String(localized: "存储空间占用比例图"))
   }

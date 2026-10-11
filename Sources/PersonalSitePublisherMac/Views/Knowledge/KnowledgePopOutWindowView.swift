@@ -7,7 +7,6 @@ import SwiftUI
 /// Its identity is the supplied document ID; it never uses or changes the
 /// library's global selection.
 struct KnowledgePopOutWindowView: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let store: WorkbenchStore
   @ObservedObject var knowledge: KnowledgeStore
   let documentID: UUID
@@ -63,7 +62,7 @@ struct KnowledgePopOutWindowView: View {
           }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        .padding(32)
+        .padding(WorkbenchSpacing.spacious + WorkbenchSpacing.control)
       }
     }
     .frame(minWidth: 420, minHeight: 360)
@@ -91,7 +90,7 @@ struct KnowledgePopOutWindowView: View {
         }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(20)
+      .padding(WorkbenchSpacing.page)
 
       Divider()
 
@@ -104,14 +103,14 @@ struct KnowledgePopOutWindowView: View {
             ocrText: text,
             highlightedAnchor: nil
           )
-          .padding(24)
+          .padding(WorkbenchSpacing.spacious)
         } else if readerBlocks.isEmpty {
           unavailableView(
             title: String(localized: "没有可显示正文"),
             message: String(localized: "资料已保存，但没有可供阅读的正文。"),
             systemImage: "doc.text.magnifyingglass"
           )
-          .padding(32)
+          .padding(WorkbenchSpacing.spacious + WorkbenchSpacing.control)
         } else {
           LazyVStack(alignment: .leading, spacing: 14) {
             ForEach(readerBlocks) { block in
@@ -121,7 +120,7 @@ struct KnowledgePopOutWindowView: View {
           .textSelection(.enabled)
           .frame(maxWidth: 900, alignment: .leading)
           .frame(maxWidth: .infinity, alignment: .center)
-          .padding(24)
+          .padding(WorkbenchSpacing.spacious)
         }
       }
       .accessibilityIdentifier("knowledge-pop-out-reader")
@@ -149,10 +148,10 @@ struct KnowledgePopOutWindowView: View {
         .font(.body)
         .foregroundStyle(.secondary)
         .lineSpacing(5)
-        .padding(.leading, 14)
+        .padding(.leading, WorkbenchSpacing.content)
         .overlay(alignment: .leading) {
           Rectangle()
-            .fill(workbenchAccentColor.opacity(0.5))
+            .fill(Color.secondary.opacity(0.5))
             .frame(width: 2)
         }
 
@@ -186,8 +185,8 @@ struct KnowledgePopOutWindowView: View {
           .font(.body.monospaced())
           .frame(maxWidth: .infinity, alignment: .leading)
       }
-      .padding(12)
-      .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+      .padding(WorkbenchSpacing.card)
+      .background(.quaternary, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
 
     case .locator:
       Label(block.text, systemImage: "mappin.and.ellipse")
@@ -225,7 +224,7 @@ struct KnowledgePopOutWindowView: View {
         .multilineTextAlignment(.center)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .padding(32)
+    .padding(WorkbenchSpacing.spacious + WorkbenchSpacing.control)
   }
 
   private var taskID: TaskID {

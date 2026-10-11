@@ -6,6 +6,69 @@ import XCTest
 
 @MainActor
 final class MarkdownFrontMatterFoldingTests: MarkdownEditorAppKitInteractionTestCase {
+  func testLateTextLayoutGrowthAndShrinkUpdateTheScrollExtent() async throws {
+    let scroll = MarkdownEditorScrollView(frame: NSRect(x: 0, y: 0, width: 460, height: 400))
+    scroll.contentView = MarkdownFrontMatterClipView()
+    scroll.hasVerticalScroller = true
+    scroll.scrollerStyle = .legacy
+    scroll.autohidesScrollers = true
+    let view = DroppableMarkdownTextView.makeTextKit2(
+      containerSize: NSSize(width: 428, height: CGFloat.greatestFiniteMagnitude))
+    view.textContainer?.widthTracksTextView = false
+    view.textContainer?.heightTracksTextView = false
+    view.isVerticallyResizable = false
+    view.isHorizontallyResizable = false
+    view.string = (1...8).map { "第 \($0) 段：语法渲染和字号变化以后，正文仍应完整显示并能立即上下滚动。" }
+      .joined(separator: "\n\n")
+    view.font = .systemFont(ofSize: 12)
+    scroll.documentView = view
+    let window = NSWindow(
+      contentRect: scroll.frame, styleMask: .borderless, backing: .buffered, defer: false)
+    window.contentView = scroll
+    defer { window.orderOut(nil) }
+    let manager = try XCTUnwrap(view.textLayoutManager)
+    manager.ensureLayout(for: manager.documentRange)
+    scroll.layoutSubtreeIfNeeded()
+    let source = view.string
+    let selection = view.selectedRange()
+    XCTAssertEqual(view.frame.height, scroll.contentView.bounds.height, accuracy: 1)
+
+    // Syntax rendering can change storage attributes after the height was cached.
+    // Do not manually invalidate the scroll view: it must follow TextKit's geometry.
+    let storage = try XCTUnwrap(view.textStorage)
+    storage.addAttribute(
+      .font, value: NSFont.systemFont(ofSize: 32),
+      range: NSRange(location: 0, length: storage.length))
+    manager.ensureLayout(for: manager.documentRange)
+    let expandedHeight = manager.usageBoundsForTextContainer.maxY + 32
+    XCTAssertGreaterThan(expandedHeight, scroll.contentView.bounds.height * 2)
+    for _ in 0..<20 {
+      try await Task.sleep(for: .milliseconds(10))
+      scroll.layoutSubtreeIfNeeded()
+      if view.frame.height >= expandedHeight - 1 { break }
+    }
+    XCTAssertGreaterThanOrEqual(view.frame.height, expandedHeight - 1)
+    XCTAssertFalse(try XCTUnwrap(scroll.verticalScroller).isHidden)
+    scroll.contentView.scroll(to: NSPoint(x: 0, y: 200))
+    scroll.reflectScrolledClipView(scroll.contentView)
+    XCTAssertGreaterThan(scroll.contentView.bounds.minY, 100)
+
+    storage.addAttribute(
+      .font, value: NSFont.systemFont(ofSize: 12),
+      range: NSRange(location: 0, length: storage.length))
+    manager.ensureLayout(for: manager.documentRange)
+    for _ in 0..<20 {
+      try await Task.sleep(for: .milliseconds(10))
+      scroll.layoutSubtreeIfNeeded()
+      if abs(view.frame.height - scroll.contentView.bounds.height) < 1 { break }
+    }
+    XCTAssertEqual(view.frame.height, scroll.contentView.bounds.height, accuracy: 1)
+    XCTAssertTrue(try XCTUnwrap(scroll.verticalScroller).isHidden)
+    XCTAssertEqual(scroll.contentView.bounds.minY, 0, accuracy: 1)
+    XCTAssertEqual(view.string, source)
+    XCTAssertEqual(view.selectedRange(), selection)
+  }
+
   func testInitialScrollExtentWaitsForViewportAndUpdatesWhenDocumentIsReplaced() throws {
     let longBody = (0..<240).map { "第 \($0) 段：正文首次打开即可滚动。" }.joined(separator: "\n\n")
     let scroll = MarkdownEditorScrollView(frame: .zero)

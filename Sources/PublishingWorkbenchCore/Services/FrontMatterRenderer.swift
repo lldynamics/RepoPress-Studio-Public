@@ -32,6 +32,9 @@ public struct FrontMatterRenderer: Sendable {
       "\(dateFieldName(for: profile.siteKind)): \(yamlString(formattedDate(draft.date, profile: profile)))"
     )
     lines.append("slug: \(yamlString(draft.slug))")
+    if profile.siteKind == .hugo, let key = draft.translationKey?.trimmedForPublishing.nilIfEmpty {
+      lines.append("translationKey: \(yamlString(key))")
+    }
 
     if !draft.summary.trimmedForPublishing.isEmpty {
       lines.append("description: \(yamlString(draft.summary))")
@@ -137,6 +140,9 @@ public struct FrontMatterRenderer: Sendable {
       "\(dateFieldName(for: profile.siteKind)) = \(tomlString(formattedDate(draft.date, profile: profile)))"
     )
     lines.append("slug = \(tomlString(draft.slug))")
+    if profile.siteKind == .hugo, let key = draft.translationKey?.trimmedForPublishing.nilIfEmpty {
+      lines.append("translationKey = \(tomlString(key))")
+    }
 
     if !draft.summary.trimmedForPublishing.isEmpty {
       lines.append("description = \(tomlString(draft.summary))")

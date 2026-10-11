@@ -6,6 +6,42 @@ import XCTest
 
 @MainActor
 final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePublishingTestCase {
+  func testPrivatePublicationRequiresConfirmedCurrentTargetBranchContent() throws {
+    for scenario in [
+      "confirmed", "draft", "edited", "buffered", "missing-version", "other-branch", "review",
+    ] {
+      let store = try TestWorkbenchFactory.makeStore()
+      let profile = store.activeProfile
+      var draft = ArticleDraft(
+        siteProfileID: profile.id, title: "Private", slug: "private",
+        draft: scenario == "draft", visibility: .private,
+        bodyMarkdown: "Private body", status: .ready)
+      let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+      if scenario == "edited" { draft.bodyMarkdown += " changed during upload" }
+      store.setDrafts([draft])
+      if scenario == "buffered" {
+        let buffer = store.draftBodyEditorBuffer(for: draft.id)
+        _ = store.stageDraftBody(
+          "Unflushed change", for: draft.id, baseRevision: buffer.revision,
+          replacingBaseBody: buffer.bodyMarkdown)
+      }
+      store.publishingStore.confirmDirectRemotePublishLifecycle(
+        packages: [package], profile: profile,
+        result: RemoteRepositoryPublishResult(
+          provider: .github, mode: scenario == "review" ? .reviewRequest : .directCommit,
+          branchName: scenario == "other-branch" ? "other" : profile.branch,
+          targetBranch: profile.branch, changedPaths: [package.markdownPath], commitSHA: "commit",
+          remoteVersionsByPath: scenario == "missing-version"
+            ? nil : [package.markdownPath: "version"]))
+      let result = try XCTUnwrap(store.draft(for: draft.id))
+      XCTAssertEqual(result.status, scenario == "confirmed" ? .published : .ready, scenario)
+      if scenario == "confirmed" {
+        XCTAssertEqual(result.articleState, .published)
+        XCTAssertEqual(result.repositoryImportFingerprint, result.repositoryContentFingerprint)
+      }
+    }
+  }
+
   func testDirectRemoteWebsiteDraftSyncDoesNotMarkWorkflowPublished() throws {
     let store = try TestWorkbenchFactory.makeStore()
     var profile = store.activeProfile

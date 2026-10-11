@@ -94,7 +94,7 @@ struct RepositoryOperationLifecycleView: View {
         VStack(alignment: .leading, spacing: 8) { actionButtons }
       }
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       WorkbenchTheme.warning.opacity(0.08),

@@ -2383,3 +2383,108 @@
 "站点或配置已变化，请重新预览站点类型变化。" = "The site or configuration has changed. Preview the site type change again.";
 "站点或仓库配置已变化，请重新预览远端文章导入。" = "The site or repository configuration has changed. Preview the remote article import again.";
 "站点或仓库配置已变化，请重新确认创建仓库。" = "The site or repository configuration has changed. Confirm repository creation again.";
+"正在打开 ChatGPT 登录页面…" = "Opening the ChatGPT sign-in page…";
+"正在创建设备码…" = "Creating a device code…";
+"无法打开 ChatGPT 登录页面，请检查默认浏览器设置。" = "Could not open the ChatGPT sign-in page. Check your default browser settings.";
+"请在浏览器完成登录；完成后此处会自动更新。" = "Complete sign-in in your browser. This view updates automatically when you finish.";
+"设备码已复制。请在浏览器完成登录。" = "Device code copied. Complete sign-in in your browser.";
+"登录已取消。" = "Sign-in cancelled.";
+"ChatGPT 登录成功，套餐与用量已刷新。" = "ChatGPT sign-in succeeded. Plan and usage have been refreshed.";
+"已退出 ChatGPT 登录。" = "Signed out of ChatGPT.";
+
+"AI 返回的翻译草稿未通过安全校验，原稿没有变化：%@" = "The AI translation draft failed validation. The source is unchanged: %@";
+
+"Git hook %@ 执行失败：%@" = "Git hook %@ failed: %@";
+
+"Git hook 不是安全的普通可执行文件：%@。" = "Git hook is not a safe regular executable file: %@.";
+
+"Git hook 改动了已审阅内容或提交说明，请重新扫描并确认后再提交。" = "A Git hook changed the reviewed content or commit message. Scan and confirm again before committing.";
+
+"SSH 提交签名需要绝对密钥路径；密钥内容不能保存在站点设置中。" = "SSH commit signing requires an absolute key path; key contents cannot be stored in site settings.";
+
+"仅支持当前仓库标准 hooks 目录，目录及其路径不能是符号链接。" = "Only the current repository’s standard hooks directory is supported. The directory and its path must not be symbolic links.";
+
+"仓库路径或 Git 元数据目录已变化，请重新确认 hooks 信任。" = "The repository path or Git metadata directory has changed. Confirm hooks trust again.";
+
+"关联翻译草稿未创建：%@" = "Linked translation draft was not created: %@";
+
+"工作台保存失败，译文未创建，原稿保持原样。" = "The workspace could not be saved. No translation was created and the source is unchanged.";
+
+"工作台处于恢复保护中，译文未创建。" = "The workspace is protected for recovery. No translation was created.";
+
+"已创建关联翻译草稿；原稿文字保持不变。" = "Created a linked translation draft. The source text is unchanged.";
+
+"已生成%@关联草稿“%@”。确认创建后会新增草稿，原稿不会被覆盖。" = "Generated a linked %@ draft, “%@”. Confirmation creates a new draft and preserves the source.";
+
+"当前变基流程不支持站点提交签名或受信 hooks，请在外部 Git 工具完成变基。" = "The current rebase workflow does not support site commit signing or trusted hooks. Complete the rebase in an external Git tool.";
+
+"找不到翻译计划对应的原稿。" = "The source article for this translation plan could not be found.";
+
+"无法安全读取 Git 执行策略：%@" = "Could not safely read Git execution policy: %@";
+
+"本地合并已提交（%@），post-commit hook 执行" = "The local merge was committed (%@); post-commit hook execution";
+
+"本地已提交，post-commit hook 失败，未推送：%@" = "The local commit succeeded, but the post-commit hook failed. Nothing was pushed: %@";
+
+"此站点启用了提交签名或受信任 hooks。自动变基暂不支持这些执行权限，请在终端完成变基后重新检查仓库。" = "This site enables commit signing or trusted hooks. Automatic rebase does not yet support these permissions. Rebase in Terminal, then check the repository again.";
+
+"目标路径已有文章，请调整译文路径或打开已有译文。" = "An article already uses this destination path. Adjust the translation path or open the existing translation.";
+
+"站点的译文路径设置已变化，请重新生成并审阅翻译计划。" = "The site translation path settings have changed. Generate and review a new translation plan.";
+
+"简体中文" = "Simplified Chinese";
+
+"翻译结果必须是符合约定的完整 JSON。" = "The translation result must be complete JSON that follows the required format.";
+
+"英文" = "English";
+
+"译文" = "Translation";
+
+"请等待当前 AI 请求结束后再生成译文。" = "Wait for the current AI request to finish before generating a translation.";
+
+"这份关联翻译草稿已经创建，已为你打开。" = "This linked translation draft already exists and has been opened.";
+
+"这篇文章已有相同目标语言的译文，请先打开并核对已有译文。" = "This article already has a translation in the target language. Open and review the existing translation first.";
+"上次补齐已中断，可以继续。" = "The previous backfill was interrupted and can be continued.";
+"全文提取需要网页响应正文。" = "Full-text extraction requires a web response body.";
+"历史补齐检查点无法保存。" = "The history backfill checkpoint could not be saved.";
+"历史补齐检查点无法读取。" = "The history backfill checkpoint could not be read.";
+"历史补齐检查点超出安全上限。" = "The history backfill checkpoint exceeds safety limits.";
+"历史补齐需要可用的订阅与 SQLite 数据库。" = "History backfill requires an available subscription and SQLite database.";
+"原文页面不允许保存内容。" = "The original page does not permit saving its content.";
+"已取消；成功保存的结果保留，可以继续。" = "Cancelled. Successfully saved results are preserved, and you can continue.";
+"已处理发现的链接；正文失败项可以重试，不代表全站历史已齐全。" = "The discovered links have been processed. Full-text failures can be retried; this does not confirm complete site history.";
+"已达到目录发现上限，更多历史尚未核实。" = "The directory discovery limit was reached. Further history remains unverified.";
+"文章标识冲突，已保留原有记录。" = "The article identifier conflicts with an existing record, which has been preserved.";
+"文章索引尚未加载完成，请稍后重试。" = "The article index is still loading. Try again shortly.";
+"无法安全读取网站的访问规则。" = "The site’s access rules could not be safely read.";
+"无法定位网站的公开访问规则。" = "The site’s public access rules could not be located.";
+"未找到可识别的公开文章目录；该来源目前无法补齐历史。" = "No recognizable public article directory was found. History backfill is currently unavailable for this source.";
+"本批已结束，可以继续处理剩余链接。" = "This batch has finished. You can continue processing the remaining links.";
+"正在发现公开目录中的文章链接。" = "Discovering article links in the public directory.";
+"正在补齐文章与正文。" = "Backfilling articles and full text.";
+"正在读取网站访问规则。" = "Reading the site’s access rules.";
+"目录内容无法安全识别。" = "The directory content could not be safely recognized.";
+"目录链接过多，已停止发现历史文章。" = "The directory has too many links. Historical article discovery has stopped.";
+"网站声明不允许跟随链接或保存内容，已停止补齐。" = "The site prohibits following links or saving content. Backfill has stopped.";
+"网站暂时不允许继续读取，等待后可手动继续。" = "The site temporarily prevents further requests. You can continue manually after waiting.";
+"网站要求更长的访问间隔，当前无法自动补齐。" = "The site requires a longer request interval. Automatic history backfill is currently unavailable.";
+"网站要求等待，稍后可以继续。" = "The site requires a waiting period. You can continue later.";
+"网站访问规则不允许读取该页面。" = "The site’s access rules do not permit reading this page.";
+"订阅已删除或地址已改变，历史补齐已停止。" = "The subscription was removed or its URL changed. History backfill has stopped.";
+"请填写该订阅网站内的公开目录地址。" = "Enter a public directory URL within this subscription’s site.";
+"重定向离开了所选网站或违反其访问规则。" = "The redirect leaves the selected site or violates its access rules.";
+"页面没有返回可识别的公开网页内容。" = "The page did not return recognizable public web content.";
+"页面离开了所选网站或超过读取上限。" = "The page leaves the selected site or exceeds the response limit.";
+
+"本段已处理，可以继续发现下一段历史链接。" = "This segment is processed. Continue to discover the next segment of historical links.";
+"已达到本段发现上限，续查位置已保存。" = "This segment reached the discovery limit. The continuation position is saved.";
+"已达到目录页面上限；请选择更具体的公开目录。" = "The directory page limit is reached. Select a more specific public directory.";
+"目录内容已改变，续查已停止；请重新发现历史链接。" = "The directory changed, so continuation stopped. Rediscover the historical links.";
+"待发布" = "Ready to publish";
+"已发布" = "Published";
+"仅本地" = "Local Only";
+"AI 连接或使用它的站点已变化，本次配置未更改，请重新检查后再应用。" = "The AI connection or the sites using it have changed. No settings were changed. Review them again before applying.";
+"Slug 使用时间戳" = "Slug uses a timestamp";
+"当前网址使用时间戳。可在元数据中选择“用标题生成”，也可以保留此网址发布。" = "This URL uses a timestamp. Choose “Generate from Title” in metadata, or keep this URL when publishing.";
+"当前主题可能会把 Front Matter title 渲染为 H1，页面上可能出现两个相同的主标题。可在“设置 → 当前站点的 AI 与写作偏好 → 写作检查”中关闭这条提示。" = "Your theme may render the Front Matter title as an H1, creating two matching page headings. Turn off this warning in Settings → Current Site AI & Writing Preferences → Writing Checks.";

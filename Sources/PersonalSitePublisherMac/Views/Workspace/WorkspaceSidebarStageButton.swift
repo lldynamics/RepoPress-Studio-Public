@@ -24,7 +24,7 @@ struct WorkspaceSidebarStageButton: View {
       }
       .foregroundStyle(isSelected ? workbenchAccentColor : Color.primary)
       .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
-      .padding(.horizontal, 10)
+      .padding(.horizontal, WorkbenchSpacing.control)
       .background {
         RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
           .fill(

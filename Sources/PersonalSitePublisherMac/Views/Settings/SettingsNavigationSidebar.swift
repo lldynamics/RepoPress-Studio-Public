@@ -66,7 +66,7 @@ struct SettingsNavigationList: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.vertical, 3)
+            .padding(.vertical, WorkbenchSpacing.tight)
             .frame(maxWidth: .infinity, alignment: .leading)
           }
           .buttonStyle(.plain)
@@ -124,7 +124,7 @@ struct SettingsNavigationList: View {
         Text(SettingsSidebarPresentation.attentionBadgeTitle)
           .font(.workbenchMetadata.weight(.semibold))
           .foregroundStyle(WorkbenchTheme.warning)
-          .padding(.horizontal, 6)
+          .padding(.horizontal, WorkbenchSpacing.icon)
           .padding(.vertical, 2)
           .background(
             WorkbenchTheme.warning.opacity(WorkbenchOpacity.noticeBackground),
@@ -185,7 +185,7 @@ struct SettingsDetailHeader: View {
   let minimumHeight: CGFloat
 
   var body: some View {
-    HStack(alignment: .top, spacing: WorkbenchSpacing.section) {
+    HStack(alignment: .top, spacing: WorkbenchSpacing.content) {
       VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
         HStack(spacing: WorkbenchSpacing.card) {
           Text(tab.title)
@@ -219,8 +219,8 @@ struct SettingsDetailHeader: View {
     )
     .font(.caption.weight(.medium))
     .foregroundStyle(.secondary)
-    .padding(.horizontal, 8)
-    .padding(.vertical, 5)
+    .padding(.horizontal, WorkbenchSpacing.control)
+    .padding(.vertical, WorkbenchSpacing.tight)
     .background(Color.primary.opacity(0.06), in: Capsule())
     .fixedSize(horizontal: true, vertical: false)
     .accessibilityLabel(

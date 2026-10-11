@@ -22,7 +22,6 @@ struct KnowledgeImportAssistantView: View {
   @State private var showsRemainingCandidates = false
   @State private var showsRemainingWarnings = false
   @State private var completedImportResult: KnowledgeImportResult?
-
   init(
     knowledge: KnowledgeStore,
     initialSourceURLs: [URL] = [],
@@ -32,7 +31,6 @@ struct KnowledgeImportAssistantView: View {
     self.initialSourceURLs = initialSourceURLs
     self.importDestination = importDestination
   }
-
   var body: some View {
     VStack(spacing: 0) {
       header
@@ -117,7 +115,7 @@ struct KnowledgeImportAssistantView: View {
           }
           Spacer()
         }
-        .padding(10)
+        .padding(WorkbenchSpacing.card)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
           isFileDropTargeted
@@ -226,7 +224,7 @@ struct KnowledgeImportAssistantView: View {
           )
         }
       }
-      .padding(.top, 4)
+      .padding(.top, WorkbenchSpacing.tight)
     }
   }
 
@@ -272,7 +270,7 @@ struct KnowledgeImportAssistantView: View {
   private func metric(_ title: String, value: String, image: String) -> some View {
     HStack(spacing: 8) {
       Image(systemName: image)
-        .foregroundStyle(.tint)
+        .foregroundStyle(.secondary)
       VStack(alignment: .leading, spacing: 1) {
         Text(value)
           .font(.headline)
@@ -282,7 +280,7 @@ struct KnowledgeImportAssistantView: View {
       }
       Spacer(minLength: 0)
     }
-    .padding(10)
+    .padding(WorkbenchSpacing.card)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
@@ -326,12 +324,12 @@ struct KnowledgeImportAssistantView: View {
               candidateRow(candidate)
             }
           }
-          .padding(.top, 8)
+          .padding(.top, WorkbenchSpacing.control)
         } label: {
           Text("查看其余 \(remainingCandidates.count) 条资料")
             .font(.callout.weight(.medium))
         }
-        .padding(10)
+        .padding(WorkbenchSpacing.card)
         .background(
           WorkbenchBackgroundStyle.card,
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -368,12 +366,14 @@ struct KnowledgeImportAssistantView: View {
         Text(candidate.disposition.localizedDisplayNameKey)
           .font(.caption.weight(.medium))
           .foregroundStyle(
-            candidate.disposition == .duplicate ? Color.secondary : workbenchAccentColor)
+            candidate.disposition == .duplicate
+              ? Color.secondary
+              : candidate.disposition == .update ? WorkbenchTheme.info : WorkbenchTheme.success)
       }
     }
     .toggleStyle(.checkbox)
     .disabled(isCommitting || isAnalyzing)
-    .padding(10)
+    .padding(WorkbenchSpacing.card)
     .background(
       WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -428,7 +428,7 @@ struct KnowledgeImportAssistantView: View {
                   .foregroundStyle(WorkbenchTheme.warning)
               }
             }
-            .padding(.top, 6)
+            .padding(.top, WorkbenchSpacing.icon)
           } label: {
             Text("查看其余 \(remainingWarnings.count) 条提醒")
               .font(.caption.weight(.medium))

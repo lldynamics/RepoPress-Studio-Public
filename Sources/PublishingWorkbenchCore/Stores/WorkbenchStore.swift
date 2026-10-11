@@ -4,11 +4,6 @@ import PublishingAICore
 import PublishingKnowledgeCore
 import PublishingSyncCore
 
-public enum FreshWorkspaceSeedPolicy: Sendable {
-  case blank
-  case softwareGuides
-}
-
 @MainActor
 public final class WorkbenchStore: ObservableObject {
   private let imageWorkbenchService: SiteImageWorkbenchService
@@ -421,6 +416,9 @@ public final class WorkbenchStore: ObservableObject {
       }
     }
     self.aiConnectionProfiles = Array(initialAIConnectionProfiles.prefix(64))
+    self.aiCredentialStore.initializeStorageModes(
+      forConnectionProfileIDs: initialAIConnectionProfiles.prefix(64).map(\.id)
+    )
     let initialPublishingProfiles = initialProfiles.filter { $0.purpose == .publishing }
     let restoredActiveProfileID = (snapshot?.activeProfileID).flatMap { candidate in
       initialPublishingProfiles.contains(where: { $0.id == candidate }) ? candidate : nil
@@ -796,14 +794,6 @@ public final class WorkbenchStore: ObservableObject {
       && persistenceSucceeded && draftRecoverySucceeded
   }
 
-  /// Completes the synchronous workspace save and then waits for the separate
-  /// operation ledger. This strict barrier also requires project synchronization;
-  /// application exit uses prepareForSafeTermination to retain deferred writes.
-  public func flushPendingChangesForTermination() async -> Bool {
-    guard flushPendingChanges() else { return false }
-    return await flushOperationLogPersistence() != nil
-  }
-
   /// Marks the current in-memory snapshot dirty and commits it synchronously.
   /// Use this for confirmation flows whose success UI must not appear before
   /// the exact accepted state has reached durable storage.
@@ -1019,34 +1009,35 @@ public final class WorkbenchStore: ObservableObject {
           return (draft.id, cached)
         }
 
-        let hasPreflightErrors: Bool
+        let preflightErrors: [PreflightIssue]
         if let linkAuditReport {
-          hasPreflightErrors = publishingStore.preflightIssues(
+          preflightErrors = publishingStore.preflightIssues(
             for: draft,
             includeRepositoryReadiness: true,
             allDrafts: preflightDrafts,
             duplicateIndex: preflightDuplicateIndex,
             linkAuditReport: linkAuditReport,
             store: self
-          ).contains { $0.severity == .error }
+          ).filter { $0.severity == .error }
         } else {
           // The list deliberately consumes completed link snapshots only. A
           // cache miss has already scheduled the shared audit above; until it
           // completes, retain the inexpensive local preflight projection.
-          hasPreflightErrors = publishingStore.preflightService.run(
+          preflightErrors = publishingStore.preflightService.run(
             draft: draft,
             allDrafts: preflightDrafts,
             profile: profile(for: draft),
             repositoryReport: repositoryReport(for: draft),
             includeRepositoryReadiness: true,
             duplicateIndex: preflightDuplicateIndex
-          ).contains { $0.severity == .error }
+          ).filter { $0.severity == .error }
         }
         let state = DraftTaskQueueState(
           draftID: draft.id,
           signature: signature,
-          hasPreflightErrors: hasPreflightErrors,
-          hasImageIssues: imageIssueCount > 0
+          hasPreflightErrors: !preflightErrors.isEmpty,
+          hasImageIssues: imageIssueCount > 0,
+          articleErrorCount: preflightErrors.filter { !$0.isSiteSetupIssue }.count
         )
         draftTaskQueueStateCache[draft.id] = state
         return (draft.id, state)

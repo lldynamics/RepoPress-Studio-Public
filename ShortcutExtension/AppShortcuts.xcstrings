@@ -1,0 +1,138 @@
+{
+  "sourceLanguage": "zh-Hans",
+  "strings": {
+    "在 ${applicationName} 中新建文章": {
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Create an article in ${applicationName}"
+            ]
+          }
+        },
+        "zh-Hans": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "在 ${applicationName} 中新建文章"
+            ]
+          }
+        }
+      }
+    },
+    "打开 ${applicationName} 的站点检查": {
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Open site checks in ${applicationName}"
+            ]
+          }
+        },
+        "zh-Hans": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "打开 ${applicationName} 的站点检查"
+            ]
+          }
+        }
+      }
+    },
+    "用 ${applicationName} 保存灵感": {
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Save an idea with ${applicationName}",
+              "Write a note in ${applicationName}"
+            ]
+          }
+        },
+        "zh-Hans": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "用 ${applicationName} 保存灵感",
+              "在 ${applicationName} 中记录笔记"
+            ]
+          }
+        }
+      }
+    },
+    "用 ${applicationName} 保存网页": {
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Save a webpage with ${applicationName}",
+              "Save a webpage to ${applicationName}"
+            ]
+          }
+        },
+        "zh-Hans": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "用 ${applicationName} 保存网页",
+              "保存网页到 ${applicationName}"
+            ]
+          }
+        }
+      }
+    },
+    "用 ${applicationName} 保存资料文件": {
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Save a reference file with ${applicationName}",
+              "Save a file to ${applicationName}"
+            ]
+          }
+        },
+        "zh-Hans": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "用 ${applicationName} 保存资料文件",
+              "保存文件到 ${applicationName}"
+            ]
+          }
+        }
+      }
+    },
+    "用 ${applicationName} 发布当前文章": {
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Publish the current article with ${applicationName}"
+            ]
+          }
+        },
+        "zh-Hans": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "用 ${applicationName} 发布当前文章"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

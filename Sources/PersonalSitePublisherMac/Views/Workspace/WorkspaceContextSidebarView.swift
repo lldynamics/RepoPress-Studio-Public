@@ -6,7 +6,9 @@ enum WorkspaceSidebarMetrics {
   static let horizontalPadding: CGFloat = 12
   static let headerVerticalPadding: CGFloat = 10
   static let toolbarVerticalPadding: CGFloat = 8
-  static let rowInsets = EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8)
+  static let rowInsets = EdgeInsets(
+    top: WorkbenchSpacing.tight, leading: WorkbenchSpacing.control, bottom: WorkbenchSpacing.tight,
+    trailing: WorkbenchSpacing.control)
 }
 
 struct WorkspaceContextListHeader<Subtitle: View, Actions: View>: View {
@@ -50,7 +52,7 @@ struct WorkspaceSidebarHeaderIcon: View {
 
   var body: some View {
     Image(systemName: systemName)
-      .font(.system(size: 15, weight: .medium))
+      .font(.system(size: WorkbenchIconSize.toolbar, weight: .medium))
       .frame(width: 28, height: 28)
       .contentShape(Rectangle())
   }
@@ -107,19 +109,9 @@ struct WorkspacePrimarySidebar: View {
   var body: some View {
     VStack(spacing: 0) {
       if showsContextList {
-        taskNavigation
-          .fixedSize(horizontal: false, vertical: true)
-
-        Divider()
-
         contextList
           .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
-        taskNavigation
-          .fixedSize(horizontal: false, vertical: true)
-
-        Divider()
-
         WorkspaceQuickSearchView(
           store: store,
           scope: quickSearchScope,
@@ -145,7 +137,7 @@ struct WorkspacePrimarySidebar: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .workbenchGlassContainer(material: .thinMaterial, drawsBorder: false)
+    .background(WorkbenchSurface.sidebar)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("侧栏")
     .accessibilityIdentifier("workspace-sidebar")
@@ -166,14 +158,6 @@ struct WorkspacePrimarySidebar: View {
     case .writing, .library, .rss, .sync:
       return .recent
     }
-  }
-
-  private var taskNavigation: some View {
-    WorkspaceTaskNavigation(
-      selectedSection: selectedSection,
-      siteIssueCount: contentHealthSidebarProjection.knownIssueCount(for: store.activeProfile.id),
-      onSelectSection: onSelectSection
-    )
   }
 
   @ViewBuilder

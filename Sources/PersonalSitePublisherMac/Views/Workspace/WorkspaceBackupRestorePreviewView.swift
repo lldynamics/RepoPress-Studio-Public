@@ -75,7 +75,7 @@ struct WorkspaceBackupArticleSelectionView: View {
                         ? "checkmark.circle.fill" : "circle"
                     )
                     .foregroundStyle(
-                      selectedDraftIDs.contains(article.id) ? WorkbenchTheme.success : .secondary)
+                      selectedDraftIDs.contains(article.id) ? Color.accentColor : .secondary)
                     VStack(alignment: .leading, spacing: 3) {
                       Text(article.title).frame(maxWidth: .infinity, alignment: .leading)
                       Text(attachmentSummary(for: article))
@@ -89,7 +89,7 @@ struct WorkspaceBackupArticleSelectionView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isRestoring || successMessage != nil)
-                .padding(.vertical, 5)
+                .padding(.vertical, WorkbenchSpacing.tight)
                 .accessibilityValue(selectedDraftIDs.contains(article.id) ? "已选择" : "未选择")
               }
             }
@@ -141,7 +141,7 @@ struct WorkspaceBackupArticleSelectionView: View {
         }
       }
     }
-    .padding(24)
+    .padding(WorkbenchSpacing.spacious)
     .frame(width: 620)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("workspace-backup-article-selection")
@@ -382,8 +382,10 @@ struct WorkspaceExchangeRestorePreviewSheet: View {
                     .buttonStyle(.link)
                 }
               }
-              .padding(10)
-              .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 8))
+              .padding(WorkbenchSpacing.card)
+              .background(
+                WorkbenchBackgroundStyle.control,
+                in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
             }
           }
         }
@@ -417,7 +419,7 @@ struct WorkspaceExchangeRestorePreviewSheet: View {
         .disabled(isImporting || !mappingsAreComplete || !validation.conflicts.isEmpty || validation.error != nil)
       }
     }
-    .padding(24)
+    .padding(WorkbenchSpacing.spacious)
     .frame(minWidth: 620, minHeight: 480)
   }
 
@@ -461,8 +463,10 @@ struct WorkspaceExchangeRestorePreviewSheet: View {
       }
       .labelsHidden()
     }
-    .padding(10)
-    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 8))
+    .padding(WorkbenchSpacing.card)
+    .background(
+      WorkbenchBackgroundStyle.control,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
   private func choiceBinding(for sourceID: UUID) -> Binding<ProfileChoice> {

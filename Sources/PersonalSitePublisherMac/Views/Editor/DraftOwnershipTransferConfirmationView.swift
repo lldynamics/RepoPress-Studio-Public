@@ -2,7 +2,6 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct DraftOwnershipTransferConfirmationView: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let plan: DraftOwnershipTransferPlan
   let onConfirm: (DraftOwnershipTransferPlan) -> Bool
 
@@ -25,14 +24,14 @@ struct DraftOwnershipTransferConfirmationView: View {
           }
 
           Label(
-            String(localized: "归属变更只更新工作台中的草稿，不会修改或删除原站点仓库文件。"),
+            String(localized: "归属变更只更新工作台中的草稿，不会修改或删除原站点仓库文件，也不会撤回线上版本。"),
             systemImage: "externaldrive.badge.checkmark"
           )
           .font(.caption)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(20)
+        .padding(WorkbenchSpacing.page)
       }
 
       Divider()
@@ -55,7 +54,7 @@ struct DraftOwnershipTransferConfirmationView: View {
         .disabled(!plan.canApply)
         .help(plan.canApply ? confirmButtonHelp : String(localized: "请先处理冲突后重新打开此面板"))
       }
-      .padding(16)
+      .padding(WorkbenchSpacing.content)
     }
     .frame(minWidth: 640, idealWidth: 700, minHeight: 480, idealHeight: 620)
   }
@@ -63,13 +62,13 @@ struct DraftOwnershipTransferConfirmationView: View {
   private var header: some View {
     HStack(alignment: .top, spacing: 14) {
       Image(systemName: headerSystemImage)
-        .font(.system(size: 22, weight: .semibold))
-        .foregroundStyle(plan.conflicts.isEmpty ? workbenchAccentColor : WorkbenchTheme.risk)
+        .font(.system(size: WorkbenchIconSize.section, weight: .semibold))
+        .foregroundStyle(plan.conflicts.isEmpty ? WorkbenchTheme.success : WorkbenchTheme.risk)
         .frame(width: 42, height: 42)
         .background(
-          (plan.conflicts.isEmpty ? workbenchAccentColor : WorkbenchTheme.risk)
+          (plan.conflicts.isEmpty ? WorkbenchTheme.success : WorkbenchTheme.risk)
             .opacity(WorkbenchOpacity.accentBackground),
-          in: RoundedRectangle(cornerRadius: 10)
+          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel)
         )
 
       VStack(alignment: .leading, spacing: 5) {
@@ -84,7 +83,7 @@ struct DraftOwnershipTransferConfirmationView: View {
 
       Spacer(minLength: 0)
     }
-    .padding(20)
+    .padding(WorkbenchSpacing.page)
   }
 
   private var conflictSummary: some View {
@@ -101,9 +100,11 @@ struct DraftOwnershipTransferConfirmationView: View {
         .font(.caption)
         .foregroundStyle(.secondary)
     }
-    .padding(12)
+    .padding(WorkbenchSpacing.card)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(WorkbenchTheme.risk.opacity(WorkbenchOpacity.accentBackground), in: RoundedRectangle(cornerRadius: 10))
+    .background(
+      WorkbenchTheme.risk.opacity(WorkbenchOpacity.accentBackground),
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel))
   }
 
   private func transferItem(_ item: DraftOwnershipTransferItem) -> some View {
@@ -140,7 +141,7 @@ struct DraftOwnershipTransferConfirmationView: View {
           .fixedSize(horizontal: false, vertical: true)
         }
       }
-      .padding(.vertical, 4)
+      .padding(.vertical, WorkbenchSpacing.tight)
     } label: {
       Text(item.title)
         .font(.headline)

@@ -365,11 +365,24 @@ extension WritingDraftColumn {
 
   func refreshVisibleRowPresentations() {
     let visibleDrafts = paginatedDraftSnapshot
+    // Only the rendered page is checked; task states are cached per draft
+    // signature, so an unchanged page does not rerun publish checks.
+    let siteDrafts = visibleDrafts.filter { !$0.isGeneralDraft }
+    let taskStates = siteDrafts.isEmpty ? [:] : store.draftTaskQueueStates(for: siteDrafts)
     draftListCache.updateRowPresentations(
       sourceDraftIDs: Set(draftListCache.sourceDraftIDs),
       visibleDrafts: visibleDrafts[...],
       profileFor: { store.profile(for: $0) },
-      displayFor: { store.privateContentDisplay(for: $0) }
+      displayFor: { store.privateContentDisplay(for: $0) },
+      attentionFor: { draft in
+        guard !draft.isGeneralDraft else { return .none }
+        return WritingDraftRowAttention(
+          articleIssueCount: taskStates[draft.id]?.articleErrorCount ?? 0,
+          needsSync: WritingDraftRowAttention.syncNeedsAttention(
+            draft.repositorySyncState(for: store.profile(for: draft))
+          )
+        )
+      }
     )
     updateFolderEntriesCache()
   }

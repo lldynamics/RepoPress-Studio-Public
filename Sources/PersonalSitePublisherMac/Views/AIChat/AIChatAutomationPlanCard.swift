@@ -36,7 +36,7 @@ struct AIChatAutomationPlanCard: View {
         }
       }
       .textSelection(.enabled)
-      .padding(11)
+      .padding(WorkbenchSpacing.card)
       .accessibilityIdentifier("ai-retired-agent-history")
     } else {
       activePlanContent
@@ -48,7 +48,7 @@ struct AIChatAutomationPlanCard: View {
       HStack(alignment: .firstTextBaseline, spacing: 8) {
         Label("应用内操作计划", systemImage: "checklist.checked")
           .font(.callout.weight(.semibold))
-          .foregroundStyle(WorkbenchTheme.primary)
+          .foregroundStyle(.secondary)
         Spacer(minLength: 8)
         statusLabel
       }
@@ -62,7 +62,7 @@ struct AIChatAutomationPlanCard: View {
           automationStepRow(index: index, step: step)
           if step.id != plan.steps.last?.id {
             Divider()
-              .padding(.leading, 34)
+              .padding(.leading, WorkbenchSpacing.spacious + WorkbenchSpacing.control)
           }
         }
       }
@@ -109,14 +109,14 @@ struct AIChatAutomationPlanCard: View {
         .disabled(isBusy)
       }
     }
-    .padding(11)
+    .padding(WorkbenchSpacing.card)
     .background(
-      WorkbenchTheme.primary.opacity(0.06),
+      WorkbenchSurface.groupedCard,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
     )
     .overlay {
       RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-        .stroke(WorkbenchTheme.primary.opacity(0.22), lineWidth: 1)
+        .stroke(Color.primary.opacity(0.12), lineWidth: 1)
     }
     .sheet(item: $draftPreview) { item in
       AIChatDraftDiffPreviewSheet(
@@ -183,7 +183,7 @@ struct AIChatAutomationPlanCard: View {
             Text(descriptor.risk.localizedDisplayName)
               .font(.workbenchMetadata)
               .foregroundStyle(riskColor(descriptor.risk))
-              .padding(.horizontal, 5)
+              .padding(.horizontal, WorkbenchSpacing.tight)
               .padding(.vertical, 2)
               .background(riskColor(descriptor.risk).opacity(0.10), in: Capsule())
           }
@@ -211,18 +211,18 @@ struct AIChatAutomationPlanCard: View {
         .disabled(isBusy || conversationID == nil)
       }
     }
-    .padding(.horizontal, 9)
-    .padding(.vertical, 8)
+    .padding(.horizontal, WorkbenchSpacing.control)
+    .padding(.vertical, WorkbenchSpacing.control)
     .background(
       isRunning
-        ? WorkbenchTheme.primary.opacity(0.06)
+        ? WorkbenchTheme.progress.opacity(0.08)
         : Color.clear,
-      in: RoundedRectangle(cornerRadius: 6)
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
     )
     .overlay(
-      RoundedRectangle(cornerRadius: 6)
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
         .stroke(
-          isRunning ? WorkbenchTheme.primary.opacity(0.24) : Color.clear,
+          isRunning ? WorkbenchTheme.progress.opacity(0.28) : Color.clear,
           lineWidth: 1
         )
     )
@@ -305,7 +305,7 @@ struct AIChatAutomationPlanCard: View {
     case .succeeded: WorkbenchTheme.success
     case .failed: WorkbenchTheme.risk
     case .awaitingConfirmation, .partiallySucceeded: WorkbenchTheme.warning
-    case .proposed, .running: WorkbenchTheme.primary
+    case .proposed, .running: WorkbenchTheme.progress
     case .cancelled: .secondary
     }
   }
@@ -326,14 +326,14 @@ struct AIChatAutomationPlanCard: View {
     case .succeeded: WorkbenchTheme.success
     case .failed: WorkbenchTheme.risk
     case .awaitingConfirmation: WorkbenchTheme.warning
-    case .running, .proposed: WorkbenchTheme.primary
+    case .running, .proposed: WorkbenchTheme.progress
     case .cancelled: .secondary
     }
   }
 
   private func riskColor(_ risk: WorkbenchAutomationRisk) -> Color {
     switch risk {
-    case .readOnly: WorkbenchTheme.primary
+    case .readOnly: WorkbenchTheme.info
     case .reversible: WorkbenchTheme.success
     case .contentChange: WorkbenchTheme.warning
     case .externalEffect: WorkbenchTheme.risk
@@ -424,7 +424,7 @@ struct AIChatAutomationPlanCard: View {
     .font(.workbenchMetadata)
     .foregroundStyle(.secondary)
     .fixedSize(horizontal: false, vertical: true)
-    .padding(.top, 3)
+    .padding(.top, WorkbenchSpacing.tight)
   }
 }
 
@@ -465,7 +465,7 @@ private struct AutomationStepStatusIndicator: View {
     case .succeeded: WorkbenchTheme.success
     case .failed: WorkbenchTheme.risk
     case .awaitingConfirmation: WorkbenchTheme.warning
-    case .running, .proposed: WorkbenchTheme.primary
+    case .running, .proposed: WorkbenchTheme.progress
     case .cancelled: .secondary
     }
   }

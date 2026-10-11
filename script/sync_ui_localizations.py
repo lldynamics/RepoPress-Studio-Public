@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Synchronize app UI localization and validate Core presentation resources.
+"""Synchronize app/shortcut localization and validate Core presentation resources.
 
 This extracts compiler-checked app-target localization keys, supplements them
 with literal and semantic keys, and validates explicit CoreL10n calls used by
 the app and Publishing Core services.
+App Intents source resources and named-token shortcut phrase sets share the same master.
 """
 
 from __future__ import annotations
@@ -36,6 +37,11 @@ UI_SOURCE_ROOTS = (SOURCE_ROOT, SCREENSHOT_SUPPORT_SOURCE_ROOT)
 CORE_RESOURCE_ROOT = ROOT / "Sources" / "PublishingCoreSupport" / "Resources"
 WORKSPACE_MODELS_PATH = ROOT / "Sources" / "PublishingWorkbenchCore" / "Models" / "WorkspaceModels.swift"
 CATALOG_PATH = SOURCE_ROOT / "Resources" / "Localizable.xcstrings"
+SHORTCUT_SOURCE_ROOT = ROOT / "ShortcutExtension"
+SHORTCUT_CATALOG_PATHS = {
+    table: SHORTCUT_SOURCE_ROOT / f"{table}.xcstrings"
+    for table in ("Localizable", "AppShortcuts")
+}
 TRANSLATION_PATH = ROOT / "script" / "ui_localization_translations.json"
 TRANSLATION_PATHS = (
     TRANSLATION_PATH,
@@ -121,6 +127,15 @@ LOCALIZED_HELPER_ARGUMENT_PATTERNS = tuple(
 CORE_LOCALIZATION_CALL_PATTERN = re.compile(
     r'\bCoreL10n\.(?:text|format)\s*\(\s*"((?:\\.|[^"\\])*)"'
 )
+APP_INTENT_LITERAL_PREFIX_PATTERN = re.compile(
+    r'(?:\b(?:let|var)\s+\w+\s*:\s*LocalizedStringResource\s*=\s*|'
+    r'\b(?:LocalizedStringResource|IntentDescription|IntentDialog)\s*\(\s*|'
+    r'\bString\s*\(\s*localized:\s*)"'
+)
+APP_INTENT_SUMMARY_PREFIX_PATTERN = re.compile(r'\bSummary\s*\(\s*"')
+APP_INTENT_CALL_PATTERN = re.compile(r'(@Parameter|AppShortcut|\.result)\s*\(')
+APP_SHORTCUT_PHRASES_PATTERN = re.compile(r'\bphrases\s*:\s*\[')
+NAMED_TOKEN_PATTERN = re.compile(r'\$\{[A-Za-z_][A-Za-z0-9_]*\}')
 
 
 def swift_interpolation_end(value: str, expression_start: int) -> int:
@@ -403,6 +418,124 @@ def extract_core_localization_keys() -> dict[str, str]:
     return extracted
 
 
+def shortcut_source_without_comments(source: str) -> str:
+    """Skip comments without changing quoted content or its source offsets."""
+    result = list(source)
+    index = 0
+    while index < len(source):
+        if source[index] == '"':
+            raw_value = swift_string_literal_content(source, index)
+            index += len(raw_value) + 2
+            continue
+        end = index
+        if source.startswith("//", index):
+            end = source.find("\n", index)
+            end = len(source) if end < 0 else end
+        elif source.startswith("/*", index):
+            end = index + 2
+            depth = 1
+            while end < len(source) and depth:
+                if source.startswith("/*", end):
+                    depth += 1
+                    end += 2
+                elif source.startswith("*/", end):
+                    depth -= 1
+                    end += 2
+                else:
+                    end += 1
+            if depth:
+                raise RuntimeError("unterminated App Intents source comment")
+        if end > index:
+            result[index:end] = ["\n" if char == "\n" else " " for char in source[index:end]]
+            index = end
+        else:
+            index += 1
+    return "".join(result)
+
+
+def normalized_app_intent_named_literal(raw_value: str) -> str:
+    """Preserve Apple parameter identity in Summary and invocation phrases."""
+    normalized: list[str] = []
+    index = 0
+    while index < len(raw_value):
+        start = raw_value.find(r"\(", index)
+        if start < 0:
+            normalized.append(raw_value[index:])
+            break
+        normalized.append(raw_value[index:start])
+        end = swift_interpolation_end(raw_value, start + 2)
+        expression = raw_value[start + 2:end].strip()
+        if expression == ".applicationName":
+            name = "applicationName"
+        else:
+            parameter = re.fullmatch(r"\\?\.\$([A-Za-z_][A-Za-z0-9_]*)", expression)
+            if parameter is None:
+                raise RuntimeError(f"unsupported App Intents named interpolation: {expression}")
+            name = parameter.group(1)
+        normalized.append("${" + name + "}")
+        index = end + 1
+    return normalized_swiftui_literal("".join(normalized))
+
+
+def extract_shortcut_localizations() -> tuple[dict[str, str], dict[str, list[str]]]:
+    """Extract extension-local resources and Apple's action-grouped phrase sets.
+
+    Source extraction is independent from stale build artifacts. The special
+    named-token form and stringSet grouping match App Intents stringsdata.
+    """
+    localizable: dict[str, str] = {}
+    phrase_groups: dict[str, list[str]] = {}
+    seen_phrases: set[str] = set()
+    sources = sorted(SHORTCUT_SOURCE_ROOT.rglob("*.swift"))
+    if not sources:
+        raise RuntimeError(f"App Intents extension sources missing: {SHORTCUT_SOURCE_ROOT}")
+    for source_path in sources:
+        source = shortcut_source_without_comments(source_path.read_text(encoding="utf-8"))
+        for match in APP_INTENT_LITERAL_PREFIX_PATTERN.finditer(source):
+            value = normalized_swiftui_literal(swift_string_literal_content(source, match.end() - 1))
+            if value:
+                localizable[value] = value
+        for match in APP_INTENT_SUMMARY_PREFIX_PATTERN.finditer(source):
+            value = normalized_app_intent_named_literal(
+                swift_string_literal_content(source, match.end() - 1))
+            if value:
+                localizable[value] = value
+        for match in APP_INTENT_CALL_PATTERN.finditer(source):
+            end = swift_interpolation_end(source, match.end())
+            arguments = source[match.end():end]
+            names = {"@Parameter": "title|description", "AppShortcut": "shortTitle", ".result": "dialog"}
+            pattern = re.compile(rf'\b(?:{names[match.group(1)]})\s*:\s*"')
+            for argument in pattern.finditer(arguments):
+                value = normalized_swiftui_literal(
+                    swift_string_literal_content(arguments, argument.end() - 1))
+                if value:
+                    localizable[value] = value
+        for match in APP_SHORTCUT_PHRASES_PATTERN.finditer(source):
+            index = match.end()
+            phrases: list[str] = []
+            while index < len(source):
+                if source[index].isspace() or source[index] == ",":
+                    index += 1
+                    continue
+                if source[index] == "]":
+                    break
+                if source[index] != '"':
+                    raise RuntimeError(f"App Shortcut phrases must be literal strings: {source_path}")
+                raw_value = swift_string_literal_content(source, index)
+                index += len(raw_value) + 2
+                value = normalized_app_intent_named_literal(raw_value)
+                if "${applicationName}" not in NAMED_TOKEN_PATTERN.findall(value):
+                    raise RuntimeError(f"App Shortcut phrase lacks applicationName: {value}")
+                if value in seen_phrases:
+                    raise RuntimeError(f"duplicate App Shortcut phrase: {value}")
+                seen_phrases.add(value)
+                phrases.append(value)
+            if index >= len(source) or not phrases:
+                raise RuntimeError(f"App Shortcut phrase array is empty or unterminated: {source_path}")
+            phrase_groups[phrases[0]] = phrases
+    return localizable, phrase_groups
+
+
 def extract_normalized_source_literals() -> set[str]:
     """Collect ordinary Swift literals used to verify explicitly dynamic UI keys."""
     extracted: set[str] = set()
@@ -474,7 +607,7 @@ def placeholders(value: str) -> list[str]:
     return [
         re.sub(r"^%\d+\$", "%", placeholder)
         for placeholder in FORMAT_PATTERN.findall(value)
-    ]
+    ] + NAMED_TOKEN_PATTERN.findall(value)
 
 
 def localized_value(entry: dict, language: str) -> str | None:
@@ -1116,9 +1249,11 @@ def pruned_reviewed_translation_files(
     return pruned_files, removed_by_path
 
 
-def synchronize(catalog: dict, extracted: dict[str, str]) -> dict:
+def synchronize(
+    catalog: dict, extracted: dict[str, str], translations: dict | None = None
+) -> dict:
     strings = catalog.setdefault("strings", {})
-    translations = load_reviewed_translations()
+    translations = load_reviewed_translations() if translations is None else translations
 
     for key, source_value in extracted.items():
         entry = strings.get(key, {})
@@ -1154,6 +1289,102 @@ def synchronize(catalog: dict, extracted: dict[str, str]) -> dict:
     return catalog
 
 
+def shortcut_reviewed_keys(
+    localizable: dict[str, str], phrase_groups: dict[str, list[str]]
+) -> set[str]:
+    return set(localizable) | {phrase for phrases in phrase_groups.values() for phrase in phrases}
+
+
+def shortcut_reviewed_values(source: str, translations: dict) -> tuple[str, str]:
+    """Extension catalogs never act as a second reviewed translation source."""
+    expectation = reviewed_translation_expectation(source, source, translations.get(source))
+    if expectation is None or not isinstance(expectation[1], str):
+        raise RuntimeError(f"missing reviewed shortcut translation: {source}")
+    for language, value in zip(("zh-Hans", "en"), expectation):
+        if sorted(placeholders(value)) != sorted(placeholders(source)):
+            raise RuntimeError(f"{source}: reviewed {language} shortcut placeholders differ")
+        if language == "en" and CJK_PATTERN.search(value):
+            raise RuntimeError(f"{source}: reviewed English shortcut value contains CJK text")
+    return expectation
+
+
+def synchronize_shortcut_catalogs(
+    catalogs: dict[str, dict],
+    localizable: dict[str, str],
+    phrase_groups: dict[str, list[str]],
+    translations: dict | None = None,
+) -> dict[str, dict]:
+    translations = load_reviewed_translations() if translations is None else translations
+    # Validate every master value before mutating either catalog.
+    reviewed = {
+        key: shortcut_reviewed_values(key, translations)
+        for key in shortcut_reviewed_keys(localizable, phrase_groups)
+    }
+    synchronize(catalogs["Localizable"], localizable, translations)
+    strings = catalogs["AppShortcuts"].setdefault("strings", {})
+    for key, phrases in phrase_groups.items():
+        entry = strings.setdefault(key, {})
+        entry["extractionState"] = "extracted_with_value"
+        for index, language in enumerate(("zh-Hans", "en")):
+            localization = _localization(entry, language)
+            for old_representation in ("stringUnit", "variations", "substitutions"):
+                localization.pop(old_representation, None)
+            localization["stringSet"] = {
+                "state": "translated", "values": [reviewed[phrase][index] for phrase in phrases],
+            }
+    return catalogs
+
+
+def validate_shortcut_catalogs(
+    catalogs: dict[str, dict],
+    localizable: dict[str, str],
+    phrase_groups: dict[str, list[str]],
+    translations: dict | None = None,
+    *,
+    reject_stale: bool = True,
+) -> list[str]:
+    translations = load_reviewed_translations() if translations is None else translations
+    failures: list[str] = []
+    reviewed: dict[str, tuple[str, str]] = {}
+    for source in sorted(shortcut_reviewed_keys(localizable, phrase_groups)):
+        try:
+            reviewed[source] = shortcut_reviewed_values(source, translations)
+        except RuntimeError as error:
+            failures.append(str(error))
+    for table, catalog in catalogs.items():
+        if catalog.get("sourceLanguage") != "zh-Hans":
+            failures.append(f"ShortcutExtension/{table}: sourceLanguage must be zh-Hans")
+        if reject_stale:
+            managed = set(localizable) if table == "Localizable" else set(phrase_groups)
+            failures.extend(f"ShortcutExtension/{table}/{key}: stale catalog key"
+                for key in stale_catalog_keys(catalog, managed))
+    failures.extend(f"ShortcutExtension/Localizable/{error}"
+        for error in validate(catalogs["Localizable"], localizable, set()))
+    failures.extend(f"ShortcutExtension/Localizable/{error}"
+        for error in reviewed_translation_drift(catalogs["Localizable"], localizable, translations))
+    strings = catalogs["AppShortcuts"].get("strings", {})
+    for key, phrases in phrase_groups.items():
+        entry = strings.get(key, {})
+        for language_index, language in enumerate(("zh-Hans", "en")):
+            string_set = entry.get("localizations", {}).get(language, {}).get("stringSet", {})
+            values = string_set.get("values")
+            if not isinstance(values, list) or not all(isinstance(value, str) and value for value in values):
+                failures.append(f"ShortcutExtension/AppShortcuts/{key}: missing {language} stringSet")
+                continue
+            if string_set.get("state") != "translated":
+                failures.append(f"ShortcutExtension/AppShortcuts/{key}: {language} state must be translated")
+            if len(values) != len(phrases):
+                failures.append(f"ShortcutExtension/AppShortcuts/{key}: {language} phrase count differs")
+            for source, value in zip(phrases, values):
+                if sorted(placeholders(value)) != sorted(placeholders(source)):
+                    failures.append(f"{source}: {language} shortcut placeholders differ")
+                if language == "en" and CJK_PATTERN.search(value):
+                    failures.append(f"{source}: English shortcut phrase contains CJK text")
+                if source in reviewed and not translation_value_matches(value, reviewed[source][language_index]):
+                    failures.append(f"{source}: {language} differs from reviewed shortcut translation")
+    return failures
+
+
 def catalog_entry(chinese_value: str, english_value: str | dict[str, str]) -> dict:
     english_localization: dict
     if isinstance(english_value, dict):
@@ -1185,7 +1416,7 @@ def main() -> int:
     mode.add_argument(
         "--check",
         action="store_true",
-        help="Validate the declared app-UI catalog scope without file changes.",
+        help="Validate the declared app, Core, and shortcut localization scope without file changes.",
     )
     mode.add_argument(
         "--prune-stale",
@@ -1243,7 +1474,13 @@ def main() -> int:
     model_keys = set(workspace_navigation_keys) | set(display_name_semantic_keys)
     core_extracted = extract_core_localization_keys()
     core_failures = validate_core_localizations(core_extracted)
-    reviewed_translation_keys = set(extracted) | set(core_extracted)
+    shortcut_localizable, shortcut_phrases = extract_shortcut_localizations()
+    shortcut_catalogs = {
+        table: json.loads(path.read_text(encoding="utf-8"))
+        for table, path in SHORTCUT_CATALOG_PATHS.items()
+    }
+    shortcut_keys = shortcut_reviewed_keys(shortcut_localizable, shortcut_phrases)
+    reviewed_translation_keys = set(extracted) | set(core_extracted) | shortcut_keys
 
     if arguments.check:
         translations = load_reviewed_translations()
@@ -1264,6 +1501,8 @@ def main() -> int:
         failures += reviewed_translation_drift(
             catalog, registered_or_non_cjk, translations
         )
+        failures += validate_shortcut_catalogs(
+            shortcut_catalogs, shortcut_localizable, shortcut_phrases, translations)
         failures += [f"{key}: stale catalog key" for key in stale_catalog]
         failures += [f"{key}: stale reviewed translation key" for key in stale_translations]
         if failures:
@@ -1281,27 +1520,36 @@ def main() -> int:
             f"ui-scoped localization catalog: {len(compiler_extracted)} compiler-extracted keys, "
             f"{len(statically_extracted)} combined static keys, "
             f"{len(dynamic_keys)} reviewed dynamic keys, "
-            f"and {len(core_extracted)} migrated Core presentation keys have valid zh-Hans/en values; "
+            f"{len(core_extracted)} migrated Core presentation keys, "
+            f"and {len(shortcut_keys)} shortcut keys have valid zh-Hans/en values; "
             "no extracted CJK UI key or stale managed entry remains"
         )
         return 0
 
     synchronized = synchronize(catalog, extracted)
+    synchronized_shortcuts = synchronize_shortcut_catalogs(
+        shortcut_catalogs, shortcut_localizable, shortcut_phrases)
     removed_catalog_keys: list[str] = []
     pruned_translation_files: dict[Path, dict] = {}
     removed_translation_keys: dict[Path, list[str]] = {}
     if arguments.prune_stale:
         removed_catalog_keys = prune_catalog(synchronized, set(extracted))
+        removed_catalog_keys += prune_catalog(synchronized_shortcuts["Localizable"], set(shortcut_localizable))
+        removed_catalog_keys += prune_catalog(synchronized_shortcuts["AppShortcuts"], set(shortcut_phrases))
         pruned_translation_files, removed_translation_keys = pruned_reviewed_translation_files(
-            set(extracted), set(core_extracted)
+            set(extracted) | shortcut_keys, set(core_extracted)
         )
     failures = validate(synchronized, extracted, model_keys) + core_failures
+    failures += validate_shortcut_catalogs(
+        synchronized_shortcuts, shortcut_localizable, shortcut_phrases, reject_stale=arguments.prune_stale)
     if failures:
         raise RuntimeError("; ".join(failures))
     CATALOG_PATH.write_text(
         json.dumps(synchronized, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    for table, path in SHORTCUT_CATALOG_PATHS.items():
+        write_json_atomically(path, synchronized_shortcuts[table])
     for path, entries in pruned_translation_files.items():
         path.write_text(
             json.dumps(entries, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -1311,7 +1559,8 @@ def main() -> int:
         f"localization catalog: synchronized {len(compiler_extracted)} compiler-extracted keys "
         f"and {len(statically_extracted)} combined static keys "
         f"and {len(dynamic_keys)} reviewed dynamic keys; "
-        f"validated {len(core_extracted)} migrated Core presentation keys"
+        f"validated {len(core_extracted)} migrated Core presentation keys "
+        f"and synchronized {len(shortcut_keys)} shortcut keys"
     )
     if arguments.prune_stale:
         removed_translation_count = sum(

@@ -13,14 +13,16 @@ extension WorkbenchAIStore {
     let previewService = seoSocialPreviewService
     let task = Task.detached(priority: .utility) {
       try Task.checkCancellation()
-      if profile.warnsWhenBodyH1DuplicatesTitle == nil {
-        _ = ThemeTitleH1Detector().cachedOrDetect(
-          profile: profile, repositoryRevision: repositoryRevision)
+      var resolvedProfile = profile
+      if resolvedProfile.warnsWhenBodyH1DuplicatesTitle == nil {
+        resolvedProfile.warnsWhenBodyH1DuplicatesTitle =
+          ThemeTitleH1Detector().cachedOrDetect(
+            profile: profile, repositoryRevision: repositoryRevision) ?? true
       }
       try Task.checkCancellation()
-      let report = auditService.report(draft: draft, profile: profile)
+      let report = auditService.report(draft: draft, profile: resolvedProfile)
       try Task.checkCancellation()
-      let currentSnapshot = previewService.snapshot(draft: draft, profile: profile)
+      let currentSnapshot = previewService.snapshot(draft: draft, profile: resolvedProfile)
       try Task.checkCancellation()
       return WorkbenchSEOInspectorPresentation(
         draftID: draft.id,

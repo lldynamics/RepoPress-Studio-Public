@@ -48,11 +48,11 @@ struct KnowledgeArchivedNotesSheet: View {
               Button("恢复") { restore(note) }
             }
           }
-          .padding(.vertical, 4)
+          .padding(.vertical, WorkbenchSpacing.tight)
         }
       }
     }
-    .padding(24)
+    .padding(WorkbenchSpacing.spacious)
     .frame(minWidth: 580, minHeight: 360)
     .task { await reload() }
     .alert("归档笔记操作失败", isPresented: Binding(

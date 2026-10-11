@@ -108,9 +108,12 @@ struct ReleaseHistoryDetailView: View {
       Image(systemName: feedback.status.releaseHistorySystemImage)
     }
     .foregroundStyle(feedback.status.releaseHistoryForeground)
-    .padding(12)
+    .padding(WorkbenchSpacing.card)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(.quaternary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    .background(
+      .quaternary,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel, style: .continuous)
+    )
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("release-history-action-message")
   }
@@ -312,9 +315,9 @@ struct ReleaseHistoryDetailView: View {
           releaseRecordCard(entry)
         }
       }
-      .padding(.top, 10)
+      .padding(.top, WorkbenchSpacing.control)
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .accessibilityElement(children: .contain)
     .accessibilityLabel("重复失败分组")
@@ -348,7 +351,7 @@ struct ReleaseHistoryDetailView: View {
           releaseActionRow(item)
         }
       }
-      .padding(12)
+      .padding(WorkbenchSpacing.card)
       .background(
         WorkbenchBackgroundStyle.card,
         in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
@@ -362,7 +365,7 @@ struct ReleaseHistoryDetailView: View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(alignment: .top, spacing: 10) {
         Image(systemName: item.systemImage)
-          .foregroundStyle(releaseActionPriorityForeground(item.priority))
+          .foregroundStyle(ReleaseHistoryStatusStyle.priorityForeground(item.priority))
           .frame(width: 18)
 
         VStack(alignment: .leading, spacing: 5) {
@@ -373,7 +376,7 @@ struct ReleaseHistoryDetailView: View {
             Text(item.kind.localizedDisplayName)
               .font(.caption)
               .foregroundStyle(.secondary)
-              .padding(.horizontal, 6)
+              .padding(.horizontal, WorkbenchSpacing.icon)
               .padding(.vertical, 2)
               .background(WorkbenchBackgroundStyle.control, in: Capsule())
             Spacer()
@@ -402,7 +405,7 @@ struct ReleaseHistoryDetailView: View {
       releaseActionButtons(item, entry: entry)
       .controlSize(.regular)
     }
-    .padding(10)
+    .padding(WorkbenchSpacing.card)
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("release-action-row-\(item.id)")
@@ -411,10 +414,10 @@ struct ReleaseHistoryDetailView: View {
   private func releaseActionPriorityBadge(_ priority: ReleaseLedgerActionPriority) -> some View {
     Text(priority.localizedDisplayName)
       .font(.callout.weight(.bold))
-      .foregroundStyle(releaseActionPriorityForeground(priority))
-      .padding(.horizontal, 9)
-      .padding(.vertical, 4)
-      .background(releaseActionPriorityBackground(priority), in: Capsule())
+      .foregroundStyle(ReleaseHistoryStatusStyle.priorityForeground(priority))
+      .padding(.horizontal, WorkbenchSpacing.control)
+      .padding(.vertical, WorkbenchSpacing.tight)
+      .background(ReleaseHistoryStatusStyle.priorityBackground(priority), in: Capsule())
       .accessibilityLabel("优先级：\(priority.localizedDisplayName)")
   }
 
@@ -439,7 +442,7 @@ struct ReleaseHistoryDetailView: View {
             .fixedSize(horizontal: false, vertical: true)
         }
       }
-      .padding(.top, 6)
+      .padding(.top, WorkbenchSpacing.icon)
     } label: {
       Label("高级：命令行（\(item.commandLines.count) 条）", systemImage: "terminal")
         .font(.callout.weight(.medium))
@@ -450,11 +453,8 @@ struct ReleaseHistoryDetailView: View {
 
   @ViewBuilder
   private func releaseActionButtons(_ item: ReleaseLedgerActionItem, entry: ReleaseLedgerEntry?) -> some View {
-    LazyVGrid(
-      columns: [GridItem(.adaptive(minimum: 132), spacing: 8)],
-      alignment: .leading,
-      spacing: 8
-    ) {
+    // Compact, content-sized buttons match the site maintenance actions.
+    WorkbenchFlowLayout(horizontalSpacing: 8, verticalSpacing: 8) {
       if !item.commandLines.isEmpty {
         Button {
           copy(item.commandLines.joined(separator: "\n"), message: String(localized: "已复制发布处理命令。"))
@@ -501,6 +501,7 @@ struct ReleaseHistoryDetailView: View {
       }
     }
     .buttonStyle(.bordered)
+    .controlSize(.small)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("release-action-\(item.id)-buttons")
   }
@@ -530,7 +531,7 @@ struct ReleaseHistoryDetailView: View {
       ForEach(history.prefix(4)) { snapshot in
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           Image(systemName: snapshot.level.systemImage)
-            .foregroundStyle(statusForeground(snapshot.level))
+            .foregroundStyle(ReleaseHistoryStatusStyle.deploymentForeground(snapshot.level))
             .frame(width: 16)
           Text(snapshot.checkedAt.workbenchShortText)
             .font(.caption.monospacedDigit())
@@ -538,7 +539,7 @@ struct ReleaseHistoryDetailView: View {
             .frame(width: 74, alignment: .leading)
           Text(snapshot.level.localizedDisplayName)
             .font(.caption.weight(.medium))
-            .foregroundStyle(statusForeground(snapshot.level))
+            .foregroundStyle(ReleaseHistoryStatusStyle.deploymentForeground(snapshot.level))
           Text(snapshot.message)
             .font(.callout)
             .foregroundStyle(.secondary)
@@ -547,7 +548,7 @@ struct ReleaseHistoryDetailView: View {
         }
       }
     }
-    .padding(8)
+    .padding(WorkbenchSpacing.control)
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
@@ -560,7 +561,7 @@ struct ReleaseHistoryDetailView: View {
       ForEach(deploymentStatus.postPublishCheckItems) { item in
         HStack(alignment: .top, spacing: 8) {
           Image(systemName: item.level.systemImage)
-            .foregroundStyle(statusForeground(item.level))
+            .foregroundStyle(ReleaseHistoryStatusStyle.deploymentForeground(item.level))
             .frame(width: 16)
           VStack(alignment: .leading, spacing: 2) {
             Text(item.title)
@@ -580,7 +581,7 @@ struct ReleaseHistoryDetailView: View {
         }
       }
     }
-    .padding(8)
+    .padding(WorkbenchSpacing.control)
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
@@ -620,6 +621,8 @@ struct ReleaseHistoryDetailView: View {
         .accessibilityLabel("立即检查 PR/MR 与部署状态")
         .accessibilityIdentifier("release-history-polling-run-now")
       }
+      .buttonStyle(.bordered)
+      .controlSize(.small)
 
       HStack(spacing: 12) {
         if let lastRunAt = store.deploymentPollingState.lastRunAt {
@@ -638,7 +641,9 @@ struct ReleaseHistoryDetailView: View {
           ForEach(store.deploymentPollingState.checkedRecords.prefix(5)) { checkedRecord in
             HStack(alignment: .top, spacing: 8) {
               Image(systemName: checkedRecord.level.systemImage)
-                .foregroundStyle(statusForeground(checkedRecord.level))
+                .foregroundStyle(
+                  ReleaseHistoryStatusStyle.deploymentForeground(checkedRecord.level)
+                )
                 .frame(width: 16)
               VStack(alignment: .leading, spacing: 3) {
                 Text(checkedRecord.title)
@@ -650,7 +655,9 @@ struct ReleaseHistoryDetailView: View {
                     .foregroundStyle(.secondary)
                   Text(checkedRecord.level.localizedDisplayName)
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(statusForeground(checkedRecord.level))
+                    .foregroundStyle(
+                      ReleaseHistoryStatusStyle.deploymentForeground(checkedRecord.level)
+                    )
                   Text(checkedRecord.checkedAt.workbenchShortText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -664,11 +671,11 @@ struct ReleaseHistoryDetailView: View {
             }
           }
         }
-        .padding(10)
+        .padding(WorkbenchSpacing.card)
         .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
       }
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("release-history-deployment-polling")
@@ -701,60 +708,11 @@ struct ReleaseHistoryDetailView: View {
     systemImage: String
   ) -> some View {
     Label(title, systemImage: systemImage)
-      .frame(maxWidth: .infinity, alignment: .leading)
   }
 
   func copy(_ value: String, message: String) {
     ClipboardWriter.copy(value, successMessage: message) { message, status in
       store.setPublishActionMessage(message, status: status)
-    }
-  }
-
-  func statusForeground(_ level: DeploymentStatusLevel) -> AnyShapeStyle {
-    switch level {
-    case .success:
-      return AnyShapeStyle(WorkbenchTheme.success)
-    case .running:
-      return AnyShapeStyle(WorkbenchTheme.warning)
-    case .failed:
-      return AnyShapeStyle(WorkbenchTheme.risk)
-    case .unknown:
-      return AnyShapeStyle(.secondary)
-    }
-  }
-
-  func ledgerStatusForeground(_ status: ReleaseLedgerStatus) -> AnyShapeStyle {
-    switch status {
-    case .succeeded:
-      return AnyShapeStyle(WorkbenchTheme.success)
-    case .deploying, .pendingDeployment, .pendingRemoteRecovery, .pendingRetry, .pendingReview:
-      return AnyShapeStyle(WorkbenchTheme.warning)
-    case .failed:
-      return AnyShapeStyle(WorkbenchTheme.risk)
-    case .localOnly, .previewOnly, .reviewWithdrawn, .unknown:
-      return AnyShapeStyle(.secondary)
-    }
-  }
-
-  private func releaseActionPriorityForeground(_ priority: ReleaseLedgerActionPriority) -> AnyShapeStyle {
-    switch priority {
-    case .high:
-      return AnyShapeStyle(WorkbenchTheme.risk)
-    case .medium:
-      return AnyShapeStyle(WorkbenchTheme.warning)
-    case .low:
-      return AnyShapeStyle(.secondary)
-    }
-  }
-
-  private func releaseActionPriorityBackground(_ priority: ReleaseLedgerActionPriority) -> Color {
-    switch priority {
-    case .high:
-      return WorkbenchTheme.risk.opacity(0.14)
-    case .medium:
-      return WorkbenchTheme.warning.opacity(0.14)
-    case .low:
-      return Color.secondary.opacity(0.12)
     }
   }
 

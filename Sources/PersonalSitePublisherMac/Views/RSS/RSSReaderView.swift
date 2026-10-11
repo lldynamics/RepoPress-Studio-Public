@@ -106,8 +106,8 @@ struct RSSReaderView: View {
         RSSWorkflowFeedback(message: workflowMessage) {
           self.workflowMessage = nil
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, WorkbenchSpacing.card)
+        .padding(.vertical, WorkbenchSpacing.control)
         .transition(.move(edge: .top).combined(with: .opacity))
       }
     }
@@ -128,79 +128,79 @@ struct RSSReaderView: View {
 
   private var readerLifecycle: some View {
     readerSurface
-    .onChange(of: readerCommandActions?.sceneCommandPresentation, initial: true) { _, _ in
-      sceneCommandRouter.registerRSSReader(
-        readerCommandActions,
-        owner: sceneCommandOwnerID
-      )
-    }
-    .onAppear {
-      presentation.synchronizeSelection(in: store)
-      allowRemoteImages = defaultRemoteImagesEnabled
-      store.isOfflineCacheFullTextEnabled = offlineCacheFullTextOnRefreshEnabled
-    }
-    .onDisappear {
-      sceneCommandRouter.unregisterRSSReader(owner: sceneCommandOwnerID)
-      persistReadingProgressAfterDisappear()
-      invalidateTranslationRequest()
-    }
-    .onChange(of: offlineCacheFullTextOnRefreshEnabled) { _, isEnabled in
-      store.isOfflineCacheFullTextEnabled = isEnabled
-    }
-    .onChange(of: automaticFullTextExtractionEnabled) { _, isEnabled in
-      guard isEnabled, let article = selectedArticle, presentation.isTruncatedCandidate(article)
-      else { return }
-      Task {
-        await presentation.fetchFullText(for: article, store: store)
+      .onChange(of: readerCommandActions?.sceneCommandPresentation, initial: true) { _, _ in
+        sceneCommandRouter.registerRSSReader(
+          readerCommandActions,
+          owner: sceneCommandOwnerID
+        )
       }
-    }
-    .onChange(of: store.mutationRevision) { _, _ in
-      // RSSReaderStore is shared across windows while presentation caches are
-      // window-local. Reconcile an already-open article when another window
-      // finishes persisting a newer full-text extraction; the presentation
-      // method preserves this window's summary/full-text toggle.
-      guard let article = selectedArticle else { return }
-      _ = presentation.restoreCachedFullText(for: article, store: store)
+      .onAppear {
+        presentation.synchronizeSelection(in: store)
+        allowRemoteImages = defaultRemoteImagesEnabled
+        store.isOfflineCacheFullTextEnabled = offlineCacheFullTextOnRefreshEnabled
+      }
+      .onDisappear {
+        sceneCommandRouter.unregisterRSSReader(owner: sceneCommandOwnerID)
+        persistReadingProgressAfterDisappear()
+        invalidateTranslationRequest()
+      }
+      .onChange(of: offlineCacheFullTextOnRefreshEnabled) { _, isEnabled in
+        store.isOfflineCacheFullTextEnabled = isEnabled
+      }
+      .onChange(of: automaticFullTextExtractionEnabled) { _, isEnabled in
+        guard isEnabled, let article = selectedArticle, presentation.isTruncatedCandidate(article)
+        else { return }
+        Task {
+          await presentation.fetchFullText(for: article, store: store)
+        }
+      }
+      .onChange(of: store.mutationRevision) { _, _ in
+        // RSSReaderStore is shared across windows while presentation caches are
+        // window-local. Reconcile an already-open article when another window
+        // finishes persisting a newer full-text extraction; the presentation
+        // method preserves this window's summary/full-text toggle.
+        guard let article = selectedArticle else { return }
+        _ = presentation.restoreCachedFullText(for: article, store: store)
         if automaticTranslationEnabled {
           requestTranslation(for: article, backend: translationBackend, force: false)
         }
       }
       .onChange(of: presentation.selectedArticleID) { _, newArticleID in
         selectedReaderText = ""
-      // The article-level switch is intentionally transient. A new article
-      // starts from the application default, while changes made in the
-      // reader never write back to that default.
-      allowRemoteImages = defaultRemoteImagesEnabled
-      // A nil selection is an explicit return to the list. For an article to
-      // article switch retain the old payload so its existing WebView can be
-      // covered by the reader's loading overlay while the new payload loads.
-      if newArticleID == nil {
-        selectedArticlePayload = nil
-      }
-      selectedArticleLoadError = nil
-      selectedArticleIsLoading = newArticleID != nil
-      invalidateTranslationRequest()
-    }
-    .onChange(of: translationTargetCode) { _, _ in
-      invalidateTranslationRequest()
-      if automaticTranslationEnabled, let article = selectedArticle {
-        requestTranslation(for: article, backend: translationBackend, force: false)
-      }
-    }
-    .onChange(of: translationBackendRawValue) { _, _ in
-      invalidateTranslationRequest()
-      if automaticTranslationEnabled, let article = selectedArticle {
-        requestTranslation(for: article, backend: translationBackend, force: false)
-      }
-    }
-    .onChange(of: automaticTranslationEnabled) { _, isEnabled in
-      guard isEnabled else {
+        // The article-level switch is intentionally transient. A new article
+        // starts from the application default, while changes made in the
+        // reader never write back to that default.
+        allowRemoteImages = defaultRemoteImagesEnabled
+        // A nil selection is an explicit return to the list. For an article to
+        // article switch retain the old payload so its existing WebView can be
+        // covered by the reader's loading overlay while the new payload loads.
+        if newArticleID == nil {
+          selectedArticlePayload = nil
+        }
+        selectedArticleLoadError = nil
+        selectedArticleIsLoading = newArticleID != nil
         invalidateTranslationRequest()
-        return
       }
-      guard let article = selectedArticle else { return }
-      requestTranslation(for: article, backend: translationBackend, force: false)
-    }
+      .onChange(of: translationTargetCode) { _, _ in
+        invalidateTranslationRequest()
+        if automaticTranslationEnabled, let article = selectedArticle {
+          requestTranslation(for: article, backend: translationBackend, force: false)
+        }
+      }
+      .onChange(of: translationBackendRawValue) { _, _ in
+        invalidateTranslationRequest()
+        if automaticTranslationEnabled, let article = selectedArticle {
+          requestTranslation(for: article, backend: translationBackend, force: false)
+        }
+      }
+      .onChange(of: automaticTranslationEnabled) { _, isEnabled in
+        guard isEnabled else {
+          invalidateTranslationRequest()
+          return
+        }
+        guard let article = selectedArticle else { return }
+        requestTranslation(for: article, backend: translationBackend, force: false)
+      }
   }
 
   private var readerLoading: some View {
@@ -217,59 +217,59 @@ struct RSSReaderView: View {
 
   private var readerSheets: some View {
     readerLoading
-    .sheet(item: $excerptNoteArticle) { article in
-      RSSExcerptNoteSheet(article: article, isSaveUnavailable: workflowIsBusy) { excerpt, note in
-        saveExcerptNote(for: article, excerpt: excerpt, note: note)
+      .sheet(item: $excerptNoteArticle) { article in
+        RSSExcerptNoteSheet(article: article, isSaveUnavailable: workflowIsBusy) { excerpt, note in
+          saveExcerptNote(for: article, excerpt: excerpt, note: note)
+        }
       }
-    }
-    .sheet(isPresented: $presentation.isAddSubscriptionPresented) {
-      RSSAddSubscriptionView(
-        onAdd: { value in presentation.addSubscription(value, to: store) }
-      )
-    }
-    .sheet(
-      item: $presentation.subscriptionDiscovery,
-      onDismiss: { presentation.cancelSubscriptionDiscovery() }
-    ) { discovery in
-      RSSSubscriptionDiscoveryView(
-        discovery: discovery,
-        onCancel: { presentation.cancelSubscriptionDiscovery() },
-        onAdd: { feedURLs in
-          presentation.addDiscoveredSubscriptions(feedURLs, to: store)
-        }
-      )
-    }
-    .sheet(item: $highlightDraft) { draft in
-      RSSHighlightEditorSheet(
-        text: draft.text,
-        initialNote: draft.initialNote,
-        initialTags: draft.initialTags,
-        isSaveUnavailable: workflowIsBusy,
-        onSave: { note, tags in
-          saveHighlight(draft, note: note, tags: tags)
-        }
-      )
-    }
-    .sheet(item: $tagEditorArticle) { article in
-      RSSArticleTagsSheet(
-        article: article,
-        onSave: { tags in
-          store.setArticleTags(tags, for: article.id)
-          selectedArticlePayload?.tags = store.articleHeader(id: article.id)?.tags ?? tags
-          workflowMessage = String(localized: "文章标签已保存。")
-          tagEditorArticle = nil
-        }
-      )
-    }
+      .sheet(isPresented: $presentation.isAddSubscriptionPresented) {
+        RSSAddSubscriptionView(
+          onAdd: { value in presentation.addSubscription(value, to: store) }
+        )
+      }
+      .sheet(
+        item: $presentation.subscriptionDiscovery,
+        onDismiss: { presentation.cancelSubscriptionDiscovery() }
+      ) { discovery in
+        RSSSubscriptionDiscoveryView(
+          discovery: discovery,
+          onCancel: { presentation.cancelSubscriptionDiscovery() },
+          onAdd: { feedURLs in
+            presentation.addDiscoveredSubscriptions(feedURLs, to: store)
+          }
+        )
+      }
+      .sheet(item: $highlightDraft) { draft in
+        RSSHighlightEditorSheet(
+          text: draft.text,
+          initialNote: draft.initialNote,
+          initialTags: draft.initialTags,
+          isSaveUnavailable: workflowIsBusy,
+          onSave: { note, tags in
+            saveHighlight(draft, note: note, tags: tags)
+          }
+        )
+      }
+      .sheet(item: $tagEditorArticle) { article in
+        RSSArticleTagsSheet(
+          article: article,
+          onSave: { tags in
+            store.setArticleTags(tags, for: article.id)
+            selectedArticlePayload?.tags = store.articleHeader(id: article.id)?.tags ?? tags
+            workflowMessage = String(localized: "文章标签已保存。")
+            tagEditorArticle = nil
+          }
+        )
+      }
   }
 
   private var readerAlerts: some View {
     readerSheets
-    .alert("RSS 操作失败", isPresented: errorAlertBinding) {
-      Button("确定") { presentation.errorMessage = nil }
-    } message: {
-      Text(presentation.errorMessage ?? "")
-    }
+      .alert("RSS 操作失败", isPresented: errorAlertBinding) {
+        Button("确定") { presentation.errorMessage = nil }
+      } message: {
+        Text(presentation.errorMessage ?? "")
+      }
   }
 
   private var filterChangeToken: RSSReaderFilterChangeToken {
@@ -637,7 +637,7 @@ private struct RSSWorkflowFeedback: View {
         .help(String(localized: "关闭反馈"))
         .accessibilityLabel(String(localized: "关闭反馈"))
     }
-    .padding(10)
+    .padding(WorkbenchSpacing.card)
     .frame(maxWidth: 360, alignment: .leading)
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
     .overlay {
@@ -676,8 +676,8 @@ private struct RSSUndoToastOverlay: View {
               .accessibilityLabel("撤销删除订阅和本地缓存")
           }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, WorkbenchSpacing.content)
+        .padding(.vertical, WorkbenchSpacing.control)
         .workbenchGlassSurface(
           material: .regularMaterial,
           in: Capsule()
@@ -685,7 +685,7 @@ private struct RSSUndoToastOverlay: View {
         .shadow(color: .black.opacity(0.16), radius: 8, x: 0, y: 3)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("RSS 撤销操作")
-        .padding(16)
+        .padding(WorkbenchSpacing.content)
         .transition(
           WorkbenchMotion.statusTransition(reduceMotion: accessibilityReduceMotion)
         )

@@ -50,7 +50,7 @@ struct FixtureView: View {
     VStack {
       Text("Readable").font(.callout)
       Text("Metadata").font(.caption)
-      Image(systemName: "photo").font(.system(size: 32))
+      Image(systemName: "photo").font(.system(size: WorkbenchIconSize.hero))
       Button("Secondary") {}.controlSize(.small)
     }
   }
@@ -68,7 +68,8 @@ struct FixtureView: View {
         'Text("Fixed")\n  .font(.system(size: 11, weight: .medium))\n',
         "TYP004",
     )
-    assert_passes('Image(systemName: "photo")\n  .font(.system(size: 20))\n')
+    assert_passes('Image(systemName: "photo")\n  .font(.system(size: WorkbenchIconSize.prominent))\n')
+    assert_fails('Image(systemName: "photo")\n  .font(.system(size: 20))\n', "TYP005")
     print("typography gate tests: pass")
     return 0
 

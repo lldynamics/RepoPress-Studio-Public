@@ -386,10 +386,6 @@ struct UnifiedPublishReadinessPresentation: Equatable {
   }
 }
 
-/// Compatibility spelling retained while the publish drawer transitions to
-/// the shared readiness projection.
-typealias UnifiedPublishSummaryPresentation = UnifiedPublishReadinessPresentation
-
 enum PublishDrawerActionStyle: Equatable {
   case localSave
   case formalRelease
@@ -428,425 +424,123 @@ extension PublishActionMessageStatus {
   }
 }
 
-struct PublishDrawerActionChoice: View {
-  let title: String
-  let detail: String
-  let status: String
-  let systemImage: String
-  let tint: Color
-  let isEnabled: Bool
-  var isPrimary: Bool = false
-  var actionStyle: PublishDrawerActionStyle = .localSave
-  var targetBadge: String? = nil
-  var targetBadgeTint: Color? = nil
-  let actionTitle: String
-  let actionSystemImage: String
-  let actionIdentifier: String
-  let action: () -> Void
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(alignment: .top) {
-        Image(systemName: systemImage)
-          .font(.title2)
-          .foregroundStyle(tint)
-          .accessibilityHidden(true)
-
-        Spacer()
-
-        if let targetBadge {
-          Text(targetBadge)
-            .font(.workbenchMetadata.weight(.medium))
-            .foregroundStyle(targetBadgeTint ?? tint)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(
-              (targetBadgeTint ?? tint).opacity(0.12),
-              in: Capsule()
-            )
-            .lineLimit(1)
-        }
-      }
-
-      Text(title)
-        .font(.headline)
-      Text(detail)
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-      Label(status, systemImage: isEnabled ? "checkmark.circle" : "info.circle")
-        .font(.caption)
-        .foregroundStyle(isEnabled ? tint : .secondary)
-
-      Spacer(minLength: 0)
-
-      if actionStyle == .formalRelease || isPrimary {
-        Button(action: action) {
-          Label(actionTitle, systemImage: actionSystemImage)
-        }
-        .workbenchProminentActionStyle()
-        .keyboardShortcut(.defaultAction)
-        .disabled(!isEnabled)
-        .accessibilityIdentifier(actionIdentifier)
-        .accessibilityHint(
-          PublishDrawerBatchActionPresentation.accessibilityHint(
-            isEnabled: isEnabled,
-            status: status
-          )
-        )
-        .help(status)
-      } else {
-        Button(action: action) {
-          Label(actionTitle, systemImage: actionSystemImage)
-        }
-        .buttonStyle(.bordered)
-        .disabled(!isEnabled)
-        .accessibilityIdentifier(actionIdentifier)
-        .accessibilityHint(
-          PublishDrawerBatchActionPresentation.accessibilityHint(
-            isEnabled: isEnabled,
-            status: status
-          )
-        )
-        .help(status)
-      }
-    }
-    .padding(14)
-    .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
-    .background(
-      cardBackground,
-      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-    )
-    .overlay {
-      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-        .stroke(cardBorderStroke, lineWidth: actionStyle == .formalRelease ? 1.5 : 1)
-    }
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel(title)
-    .accessibilityValue(status)
-  }
-
-  private var cardBackground: AnyShapeStyle {
-    if actionStyle == .formalRelease {
-      return AnyShapeStyle(WorkbenchTheme.success.opacity(isEnabled ? 0.05 : 0.02))
-    }
-    return WorkbenchBackgroundStyle.card
-  }
-
-  private var cardBorderStroke: Color {
-    if actionStyle == .formalRelease {
-      return WorkbenchTheme.success.opacity(isEnabled ? 0.5 : 0.2)
-    }
-    return tint.opacity(isEnabled ? 0.35 : 0.15)
-  }
-}
-
-private struct PublishDrawerReadinessIssue: Identifiable {
-  let target: PublishReadinessTarget
-  let id: String
-  let severity: PreflightSeverity
-  let title: String
-  let message: String
-}
-
-private struct PublishDrawerReadinessSection: Identifiable {
-  let id: String
-  let title: String
-  let systemImage: String
-  let issues: [PublishDrawerReadinessIssue]
-  let isLoading: Bool
-
-  var errorCount: Int {
-    issues.filter { $0.severity == .error }.count
-  }
-
-  var warningCount: Int {
-    issues.filter { $0.severity == .warning }.count
-  }
-
-  var tint: Color {
-    if errorCount > 0 {
-      return WorkbenchTheme.risk
-    }
-    if warningCount > 0 {
-      return WorkbenchTheme.warning
-    }
-    return WorkbenchTheme.success
-  }
-
-  var statusTitle: String {
-    if isLoading {
-      return "检查中"
-    }
-    if errorCount > 0 {
-      return "\(errorCount) 个阻断"
-    }
-    if warningCount > 0 {
-      return "\(warningCount) 个提醒"
-    }
-    return "通过"
-  }
-}
-
 struct PublishDrawerReadinessChecklist: View {
-  let preflightIssues: [PreflightIssue]
-  let imageReport: ImageWorkbenchReport?
-  let isImageReportLoading: Bool
-  let seoReport: SEOAuditReport
-  let socialSnapshot: SEOSocialPreviewSnapshot?
-  let isSocialPreviewStale: Bool
-  var onNavigate: ((PublishReadinessTarget) -> Void)? = nil
-
-  @State private var expandedSectionIDs: Set<String> = ["preflight"]
+  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
+  let presentation: PublishDrawerReadinessPresentation
+  @Binding var selectedIssueID: String?
+  var onNavigate: ((PublishDrawerReadinessIssue) -> Void)? = nil
+  var onRequestAIFix: ((PublishDrawerReadinessIssue) -> Void)? = nil
+  var store: WorkbenchStore? = nil
+  @State private var showsPassedChecks = false
 
   var body: some View {
-    let sections = readinessSections
-    let blockingCount = sections.reduce(0) { $0 + $1.errorCount }
-    let warningCount = sections.reduce(0) { $0 + $1.warningCount }
-    let isLoading = sections.contains(where: \.isLoading)
-
-    PublishDrawerCard(title: "发布就绪清单", systemImage: "checklist.checked") {
-      Text("这里汇总内容检查；发布连接与账户权限请查看发布按钮旁的状态。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-
-      HStack(spacing: 8) {
-        PublishDrawerStat(
-          title: "阻断",
-          value: "\(blockingCount)",
-          systemImage: "xmark.octagon",
-          color: blockingCount == 0 ? .secondary : WorkbenchTheme.risk
-        )
-        PublishDrawerStat(
-          title: "提醒",
-          value: "\(warningCount)",
-          systemImage: "exclamationmark.triangle",
-          color: warningCount == 0 ? .secondary : WorkbenchTheme.warning
-        )
-        PublishDrawerStat(
-          title: "检查项",
-          value: "\(sections.count)",
-          systemImage: "square.grid.2x2",
-          color: .secondary
-        )
-      }
-
-      Label(
-        isLoading
-          ? String(localized: "正在准备图片或社交预览检查…")
-          : blockingCount > 0
-            ? String(localized: "处理阻断项后再发布。")
-            : warningCount > 0
-              ? String(localized: "内容检查没有阻断项，请确认以下提醒。")
-              : String(localized: "四类内容检查均已通过。"),
-        systemImage: isLoading
-          ? "arrow.clockwise"
-          : blockingCount > 0
-            ? "xmark.octagon"
-            : warningCount > 0
-              ? "exclamationmark.triangle"
-              : "checkmark.circle"
-      )
-      .font(.caption.weight(.medium))
-      .foregroundStyle(
-        isLoading
-          ? .secondary
-          : blockingCount > 0
-            ? WorkbenchTheme.risk
-            : warningCount > 0
-              ? WorkbenchTheme.warning
-              : WorkbenchTheme.success
-      )
-
-      VStack(alignment: .leading, spacing: 6) {
-        ForEach(sections) { section in
-          if section.issues.isEmpty && !section.isLoading {
-            readinessSectionLabel(section)
-          } else {
-            VStack(alignment: .leading, spacing: 0) {
-              DisclosureGroup(isExpanded: expandedBinding(for: section.id)) {
-                EmptyView()
-              } label: {
-                readinessSectionLabel(section)
-              }
-
-              if expandedSectionIDs.contains(section.id) {
-                VStack(alignment: .leading, spacing: 7) {
-                  if section.isLoading {
-                    Label("正在读取最新检查结果…", systemImage: "arrow.clockwise")
-                      .font(.caption)
-                      .foregroundStyle(.secondary)
-                  }
-                  ForEach(section.issues) { issue in
-                    readinessIssueRow(issue)
-                  }
-                }
-                .padding(.leading, 16)
-                .padding(.top, 5)
-              }
-            }
+    VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
+      if !presentation.issues.isEmpty {
+        VStack(spacing: 0) {
+          ForEach(presentation.issues) { issue in
+            readinessIssueRow(issue)
+            if issue.id != presentation.issues.last?.id { Divider() }
           }
         }
+        .background(
+          WorkbenchBackgroundStyle.card,
+          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
       }
+      if presentation.isLoading {
+        Label("正在读取最新检查结果…", systemImage: "arrow.clockwise")
+          .font(.caption).foregroundStyle(.secondary)
+      }
+      if presentation.ignoredCount > 0 {
+        Label(
+          String(format: String(localized: "已按站点检查设置忽略 %d 项可选提醒"), presentation.ignoredCount),
+          systemImage: "eye.slash"
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .help(String(localized: "在“站点 → 站点检查 → 已忽略设置”中可恢复。"))
+        .accessibilityIdentifier("publish-drawer-ignored-checks")
+      }
+      DisclosureGroup(isExpanded: $showsPassedChecks) {
+        ForEach(presentation.passedSections) { section in
+          Label(section.title, systemImage: section.systemImage)
+            .font(.caption).foregroundStyle(.secondary)
+            .padding(.vertical, WorkbenchSpacing.tight)
+        }
+        if presentation.passedSections.isEmpty {
+          Text("尚无已完成的通过项").font(.caption).foregroundStyle(.secondary)
+        }
+      } label: {
+        Label(
+          String(format: String(localized: "已通过 %d 项"), presentation.passedSections.count),
+          systemImage: "checkmark.circle"
+        )
+        .font(.callout.weight(.medium)).foregroundStyle(WorkbenchTheme.success)
+      }
+      .disclosureGroupStyle(
+        WorkbenchDisclosureGroupStyle(toggleIdentifier: "publish-inspector-passed-checks")
+      )
+      .padding(WorkbenchSpacing.control)
+      .background(
+        WorkbenchBackgroundStyle.card,
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     }
     .accessibilityIdentifier("publish-drawer-readiness-checklist")
   }
 
-  private var readinessSections: [PublishDrawerReadinessSection] {
-    let preflight =
-      PublishReadinessIssueGrouping.coalesced(preflightIssues)
-      .filter { $0.severity != .info }
-      .map { issue in
-        PublishDrawerReadinessIssue(
-          target: .preflight(issue),
-          id: "preflight-\(issue.id.uuidString)",
-          severity: issue.severity,
-          title: issue.title,
-          message: issue.message
-        )
-      }
-
-    let imageIssues =
-      imageReport?.issues
-      .filter { !$0.isCovered(by: preflightIssues) }
-      .map { issue in
-        PublishDrawerReadinessIssue(
-          target: .image(issue),
-          id: "image-\(issue.id.uuidString)",
-          severity: issue.severity,
-          title: issue.title,
-          message: issue.message
-        )
-      } ?? []
-
-    let seoIssues = seoReport.findings
-      .filter { $0.severity != .info }
-      .map { finding in
-        PublishDrawerReadinessIssue(
-          target: .seo(finding),
-          id: "seo-\(finding.id.uuidString)",
-          severity: finding.severity,
-          title: finding.title,
-          message: finding.message
-        )
-      }
-
-    var socialIssues =
-      socialSnapshot?.findings
-      .filter { $0.severity != .info }
-      .map { finding in
-        PublishDrawerReadinessIssue(
-          target: .seo(finding),
-          id: "social-\(finding.id.uuidString)",
-          severity: finding.severity,
-          title: finding.title,
-          message: finding.message
-        )
-      } ?? []
-    if socialSnapshot == nil {
-      socialIssues.append(
-        PublishDrawerReadinessIssue(
-          target: .seo,
-          id: "social-missing",
-          severity: .warning,
-          title: "社交预览尚未生成",
-          message: "刷新社交预览后才能确认 Open Graph、Twitter/X 和 JSON-LD 字段。"
-        )
-      )
-    } else if isSocialPreviewStale {
-      socialIssues.append(
-        PublishDrawerReadinessIssue(
-          target: .seo,
-          id: "social-stale",
-          severity: .warning,
-          title: "社交预览需要刷新",
-          message: "文章元数据已变化，当前卡片快照不是最新版本。"
-        )
-      )
-    }
-
-    return [
-      PublishDrawerReadinessSection(
-        id: "preflight",
-        title: String(localized: "发布前检查"),
-        systemImage: "shield.checkered",
-        issues: preflight,
-        isLoading: false
-      ),
-      PublishDrawerReadinessSection(
-        id: "images",
-        title: "图片",
-        systemImage: "photo",
-        issues: imageIssues,
-        isLoading: isImageReportLoading && imageReport == nil
-      ),
-      PublishDrawerReadinessSection(
-        id: "seo",
-        title: "SEO",
-        systemImage: "magnifyingglass",
-        issues: seoIssues,
-        isLoading: false
-      ),
-      PublishDrawerReadinessSection(
-        id: "social",
-        title: "社交卡片",
-        systemImage: "rectangle.inset.filled",
-        issues: socialIssues,
-        isLoading: false
-      ),
-    ]
-  }
-
-  private func readinessSectionLabel(_ section: PublishDrawerReadinessSection) -> some View {
-    HStack(spacing: 8) {
-      Image(systemName: section.systemImage)
-        .foregroundStyle(section.tint)
-        .frame(width: 16)
-      Text(section.title)
-        .font(.caption.weight(.medium))
-      Spacer(minLength: 8)
-      Text(section.statusTitle)
-        .font(.caption)
-        .foregroundStyle(section.tint)
-    }
-    .padding(.vertical, 4)
-    .accessibilityElement(children: .combine)
-    .accessibilityLabel("\(section.title)，\(section.statusTitle)")
-  }
-
   private func readinessIssueRow(_ issue: PublishDrawerReadinessIssue) -> some View {
-    HStack(alignment: .top, spacing: 6) {
+    HStack(alignment: .top, spacing: WorkbenchSpacing.tight) {
       Image(systemName: issue.severity.publishDrawerSystemImage)
         .foregroundStyle(issue.severity.publishDrawerColor)
-        .frame(width: 14)
-      VStack(alignment: .leading, spacing: 2) {
-        Text(issue.title)
-          .font(.caption.weight(.medium))
-        Text(issue.message)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+        .accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: WorkbenchSpacing.tight) {
+        Text(issue.title).font(.callout.weight(.medium))
+        Text(issue.message).font(.caption).foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
-        if let onNavigate {
-          Button(issue.target.title) { onNavigate(issue.target) }
-            .buttonStyle(.link)
-            .accessibilityLabel("\(issue.target.title)：\(issue.title)")
-            .accessibilityIdentifier("publish-readiness-action-\(issue.id)")
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: WorkbenchSpacing.tight) { issueActions(issue) }
+          VStack(alignment: .leading, spacing: WorkbenchSpacing.tight) { issueActions(issue) }
         }
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .padding(WorkbenchSpacing.control)
+    .background(selectedIssueID == issue.id ? workbenchAccentColor.opacity(0.10) : Color.clear)
+    .contentShape(Rectangle())
+    .onTapGesture { selectedIssueID = issue.id }
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("\(issue.severity.localizedDisplayName)：\(issue.title)")
+    .accessibilityValue(selectedIssueID == issue.id ? String(localized: "已选中") : "")
+    .accessibilityIdentifier("publish-inspector-issue-\(issue.id)")
+  }
+
+  @ViewBuilder
+  private func issueActions(_ issue: PublishDrawerReadinessIssue) -> some View {
+    if let onNavigate {
+      Button(issue.actionTitle) {
+        selectedIssueID = issue.id
+        onNavigate(issue)
+      }
+      .buttonStyle(.bordered).controlSize(.small)
+      .accessibilityLabel("\(issue.actionTitle)：\(issue.title)")
+      .accessibilityIdentifier("publish-readiness-action-\(issue.id)")
+    }
+    if issue.supportsAIFix, let onRequestAIFix {
+      if let store {
+        PublishDrawerAIFixButton(issue: issue, store: store) {
+          selectedIssueID = issue.id
+          onRequestAIFix(issue)
+        }
+      } else {
+        Button {
+          selectedIssueID = issue.id
+          onRequestAIFix(issue)
+        } label: {
+          Label("AI 修复", systemImage: "sparkles")
+        }
+        .buttonStyle(.bordered).controlSize(.small)
+        .accessibilityLabel("AI 修复：\(issue.title)")
+        .accessibilityHint("打开 AI 助手准备修复请求")
+        .accessibilityIdentifier("publish-readiness-ai-fix-\(issue.id)")
       }
     }
   }
-
-  private func expandedBinding(for id: String) -> Binding<Bool> {
-    Binding(
-      get: { expandedSectionIDs.contains(id) },
-      set: { isExpanded in
-        if isExpanded {
-          expandedSectionIDs.insert(id)
-        } else {
-          expandedSectionIDs.remove(id)
-        }
-      }
-    )
-  }
-
 }

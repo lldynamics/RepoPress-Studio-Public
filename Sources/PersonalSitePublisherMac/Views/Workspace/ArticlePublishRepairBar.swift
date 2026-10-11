@@ -23,7 +23,7 @@ struct ArticlePublishRepairBar: View {
   var body: some View {
     HStack(spacing: 12) {
       Image(systemName: "wrench.and.screwdriver")
-        .foregroundStyle(.tint)
+        .foregroundStyle(WorkbenchTheme.warning)
         .accessibilityHidden(true)
 
       VStack(alignment: .leading, spacing: 2) {
@@ -55,12 +55,15 @@ struct ArticlePublishRepairBar: View {
       .accessibilityLabel("返回发布检查")
       .accessibilityHint("重新生成当前文章的发布预览，不会自动发布")
     }
-    .padding(.horizontal, 16)
-    .padding(.vertical, 10)
+    .padding(.horizontal, WorkbenchSpacing.content)
+    .padding(.vertical, WorkbenchSpacing.control)
     .frame(maxWidth: 720)
-    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    .background(
+      .regularMaterial,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel, style: .continuous)
+    )
     .overlay {
-      RoundedRectangle(cornerRadius: 12, style: .continuous)
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel, style: .continuous)
         .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
     }
     .shadow(color: .black.opacity(0.12), radius: 10, y: 4)

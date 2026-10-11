@@ -84,7 +84,7 @@ extension AIChatModelQuickSwitchSheet {
                   Text(AIChatRequestTokenBudget.formattedContextWindow(forModel: model.model))
                     .font(.workbenchMetadata.weight(.medium).monospaced())
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 5)
+                    .padding(.horizontal, WorkbenchSpacing.tight)
                     .padding(.vertical, 1.5)
                     .background(Color.secondary.opacity(0.12), in: Capsule())
                 }

@@ -79,6 +79,8 @@ public struct PreflightIssue: Identifiable, Codable, Hashable, Sendable {
   public var category: PreflightIssueCategory?
   public var relatedValue: String?
   public var code: PreflightIssueCode?
+  public var ruleID: String?
+  public var fingerprintContext: String?
 
   public init(
     id: UUID = UUID(),
@@ -88,7 +90,9 @@ public struct PreflightIssue: Identifiable, Codable, Hashable, Sendable {
     field: String? = nil,
     category: PreflightIssueCategory? = nil,
     relatedValue: String? = nil,
-    code: PreflightIssueCode? = nil
+    code: PreflightIssueCode? = nil,
+    ruleID: String? = nil,
+    fingerprintContext: String? = nil
   ) {
     self.id = id
     self.severity = severity
@@ -98,6 +102,8 @@ public struct PreflightIssue: Identifiable, Codable, Hashable, Sendable {
     self.category = category
     self.relatedValue = relatedValue
     self.code = code
+    self.ruleID = ruleID
+    self.fingerprintContext = fingerprintContext
   }
 }
 
@@ -106,7 +112,8 @@ public struct PublicRiskSummary: Codable, Hashable, Sendable {
 
   public init(issues: [PreflightIssue]) {
     var seenKeys = Set<String>()
-    self.issues = issues
+    self.issues =
+      issues
       .filter(\.isPublicRiskIssue)
       .sorted {
         if $0.severity.sortRank == $1.severity.sortRank {
@@ -157,12 +164,25 @@ public struct PublicRiskSummary: Codable, Hashable, Sendable {
   }
 }
 
-public extension PreflightIssue {
-  var structuredField: PreflightIssueField? {
+extension PreflightIssue {
+  public var structuredField: PreflightIssueField? {
     field.flatMap(PreflightIssueField.init(rawValue:))
   }
 
-  var isPublicRiskIssue: Bool {
+  /// Scope, repository, path-rule and site-kind problems apply to every
+  /// article of a site (or every general draft), so per-article badges leave
+  /// them to the site checks.
+  public var isSiteSetupIssue: Bool {
+    switch structuredField {
+    case .scope, .repository, .repositoryPath, .repositoryToken, .contentRoot, .assetRoot,
+      .markdownPathPattern, .siteKind:
+      return true
+    default:
+      return false
+    }
+  }
+
+  public var isPublicRiskIssue: Bool {
     category == .publicRisk
   }
 }
@@ -239,6 +259,7 @@ public struct ContentHealthReport: Sendable {
   public var publicRiskDraftSummaries: [DraftPreflightSummary]
   public var aiFixQueueItems: [AIPublishingFixQueueItem]
   public var slugChangeImpacts: [UUID: SlugChangeImpact]
+  public var suppressedIssues: [ContentHealthIssueOccurrence]
 
   public init(
     sitePreflightIssues: [PreflightIssue],
@@ -246,7 +267,8 @@ public struct ContentHealthReport: Sendable {
     publicRiskSummary: PublicRiskSummary,
     publicRiskDraftSummaries: [DraftPreflightSummary],
     aiFixQueueItems: [AIPublishingFixQueueItem],
-    slugChangeImpacts: [UUID: SlugChangeImpact] = [:]
+    slugChangeImpacts: [UUID: SlugChangeImpact] = [:],
+    suppressedIssues: [ContentHealthIssueOccurrence] = []
   ) {
     self.sitePreflightIssues = sitePreflightIssues
     self.draftSummaries = draftSummaries
@@ -254,6 +276,7 @@ public struct ContentHealthReport: Sendable {
     self.publicRiskDraftSummaries = publicRiskDraftSummaries
     self.aiFixQueueItems = aiFixQueueItems
     self.slugChangeImpacts = slugChangeImpacts
+    self.suppressedIssues = suppressedIssues
   }
 }
 

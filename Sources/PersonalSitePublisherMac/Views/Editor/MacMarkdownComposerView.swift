@@ -36,7 +36,9 @@ struct MacMarkdownComposerView: View {
   @State var pendingInlineStructuredEditApplyRequestID: UUID?
   /// Set when a publish check asks to fix the title; the editor header owns it.
   @State var titleFocusRequestID: UUID?
+  @State var duplicateTitleWarningResolution: MarkdownDuplicateTitleWarningResolution?
   @State var pendingFindReplacement: MarkdownPendingFindReplacement?
+  @State var pendingDuplicateTitleRemoval: MarkdownDuplicateTitleRemovalSnapshot?
   @State var pendingAttachmentInsertion: MarkdownPendingAttachmentInsertion?
   @StateObject var findMatchRefreshCoordinator = MarkdownFindMatchRefreshCoordinator()
   @State var markdownAnalysisTaskIsAutomatic = false
@@ -75,16 +77,6 @@ struct MacMarkdownComposerView: View {
   let imageMetadataEditingService = ImageMetadataEditingService()
   let frontMatterEditingService = MarkdownFrontMatterEditingService()
   let selectionEditingService = MarkdownComposerSelectionEditingService()
-
-  var inlineDiagnostics: [MarkdownInlineDiagnostic] {
-    guard appliedMarkdownAnalysisGeneration == markdownAnalysisGeneration else { return [] }
-    return markdownAnalysis.diagnostics
-  }
-
-  var outlineItems: [MarkdownOutlineItem] {
-    guard appliedMarkdownAnalysisGeneration == markdownAnalysisGeneration else { return [] }
-    return markdownAnalysis.outlineItems
-  }
 
   var markdownSelectionBubbleTaskID: MarkdownSelectionBubbleTaskID {
     MarkdownSelectionBubbleTaskID(
@@ -224,6 +216,7 @@ struct MacMarkdownComposerView: View {
       }
       .environmentObject(zenModeController)
       Divider()
+      duplicateBodyTitleNotice
       if isFindReplacePresented {
         FindReplaceBar(
           findQuery: $editorSessionState.findQuery,
@@ -267,6 +260,7 @@ struct MacMarkdownComposerView: View {
     .task {
       await restoreEditorAfterMount()
     }
+    .task(id: duplicateTitleWarningResolutionKey) { await resolveDuplicateTitleWarning() }
     .task(id: markdownSelectionBubbleTaskID) {
       let selection = selectedRange
       guard selection.length > 0, !Task.isCancelled else { return }
@@ -409,6 +403,9 @@ struct MacMarkdownComposerView: View {
         aiActions.invalidateInlineStructuredEditReviewIfStale(for: draft, body: editorBody)
       }
       .onChange(of: editorEditRequest?.id) { _, requestID in
+        if pendingDuplicateTitleRemoval?.requestID != requestID {
+          pendingDuplicateTitleRemoval = nil
+        }
         if let pending = pendingAttachmentInsertion, pending.requestID != requestID {
           cancelAttachmentImport()
         }
@@ -416,32 +413,7 @@ struct MacMarkdownComposerView: View {
       .onChange(of: editorBufferRevision) { _, _ in
         syncEditorBodyFromStore()
       }
-      .onChange(of: draft.id) { oldDraftID, _ in
-        pendingInlineStructuredEditApplyRequestID = nil
-        pendingFindReplacement = nil
-        // Review state is application-scoped and draft-keyed. Switching one
-        // window must not destroy a review still visible in another window; the
-        // destination composer simply hides sessions for other draft IDs.
-        selectionBubblePresentationState.reset()
-        cancelFindMatchRefresh()
-        editorStatisticsState.update(.empty)
-        editorState.trackDraft(draft.id)
-        flushEditorSessionSave(for: oldDraftID)
-        cancelAttachmentImport()
-        dismissInsertedImageMetadata()
-        cancelSelectionAIAction()
-        cancelInlineGhostText()
-        activeWritingContextPanel = nil
-        cancelAIPromptClipboardTask()
-        editorEditRequest = nil
-        markdownTextFocusRequest = nil
-        store.flushDraftBodyEditorBuffer(for: oldDraftID)
-        syncEditorBodyFromStore(force: true)
-        resetEditorDocumentFromDraft()
-        restoreEditorSession(for: draft.id)
-        syncActiveEditorSelection()
-        scheduleMarkdownAnalysis(isAutomatic: true)
-      }
+      .onChange(of: draft.id) { oldDraftID, _ in handleComposerDraftChange(from: oldDraftID) }
   }
 
   private func restoreEditorAfterMount() async {
@@ -474,7 +446,7 @@ struct MacMarkdownComposerView: View {
             outlinePanelContent()
               .frame(width: 320)
               .frame(maxHeight: .infinity)
-              .padding(12)
+              .padding(WorkbenchSpacing.card)
               .accessibilityIdentifier("markdown-outline-dock")
           }
         }
@@ -494,8 +466,8 @@ struct MacMarkdownComposerView: View {
         Spacer(minLength: 0)
         Label(toast.message, systemImage: "photo.badge.checkmark")
           .font(.callout.weight(.medium))
-          .padding(.horizontal, 14)
-          .padding(.vertical, 9)
+          .padding(.horizontal, WorkbenchSpacing.content)
+          .padding(.vertical, WorkbenchSpacing.control)
           .workbenchGlassSurface(material: .regularMaterial, in: Capsule())
           .shadow(color: .black.opacity(0.16), radius: 8, x: 0, y: 3)
           .accessibilityIdentifier("markdown-automatic-image-import-toast")
@@ -504,7 +476,7 @@ struct MacMarkdownComposerView: View {
           )
       }
     }
-    .padding(.bottom, 18)
+    .padding(.bottom, WorkbenchSpacing.content)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .allowsHitTesting(false)
     .zIndex(5)
@@ -525,7 +497,7 @@ struct MacMarkdownComposerView: View {
           Spacer(minLength: 0)
           outlinePanelContent()
         }
-        .padding(12)
+        .padding(WorkbenchSpacing.card)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         .zIndex(4)
       } else {
@@ -538,7 +510,7 @@ struct MacMarkdownComposerView: View {
             writingContextPanelContent(for: panel)
           }
         }
-        .padding(12)
+        .padding(WorkbenchSpacing.card)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         .zIndex(4)
       }
@@ -675,6 +647,7 @@ struct MacMarkdownComposerView: View {
             editorEditRequest = nil
             handleAttachmentInsertionOutcome(outcome)
             handleFindReplacementOutcome(outcome)
+            handleDuplicateTitleRemovalOutcome(outcome)
             if let pending = pendingSlashAIRequest, pending.requestID == outcome.id {
               pendingSlashAIRequest = nil
               if outcome.wasApplied, pending.draftID == draft.id {
@@ -691,7 +664,7 @@ struct MacMarkdownComposerView: View {
             }
             EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
           },
-          onEditRequestWillApply: attachmentInsertionAdmission,
+          onEditRequestWillApply: articleInformationEditAdmission,
           onGhostTextAccepted: { _ in
             acceptInlineGhostText()
           },
@@ -734,6 +707,7 @@ struct MacMarkdownComposerView: View {
         // and cancels any pending delivery from the prior document.
         .id(statisticsDraftID)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .topLeading) { emptyBodyPlaceholder }
 
         if let reviewPresentation {
           EditorAIReviewBar(
@@ -760,7 +734,7 @@ struct MacMarkdownComposerView: View {
             onApply: applyInlineStructuredEditReview,
             onExit: { aiActions.endInlineStructuredEditReview(for: draft.id) }
           )
-          .padding(12)
+          .padding(WorkbenchSpacing.card)
           .frame(maxWidth: 460, maxHeight: .infinity, alignment: .topTrailing)
         }
 
@@ -787,12 +761,12 @@ struct MacMarkdownComposerView: View {
             }
             .controlSize(.small)
           }
-          .padding(10)
+          .padding(WorkbenchSpacing.card)
           .frame(maxWidth: 390, alignment: .leading)
           .background(
             .regularMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
           )
-          .padding(10)
+          .padding(WorkbenchSpacing.card)
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
           .accessibilityElement(children: .contain)
           .accessibilityIdentifier("markdown-front-matter-invalid-banner")
@@ -841,7 +815,7 @@ struct MacMarkdownComposerView: View {
             workbenchAccentColor.opacity(0.10)
             VStack(spacing: 8) {
               Image(systemName: "photo.badge.plus")
-                .font(.system(size: 30, weight: .semibold))
+                .font(.system(size: WorkbenchIconSize.hero, weight: .semibold))
               Text("拖入图片到当前文章")
                 .font(.headline)
             }
@@ -881,7 +855,7 @@ struct MacMarkdownComposerView: View {
       // With the native 16 pt inset, the folded body starts 32 pt below the
       // toolbar; this outer gutter remains visible while the document scrolls.
       .padding(.top, isArticleInformationFolded ? 16 : 0)
-      .background(WorkbenchWritingSurface.color(usesWarmPaper: isWarmPaperBackgroundEnabled))
+      .background(WorkbenchSurface.writingPaper(usesWarmPaper: isWarmPaperBackgroundEnabled))
 
       if !markdownSSGComponentOccurrences.isEmpty {
         Divider()
@@ -909,7 +883,7 @@ struct MacMarkdownComposerView: View {
         onCopyForWeChatAndZhihu: copyForWeChatAndZhihu
       )
     }
-    .background(WorkbenchWritingSurface.color(usesWarmPaper: isWarmPaperBackgroundEnabled))
+    .background(WorkbenchSurface.writingPaper(usesWarmPaper: isWarmPaperBackgroundEnabled))
   }
 
   private func contextualPopoverPlacement(

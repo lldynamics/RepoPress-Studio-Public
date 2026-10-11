@@ -199,10 +199,6 @@ public struct BatchPublishPlan: Codable, Hashable, Sendable {
     items.reduce(0) { $0 + $1.changedFileCount }
   }
 
-  public var publishFileCount: Int {
-    items.reduce(0) { $0 + $1.fileCount }
-  }
-
   public var totalByteSize: Int64 {
     items.reduce(0) { $0 + $1.totalByteSize }
   }
@@ -304,16 +300,6 @@ public struct BatchPublishPlanService: Sendable {
     try checkCancellation()
 
     return BatchPublishPlan(profileID: profile.id, siteName: profile.name, items: items)
-  }
-
-  public func planAsync(
-    drafts: [ArticleDraft],
-    profile: SiteProfile,
-    repositoryReport: RepositoryScanReport?
-  ) async -> BatchPublishPlan {
-    await Task.detached(priority: .userInitiated) {
-      plan(drafts: drafts, profile: profile, repositoryReport: repositoryReport)
-    }.value
   }
 
   /// A cancelled refresh never produces a partially checked, executable plan.

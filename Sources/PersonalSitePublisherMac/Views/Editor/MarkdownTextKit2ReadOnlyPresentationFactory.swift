@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 import PublishingDomainContracts
-import PublishingWorkbenchCore
+import PublishingMarkdownCore
 
 /// Builds the derived, read-only TextKit 2 document used while an editor is
 /// not focused.
@@ -316,25 +316,18 @@ enum MarkdownTextKit2ReadOnlyPresentationFactory {
       displayMode == .inline
       ? baseFontSize
       : max(19, baseFontSize)
-    let rendered = MarkdownInlineFormulaPresentation.attributedString(
+    let presentationSize = MarkdownInlineFormulaPresentation.size(
       for: source,
-      fontSize: fontSize
+      displayMode: displayMode,
+      fontSize: fontSize,
+      availableWidth: availableWidth
     )
-    let renderedSize = rendered.size()
     let isInline = displayMode == .inline
-    let width = isInline
-      ? min(
-        availableWidth,
-        max(24, ceil(max(1, renderedSize.width)) + 24)
-      )
-      : availableWidth
-    let height = isInline
-      ? max(28, ceil(max(1, renderedSize.height)) + 8)
-      : max(52, ceil(max(1, renderedSize.height)) + 12)
+    let height = presentationSize.height
     let bounds = NSRect(
       x: 0,
       y: -height * (isInline ? 0.20 : 0.15),
-      width: max(1, width),
+      width: presentationSize.width,
       height: height
     )
     return MarkdownNativeTextAttachment(

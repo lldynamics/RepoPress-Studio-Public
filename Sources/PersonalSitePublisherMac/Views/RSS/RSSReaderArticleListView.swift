@@ -44,7 +44,8 @@ struct RSSArticleList: View {
   @StateObject var titleAppleBridge = RSSListTitleAppleTranslationBridge()
   @State var titleTranslationRetryRevision = 0
   @AppStorage(RSSReaderUserPreferences.automaticTitleTranslationEnabledKey)
-  var automaticTitleTranslationEnabled = RSSReaderUserPreferences.defaultAutomaticTitleTranslationEnabled
+  var automaticTitleTranslationEnabled = RSSReaderUserPreferences
+    .defaultAutomaticTitleTranslationEnabled
   @AppStorage(RSSReaderUserPreferences.translationBackendKey)
   var titleTranslationBackendRawValue = RSSReaderUserPreferences.defaultTranslationBackend.rawValue
   @AppStorage("rssReaderTranslationTargetCode")
@@ -128,7 +129,7 @@ struct RSSArticleList: View {
         }
         listTitleTranslationStatus
       }
-      .padding(WorkbenchSpacing.section)
+      .padding(WorkbenchSpacing.content)
 
       Divider()
 

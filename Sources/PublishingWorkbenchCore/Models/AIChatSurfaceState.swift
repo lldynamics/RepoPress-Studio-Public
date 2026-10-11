@@ -104,17 +104,9 @@ public struct AIChatSurfaceState: Equatable, Sendable {
     }
   }
 
-  public mutating func clearComposer(for conversationID: UUID) {
-    composerTextByConversation[conversationID] = ""
-    contextReferencesByConversation[conversationID] = []
-    imageAttachmentsByConversation[conversationID] = []
-    imageAttachmentIDsByConversation[conversationID] = []
-  }
-
   /// Releases all ephemeral state for a conversation, including image bytes.
   /// This is used when a conversation is deleted/archived or a window is
-  /// destroyed; `clearComposer` intentionally remains useful for an accepted
-  /// send without changing the surface's conversation bookkeeping.
+  /// destroyed.
   public mutating func discardState(for conversationID: UUID) {
     composerTextByConversation.removeValue(forKey: conversationID)
     contextReferencesByConversation.removeValue(forKey: conversationID)
@@ -123,12 +115,5 @@ public struct AIChatSurfaceState: Equatable, Sendable {
     if selectedConversationID == conversationID {
       selectedConversationID = nil
     }
-  }
-
-  public mutating func discardAllState() {
-    for conversationID in conversationsWithEphemeralState {
-      discardState(for: conversationID)
-    }
-    selectedConversationID = nil
   }
 }

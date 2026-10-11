@@ -11,7 +11,9 @@ struct WorkspaceResponsiveLayoutSnapshot: Equatable, Sendable {
   let band: Band
 
   static let initial = WorkspaceResponsiveLayoutSnapshot(
-    width: WorkbenchLayoutMode.expandedWorkspaceWidth
+    // The native inspector must wait for the first measured window width;
+    // presenting it earlier can force a restored narrow window to grow.
+    width: WorkbenchLayoutMode.minimumWindowWidth
   )
 
   init(width: CGFloat) {
@@ -28,6 +30,10 @@ struct WorkspaceResponsiveLayoutSnapshot: Equatable, Sendable {
     band == .constrained || band == .compactInspector
   }
 
+  /// Hide the Inspector before the contextual article list. The list only
+  /// starts collapsed in the narrowest band, and can still be opened there.
+  var collapsesContextSidebar: Bool { band == .constrained }
+
   var allowsStandardInspector: Bool {
     band == .standardInspector
   }
@@ -35,35 +41,6 @@ struct WorkspaceResponsiveLayoutSnapshot: Equatable, Sendable {
   var canManuallyRevealInspector: Bool { band == .compactInspector }
 
   func canManuallyRevealInspector(for section: WorkspaceSection) -> Bool {
-    canManuallyRevealInspector && [.writing, .library, .rss].contains(section)
-  }
-}
-
-/// A single value keeps the inspector's min/ideal/max constraints coherent while
-/// moving between article and AI collaboration surfaces.
-struct WorkspaceInspectorWidthState: Equatable {
-  let constraints: WorkspaceInspectorColumnWidths
-  let preferredWidth: CGFloat
-
-  init(isAIAssistantPresented: Bool) {
-    constraints = WorkspaceInspectorColumnWidthPolicy.widths(
-      isAIAssistantPresented: isAIAssistantPresented
-    )
-    preferredWidth =
-      isAIAssistantPresented
-      ? constraints.ideal
-      : constraints.minimum
-  }
-}
-
-/// The reset command only earns space in the Inspector once the user has
-/// actually resized the column; at the default width it would just crowd the
-/// panel header.
-enum WorkspaceInspectorWidthResetPolicy {
-  static let tolerance: CGFloat = 8
-
-  static func showsResetControl(measuredWidth: CGFloat?, defaultWidth: CGFloat?) -> Bool {
-    guard let measuredWidth, let defaultWidth, measuredWidth > 0 else { return false }
-    return abs(measuredWidth - defaultWidth) > tolerance
+    canManuallyRevealInspector
   }
 }

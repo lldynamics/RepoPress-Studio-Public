@@ -9,15 +9,16 @@ struct RepositoryImageGalleryTile: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
-      RoundedRectangle(cornerRadius: 6)
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
         .fill(.quaternary.opacity(0.35))
         .frame(height: thumbnailSize * 0.68)
         .overlay {
-          WorkbenchThumbnailView(fileURL: asset.fileURL, maxPixelSize: 640, cornerRadius: 6)
+          WorkbenchThumbnailView(
+            fileURL: asset.fileURL, maxPixelSize: 640, cornerRadius: WorkbenchCornerRadius.control)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
         .overlay {
-          RoundedRectangle(cornerRadius: 6)
+          RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
             .strokeBorder(isSelected ? accentColor : Color.clear, lineWidth: 2)
         }
         .accessibilityHidden(true)
@@ -33,10 +34,10 @@ struct RepositoryImageGalleryTile: View {
       }
       .font(.workbenchSupporting).foregroundStyle(.secondary)
     }
-    .padding(5)
+    .padding(WorkbenchSpacing.tight)
     .background(
       isSelected ? accentColor.opacity(0.1) : Color.clear,
-      in: RoundedRectangle(cornerRadius: 8)
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
     )
     .contentShape(Rectangle())
     .help(asset.repositoryPath)
@@ -48,8 +49,10 @@ struct RepositoryImageGalleryRow: View {
 
   var body: some View {
     HStack(spacing: 12) {
-      WorkbenchThumbnailView(fileURL: asset.fileURL, maxPixelSize: 160, cornerRadius: 4)
-        .frame(width: 70, height: 48).clipped().accessibilityHidden(true)
+      WorkbenchThumbnailView(
+        fileURL: asset.fileURL, maxPixelSize: 160, cornerRadius: WorkbenchCornerRadius.badge
+      )
+      .frame(width: 70, height: 48).clipped().accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 3) {
         Text(asset.filename).font(.workbenchCardTitle).lineLimit(1)
         Text(asset.repositoryPath).font(.workbenchSupporting)
@@ -61,7 +64,7 @@ struct RepositoryImageGalleryRow: View {
       Label("\(asset.references.count)", systemImage: "doc.text")
         .font(.workbenchSupporting).foregroundStyle(.secondary)
     }
-    .padding(.vertical, 4)
+    .padding(.vertical, WorkbenchSpacing.tight)
     .accessibilityElement(children: .combine)
   }
 }

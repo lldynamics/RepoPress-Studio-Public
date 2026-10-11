@@ -1,0 +1,17 @@
+{
+  "%lld 字/词 · 约 %lld 分钟": {
+    "zh-Hans": "%lld 字/词 · 约 %lld 分钟",
+    "en": {
+      "one": "%1$lld character/word · About %2$lld min",
+      "other": "%1$lld characters/words · About %2$lld min"
+    }
+  },
+  "未绑定站点": {
+    "zh-Hans": "未绑定站点",
+    "en": "No linked site"
+  },
+  "编辑器工具栏": {
+    "zh-Hans": "编辑器工具栏",
+    "en": "Editor Toolbar"
+  }
+}

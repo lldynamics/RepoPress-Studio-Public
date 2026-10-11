@@ -36,7 +36,7 @@ struct KnowledgeSourceHistoryView: View {
           .disabled(document?.sourceURL == nil || isCheckingSource || knowledge.isBusy)
         Button("完成") { dismiss() }
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
       Divider()
 
       ScrollView {
@@ -51,7 +51,7 @@ struct KnowledgeSourceHistoryView: View {
             revisionComparison(comparison, revisionID: comparedRevisionID)
           }
         }
-        .padding(20)
+        .padding(WorkbenchSpacing.page)
         .frame(maxWidth: 860, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
       }
@@ -141,7 +141,7 @@ struct KnowledgeSourceHistoryView: View {
           ) {
             prepareLocalRepair()
           }
-            .disabled(isPreparingLocalRepair || knowledge.isBusy)
+          .disabled(isPreparingLocalRepair || knowledge.isBusy)
         }
       }
       if isPreparingLocalRepair {
@@ -193,8 +193,10 @@ struct KnowledgeSourceHistoryView: View {
       .font(.caption)
       .foregroundStyle(.secondary)
     }
-    .padding(14)
-    .background(workbenchAccentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+    .padding(WorkbenchSpacing.content)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel))
   }
 
   private func refreshComparison(_ preview: KnowledgeSourceRefreshPreview) -> some View {
@@ -202,7 +204,8 @@ struct KnowledgeSourceHistoryView: View {
       HStack {
         Label(
           preview.difference.hasChanges ? "发现来源变化" : "来源内容没有变化",
-          systemImage: preview.difference.hasChanges ? "arrow.triangle.2.circlepath" : "checkmark.circle"
+          systemImage: preview.difference.hasChanges
+            ? "arrow.triangle.2.circlepath" : "checkmark.circle"
         )
         .font(.headline)
         Spacer()
@@ -221,8 +224,10 @@ struct KnowledgeSourceHistoryView: View {
         .font(.caption)
         .foregroundStyle(.secondary)
     }
-    .padding(14)
-    .background(workbenchAccentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+    .padding(WorkbenchSpacing.content)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel))
   }
 
   private var revisionHistory: some View {
@@ -245,7 +250,10 @@ struct KnowledgeSourceHistoryView: View {
       case .loaded(let revisions):
         ForEach(revisions) { revision in
           HStack(spacing: 10) {
-            Image(systemName: revision.id == document?.currentRevisionID ? "checkmark.circle.fill" : "clock")
+            Image(
+              systemName: revision.id == document?.currentRevisionID
+                ? "checkmark.circle.fill" : "clock"
+            )
             .foregroundStyle(
               revision.id == document?.currentRevisionID ? workbenchAccentColor : Color.secondary
             )
@@ -268,7 +276,7 @@ struct KnowledgeSourceHistoryView: View {
               Button("恢复") { pendingRestore = revision }
             }
           }
-          .padding(.vertical, 5)
+          .padding(.vertical, WorkbenchSpacing.tight)
           // “比较”和“恢复”必须保留为可单独聚焦的操作。
           .accessibilityElement(children: .contain)
           .accessibilityLabel(
@@ -338,10 +346,12 @@ struct KnowledgeSourceHistoryView: View {
           .font(.system(.caption, design: .monospaced))
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .topLeading)
-          .padding(9)
+          .padding(WorkbenchSpacing.control)
       }
       .frame(minHeight: 150, alignment: .topLeading)
-      .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 7))
+      .background(
+        Color(nsColor: .textBackgroundColor),
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
     }
     .frame(maxWidth: .infinity, alignment: .leading)
   }
@@ -355,7 +365,8 @@ struct KnowledgeSourceHistoryView: View {
       do {
         let preview = try await knowledge.makeSourceRefreshPreview(documentID: documentID)
         refreshPreview = preview
-        refreshResultMessage = preview.difference.hasChanges
+        refreshResultMessage =
+          preview.difference.hasChanges
           ? "已发现来源变化，请预览后决定是否保存。"
           : "来源内容与当前版本一致。"
         EditorAccessibilityAnnouncementCenter.announce(
@@ -378,11 +389,13 @@ struct KnowledgeSourceHistoryView: View {
     refreshError = nil
     Task {
       defer { isPreparingLocalRepair = false }
-      guard let previews = await knowledge.localContentRepairPreviews(
-        documentIDs: [documentID],
-        includingCurrentParserVersion: true
-      ),
-            let preview = previews.first else {
+      guard
+        let previews = await knowledge.localContentRepairPreviews(
+          documentIDs: [documentID],
+          includingCurrentParserVersion: true
+        ),
+        let preview = previews.first
+      else {
         refreshError = knowledge.lastError ?? "这条资料没有可用的本机原始网页归档。"
         return
       }

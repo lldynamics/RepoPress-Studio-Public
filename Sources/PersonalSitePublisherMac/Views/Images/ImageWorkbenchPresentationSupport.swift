@@ -70,22 +70,21 @@ enum ImageWorkbenchResourceNavigationPolicy {
 }
 
 struct ImageWorkbenchBatchCardStyle: ButtonStyle {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let isAvailable: Bool
 
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
-      .padding(.horizontal, 12)
-      .padding(.vertical, 6)
+      .padding(.horizontal, WorkbenchSpacing.card)
+      .padding(.vertical, WorkbenchSpacing.icon)
       .frame(maxWidth: .infinity)
       .background(
-        isAvailable ? workbenchAccentColor.opacity(0.08) : Color.primary.opacity(0.025),
-        in: RoundedRectangle(cornerRadius: 8)
+        isAvailable ? WorkbenchTheme.info.opacity(0.08) : Color.primary.opacity(0.025),
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
       )
       .overlay {
-        RoundedRectangle(cornerRadius: 8)
+        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
           .strokeBorder(
-            isAvailable ? workbenchAccentColor.opacity(0.12) : Color.primary.opacity(0.08)
+            isAvailable ? WorkbenchTheme.info.opacity(0.18) : Color.primary.opacity(0.08)
           )
       }
       .opacity(configuration.isPressed ? 0.75 : 1)

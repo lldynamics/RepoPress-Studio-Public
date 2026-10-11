@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import PersonalSitePublisherMac
 
 final class WorkspaceSidebarVisibilityPolicyTests: XCTestCase {
@@ -40,42 +41,47 @@ final class WorkspaceSidebarVisibilityPolicyTests: XCTestCase {
     XCTAssertTrue(userWantsVisible)
   }
 
-  func testCompactInspectorRailKeepsWorkspaceNavigationWhenSidebarIsYielded() {
+  func testNavigationRailStaysVisibleWhenContextSidebarIsHidden() {
     XCTAssertTrue(
-      WorkspaceSidebarVisibilityPolicy.shouldShowCompactNavigationRail(
-        userWantsVisible: true,
-        isFocusMode: false,
-        inspectorTemporarilyReplacesSidebar: true
-      )
+      WorkspaceSidebarVisibilityPolicy.shouldShowNavigationRail(isFocusMode: false)
     )
   }
 
-  func testCompactInspectorRailRespectsExplicitSidebarHide() {
+  func testNavigationRailRespectsFocusMode() {
     XCTAssertFalse(
-      WorkspaceSidebarVisibilityPolicy.shouldShowCompactNavigationRail(
-        userWantsVisible: false,
-        isFocusMode: false,
-        inspectorTemporarilyReplacesSidebar: true
-      )
+      WorkspaceSidebarVisibilityPolicy.shouldShowNavigationRail(isFocusMode: true)
     )
   }
 
-  func testCompactInspectorRailRespectsFocusMode() {
+  func testCompactContextSidebarStartsHiddenUntilExplicitlyRevealed() {
     XCTAssertFalse(
-      WorkspaceSidebarVisibilityPolicy.shouldShowCompactNavigationRail(
+      WorkspaceSidebarVisibilityPolicy.shouldShowContextSidebar(
         userWantsVisible: true,
-        isFocusMode: true,
-        inspectorTemporarilyReplacesSidebar: true
-      )
-    )
-  }
-
-  func testCompactInspectorRailDoesNotReplaceTheNormalSidebar() {
-    XCTAssertFalse(
-      WorkspaceSidebarVisibilityPolicy.shouldShowCompactNavigationRail(
-        userWantsVisible: true,
+        isCompact: true,
+        userRevealedInCompact: false,
         isFocusMode: false,
         inspectorTemporarilyReplacesSidebar: false
+      )
+    )
+    XCTAssertTrue(
+      WorkspaceSidebarVisibilityPolicy.shouldShowContextSidebar(
+        userWantsVisible: true,
+        isCompact: true,
+        userRevealedInCompact: true,
+        isFocusMode: false,
+        inspectorTemporarilyReplacesSidebar: false
+      )
+    )
+  }
+
+  func testCompactInspectorTemporarilyOverridesARevealedContextSidebar() {
+    XCTAssertFalse(
+      WorkspaceSidebarVisibilityPolicy.shouldShowContextSidebar(
+        userWantsVisible: true,
+        isCompact: true,
+        userRevealedInCompact: true,
+        isFocusMode: false,
+        inspectorTemporarilyReplacesSidebar: true
       )
     )
   }

@@ -47,7 +47,7 @@ struct RepositoryFullDiffSheet: View {
           .keyboardShortcut(.defaultAction)
       }
     }
-    .padding(20)
+    .padding(WorkbenchSpacing.page)
     .frame(minWidth: 640, idealWidth: 900, minHeight: 480, idealHeight: 640)
     .task {
       do {

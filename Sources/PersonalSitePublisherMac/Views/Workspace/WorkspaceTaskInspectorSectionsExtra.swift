@@ -4,87 +4,10 @@ import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
 
-enum ArticleInspectorTab: String, CaseIterable, Identifiable {
-  case knowledge
-  case metadata
-  case seo
-  case images
-  case checks
-
-  var id: String { rawValue }
-
-  var title: String {
-    switch self {
-    case .knowledge:
-      return String(localized: "上下文知识建议")
-    case .metadata:
-      return String(localized: "元数据")
-    case .seo:
-      return "SEO"
-    case .images:
-      return String(localized: "图片")
-    case .checks:
-      return String(localized: "检查")
-    }
-  }
-
-  var systemImage: String {
-    switch self {
-    case .knowledge:
-      return "books.vertical"
-    case .metadata:
-      return "slider.horizontal.3"
-    case .seo:
-      return "chart.bar.doc.horizontal"
-    case .images:
-      return "photo.on.rectangle"
-    case .checks:
-      return "checklist"
-    }
-  }
-
-  var pickerTitle: String {
-    switch self {
-    case .knowledge:
-      return String(localized: "知识建议")
-    case .metadata, .seo, .images, .checks:
-      return title
-    }
-  }
-
-  static func defaultTab(for section: WorkspaceSection) -> ArticleInspectorTab {
-    switch section {
-    case .writing:
-      return .metadata
-    case .sync:
-      return .metadata
-    case .contentHealth:
-      return .checks
-    case .images:
-      return .images
-    case .library, .rss:
-      return .metadata
-    }
-  }
-
-  static func availableTabs(for section: WorkspaceSection) -> [ArticleInspectorTab] {
-    switch section {
-    case .writing:
-      return [.metadata, .seo, .images, .knowledge]
-    case .contentHealth:
-      return [.checks]
-    case .images:
-      return [.images]
-    case .sync, .library, .rss:
-      return []
-    }
-  }
-}
-
 extension PreflightIssue {
   var editorQuery: String? {
     guard structuredField == .body,
-          category == .unregisteredBodyImage
+      category == .unregisteredBodyImage
     else {
       return nil
     }
@@ -94,7 +17,6 @@ extension PreflightIssue {
 
 struct ArticleInspectorTabs: View {
   @WorkspaceModuleVisibilityStorage private var moduleVisibility
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @Environment(\.publishReadinessNavigationRequest) private var publishNavigationRequest
 
   @Binding var selectedTab: ArticleInspectorTab
@@ -102,6 +24,8 @@ struct ArticleInspectorTabs: View {
   @ObservedObject var store: WorkbenchStore
   @ObservedObject var rssStore: RSSReaderStore
   @ObservedObject private var imageWorkbench: WorkbenchImageWorkbenchFeatureFacade
+  @ObservedObject private var knowledge: KnowledgeStore
+  @ObservedObject var presentation: ArticleInspectorPresentationState
   let section: WorkspaceSection
   private let configuredTabs: [ArticleInspectorTab]
   @StateObject private var preflightModel = ArticleInspectorPreflightModel()
@@ -120,13 +44,16 @@ struct ArticleInspectorTabs: View {
     store: WorkbenchStore,
     rssStore: RSSReaderStore,
     section: WorkspaceSection,
-    availableTabs: [ArticleInspectorTab]
+    availableTabs: [ArticleInspectorTab],
+    presentation: ArticleInspectorPresentationState
   ) {
     _selectedTab = selectedTab
     _draft = draft
     self.store = store
     _rssStore = ObservedObject(wrappedValue: rssStore)
     _imageWorkbench = ObservedObject(wrappedValue: store.imageWorkbench)
+    _knowledge = ObservedObject(wrappedValue: store.knowledge)
+    self.presentation = presentation
     self.section = section
     self.configuredTabs = availableTabs
   }
@@ -136,18 +63,15 @@ struct ArticleInspectorTabs: View {
   }
 
   private var preflightTaskID: ArticleInspectorPreflightTaskID? {
-    guard selectedTab == .checks, let key = preflightRequestKey else { return nil }
+    guard selectedTab == .checks,
+      let key = store.draftPreflightRefreshIdentity(for: draft.id)
+    else { return nil }
     return ArticleInspectorPreflightTaskID(key: key, generation: manualRefreshGeneration)
   }
 
   var body: some View {
     VStack(spacing: 0) {
-      // With several tabs the picker is the header; the article path is
-      // already shown in the editor breadcrumb.
-      if availableTabs.count > 1 {
-        tabPicker
-        Divider()
-      } else {
+      if section != .writing {
         header
         Divider()
       }
@@ -155,28 +79,49 @@ struct ArticleInspectorTabs: View {
       ScrollViewReader { proxy in
         ScrollView {
           VStack(alignment: .leading, spacing: 14) {
-            selectedContent
+            if section == .writing {
+              informationGroups
+            } else {
+              selectedContent
+            }
           }
-          .padding(14)
+          .padding(WorkbenchSpacing.content)
           .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear {
-          scrollToFocusedImage(using: proxy)
+          if revealsSEOSocialPreviewForScreenshot {
+            presentation.revealSEOSocialPreview(for: draft.id, section: section)
+            scrollToInformationGroup(.seo, using: proxy)
+          } else {
+            scrollToFocusedImage(using: proxy, expandsGroup: false)
+          }
         }
         .onChange(of: imageWorkbench.imageInspectorFocusRequest?.id) { _, _ in
           scrollToFocusedImage(using: proxy)
         }
+        .onChange(of: selectedTab) { _, tab in
+          scrollToInformationGroup(tab, using: proxy)
+        }
         .task(id: publishNavigationRequest?.id) {
           guard let request = publishNavigationRequest, request.draftID == draft.id,
-            selectedTab == .metadata,
-            case .metadata(let field) = request.target else { return }
-          if field == "title" {
-            store.requestEditorFocus(draftID: draft.id, field: "title")
-            return
+            let tab = request.target.inspectorTab
+          else { return }
+          if case .metadata(let field) = request.target, field == "title" {
+            store.requestEditorFocus(draftID: draft.id, field: field)
+          } else {
+            if case .metadata(let field) = request.target, let field {
+              presentation.revealMetadataField(field, for: draft.id, section: section)
+            }
+            await Task.yield()
+            guard !Task.isCancelled, draft.id == request.draftID else { return }
+            if case .metadata(let field) = request.target {
+              proxy.scrollTo(PublishMetadataFieldAnchor.id(for: field), anchor: .center)
+            } else if case .images(let attachmentID) = request.target, let attachmentID {
+              proxy.scrollTo(attachmentID, anchor: .center)
+            } else {
+              proxy.scrollTo(tab.informationAnchor, anchor: .top)
+            }
           }
-          await Task.yield()
-          guard !Task.isCancelled else { return }
-          proxy.scrollTo(PublishMetadataFieldAnchor.id(for: field), anchor: .center)
         }
       }
 
@@ -186,28 +131,24 @@ struct ArticleInspectorTabs: View {
     .accessibilityLabel("文章详情栏")
     .onAppear {
       normalizeSelectedTab()
-      prepareSelectedTab()
     }
     .onChange(of: draft.id) { _, _ in
       normalizeSelectedTab()
-      prepareSelectedTab()
-    }
-    .onChange(of: selectedTab) { _, _ in
-      prepareSelectedTab()
     }
     .onChange(of: moduleVisibility) { _, _ in
       normalizeSelectedTab()
-      prepareSelectedTab()
     }
     .task(id: imageRefreshID) {
-      guard selectedTab == .images || selectedTab == .checks else { return }
+      guard imageRefreshID != nil else { return }
       await store.refreshImageWorkbenchCachesInBackground(for: draft)
     }
     .task(id: preflightTaskID) {
       guard selectedTab == .checks,
-        let key = preflightRequestKey
+        let key = preflightRequestKey,
+        let identity = store.draftPreflightRefreshIdentity(for: draft.id)
       else { return }
       let draftID = draft.id
+      let forcesRefresh = isManualPreflightRefresh
       let debounceDuration =
         isManualPreflightRefresh ? nil : DebounceIntervals.preflightRefresh
       isManualPreflightRefresh = false
@@ -216,10 +157,13 @@ struct ArticleInspectorTabs: View {
         draftID: draftID,
         debounceDuration: debounceDuration
       ) {
-        let result = await store.runPreflight(for: draftID)
+        let result =
+          forcesRefresh
+          ? await store.runPreflight(for: draftID)
+          : await store.ensurePreflight(for: draftID)
         guard !Task.isCancelled,
           draft.id == draftID,
-          store.draftScopedPreflightRequestKey(for: draftID) == key
+          store.draftPreflightRefreshIdentity(for: draftID) == identity
         else {
           return nil
         }
@@ -229,6 +173,10 @@ struct ArticleInspectorTabs: View {
     .task(id: knowledgeRefreshID) {
       guard let draftID = knowledgeRefreshID else { return }
       store.knowledge.loadArticleBacklinks(for: draftID)
+    }
+    .task(id: seoRefreshID) {
+      guard seoRefreshID != nil else { return }
+      store.prepareSEOSocialPreview(for: draft)
     }
   }
 
@@ -250,32 +198,118 @@ struct ArticleInspectorTabs: View {
 
       Spacer()
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
   }
 
-  private var tabPicker: some View {
-    Picker("详情栏", selection: $selectedTab) {
-      ForEach(availableTabs) { tab in
-        Label(tab.pickerTitle, systemImage: tab.systemImage)
-          .tag(tab)
+  private var revealsSEOSocialPreviewForScreenshot: Bool {
+    #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+      section == .writing
+        && ScreenshotDemoDataService.isEnabledFromEnvironment
+        && ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .seoSocialPreview
+    #else
+      false
+    #endif
+  }
+
+  private var informationGroups: some View {
+    ForEach(availableTabs) { tab in
+      InspectorDisclosureSection(
+        tab.informationTitle,
+        detail: isExpanded(tab) ? nil : informationSummary(tab),
+        isExpanded: presentation.expansionBinding(for: tab, draftID: draft.id, section: section)
+      ) {
+        if isExpanded(tab) {
+          switch tab {
+          case .metadata: metadataContent
+          case .seo: seoContent
+          case .images: imageContent
+          case .knowledge: knowledgeContent
+          case .checks: checkContent
+          }
+        }
       }
+      .padding(WorkbenchSpacing.card)
+      .background(
+        WorkbenchSurface.groupedCard,
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+      )
+      .id(tab.informationAnchor)
+      .accessibilityIdentifier(tab.informationAnchor)
+      .help(informationSummary(tab))
     }
-    .pickerStyle(.segmented)
-    .tint(workbenchAccentColor)
-    .labelsHidden()
-    .padding(10)
-    .accessibilityLabel("文章详情栏标签")
-    .accessibilityValue(selectedTab.title)
   }
 
-  private func scrollToFocusedImage(using proxy: ScrollViewProxy) {
-    guard selectedTab == .images,
-          let request = imageWorkbench.imageInspectorFocusRequest,
-          request.draftID == draft.id else {
+  private func isExpanded(_ tab: ArticleInspectorTab) -> Bool {
+    presentation.isExpanded(tab, for: draft.id, section: section)
+  }
+
+  private func informationSummary(_ tab: ArticleInspectorTab) -> String {
+    switch tab {
+    case .metadata:
+      return String(localized: "\(draft.tags.count) 个标签 · \(draft.categories.count) 个分类")
+    case .seo:
+      return String(
+        localized:
+          "标题 \(draft.title.trimmedForPublishing.count) 字符 · 摘要 \(draft.summary.trimmedForPublishing.count) 字符"
+      )
+    case .images:
+      guard let report = store.cachedImageWorkbenchReport(for: draft) else {
+        let imageCount = draft.attachments.filter { $0.mediaKind == .image }.count
+        return String(localized: "\(imageCount) 张 · 待检查")
+      }
+      let pendingCount = report.issues.filter { $0.severity != .info }.count
+      return pendingCount > 0
+        ? String(localized: "\(report.items.count) 张 · \(pendingCount) 项待处理")
+        : String(localized: "\(report.items.count) 张 · 无待处理项")
+    case .knowledge:
+      let localCount =
+        moduleVisibility.libraryEnabled
+        ? knowledge.documents.filter { !$0.isArchived && $0.allowsLocalSemanticIndex }.count : 0
+      let highlightedIDs = Set(rssStore.highlights.map(\.articleID))
+      let readingCount =
+        moduleVisibility.rssEnabled
+        ? rssStore.articleHeaders.filter { $0.isStarred || highlightedIDs.contains($0.id) }.count
+        : 0
+      return localCount + readingCount > 0
+        ? String(localized: "可关联 \(localCount + readingCount) 份本地资料")
+        : String(localized: "尚无本地关联资料")
+    case .checks:
+      return String(localized: "检查")
+    }
+  }
+
+  private func scrollToInformationGroup(_ tab: ArticleInspectorTab, using proxy: ScrollViewProxy) {
+    guard section == .writing, availableTabs.contains(tab) else { return }
+    let draftID = draft.id
+    presentation.setExpanded(true, group: tab, for: draftID, section: section)
+    Task { @MainActor in
+      await Task.yield()
+      guard draft.id == draftID, selectedTab == tab,
+        !(publishNavigationRequest?.draftID == draftID
+          && publishNavigationRequest?.target.inspectorTab == tab)
+      else { return }
+      proxy.scrollTo(tab.informationAnchor, anchor: .top)
+    }
+  }
+
+  private func scrollToFocusedImage(using proxy: ScrollViewProxy, expandsGroup: Bool = true) {
+    guard section == .writing || selectedTab == .images,
+      let request = imageWorkbench.imageInspectorFocusRequest,
+      request.draftID == draft.id
+    else {
       return
+    }
+    if section == .writing {
+      guard expandsGroup || isExpanded(.images) else { return }
+      if expandsGroup {
+        presentation.setExpanded(true, group: .images, for: draft.id, section: section)
+      }
     }
     Task { @MainActor in
       await Task.yield()
+      guard draft.id == request.draftID,
+        imageWorkbench.imageInspectorFocusRequest?.id == request.id
+      else { return }
       proxy.scrollTo(request.attachmentID, anchor: .center)
     }
   }
@@ -337,7 +371,8 @@ struct ArticleInspectorTabs: View {
       draft: $draft,
       store: store,
       tagSuggestions: taxonomySuggestions(\.tags),
-      categorySuggestions: taxonomySuggestions(\.categories)
+      categorySuggestions: taxonomySuggestions(\.categories),
+      isAdvancedExpanded: presentation.advancedMetadataBinding(for: draft.id, section: section)
     )
   }
 
@@ -511,38 +546,30 @@ struct ArticleInspectorTabs: View {
     manualRefreshGeneration += 1
   }
 
-  private func prepareSelectedTab() {
-    switch selectedTab {
-    case .knowledge:
-      break
-    case .seo:
-      store.prepareSEOSocialPreview(for: draft)
-    case .images:
-      break
-    case .checks:
-      break
-    case .metadata:
-      break
-    }
-  }
-
   private func normalizeSelectedTab() {
     guard !availableTabs.contains(selectedTab), let first = availableTabs.first else { return }
     selectedTab = first
   }
 
   private var imageRefreshID: WorkspaceTaskImageRefreshID? {
-    guard selectedTab == .images || selectedTab == .checks else { return nil }
+    let showsImages = section == .writing ? isExpanded(.images) : selectedTab == .images
+    guard showsImages || selectedTab == .checks else { return nil }
     return WorkspaceTaskImageRefreshID(draft: draft, profile: store.profile(for: draft))
   }
 
   private var knowledgeRefreshID: UUID? {
-    selectedTab == .knowledge && moduleVisibility.libraryEnabled ? draft.id : nil
+    let showsKnowledge = section == .writing ? isExpanded(.knowledge) : selectedTab == .knowledge
+    return showsKnowledge && moduleVisibility.libraryEnabled ? draft.id : nil
+  }
+
+  private var seoRefreshID: UUID? {
+    let showsSEO = section == .writing ? isExpanded(.seo) : selectedTab == .seo
+    return showsSEO ? draft.id : nil
   }
 }
 
 private struct ArticleInspectorPreflightTaskID: Equatable {
-  let key: DraftScopedPreflightRequestKey
+  let key: DraftPreflightRefreshIdentity
   let generation: Int
 }
 

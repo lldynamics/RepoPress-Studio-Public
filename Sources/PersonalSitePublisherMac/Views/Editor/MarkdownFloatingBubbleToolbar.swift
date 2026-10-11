@@ -61,11 +61,11 @@ struct MarkdownFloatingBubbleToolbar: View {
             .font(.workbenchMetadata.weight(.semibold))
             .monospaced()
           Image(systemName: "chevron.down")
-            .font(.system(size: 7, weight: .bold))
+            .font(.system(size: WorkbenchIconSize.indicator, weight: .bold))
             .foregroundStyle(.secondary)
         }
         .frame(minHeight: 24)
-        .padding(.horizontal, 5)
+        .padding(.horizontal, WorkbenchSpacing.tight)
       }
       .menuIndicator(.hidden)
       .buttonStyle(.plain)
@@ -96,13 +96,13 @@ struct MarkdownFloatingBubbleToolbar: View {
       } label: {
         HStack(spacing: 2) {
           Image(systemName: "list.bullet")
-            .font(.system(size: 11, weight: .medium))
+            .font(.system(size: WorkbenchIconSize.inline, weight: .medium))
           Image(systemName: "chevron.down")
-            .font(.system(size: 7, weight: .bold))
+            .font(.system(size: WorkbenchIconSize.indicator, weight: .bold))
             .foregroundStyle(.secondary)
         }
         .frame(minHeight: 24)
-        .padding(.horizontal, 4)
+        .padding(.horizontal, WorkbenchSpacing.tight)
       }
       .menuIndicator(.hidden)
       .buttonStyle(.plain)
@@ -136,7 +136,7 @@ struct MarkdownFloatingBubbleToolbar: View {
           }
         }
       } label: {
-        Label("AI 操作", systemImage: "sparkles")
+        Label("AI 操作", systemImage: "wand.and.sparkles")
           .font(.workbenchButtonLabel)
       }
       .menuIndicator(.hidden)
@@ -161,7 +161,7 @@ struct MarkdownFloatingBubbleToolbar: View {
           .font(.workbenchButtonLabel)
       }
       .menuIndicator(.hidden)
-      .foregroundStyle(WorkbenchTheme.brand)
+      .foregroundStyle(.secondary)
       .disabled(isSelectionAIActionRunning)
       .help(isSelectionAIActionRunning ? "AI 正在处理" : "翻译")
       .accessibilityLabel("AI 翻译")
@@ -177,8 +177,8 @@ struct MarkdownFloatingBubbleToolbar: View {
           .accessibilityLabel("AI 正在处理")
       }
     }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 4)
+    .padding(.horizontal, WorkbenchSpacing.control)
+    .padding(.vertical, WorkbenchSpacing.tight)
     .background(
       bubbleBackground,
       in: Capsule()
@@ -207,7 +207,7 @@ struct MarkdownFloatingBubbleToolbar: View {
   {
     Button(action: action) {
       Image(systemName: systemName)
-        .font(.system(size: 12, weight: .medium))
+        .font(.system(size: WorkbenchIconSize.inline, weight: .medium))
         .frame(minWidth: 24, minHeight: 24)
         .contentShape(Rectangle())
     }

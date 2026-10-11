@@ -9,6 +9,8 @@ struct AISettingsView: View {
   let activeConnectionProfileID: UUID
   let selectedConnectionProfileID: Binding<UUID>
   let updateConnectionProfile: (AIConnectionProfile) -> Bool
+  let reconfigureConnectionProfile:
+    (UUID, AIProviderConfig, AIProviderConfig, [UUID: String]) -> Bool
   let createConnectionProfile: (String, AIProviderPreset) -> AIConnectionProfile
   let duplicateConnectionProfile: (UUID) -> AIConnectionProfile?
   let currentActionMessage: () -> String?
@@ -49,6 +51,9 @@ struct AISettingsView: View {
   @State private var modelDiscoveryTrigger = UUID()
   @State private var setupFocusAPIKey = false
   @State private var setupFocusRequestID = UUID()
+  @State private var reconfiguration = AIConnectionReconfigurationState()
+  @State private var reconfigurationExpired = false
+  @State private var modelDiscoveryInvalidation = UUID()
 
   var body: some View {
     ScrollViewReader { scrollProxy in
@@ -100,7 +105,12 @@ struct AISettingsView: View {
           connectionProfileID: activeConnection.id,
           discoverModels: discoverModels,
           modelDiscoveryTrigger: modelDiscoveryTrigger,
-          modelDiscoveryAuthorizationMessage: modelDiscoveryAuthorizationMessage
+          modelDiscoveryAuthorizationMessage: modelDiscoveryAuthorizationMessage,
+          modelDiscoveryInvalidation: modelDiscoveryInvalidation,
+          restorePresetDefaults: stagePresetDefaults,
+          onContinueToVerification: {
+            scrollProxy.scrollTo("ai-setup-test", anchor: .top)
+          }
         )
         .id("ai-setup-provider")
 
@@ -111,6 +121,13 @@ struct AISettingsView: View {
           )
           .textSelection(.enabled)
           .accessibilityIdentifier("settings-ai-connection-update-error")
+        }
+        if reconfigurationExpired {
+          AccessibleStatusMessage(
+            message: String(localized: "连接或引用站点已变化，本次确认已取消。请检查当前配置后重试。"),
+            severity: .warning
+          )
+          .accessibilityIdentifier("settings-ai-reconfigure-expired")
         }
 
         AIDataSharingConsentSection(
@@ -123,6 +140,7 @@ struct AISettingsView: View {
           grantConsent: {
             grantDataSharingConsent()
             invalidateConnectionReport()
+            scrollProxy.scrollTo("ai-setup-provider", anchor: .top)
           },
           revokeConsent: {
             revokeDataSharingConsent()
@@ -155,6 +173,14 @@ struct AISettingsView: View {
                 aiAPIKeyInput = ""
                 invalidateConnectionReport()
                 return true
+              },
+              onContinueAfterSave: {
+                scrollProxy.scrollTo(
+                  AIConnectionSetupContinuation.afterSavingKey(
+                    dataSharingConsent: dataSharingConsent)
+                    == .consent ? "ai-setup-consent" : "ai-setup-provider",
+                  anchor: .top
+                )
               },
               onDeleteAPIKey: {
                 connectionUpdateFailed = false
@@ -205,6 +231,7 @@ struct AISettingsView: View {
         invalidateConnectionReport()
       }
       .onChange(of: activeConnection.config) { oldConfig, newConfig in
+        expireReconfigurationIfNeeded()
         guard
           configurationWithoutProbeEvidence(oldConfig)
             != configurationWithoutProbeEvidence(newConfig)
@@ -212,6 +239,7 @@ struct AISettingsView: View {
         invalidateConnectionReport()
       }
       .onChange(of: activeConnectionProfileID) { _, _ in
+        expireReconfigurationIfNeeded()
         aiAPIKeyInput = ""
         connectionUpdateFailed = false
         selectedCapabilityProbes = []
@@ -219,11 +247,21 @@ struct AISettingsView: View {
       }
       .onChange(of: tokenAvailability) { _, _ in
         invalidateConnectionReport()
-        if modelDiscoveryAuthorizationMessage == nil { modelDiscoveryTrigger = UUID() }
+        modelDiscoveryInvalidation = UUID()
       }
       .onChange(of: dataSharingConsent) { _, _ in
         invalidateConnectionReport()
-        if modelDiscoveryAuthorizationMessage == nil { modelDiscoveryTrigger = UUID() }
+        modelDiscoveryInvalidation = UUID()
+      }
+      .onChange(of: credentialStorageMode) { _, _ in
+        invalidateConnectionReport()
+        modelDiscoveryInvalidation = UUID()
+      }
+      .onChange(of: currentReferencingSites) { _, _ in
+        expireReconfigurationIfNeeded()
+      }
+      .onChange(of: connectionProfiles) { _, _ in
+        expireReconfigurationIfNeeded()
       }
       .task(id: selectedSubsection) {
         if selectedSubsection == .aiAdvanced {
@@ -231,8 +269,16 @@ struct AISettingsView: View {
         }
       }
       .onDisappear {
-        connectionTestTask?.cancel()
-        connectionTestTask = nil
+        reconfiguration.cancel()
+        aiAPIKeyInput = ""
+        invalidateConnectionReport()
+      }
+      .sheet(item: $reconfiguration.pending) { request in
+        AIConnectionReconfigurationConfirmation(
+          request: request,
+          onConfirm: { confirmReconfiguration(request.id) },
+          onCancel: { reconfiguration.cancel() }
+        )
       }
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("ai-settings")
@@ -289,6 +335,7 @@ struct AISettingsView: View {
 
   private var codexAccountSection: some View {
     CodexAppServerAccountSection(
+      connectionID: activeConnectionProfileID,
       model: aiProviderStringBinding(\.model),
       reasoningEffortOverride: aiReasoningEffortOverrideBinding,
       isCodexDataSharingConsentGranted: isCodexDataSharingConsentGranted,
@@ -296,13 +343,20 @@ struct AISettingsView: View {
         grantCodexDataSharingConsent($0)
         invalidateConnectionReport()
       },
-      testConnection: {
+      testConnection: { isContextCurrent in
+        let requestID = UUID()
+        let connectionID = activeConnection.id
+        let config = activeConnection.config
+        connectionTestRequestID = requestID
         let report = await testConnection([])
-        await MainActor.run {
-          hasAttemptedConnectionTest = true
-          aiConnectionReport = report
-          isConnectionReportStale = false
-        }
+        guard isContextCurrent(), connectionTestRequestID == requestID,
+          activeConnection.id == connectionID,
+          configurationWithoutProbeEvidence(activeConnection.config)
+            == configurationWithoutProbeEvidence(config)
+        else { return nil }
+        hasAttemptedConnectionTest = true
+        aiConnectionReport = report
+        isConnectionReportStale = false
         return report
       }
     )
@@ -325,11 +379,11 @@ struct AISettingsView: View {
     Binding(
       get: { activeConnection.config.preset },
       set: { preset in
-        invalidateConnectionReport()
-        var connection = activeConnection
-        connection.config.preset = preset
-        connection.config.applyPresetDefaults()
-        _ = commitConnectionUpdate(connection)
+        guard preset != activeConnection.config.preset else { return }
+        var config = activeConnection.config
+        config.preset = preset
+        config.applyPresetDefaults()
+        stageReconfiguration(config)
       }
     )
   }
@@ -340,9 +394,13 @@ struct AISettingsView: View {
     Binding(
       get: { activeConnection.config[keyPath: keyPath] },
       set: { value in
-        invalidateConnectionReport()
         var connection = activeConnection
         connection.config[keyPath: keyPath] = value
+        if keyPath == \.baseURL {
+          stageReconfiguration(connection.config)
+          return
+        }
+        invalidateConnectionReport()
         _ = commitConnectionUpdate(connection)
       }
     )
@@ -354,10 +412,9 @@ struct AISettingsView: View {
     Binding(
       get: { activeConnection.config[keyPath: keyPath] },
       set: { value in
-        invalidateConnectionReport()
-        var connection = activeConnection
-        connection.config[keyPath: keyPath] = value
-        _ = commitConnectionUpdate(connection)
+        var config = activeConnection.config
+        config[keyPath: keyPath] = value
+        stageReconfiguration(config)
       }
     )
   }
@@ -385,17 +442,63 @@ struct AISettingsView: View {
     )
   }
 
-  private func applyLocalAIConfiguration(baseURL: String, model: String) -> Bool {
-    invalidateConnectionReport()
-    var connection = activeConnection
+  private func applyLocalAIConfiguration(baseURL: String, model: String)
+    -> LocalAIConfigurationApplicationResult
+  {
     guard
-      let localConfig = connection.config.applyingDetectedLocalEngine(
+      let localConfig = activeConnection.config.applyingDetectedLocalEngine(
         baseURL: baseURL,
         model: model
       )
-    else { return false }
-    connection.config = localConfig
-    return commitConnectionUpdate(connection)
+    else { return .failed }
+    guard localConfig != activeConnection.config else { return .applied }
+    stageReconfiguration(localConfig)
+    return .pendingConfirmation
+  }
+
+  private var currentReferencingSites: [UUID: String] {
+    AIConnectionReconfigurationState.referencingSites(
+      for: activeConnectionProfileID,
+      in: referencingSiteProfiles.map { ($0.id, $0.name, $0.aiConnectionProfileID) })
+  }
+
+  private func stagePresetDefaults() {
+    var config = activeConnection.config
+    config.applyPresetDefaults()
+    stageReconfiguration(config)
+  }
+
+  private func stageReconfiguration(_ config: AIProviderConfig) {
+    connectionUpdateFailed = false
+    reconfigurationExpired = false
+    reconfiguration.stage(
+      connection: activeConnection, proposedConfig: config,
+      referencingSites: currentReferencingSites)
+  }
+
+  private func expireReconfigurationIfNeeded() {
+    guard let request = reconfiguration.pending,
+      !request.matches(
+        selectedConnectionID: activeConnectionProfileID,
+        connection: connectionProfiles.first { $0.id == activeConnectionProfileID },
+        referencingSites: currentReferencingSites)
+    else { return }
+    reconfiguration.cancel()
+    reconfigurationExpired = true
+  }
+
+  private func confirmReconfiguration(_ requestID: UUID) {
+    let result = reconfiguration.confirm(
+      requestID: requestID, selectedConnectionID: activeConnectionProfileID,
+      connection: connectionProfiles.first { $0.id == activeConnectionProfileID },
+      referencingSites: currentReferencingSites, commit: reconfigureConnectionProfile)
+    connectionUpdateFailed = result == .failed
+    reconfigurationExpired = result == .expired
+    if result == .applied {
+      aiAPIKeyInput = ""
+      invalidateConnectionReport()
+      modelDiscoveryInvalidation = UUID()
+    }
   }
 
   @discardableResult

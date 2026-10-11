@@ -606,6 +606,17 @@ $SPARKLE_UPDATE_INFO_PLIST
   <string>$HUMAN_READABLE_COPYRIGHT</string>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>com.jinfang.repopress-studio.workbench</string>
+      <key>CFBundleURLSchemes</key>
+      <array><string>repopress</string></array>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+    </dict>
+  </array>
   <key>UTExportedTypeDeclarations</key>
   <array>
     <dict>

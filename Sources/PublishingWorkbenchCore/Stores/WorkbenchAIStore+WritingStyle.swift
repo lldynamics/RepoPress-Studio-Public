@@ -41,7 +41,7 @@ extension WorkbenchAIStore {
     defer { finishAIRequest(lane, generation: generation) }
 
     let privacyService = AIOutboundPayloadPrivacyService()
-    aiRequestContextChecks[lane] = { [weak self] in
+    aiRequests[lane]?.contextCheck = { [weak self] in
       guard let self else { return false }
       guard self.store.activeProfileID == initialProfile.id,
         self.store.activeProfile.resolvedAIWritingStyle == initialProfile.resolvedAIWritingStyle,

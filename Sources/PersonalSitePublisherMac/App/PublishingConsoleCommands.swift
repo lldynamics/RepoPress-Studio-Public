@@ -9,6 +9,7 @@ struct PublishingConsoleCommands: Commands {
   @ObservedObject private var presentation: WorkbenchCommandPresentationFeatureFacade
   @FocusedObject private var commandRouter: WorkspaceSceneCommandRouter?
   @FocusedValue(\.contentSaveCommandAction) private var contentSaveCommandAction
+  @FocusedValue(\.aiChatWorkspaceCommandAction) private var aiChatWorkspaceCommandAction
 
   init(store: WorkbenchStore) {
     self.store = store
@@ -218,14 +219,14 @@ struct PublishingConsoleCommands: Commands {
     }
 
     CommandMenu(String(localized: "AI")) {
-      Button(
-        isAIChatPanelVisible
-          ? String(localized: "关闭 AI 助手")
-          : String(localized: "打开 AI 助手")
-      ) {
-        toggleAIChatWorkspaceForCommandContext()
+      Button(String(localized: "打开 AI 助手")) {
+        guard let aiChatWorkspaceCommandAction, aiChatWorkspaceCommandAction.isAvailable else {
+          return
+        }
+        aiChatWorkspaceCommandAction.open(nil, nil)
       }
       .keyboardShortcut("a", modifiers: [.command, .option])
+      .disabled(aiChatWorkspaceCommandAction?.isAvailable != true)
 
       Divider()
 
@@ -409,10 +410,10 @@ struct PublishingConsoleCommands: Commands {
       Divider()
     }
 
-    Button(String(localized: "文章版本历史")) {
-      writingDraftCommands?.openVersionHistory()
-    }
-    .disabled(writingDraftCommands == nil || commandDraftID == nil)
+    MarkdownEditorVersionHistoryMenuCommand(
+      writingDraftActions: writingDraftCommands,
+      draftID: commandDraftID
+    )
 
     Divider()
 
@@ -582,22 +583,6 @@ struct PublishingConsoleCommands: Commands {
 
     store.runPreflight()
     store.selectSection(.contentHealth)
-  }
-
-  private func openAIChatWorkspaceForCommandContext() {
-    store.ai.openChatWorkspace(for: commandDraftID)
-  }
-
-  private var isAIChatPanelVisible: Bool {
-    presentation.isAIAssistantPresented && presentation.isInspectorPresented
-  }
-
-  private func toggleAIChatWorkspaceForCommandContext() {
-    if isAIChatPanelVisible {
-      store.ai.closeAssistantPanel()
-    } else {
-      openAIChatWorkspaceForCommandContext()
-    }
   }
 
   private func openPublishDrawerForAllChanges(message: String) {

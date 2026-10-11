@@ -19,13 +19,12 @@ struct MarkdownCursorWorkflowControls: View {
 
   var body: some View {
     HStack(spacing: 5) {
-      // Slash commands already appear beside the caret. Keep the status line
-      // quiet unless article-link or code-language candidates are available.
-      if let completion, completion.kind != .slashCommand {
+      if let fenceMatch = MarkdownCursorWorkflowPresentation.codeFenceMatch(
+        position: position,
+        fenceMatch: fenceMatch
+      ) {
         completionMenu
-      }
 
-      if let fenceMatch {
         Button(action: onJumpToCounterpartFence) {
           Label(
             fenceStatus(fenceMatch),
@@ -71,7 +70,8 @@ struct MarkdownCursorWorkflowControls: View {
 
   private var completionMenu: some View {
     Menu {
-      if let completion {
+      // Slash commands keep their existing menu beside the caret.
+      if let completion, completion.kind != .slashCommand {
         let totalCount = completion.candidates.count
         let prefixCount = min(12, totalCount)
         let sectionTitle =
@@ -117,7 +117,7 @@ struct MarkdownCursorWorkflowControls: View {
       }
     }
     .menuIndicator(.hidden)
-    .foregroundStyle(completion == nil ? Color.secondary : WorkbenchTheme.primary)
+    .foregroundStyle(completion == nil ? Color.secondary : WorkbenchTheme.success)
     .help(
       completion == nil
         ? String(localized: "智能补全：支持 / 块命令、[[文章]] 和代码语言")
@@ -154,7 +154,7 @@ struct MarkdownCursorWorkflowControls: View {
           .disabled(validRequestedLine == nil)
       }
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
     .onAppear {
       isLineFieldFocused = true
     }
@@ -199,5 +199,26 @@ struct MarkdownCursorWorkflowControls: View {
     case .codeLanguage:
       String(localized: "代码语言")
     }
+  }
+}
+
+enum MarkdownCursorWorkflowPresentation {
+  static func codeFenceMatch(
+    position: MarkdownCursorPosition?,
+    fenceMatch: MarkdownFenceMatch?
+  ) -> MarkdownFenceMatch? {
+    // A nonempty selection can intersect a fence while its cursor starts in
+    // prose. A closed fence's fullRange also includes its trailing newline.
+    // Use the cursor's line as well as the range to keep both controls local
+    // to the code block, including its opening and closing lines.
+    guard let position, let fenceMatch,
+      position.line >= fenceMatch.openingLine,
+      fenceMatch.closingLine.map({ position.line <= $0 }) ?? true,
+      position.location >= fenceMatch.fullRange.location,
+      position.location <= NSMaxRange(fenceMatch.fullRange)
+    else {
+      return nil
+    }
+    return fenceMatch
   }
 }

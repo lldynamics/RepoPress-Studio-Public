@@ -94,12 +94,13 @@ struct ReleaseFailureReviewSheet: View {
           .font(.callout)
           .foregroundStyle(.secondary)
       }
-      .padding(16)
+      .padding(WorkbenchSpacing.content)
       Divider()
       if canContinueReview {
         PublishDrawerView(
           publishingFacade: publishing,
           store: store,
+          draftID: record.draftID,
           isPresented: $isPresented,
           initialScope: ReleaseFailureReviewContext.initialScope(for: record)
         )
@@ -110,7 +111,7 @@ struct ReleaseFailureReviewSheet: View {
           description: Text("原记录、站点或文章已变化，请关闭后重新核对。")
         )
         Button("关闭") { dismiss() }
-          .padding(16)
+          .padding(WorkbenchSpacing.content)
       }
     }
     .frame(minWidth: 680, idealWidth: 780, minHeight: 600, idealHeight: 720)

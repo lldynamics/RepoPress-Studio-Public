@@ -17,7 +17,7 @@ struct AIChatToolRunCard: View {
           runRow(run)
           if index < runs.count - 1 {
             Divider()
-              .padding(.leading, 31)
+              .padding(.leading, WorkbenchSpacing.spacious + WorkbenchSpacing.control)
           }
         }
       }
@@ -104,8 +104,8 @@ struct AIChatToolRunCard: View {
 
       }
     }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 7)
+    .padding(.horizontal, WorkbenchSpacing.control)
+    .padding(.vertical, WorkbenchSpacing.control)
   }
 
   private func toolTitle(_ run: WorkbenchAIAgentToolRunRecord) -> String {

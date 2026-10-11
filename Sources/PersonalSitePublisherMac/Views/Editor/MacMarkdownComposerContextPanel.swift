@@ -174,6 +174,6 @@ extension MacMarkdownComposerView {
         .multilineTextAlignment(.center)
     }
     .frame(maxWidth: .infinity, minHeight: 150)
-    .padding(16)
+    .padding(WorkbenchSpacing.content)
   }
 }

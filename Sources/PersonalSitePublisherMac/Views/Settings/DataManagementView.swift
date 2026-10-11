@@ -130,7 +130,6 @@ enum DataManagementLayout {
 
 @MainActor
 struct DataManagementView: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let store: WorkbenchStore
   let rssStore: RSSReaderStore?
   @ObservedObject var launchCoordinator: WorkbenchLaunchCoordinator
@@ -160,7 +159,7 @@ struct DataManagementView: View {
 
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: WorkbenchSpacing.section) {
+      VStack(alignment: .leading, spacing: WorkbenchSpacing.content) {
         SettingsSubsectionAnchor(subsection: .dataDrafts)
         overviewSection(for: .drafts)
         taskSection(for: .drafts)
@@ -210,7 +209,7 @@ struct DataManagementView: View {
       ) {
         overviewMetric(for: task)
       }
-      .padding(.top, 4)
+      .padding(.top, WorkbenchSpacing.tight)
     } label: {
       Label(String(localized: "数据概览"), systemImage: "chart.bar.doc.horizontal")
         .font(.workbenchSectionTitle)
@@ -302,7 +301,7 @@ struct DataManagementView: View {
     HStack(alignment: .top, spacing: WorkbenchSpacing.card) {
       Image(systemName: systemImage)
         .font(.title3)
-        .foregroundStyle(workbenchAccentColor)
+        .foregroundStyle(.secondary)
         .frame(width: 24)
         .accessibilityHidden(true)
 
@@ -332,7 +331,7 @@ struct DataManagementView: View {
       HStack(alignment: .top, spacing: WorkbenchSpacing.card) {
         Image(systemName: task.systemImage)
           .font(.title3)
-          .foregroundStyle(workbenchAccentColor)
+          .foregroundStyle(.secondary)
           .frame(width: 24)
           .accessibilityHidden(true)
 
@@ -480,7 +479,6 @@ struct DataManagementView: View {
 
 @MainActor
 private struct DataManagementStorageTaskSheet: View {
-  @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   let task: DataManagementTask
   let store: WorkbenchStore
   @ObservedObject var rssStore: RSSReaderStore
@@ -511,7 +509,7 @@ private struct DataManagementStorageTaskSheet: View {
     HStack(alignment: .top, spacing: WorkbenchSpacing.card) {
       Image(systemName: task.systemImage)
         .font(.title2)
-        .foregroundStyle(workbenchAccentColor)
+        .foregroundStyle(.secondary)
         .frame(width: 28)
         .accessibilityHidden(true)
 

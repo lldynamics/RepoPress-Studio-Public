@@ -35,7 +35,7 @@ struct RepositoryWorkspaceGitManagementSection: View {
         Divider()
         commitHistory
       }
-      .padding(.top, 10)
+      .padding(.top, WorkbenchSpacing.control)
     } label: {
       Label("分支管理", systemImage: "arrow.triangle.branch")
         .font(.headline)
@@ -107,7 +107,7 @@ struct RepositoryWorkspaceGitManagementSection: View {
             Text("未找到匹配的分支。")
               .font(.caption)
               .foregroundStyle(.secondary)
-              .padding(.vertical, 4)
+              .padding(.vertical, WorkbenchSpacing.tight)
           } else {
             ScrollView {
               VStack(alignment: .leading, spacing: 5) {
@@ -246,7 +246,7 @@ struct RepositoryWorkspaceGitManagementSection: View {
             .buttonStyle(.borderless)
             .font(.caption)
             .foregroundStyle(WorkbenchTheme.documentForeground)
-            .padding(.top, 4)
+            .padding(.top, WorkbenchSpacing.tight)
             .accessibilityLabel(
               showAllCommits ? String(localized: "收起提交历史") : String(localized: "显示更多提交历史")
             )

@@ -84,4 +84,39 @@ extension ArticleDraft {
     )
   }
 
+  public func repositorySyncState(for profile: SiteProfile) -> DraftRepositorySyncState {
+    guard let binding = repositoryBinding else { return .localOnly }
+    guard binding.identity == nil || binding.identity == DraftRepositoryIdentity(profile: profile)
+    else { return .diverged }
+    switch binding.syncState {
+    case .diverged, .failed:
+      return binding.syncState
+    case .awaitingReview:
+      guard let pendingDigest = binding.pendingReviewContentDigest else {
+        return .awaitingReview
+      }
+      return pendingDigest == renderedRepositoryContentDigest(profile: profile)
+        ? .awaitingReview
+        : .localChanged
+    case .localOnly:
+      return .localOnly
+    case .projectSaved:
+      return .projectSaved
+    case .localChanged:
+      // This state is set by a successful local project write while a remote
+      // revision is retained. It is authoritative until a verified remote
+      // operation establishes a new baseline.
+      return .localChanged
+    case .synced:
+      guard binding.remoteRevision != nil else { return .projectSaved }
+      guard let baseline = binding.renderedContentDigest else { return .localChanged }
+      return baseline == renderedRepositoryContentDigest(profile: profile) ? .synced : .localChanged
+    }
+  }
+
+  public func renderedRepositoryContentDigest(profile: SiteProfile) -> String {
+    let document = FrontMatterRenderer().renderDocument(draft: self, profile: profile)
+    return Self.repositoryDocumentDigest(document)
+  }
+
 }

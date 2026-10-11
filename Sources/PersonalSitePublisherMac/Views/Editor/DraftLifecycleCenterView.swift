@@ -10,6 +10,7 @@ struct DraftLifecycleCenterView: View {
   enum Presentation: Equatable {
     case standalone
     case embedded
+    case articleHistory(draftID: UUID)
   }
 
   @ObservedObject var store: WorkbenchStore
@@ -33,144 +34,195 @@ struct DraftLifecycleCenterView: View {
     self.presentation = presentation
   }
 
-  private var selectedDraftVersions: [DraftVersionSnapshot] {
-    guard let draftID = store.selectedDraftID else { return [] }
+  var selectedDraft: ArticleDraft? {
+    if case .articleHistory(let draftID) = presentation {
+      return store.draft(for: draftID)
+    }
+    return store.selectedDraft
+  }
+
+  var selectedDraftVersions: [DraftVersionSnapshot] {
+    let draftID = isArticleHistory ? selectedDraft?.id : store.selectedDraftID
+    guard let draftID else { return [] }
     return store.versions(for: draftID)
   }
 
+  private var isArticleHistory: Bool {
+    if case .articleHistory = presentation { return true }
+    return false
+  }
+
   var body: some View {
-    NavigationStack {
-      List {
-        versionHistorySection
+    lifecycleContent
+      .frame(minWidth: isArticleHistory ? 420 : 700, minHeight: 560)
+      .confirmationDialog(
+        "永久删除文章？",
+        isPresented: permanentDeletionPresented,
+        titleVisibility: .visible,
+        presenting: draftPendingPermanentDeletion
+      ) { recycled in
+        Button("永久删除", role: .destructive) {
+          _ = store.permanentlyDeleteRecycledDraft(recycled.id)
+          draftPendingPermanentDeletion = nil
+        }
+        Button("取消", role: .cancel) {
+          draftPendingPermanentDeletion = nil
+        }
+      } message: { recycled in
+        Text("「\(recycled.draft.title.nilIfEmpty ?? "未命名文章")」的回收站副本和版本历史将被删除。仓库待清理记录仍会保留。")
+      }
+      .confirmationDialog(
+        "从网站下线这篇文章？",
+        isPresented: remoteCleanupExecutionPresented,
+        titleVisibility: .visible,
+        presenting: remoteCleanupPendingExecution
+      ) { request in
+        Button("确认下线", role: .destructive) {
+          let requestID = request.id
+          remoteCleanupPendingExecution = nil
+          Task {
+            await store.publishRepositoryCleanupRequestOnline(requestID)
+          }
+        }
+        Button("取消", role: .cancel) {
+          remoteCleanupPendingExecution = nil
+        }
+      } message: { request in
+        let strategy =
+          store.profiles.first(where: { $0.id == request.siteProfileID })?
+            .repositoryPublishStrategy == .direct
+          ? String(localized: "直接提交远端删除")
+          : String(localized: "创建下线 PR/MR")
+        Text("将对 \(request.repositoryPath) \(strategy)。执行前会核对远端版本；远端文件已不存在时按成功处理。")
+      }
+      .confirmationDialog(
+        "下线 PR/MR 已关闭？",
+        isPresented: remoteCleanupReviewClosurePresented,
+        titleVisibility: .visible,
+        presenting: remoteCleanupReviewClosurePending
+      ) { request in
+        if store.recycledDrafts.contains(where: { $0.id == request.draftID }) {
+          Button("确认已关闭并恢复文章") {
+            if store.acknowledgeRemoteCleanupReviewClosed(request.id) {
+              _ = store.restoreRecycledDraft(request.draftID)
+            }
+            remoteCleanupReviewClosurePending = nil
+          }
+        }
+        Button("确认已关闭，重新加入下线队列") {
+          _ = store.acknowledgeRemoteCleanupReviewClosed(request.id)
+          remoteCleanupReviewClosurePending = nil
+        }
+        Button("取消", role: .cancel) {
+          remoteCleanupReviewClosurePending = nil
+        }
+      } message: { request in
+        Text(
+          "请先在 GitHub/GitLab 确认该 PR/MR 已关闭且不会再被合并。错误确认可能导致恢复后的文章仍被远端合并操作删除。\n\n\(request.repositoryPath)"
+        )
+      }
+      .confirmationDialog(
+        "清理本地仓库文件？",
+        isPresented: cleanupExecutionPresented,
+        titleVisibility: .visible,
+        presenting: cleanupPendingExecution
+      ) { confirmation in
+        Button("清理本地文件", role: .destructive) {
+          _ = store.performLocalRepositoryCleanup(
+            confirmation.request.id,
+            preview: confirmation.preview
+          )
+          cleanupPendingExecution = nil
+        }
+        Button("取消", role: .cancel) {
+          cleanupPendingExecution = nil
+        }
+      } message: { confirmation in
+        Text("将从已配置的本地仓库删除 \(confirmation.request.repositoryPath)。该操作有路径保护和回滚，但仍需你后续检查并提交 Git 变更。")
+      }
+      .confirmationDialog(
+        "恢复这个版本？",
+        isPresented: versionRestorePresented,
+        titleVisibility: .visible,
+        presenting: versionPendingRestore
+      ) { version in
+        Button("恢复版本", role: .destructive) {
+          _ = store.restoreDraftVersion(version.id)
+          versionPendingRestore = nil
+        }
+        Button("取消", role: .cancel) {
+          versionPendingRestore = nil
+        }
+      } message: { _ in
+        Text("恢复前会自动保存当前内容；仓库路径、远端版本和内部发布状态会保留。")
+      }
+      .sheet(item: $versionPendingComparison) { version in
+        DraftVersionComparisonView(store: store, sourceVersion: version)
+      }
+      .sheet(item: $ownershipTransferPlan) { plan in
+        DraftOwnershipTransferConfirmationView(plan: plan) { confirmedPlan in
+          store.applyDraftOwnershipTransfer(confirmedPlan) != nil
+        }
+      }
+  }
+
+  @ViewBuilder
+  private var lifecycleContent: some View {
+    if isArticleHistory {
+      VStack(spacing: 0) {
+        HStack {
+          Text("历史版本")
+            .font(.headline)
+          Spacer()
+        }
+        .padding(WorkbenchSpacing.content)
+        Divider()
+        lifecycleList
+        Divider()
+        HStack {
+          Spacer()
+          closeButton
+            .workbenchProminentActionStyle()
+        }
+        .padding(WorkbenchSpacing.content)
+      }
+    } else {
+      NavigationStack {
+        lifecycleList
+          .navigationTitle("版本历史与回收站")
+          .toolbar {
+            if presentation == .standalone {
+              ToolbarItem(placement: .confirmationAction) {
+                closeButton
+              }
+            }
+          }
+      }
+    }
+  }
+
+  private var lifecycleList: some View {
+    List {
+      versionHistorySection
+      if !isArticleHistory {
         ownershipTransferSection
         recycleBinSection
         repositoryCleanupSection
       }
-      .accessibilityIdentifier("data-management-drafts-task")
-      .navigationTitle("版本历史与回收站")
-      .toolbar {
-        if presentation == .standalone {
-          ToolbarItem(placement: .confirmationAction) {
-            Button("完成") {
-              dismiss()
-            }
-            .accessibilityIdentifier("data-management-drafts-task-close")
-          }
-        }
-      }
     }
-    .frame(minWidth: 700, minHeight: 560)
-    .confirmationDialog(
-      "永久删除文章？",
-      isPresented: permanentDeletionPresented,
-      titleVisibility: .visible,
-      presenting: draftPendingPermanentDeletion
-    ) { recycled in
-      Button("永久删除", role: .destructive) {
-        _ = store.permanentlyDeleteRecycledDraft(recycled.id)
-        draftPendingPermanentDeletion = nil
-      }
-      Button("取消", role: .cancel) {
-        draftPendingPermanentDeletion = nil
-      }
-    } message: { recycled in
-      Text("「\(recycled.draft.title.nilIfEmpty ?? "未命名文章")」的回收站副本和版本历史将被删除。仓库待清理记录仍会保留。")
+    .accessibilityIdentifier("data-management-drafts-task")
+  }
+
+  private var closeButton: some View {
+    Button("完成") {
+      dismiss()
     }
-    .confirmationDialog(
-      "从网站下线这篇文章？",
-      isPresented: remoteCleanupExecutionPresented,
-      titleVisibility: .visible,
-      presenting: remoteCleanupPendingExecution
-    ) { request in
-      Button("确认下线", role: .destructive) {
-        let requestID = request.id
-        remoteCleanupPendingExecution = nil
-        Task {
-          await store.publishRepositoryCleanupRequestOnline(requestID)
-        }
-      }
-      Button("取消", role: .cancel) {
-        remoteCleanupPendingExecution = nil
-      }
-    } message: { request in
-      let strategy = store.profiles.first(where: { $0.id == request.siteProfileID })?
-        .repositoryPublishStrategy == .direct
-        ? String(localized: "直接提交远端删除")
-        : String(localized: "创建下线 PR/MR")
-      Text("将对 \(request.repositoryPath) \(strategy)。执行前会核对远端版本；远端文件已不存在时按成功处理。")
-    }
-    .confirmationDialog(
-      "下线 PR/MR 已关闭？",
-      isPresented: remoteCleanupReviewClosurePresented,
-      titleVisibility: .visible,
-      presenting: remoteCleanupReviewClosurePending
-    ) { request in
-      if store.recycledDrafts.contains(where: { $0.id == request.draftID }) {
-        Button("确认已关闭并恢复文章") {
-          if store.acknowledgeRemoteCleanupReviewClosed(request.id) {
-            _ = store.restoreRecycledDraft(request.draftID)
-          }
-          remoteCleanupReviewClosurePending = nil
-        }
-      }
-      Button("确认已关闭，重新加入下线队列") {
-        _ = store.acknowledgeRemoteCleanupReviewClosed(request.id)
-        remoteCleanupReviewClosurePending = nil
-      }
-      Button("取消", role: .cancel) {
-        remoteCleanupReviewClosurePending = nil
-      }
-    } message: { request in
-      Text("请先在 GitHub/GitLab 确认该 PR/MR 已关闭且不会再被合并。错误确认可能导致恢复后的文章仍被远端合并操作删除。\n\n\(request.repositoryPath)")
-    }
-    .confirmationDialog(
-      "清理本地仓库文件？",
-      isPresented: cleanupExecutionPresented,
-      titleVisibility: .visible,
-      presenting: cleanupPendingExecution
-    ) { confirmation in
-      Button("清理本地文件", role: .destructive) {
-        _ = store.performLocalRepositoryCleanup(
-          confirmation.request.id,
-          preview: confirmation.preview
-        )
-        cleanupPendingExecution = nil
-      }
-      Button("取消", role: .cancel) {
-        cleanupPendingExecution = nil
-      }
-    } message: { confirmation in
-      Text("将从已配置的本地仓库删除 \(confirmation.request.repositoryPath)。该操作有路径保护和回滚，但仍需你后续检查并提交 Git 变更。")
-    }
-    .confirmationDialog(
-      "恢复这个版本？",
-      isPresented: versionRestorePresented,
-      titleVisibility: .visible,
-      presenting: versionPendingRestore
-    ) { version in
-      Button("恢复版本", role: .destructive) {
-        _ = store.restoreDraftVersion(version.id)
-        versionPendingRestore = nil
-      }
-      Button("取消", role: .cancel) {
-        versionPendingRestore = nil
-      }
-    } message: { _ in
-      Text("恢复前会自动保存当前内容；仓库路径、远端版本和内部发布状态会保留。")
-    }
-    .sheet(item: $versionPendingComparison) { version in
-      DraftVersionComparisonView(store: store, sourceVersion: version)
-    }
-    .sheet(item: $ownershipTransferPlan) { plan in
-      DraftOwnershipTransferConfirmationView(plan: plan) { confirmedPlan in
-        store.applyDraftOwnershipTransfer(confirmedPlan) != nil
-      }
-    }
+    .accessibilityIdentifier("data-management-drafts-task-close")
   }
 
   private var versionHistorySection: some View {
     Section {
-      if let draft = store.selectedDraft {
+      if let draft = selectedDraft {
         HStack {
           VStack(alignment: .leading, spacing: 3) {
             Text(draft.title.nilIfEmpty ?? "未命名文章")
@@ -197,7 +249,7 @@ struct DraftLifecycleCenterView: View {
           ForEach(selectedDraftVersions) { version in
             HStack(alignment: .top, spacing: 12) {
               Image(systemName: version.reason == .manual ? "camera.fill" : "clock.fill")
-                .foregroundStyle(WorkbenchTheme.primary)
+                .foregroundStyle(.secondary)
                 .frame(width: 20)
               VStack(alignment: .leading, spacing: 4) {
                 Text(version.reason.localizedDisplayNameKey)
@@ -233,7 +285,7 @@ struct DraftLifecycleCenterView: View {
 
   private var ownershipTransferSection: some View {
     Section {
-      if let draft = store.selectedDraft {
+      if let draft = selectedDraft {
         VStack(alignment: .leading, spacing: 10) {
           Text(draft.title.nilIfEmpty ?? "未命名文章")
             .font(.headline)
@@ -271,7 +323,7 @@ struct DraftLifecycleCenterView: View {
             .disabled(!canPreviewOwnershipTransfer)
           }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, WorkbenchSpacing.tight)
         .onAppear {
           ownershipTargetProfileID = ownershipTargetProfileID ?? ownershipTargetProfiles.first?.id
         }
@@ -327,7 +379,7 @@ struct DraftLifecycleCenterView: View {
                 .foregroundStyle(WorkbenchTheme.warning)
             }
           }
-          .padding(.vertical, 4)
+          .padding(.vertical, WorkbenchSpacing.tight)
         }
       }
     } header: {
@@ -371,7 +423,8 @@ struct DraftLifecycleCenterView: View {
                     .lineLimit(2)
                 }
                 if let reviewURL = request.remoteReviewURL?.nilIfEmpty,
-                   let url = URL(string: reviewURL) {
+                  let url = URL(string: reviewURL)
+                {
                   Link("打开下线 PR/MR", destination: url)
                     .font(.caption)
                 }
@@ -400,7 +453,7 @@ struct DraftLifecycleCenterView: View {
               }
             }
           }
-          .padding(.vertical, 4)
+          .padding(.vertical, WorkbenchSpacing.tight)
         }
       }
     } header: {
@@ -413,7 +466,8 @@ struct DraftLifecycleCenterView: View {
   @ViewBuilder
   private func cleanupPreviewSummary(_ request: DraftRepositoryCleanupRequest) -> some View {
     if let preview = store.repositoryCleanupPreview(for: request.id),
-       let diff = preview.fileDiffs.first {
+      let diff = preview.fileDiffs.first
+    {
       Label(
         diff.status == .deleted ? "本地文件存在，等待清理" : "本地文件已不存在",
         systemImage: diff.status == .deleted ? "exclamationmark.triangle" : "checkmark.circle"
@@ -487,7 +541,7 @@ struct DraftLifecycleCenterView: View {
   }
 
   private var ownershipTargetProfiles: [SiteProfile] {
-    guard let draft = store.selectedDraft else { return [] }
+    guard let draft = selectedDraft else { return [] }
     return store.publishingProfiles.filter { profile in
       draft.isGeneralDraft || draft.siteProfileID != profile.id
     }
@@ -501,7 +555,7 @@ struct DraftLifecycleCenterView: View {
   }
 
   private var canPreviewOwnershipTransfer: Bool {
-    guard store.selectedDraft != nil else { return false }
+    guard selectedDraft != nil else { return false }
     if ownershipOperation == .moveToGeneral {
       return true
     }

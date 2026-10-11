@@ -1,10 +1,11 @@
 import AppKit
 import Combine
+import PublishingGitCore
 import PublishingTestSupport
-import PublishingWorkbenchCore
 import XCTest
 
 @testable import PersonalSitePublisherMac
+@testable import PublishingWorkbenchCore
 
 final class MarkdownComposerPerformanceTests: XCTestCase {
   @MainActor
@@ -224,5 +225,202 @@ final class MarkdownComposerPerformanceTests: XCTestCase {
     XCTAssertNil(coalescer.deliverLatest())
     XCTAssertTrue(coalescer.receive(2))
     XCTAssertEqual(coalescer.deliverLatest(), 1)
+  }
+}
+
+@MainActor
+final class MarkdownEditorStatusBarPresentationTests: XCTestCase {
+  func testVisibleStatisticsShowCountOrGoalProgress() {
+    XCTAssertEqual(
+      MarkdownEditorStatusBarPresentation.writingProgressSummary(
+        writingUnitCount: 640, targetWordCount: 0
+      ),
+      String(format: String(localized: "%lld 字/词"), locale: .current, Int64(640))
+    )
+    for (count, target, percent) in [(640, 800, 80), (960, 800, 120), (0, 800, 0)] {
+      XCTAssertEqual(
+        MarkdownEditorStatusBarPresentation.writingProgressSummary(
+          writingUnitCount: count, targetWordCount: target
+        ),
+        String(
+          format: String(localized: "%lld / %lld 字/词 · %lld%%"), locale: .current,
+          Int64(count), Int64(target), Int64(percent)
+        )
+      )
+    }
+  }
+
+  func testDiagnosticTitleDoesNotUnderreportMoreThan99Issues() {
+    XCTAssertEqual(
+      MarkdownEditorStatusBarPresentation.diagnosticsTitle(count: 125),
+      String(format: String(localized: "%lld 项正文问题"), locale: .current, Int64(125))
+    )
+  }
+
+  func testStatisticsKeepsWritingUnitsAndReadingTimeTogether() {
+    XCTAssertEqual(
+      MarkdownEditorStatusBarPresentation.statisticsSummary(
+        writingUnitCount: 1_284, readingMinutes: 4
+      ),
+      String(
+        format: String(localized: "%lld 字/词 · 约 %lld 分钟"),
+        locale: .current, Int64(1_284), Int64(4)
+      )
+    )
+  }
+
+  func testBranchUsesScannedWorktreeInsteadOfConfiguredPublishTarget() throws {
+    let (store, root) = try makeStore()
+    var profile = store.activeProfile
+    profile.branch = "production"
+    store.setProfiles([profile])
+    store.setRepositoryReport(report(root: root, branch: "writing/editor"))
+
+    let state = MarkdownEditorBranchState(store: store, profileID: profile.id)
+
+    XCTAssertEqual(state.branchName, "writing/editor")
+    XCTAssertNotEqual(state.branchName, profile.branch)
+  }
+
+  func testGeneralDraftAndMissingProfileDoNotBorrowActiveSiteBranch() throws {
+    let (store, root) = try makeStore()
+    store.setRepositoryReport(report(root: root, branch: "main"))
+
+    XCTAssertNil(MarkdownEditorBranchState(store: store, profileID: nil).branchName)
+    XCTAssertNil(MarkdownEditorBranchState(store: store, profileID: UUID()).branchName)
+  }
+
+  func testDifferentSiteWithSameRepositoryDoesNotBorrowReport() throws {
+    let (store, root) = try makeStore()
+    var otherProfile = store.activeProfile
+    otherProfile.id = UUID()
+    store.setProfiles([store.activeProfile, otherProfile])
+    store.setRepositoryReport(report(root: root, branch: "main"))
+
+    XCTAssertNil(MarkdownEditorBranchState(store: store, profileID: otherProfile.id).branchName)
+  }
+
+  func testMissingGitUnknownBranchAndDetachedHeadDoNotInventBranch() throws {
+    let (store, root) = try makeStore()
+    let profileID = store.activeProfileID
+    for invalidReport in [
+      report(root: root, branch: "main", hasGit: false),
+      report(root: root, branch: nil),
+      report(root: root, branch: "   "),
+      report(root: root, branch: "HEAD", isDetached: true),
+    ] {
+      store.setRepositoryReport(invalidReport)
+      XCTAssertNil(MarkdownEditorBranchState(store: store, profileID: profileID).branchName)
+    }
+    store.setRepositoryReport(nil)
+    XCTAssertNil(MarkdownEditorBranchState(store: store, profileID: profileID).branchName)
+  }
+
+  func testBranchRefreshReadsCommittedReportAndDeduplicatesUnrelatedEdits() async throws {
+    let (store, root) = try makeStore()
+    store.setRepositoryReport(report(root: root, branch: "before"))
+    let state = MarkdownEditorBranchState(store: store, profileID: store.activeProfileID)
+    var values: [String?] = []
+    let updated = expectation(description: "committed branch is observed")
+    let observation = state.$branchName.dropFirst().sink { value in
+      values.append(value)
+      if value == "after" { updated.fulfill() }
+    }
+
+    store.setDrafts([
+      ArticleDraft(siteProfileID: store.activeProfileID, title: "Unrelated", bodyMarkdown: "Typed")
+    ])
+    store.setRepositoryReport(report(root: root, branch: "after"))
+    await fulfillment(of: [updated], timeout: 1)
+
+    XCTAssertEqual(values, ["after"])
+    XCTAssertEqual(state.branchName, "after")
+    withExtendedLifetime(observation) {}
+  }
+
+  func testRepositoryReconfigurationClearsOldBranch() async throws {
+    let (store, root) = try makeStore()
+    store.setRepositoryReport(report(root: root, branch: "old-repository"))
+    let state = MarkdownEditorBranchState(store: store, profileID: store.activeProfileID)
+    let cleared = expectation(description: "old repository branch is removed")
+    let observation = state.$branchName.dropFirst().sink { value in
+      if value == nil { cleared.fulfill() }
+    }
+
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(root.appendingPathComponent("different-repository"))
+    store.setProfiles([profile])
+    await fulfillment(of: [cleared], timeout: 1)
+
+    XCTAssertNil(state.branchName)
+    withExtendedLifetime(observation) {}
+  }
+
+  private func makeStore() throws -> (WorkbenchStore, URL) {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    addTeardownBlock { try FileManager.default.removeItem(at: root) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: root.appendingPathComponent("workspace.json")),
+      safeMode: true
+    )
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(root)
+    store.setProfiles([profile])
+    return (store, root)
+  }
+
+  private func report(
+    root: URL, branch: String?, hasGit: Bool = true, isDetached: Bool = false
+  ) -> RepositoryScanReport {
+    RepositoryScanReport(
+      rootPath: root.path,
+      detectedKind: .zola,
+      expectedKind: .zola,
+      hasGitDirectory: hasGit,
+      contentRootExists: true,
+      assetRootExists: true,
+      markdownFileCount: 0,
+      imageFileCount: 0,
+      branchStatus: RepositoryBranchStatus(
+        branchName: branch, upstreamName: nil, isDetached: isDetached
+      ),
+      changedFiles: [],
+      preflightIssues: []
+    )
+  }
+}
+
+@MainActor
+final class MarkdownDuplicateTitleRemovalAdmissionTests: XCTestCase {
+  func testAdmissionRejectsOtherDraftConcurrentBodyMetadataAndFrontMatterChanges() {
+    let draftID = UUID()
+    let snapshot = MarkdownDuplicateTitleRemovalSnapshot(
+      requestID: UUID(), draftID: draftID, metadataRevision: 3, bodyRevision: 7)
+    let buffer = DraftBodyEditorBuffer(
+      draftID: draftID, bodyMarkdown: "# Title\nBody", revision: 7, isDirty: true)
+    func admits(
+      draft: UUID = draftID, metadata: UInt64 = 3, stored: UInt64? = 3,
+      body: DraftBodyEditorBuffer = buffer, conflict: Bool = false
+    ) -> Bool {
+      snapshot.admits(
+        draftID: draft, metadataRevision: metadata, storedMetadataRevision: stored, buffer: body,
+        expectedBody: "# Title\nBody", hasFrontMatterConflict: conflict)
+    }
+    XCTAssertTrue(admits())
+    XCTAssertFalse(admits(draft: UUID()))
+    XCTAssertFalse(admits(metadata: 4))
+    XCTAssertFalse(admits(stored: 4))
+    XCTAssertFalse(admits(stored: nil))
+    XCTAssertFalse(admits(conflict: true))
+    var changedBuffer = buffer
+    changedBuffer.revision += 1
+    XCTAssertFalse(admits(body: changedBuffer))
+    changedBuffer = buffer
+    changedBuffer.bodyMarkdown += " typed"
+    XCTAssertFalse(admits(body: changedBuffer))
+    changedBuffer = buffer
+    changedBuffer.draftID = UUID()
+    XCTAssertFalse(admits(body: changedBuffer))
   }
 }

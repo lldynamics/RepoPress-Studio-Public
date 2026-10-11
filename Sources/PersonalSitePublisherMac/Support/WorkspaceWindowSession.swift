@@ -21,6 +21,10 @@ final class WorkspaceWindowSession: ObservableObject {
   @Published private(set) var selectedSection: WorkspaceSection
   @Published private(set) var selectedDraftID: UUID?
   @Published private(set) var isKeyWindow = false
+  @Published var inspectorTab: WorkspaceInspectorTab = .information
+  @Published var revealsInspectorInCompactWorkspace = false
+  @Published private var editingCollapsesInspector = false
+  @Published var selectedContentHealthIssue: ContentHealthIssueSelection?
   /// Writing-list controls belong to this window for the same reason as the
   /// selected draft: another window must not replace a user's active filter
   /// or folder expansion while it is in the background.
@@ -52,6 +56,35 @@ final class WorkspaceWindowSession: ObservableObject {
       selectedSectionRawValue: selectedSection.rawValue,
       selectedDraftIDRawValue: selectedDraftID?.uuidString ?? ""
     )
+  }
+
+  func closeAssistantInspector() {
+    guard inspectorTab == .assistant else { return }
+    inspectorTab = .information
+  }
+
+  var isInspectorCollapsedForEditing: Bool {
+    selectedSection == .writing && editingCollapsesInspector
+  }
+
+  /// Only the editor receiving the user's input may yield this window's
+  /// Inspector; shared buffer updates in another window must not hide it.
+  func collapseInspectorForBodyEditing(draftID: UUID) {
+    guard isKeyWindow, selectedSection == .writing, selectedDraftID == draftID,
+      !isInspectorCollapsedForEditing
+    else { return }
+    editingCollapsesInspector = true
+  }
+
+  func revealInspectorForUserRequest() {
+    if editingCollapsesInspector { editingCollapsesInspector = false }
+  }
+
+  @discardableResult
+  func revealImageInspector(for request: ImageInspectorFocusRequest) -> Bool {
+    guard isKeyWindow, selectedDraftID == request.draftID else { return false }
+    inspectorTab = .information
+    return true
   }
 
   /// Applies SceneStorage once. Invalid legacy or partial values fall back to
@@ -202,6 +235,20 @@ final class WorkspaceWindowSession: ObservableObject {
       for: windowID,
       isKeyWindow: isKeyWindow
     )
+  }
+}
+
+enum WorkspaceInspectorTab: String, CaseIterable, Identifiable {
+  case information, assistant, publish
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .information: String(localized: "信息")
+    case .assistant: String(localized: "AI 助手")
+    case .publish: String(localized: "发布检查")
+    }
   }
 }
 

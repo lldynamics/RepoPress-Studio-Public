@@ -36,6 +36,10 @@ struct KnowledgeFileDropImportRequest: Identifiable, Hashable {
 }
 
 struct KnowledgeFileDropImportModifier: ViewModifier {
+  /// The full-window drop target is far larger than any panel, so it keeps
+  /// its own softer corner instead of a component token.
+  private static let dropTargetCornerRadius: CGFloat = 18
+
   @Environment(\.workbenchAccentColor) private var workbenchAccentColor
   @ObservedObject var knowledge: KnowledgeStore
   let isEnabled: Bool
@@ -83,7 +87,7 @@ struct KnowledgeFileDropImportModifier: ViewModifier {
             .shadow(color: workbenchAccentColor.opacity(0.35), radius: 14)
 
           Image(systemName: "square.and.arrow.down.on.square.fill")
-            .font(.system(size: 34, weight: .semibold))
+            .font(.system(size: WorkbenchIconSize.hero, weight: .semibold))
             .foregroundStyle(workbenchAccentColor)
         }
 
@@ -105,14 +109,17 @@ struct KnowledgeFileDropImportModifier: ViewModifier {
           }
           .font(.caption.monospaced())
           .foregroundStyle(.secondary)
-          .padding(.top, 4)
+          .padding(.top, WorkbenchSpacing.tight)
         }
       }
-      .padding(.horizontal, 36)
-      .padding(.vertical, 28)
-      .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+      .padding(.horizontal, WorkbenchSpacing.spacious + WorkbenchSpacing.card)
+      .padding(.vertical, WorkbenchSpacing.spacious + WorkbenchSpacing.tight)
+      .background(
+        .regularMaterial,
+        in: RoundedRectangle(cornerRadius: Self.dropTargetCornerRadius, style: .continuous)
+      )
       .overlay {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
+        RoundedRectangle(cornerRadius: Self.dropTargetCornerRadius, style: .continuous)
           .stroke(
             workbenchAccentColor,
             style: StrokeStyle(lineWidth: 2, dash: [10, 6])

@@ -56,6 +56,46 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     func vector(for input: KnowledgeSemanticEmbeddingInput) -> KnowledgeSemanticVector? { nil }
   }
 
+  private actor SemanticBackfillTaskRecorder {
+    private var tasks: [Task<Void, Never>] = []
+
+    func record(_ newTasks: [Task<Void, Never>]) {
+      tasks.append(contentsOf: newTasks)
+    }
+
+    func snapshot() -> [Task<Void, Never>] {
+      return tasks
+    }
+  }
+
+  private static func semanticBackfillSnapshot(
+    for service: KnowledgeLibraryService
+  ) -> (generation: Int, completedModelIDs: Set<String>, tasks: [Task<Void, Never>]) {
+    service.semanticBackfillLock.lock()
+    defer { service.semanticBackfillLock.unlock() }
+    return (
+      service.semanticBackfillGeneration,
+      service.backfilledSemanticModelIDs,
+      Array(service.semanticBackfillTasks.values)
+    )
+  }
+
+  private static func waitForSemanticBackfillTasks(
+    _ tasks: [Task<Void, Never>],
+    timeout: TimeInterval = 5
+  ) async -> Bool {
+    let finished = XCTestExpectation(description: "semantic backfill tasks finished")
+    let observer = Task {
+      for task in tasks {
+        await task.value
+      }
+      finished.fulfill()
+    }
+    let result = await XCTWaiter.fulfillment(of: [finished], timeout: timeout)
+    observer.cancel()
+    return result == .completed
+  }
+
   func testFullRepairPreservesKnownTemporarilyUnavailableProviderVectors() async throws {
     let rootURL = temporaryDirectory(named: "knowledge-semantic-temporarily-unavailable")
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -125,8 +165,26 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
 
   func testDenseProviderBackfillIsDeferredAndCanBeRescheduledAfterCancellation() async throws {
     let rootURL = temporaryDirectory(named: "knowledge-semantic-background-backfill")
-    defer { try? FileManager.default.removeItem(at: rootURL) }
     let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let provider = ControlledDenseProvider()
+    let service = KnowledgeLibraryService(
+      rootURL: storeURL,
+      semanticEmbeddingService: KnowledgeSemanticEmbeddingService(providers: [provider]),
+      searchCancellationCheck: { try Task.checkCancellation() }
+    )
+    let recordedTasks = SemanticBackfillTaskRecorder()
+    addTeardownBlock {
+      await recordedTasks.record(Self.semanticBackfillSnapshot(for: service).tasks)
+      service.cancelSemanticBackfillTasks()
+      let tasks = await recordedTasks.snapshot()
+      for task in tasks {
+        task.cancel()
+      }
+      let didFinish = await Self.waitForSemanticBackfillTasks(tasks)
+      XCTAssertTrue(didFinish, "回填任务必须终止后才能删除测试资料库")
+      guard didFinish else { return }
+      try FileManager.default.removeItem(at: rootURL)
+    }
     let sourceURL = rootURL.appendingPathComponent("chapter.md")
     try "# 后台回填\n\n首次搜索应使用已有 hash 向量，不应同步重建新稠密模型。".write(
       to: sourceURL, atomically: true, encoding: .utf8
@@ -136,15 +194,11 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       _ = try await initialService.commit(
         try await initialService.makeImportPreview(sourceURL: sourceURL))
     }
-    let provider = ControlledDenseProvider()
-    let service = KnowledgeLibraryService(
-      rootURL: storeURL,
-      semanticEmbeddingService: KnowledgeSemanticEmbeddingService(providers: [provider]),
-      searchCancellationCheck: { try Task.checkCancellation() }
-    )
     let databaseURL = storeURL.appendingPathComponent("library.sqlite")
 
     _ = try service.search(query: "后台回填")
+    let originalBackfill = Self.semanticBackfillSnapshot(for: service)
+    await recordedTasks.record(originalBackfill.tasks)
     XCTAssertEqual(
       try querySQLiteInt(
         "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'test-dense-background-v1';",
@@ -152,17 +206,39 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       ), 0, "首次搜索不能同步写完整稠密索引")
 
     service.invalidateSemanticBackfillCache()
+    let cancelledBackfill = Self.semanticBackfillSnapshot(for: service)
+    XCTAssertEqual(
+      cancelledBackfill.generation,
+      originalBackfill.generation &+ 1
+    )
+    XCTAssertTrue(cancelledBackfill.tasks.isEmpty)
+    XCTAssertTrue(cancelledBackfill.completedModelIDs.isEmpty)
+    let cancelledTasksFinished = await Self.waitForSemanticBackfillTasks(originalBackfill.tasks)
+    guard cancelledTasksFinished else {
+      return XCTFail("已取消的旧 generation 回填任务未在超时内终止")
+    }
     provider.enablePassages()
     _ = try service.search(query: "后台回填")
-    var denseCount = 0
-    for _ in 0..<80 where denseCount == 0 {
-      await Task.yield()
-      denseCount = try querySQLiteInt(
+    let rescheduledBackfill = Self.semanticBackfillSnapshot(for: service)
+    await recordedTasks.record(rescheduledBackfill.tasks)
+    XCTAssertEqual(rescheduledBackfill.generation, originalBackfill.generation &+ 1)
+    let rescheduledTasksFinished = await Self.waitForSemanticBackfillTasks(
+      rescheduledBackfill.tasks)
+    guard rescheduledTasksFinished else {
+      return XCTFail("取消后的新 generation 回填任务未在超时内完成")
+    }
+    XCTAssertTrue(
+      Self.semanticBackfillSnapshot(for: service).completedModelIDs.contains(
+        provider.descriptor.modelIdentifier),
+      "取消后的新 generation 应完成稠密索引回填"
+    )
+    let expectedDenseCount = try service.database().semanticIndexRecords().count
+    XCTAssertGreaterThan(expectedDenseCount, 0)
+    XCTAssertEqual(
+      try querySQLiteInt(
         "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'test-dense-background-v1';",
         at: databaseURL
-      )
-    }
-    XCTAssertGreaterThan(denseCount, 0, "取消后的新 generation 应可重新调度并继续回填")
+      ), expectedDenseCount, "新 generation 的完整稠密索引应已持久化")
   }
   func testRSSImportPreviewUsesCachedContentAndPreservesMetadata() async throws {
     let rootURL = temporaryDirectory(named: "knowledge-rss-cached-import")
@@ -992,9 +1068,13 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     do {
       _ = try KnowledgePDFOCRService().recognizeText(in: page)
     } catch let error as NSError {
+      // macOS 27 Vision can fail internally with a Swift Regex cast error while
+      // its recognition assets are still being prepared; the same test passes
+      // once they are ready. None of these comes from RepoPress code.
       let isUnavailableInTestHost =
         (error.domain == NSOSStatusErrorDomain && error.code == -6_662)
         || (error.domain == "CRImageReaderErrorDomain" && error.code == -8)
+        || String(describing: error).contains("Cast to incorrect type 'Regex<")
       guard isUnavailableInTestHost else { throw error }
       throw XCTSkip("当前测试宿主无法初始化 Vision OCR：\(error.localizedDescription)")
     }

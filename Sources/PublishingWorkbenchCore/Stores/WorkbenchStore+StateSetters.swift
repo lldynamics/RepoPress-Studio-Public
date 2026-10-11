@@ -123,6 +123,19 @@ extension WorkbenchStore {
 
   func setPreflightIssues(_ issues: [PreflightIssue]) {
     publishingStore.preflightIssues = issues
+    guard let draftID = selectedDraftID,
+      let key = draftScopedPreflightRequestKey(for: draftID), !key.hasPendingBody
+    else { return }
+    let generation = beginDraftPreflightCalculation(for: draftID)
+    let result = DraftPreflightResult(
+      context: DraftExecutionContext(
+        draftID: draftID, profileID: key.profile.id, bodyRevision: key.bodyRevision
+      ),
+      issues: issues
+    )
+    _ = installDraftPreflightSnapshot(
+      makeDraftPreflightSnapshot(result: result, requestKey: key), generation: generation
+    )
   }
 
 }

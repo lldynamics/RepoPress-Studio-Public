@@ -1,5 +1,6 @@
 import Foundation
 import PublishingCoreSupport
+import PublishingDomainContracts
 
 public enum RepositoryWorktreePublishEntryKind: String, Hashable, Sendable {
   case added
@@ -143,6 +144,7 @@ public struct RepositoryWorktreePublishConfirmation: Hashable, Sendable, Identif
   public let sitePreflightResult: RepositoryPublishPreflightResult?
   public let articleVerificationTarget: RepositoryWorktreeArticleVerificationTarget?
   public let fileReviews: [RepositoryWorktreeFileReview]
+  public let executionPolicy: RepositoryGitExecutionPolicy?
 
   public var id: String {
     [
@@ -150,6 +152,7 @@ public struct RepositoryWorktreePublishConfirmation: Hashable, Sendable, Identif
       snapshot.headSHA,
       snapshot.statusFingerprint,
       commitMessage,
+      executionPolicy.map { String(describing: $0) } ?? "",
       safetyReport.diagnostics.map(\.id).joined(separator: "\u{1D}"),
       sitePreflightResult.map { String(describing: $0.outcome) } ?? "",
       articleVerificationTarget.map { $0.draftID.uuidString } ?? "",
@@ -163,7 +166,8 @@ public struct RepositoryWorktreePublishConfirmation: Hashable, Sendable, Identif
     safetyReport: RepositoryPublishSafetyReport = RepositoryPublishSafetyReport(),
     sitePreflightResult: RepositoryPublishPreflightResult? = nil,
     articleVerificationTarget: RepositoryWorktreeArticleVerificationTarget? = nil,
-    fileReviews: [RepositoryWorktreeFileReview] = []
+    fileReviews: [RepositoryWorktreeFileReview] = [],
+    executionPolicy: RepositoryGitExecutionPolicy? = nil
   ) {
     self.snapshot = snapshot
     self.commitMessage = commitMessage
@@ -171,6 +175,7 @@ public struct RepositoryWorktreePublishConfirmation: Hashable, Sendable, Identif
     self.sitePreflightResult = sitePreflightResult
     self.articleVerificationTarget = articleVerificationTarget
     self.fileReviews = fileReviews
+    self.executionPolicy = executionPolicy
   }
 }
 

@@ -227,7 +227,7 @@ struct EditorSettingsView: View {
         .lineSpacing(CGFloat(lineSpacing))
         .foregroundStyle(.secondary)
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       WorkbenchWritingSurface.color(usesWarmPaper: isWarmPaperBackgroundEnabled),
@@ -280,7 +280,7 @@ struct EditorSettingsView: View {
     Label(title, systemImage: icon)
       .font(.workbenchMetadata.weight(.medium))
       .foregroundStyle(.secondary)
-      .padding(.horizontal, 6)
+      .padding(.horizontal, WorkbenchSpacing.icon)
       .padding(.vertical, 2)
       .background(Color.primary.opacity(0.06), in: Capsule())
   }

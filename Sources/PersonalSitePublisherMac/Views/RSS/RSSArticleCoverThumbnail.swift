@@ -15,6 +15,7 @@ enum RSSArticleCoverThumbnailPresentation {
 /// list does not repeatedly decode the same remote image at full resolution.
 actor RSSArticleCoverThumbnailCache {
   static let shared = RSSArticleCoverThumbnailCache()
+  static let defaultMaximumCachedBytes = 16 * 1_024 * 1_024
 
   private struct Request {
     let id: UUID
@@ -26,8 +27,12 @@ actor RSSArticleCoverThumbnailCache {
   private let maximumConcurrentRequests: Int
   private let maximumQueuedRequests: Int
   private let maximumCacheEntryCount = 96
+  private let maximumCachedBytes: Int
   private var cachedData: [URL: Data] = [:]
   private var cacheOrder: [URL] = []
+  private var cachedBytes = 0
+  private var isCacheRetentionEnabled = true
+  private var latestCacheRetentionGeneration: UInt64 = 0
   private var requests: [URL: Request] = [:]
   private var queue: [(url: URL, requestID: UUID)] = []
   private var activeRequestCount = 0
@@ -37,16 +42,34 @@ actor RSSArticleCoverThumbnailCache {
       maximumByteCount: RSSArticleCoverImageLoader.defaultMaximumByteCount
     ),
     maximumConcurrentRequests: Int = 4,
-    maximumQueuedRequests: Int = 128
+    maximumQueuedRequests: Int = 128,
+    maximumCachedBytes: Int = RSSArticleCoverThumbnailCache.defaultMaximumCachedBytes
   ) {
     self.loader = loader
     self.maximumConcurrentRequests = max(1, maximumConcurrentRequests)
     self.maximumQueuedRequests = max(1, maximumQueuedRequests)
+    self.maximumCachedBytes = max(0, maximumCachedBytes)
+  }
+
+  var cachedEntryCount: Int { cachedData.count }
+  var cachedByteCount: Int { cachedBytes }
+
+  func setCacheRetentionEnabled(_ isEnabled: Bool, generation: UInt64) {
+    guard generation >= latestCacheRetentionGeneration else { return }
+    latestCacheRetentionGeneration = generation
+    isCacheRetentionEnabled = isEnabled
+    if !isEnabled {
+      cachedData.removeAll()
+      cacheOrder.removeAll()
+      cachedBytes = 0
+    }
   }
 
   func data(for imageURL: URL) async -> Data? {
     let key = imageURL.absoluteURL
     if let cached = cachedData[key] {
+      cacheOrder.removeAll { $0 == key }
+      cacheOrder.append(key)
       return cached
     }
     let consumerID = UUID()
@@ -140,10 +163,7 @@ actor RSSArticleCoverThumbnailCache {
     if let request = requests[key], request.id == requestID {
       requests[key] = nil
       if let result {
-        cachedData[key] = result
-        cacheOrder.removeAll { $0 == key }
-        cacheOrder.append(key)
-        trimCacheIfNeeded()
+        retainData(result, for: key)
       }
       for continuation in request.consumers.values {
         continuation.resume(returning: result)
@@ -156,11 +176,28 @@ actor RSSArticleCoverThumbnailCache {
     requests[imageURL.absoluteURL]?.consumers.count ?? 0
   }
 
-  private func trimCacheIfNeeded() {
-    while cacheOrder.count > maximumCacheEntryCount {
-      let evictedURL = cacheOrder.removeFirst()
-      cachedData[evictedURL] = nil
+  private func retainData(_ data: Data, for key: URL) {
+    guard isCacheRetentionEnabled,
+      maximumCachedBytes > 0,
+      data.count <= maximumCachedBytes
+    else { return }
+    if let previousData = cachedData.removeValue(forKey: key) {
+      cachedBytes -= previousData.count
     }
+    cacheOrder.removeAll { $0 == key }
+    // Evict before insertion so the byte total never exceeds the budget or
+    // overflows when a caller supplies a large budget.
+    while cacheOrder.count >= maximumCacheEntryCount
+      || cachedBytes > maximumCachedBytes - data.count
+    {
+      let evictedURL = cacheOrder.removeFirst()
+      if let evictedData = cachedData.removeValue(forKey: evictedURL) {
+        cachedBytes -= evictedData.count
+      }
+    }
+    cachedData[key] = data
+    cacheOrder.append(key)
+    cachedBytes += data.count
   }
 
   private nonisolated static func downsampledPNGData(
@@ -169,26 +206,29 @@ actor RSSArticleCoverThumbnailCache {
   ) -> Data? {
     let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
     guard let source = CGImageSourceCreateWithData(sourceData as CFData, sourceOptions),
-          let image = CGImageSourceCreateThumbnailAtIndex(
-            source,
-            0,
-            [
-              kCGImageSourceCreateThumbnailFromImageAlways: true,
-              kCGImageSourceCreateThumbnailWithTransform: true,
-              kCGImageSourceShouldCacheImmediately: true,
-              kCGImageSourceThumbnailMaxPixelSize: maximumPixelSize,
-            ] as CFDictionary
-          ) else {
+      let image = CGImageSourceCreateThumbnailAtIndex(
+        source,
+        0,
+        [
+          kCGImageSourceCreateThumbnailFromImageAlways: true,
+          kCGImageSourceCreateThumbnailWithTransform: true,
+          kCGImageSourceShouldCacheImmediately: true,
+          kCGImageSourceThumbnailMaxPixelSize: maximumPixelSize,
+        ] as CFDictionary
+      )
+    else {
       return sourceData
     }
 
     let outputData = NSMutableData()
-    guard let destination = CGImageDestinationCreateWithData(
-      outputData as CFMutableData,
-      "public.png" as CFString,
-      1,
-      nil
-    ) else {
+    guard
+      let destination = CGImageDestinationCreateWithData(
+        outputData as CFMutableData,
+        "public.png" as CFString,
+        1,
+        nil
+      )
+    else {
       return sourceData
     }
     CGImageDestinationAddImage(destination, image, nil)
@@ -216,7 +256,7 @@ struct RSSArticleCoverThumbnail: View {
           .scaledToFill()
       } else if didFail {
         Image(systemName: "photo")
-          .font(.system(size: 18, weight: .medium))
+          .font(.system(size: WorkbenchIconSize.prominent, weight: .medium))
           .foregroundStyle(.tertiary)
       } else {
         ProgressView()
@@ -264,7 +304,8 @@ struct RSSArticleCoverThumbnail: View {
     didFail = false
 
     guard let data = await RSSArticleCoverThumbnailCache.shared.data(for: url),
-          !Task.isCancelled else {
+      !Task.isCancelled
+    else {
       if !Task.isCancelled { didFail = true }
       return
     }

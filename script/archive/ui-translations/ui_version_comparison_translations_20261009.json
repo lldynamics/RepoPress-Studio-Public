@@ -1,0 +1,12 @@
+{
+  "旧版（左侧）": "Old version (left)",
+  "新版（右侧）": "New version (right)",
+  "只看改动": "Changes only",
+  "绿色加号表示新增，红色减号表示删除；突出显示具体字词变化。": "Green plus signs indicate additions and red minus signs indicate deletions; individual word changes are highlighted.",
+  "此版本无对应段落": "No corresponding paragraph in this version",
+  "旧版第 %lld 行：%@": "Old version, line %1$lld: %2$@",
+  "新版第 %lld 行：%@": "New version, line %1$lld: %2$@",
+  "删除行 %lld：%@": "Deleted line %1$lld: %2$@",
+  "新增行 %lld：%@": "Added line %1$lld: %2$@",
+  "所选版本已不存在。": "The selected version is no longer available."
+}

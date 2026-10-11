@@ -95,7 +95,7 @@ struct OperationLogDetailView: View {
           }
         }
       }
-      .padding(24)
+      .padding(WorkbenchSpacing.spacious)
       .frame(maxWidth: 880, alignment: .leading)
     }
     .accessibilityElement(children: .contain)
@@ -111,9 +111,11 @@ struct OperationLogDetailView: View {
         .font(.headline)
       content()
     }
-    .padding(16)
+    .padding(WorkbenchSpacing.content)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(.quaternary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    .background(
+      .quaternary,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel, style: .continuous))
   }
 
   private func detailRow(_ title: LocalizedStringKey, value: String) -> some View {

@@ -1,10 +1,72 @@
 import PublishingCoreSupport
+import SwiftUI
 import XCTest
 
 @testable import PersonalSitePublisherMac
 @testable import PublishingAICore
 
 final class AISettingsFlowPresentationTests: XCTestCase {
+  func testOfficialProvidersHideConnectionFieldsWhileCustomAndChangedGatewaysShowThem() {
+    for preset in AIProviderPreset.allCases where preset != .codexAppServer {
+      var config = AIProviderConfig(preset: preset)
+      config.applyPresetDefaults()
+      XCTAssertEqual(
+        AIProviderFieldPresentation(config: config).showsConnectionFieldsByDefault,
+        preset == .custom || preset == .local,
+        "Unexpected default field visibility for \(preset)")
+      config.baseURL = "https://gateway.example.com/v1"
+      XCTAssertTrue(AIProviderFieldPresentation(config: config).showsConnectionFieldsByDefault)
+    }
+  }
+
+  func testNondefaultCredentialRequirementRemainsVisibleForOfficialEndpoint() {
+    var config = AIProviderConfig(preset: .deepSeek)
+    config.applyPresetDefaults()
+    config.requiresAPIKey = false
+    XCTAssertTrue(AIProviderFieldPresentation(config: config).showsConnectionFieldsByDefault)
+  }
+
+  @MainActor
+  func testFailedKeySavePreservesInputAndDoesNotContinue() {
+    var input = "test-key-kept-on-failure"
+    var continuations = 0
+    let didSave = AIAPIKeySaveAction.perform(
+      input: Binding(get: { input }, set: { input = $0 }), save: { false },
+      continueSetup: { continuations += 1 })
+    XCTAssertFalse(didSave)
+    XCTAssertEqual(input, "test-key-kept-on-failure")
+    XCTAssertEqual(continuations, 0)
+  }
+
+  @MainActor
+  func testKeySaveConsumesInputOnlyOnSuccessAndContinuationIsExplicit() {
+    var input = "  'test-key'  "
+    var savedValues: [String] = []
+    var continuations = 0
+    let binding = Binding(get: { input }, set: { input = $0 })
+    XCTAssertTrue(
+      AIAPIKeySaveAction.perform(
+        input: binding,
+        save: {
+          savedValues.append(input)
+          return true
+        },
+        continueSetup: { continuations += 1 }))
+    XCTAssertEqual(savedValues, ["test-key"])
+    XCTAssertEqual(input, "")
+    XCTAssertEqual(continuations, 1)
+    input = "test-key-two"
+    XCTAssertTrue(
+      AIAPIKeySaveAction.perform(
+        input: binding,
+        save: {
+          savedValues.append(input)
+          return true
+        }, continueSetup: nil))
+    XCTAssertEqual(continuations, 1)
+    XCTAssertEqual(input, "")
+  }
+
   func testProviderPresetsCollapseIntoThreeUserFacingConnectionKinds() {
     XCTAssertEqual(AIConnectionKind(preset: .codexAppServer), .chatGPT)
     XCTAssertEqual(AIConnectionKind(preset: .local), .local)

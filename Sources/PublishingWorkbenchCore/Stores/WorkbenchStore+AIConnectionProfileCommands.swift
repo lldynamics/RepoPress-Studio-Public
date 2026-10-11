@@ -35,6 +35,7 @@ extension WorkbenchStore {
   ) -> AIConnectionProfile {
     let profile = AIConnectionProfile.template(named: name, preset: preset)
     aiConnectionProfiles.append(profile)
+    aiCredentialStore.initializeStorageModes(forConnectionProfileIDs: [profile.id])
     save()
     return profile
   }
@@ -53,6 +54,10 @@ extension WorkbenchStore {
       allowsLegacyCredentialFallback: false
     )
     aiConnectionProfiles.append(copy)
+    aiCredentialStore.setStorageMode(
+      aiCredentialStore.storageMode(forConnectionProfileID: original.id),
+      forConnectionProfileID: copy.id
+    )
     save()
     return copy
   }
@@ -90,6 +95,10 @@ extension WorkbenchStore {
       setAIActionMessage(CoreL10n.text("AI 连接副本未能保存，当前站点仍使用原连接。"))
       return nil
     }
+    aiCredentialStore.setStorageMode(
+      aiCredentialStore.storageMode(forConnectionProfileID: original.id),
+      forConnectionProfileID: copy.id
+    )
     aiStore.cancelNonStreamingAuthorization(profileID: site.id)
     refreshAIKeyAvailability()
     setAIActionMessage(
@@ -98,6 +107,27 @@ extension WorkbenchStore {
         : CoreL10n.text("已为当前站点复制配置，其他站点仍使用原连接。")
     )
     return copy
+  }
+
+  @discardableResult
+  public func reconfigureAIConnectionProfile(
+    _ connectionID: UUID,
+    expectedConfig: AIProviderConfig,
+    proposedConfig: AIProviderConfig,
+    expectedReferencingSites: [UUID: String]
+  ) -> Bool {
+    guard var connection = aiConnectionProfile(for: connectionID),
+      connection.config == expectedConfig,
+      Dictionary(
+        uniqueKeysWithValues: profiles.filter { $0.aiConnectionProfileID == connectionID }
+          .map { ($0.id, $0.name) }
+      ) == expectedReferencingSites
+    else {
+      setAIActionMessage(CoreL10n.text("AI 连接或使用它的站点已变化，本次配置未更改，请重新检查后再应用。"))
+      return false
+    }
+    connection.config = proposedConfig
+    return updateAIConnectionProfile(connection)
   }
 
   @discardableResult
@@ -157,7 +187,7 @@ extension WorkbenchStore {
     {
       do {
         try aiCredentialStore.deleteLegacyTokenIfKeychainIsSelected(
-          for: previousProfile
+          for: previousProfile, connectionProfileID: aiConnectionProfile(for: previousProfile).id
         )
       } catch KeychainTokenStoreError.invalidCredentialOrigin(_) {
         // No origin-bound legacy credential can exist for an address that the
@@ -211,6 +241,7 @@ extension WorkbenchStore {
     }
 
     aiConnectionProfiles.removeAll { $0.id == connectionID }
+    aiCredentialStore.removeStorageMode(forConnectionProfileID: connectionID)
     aiStore.cancelNonStreamingAuthorization(connectionID: connectionID)
     save()
     setAIActionMessage(CoreL10n.text("AI 连接及其 API Key 已删除。"))

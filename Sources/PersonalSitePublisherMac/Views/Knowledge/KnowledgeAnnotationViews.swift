@@ -25,7 +25,7 @@ struct KnowledgeAnnotationEditorView: View {
           .font(.headline)
         Spacer()
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
       Divider()
 
       VStack(alignment: .leading, spacing: 14) {
@@ -53,7 +53,7 @@ struct KnowledgeAnnotationEditorView: View {
             .overlay(editorBorder)
         }
       }
-      .padding(18)
+      .padding(WorkbenchSpacing.content)
 
       Divider()
 
@@ -66,14 +66,14 @@ struct KnowledgeAnnotationEditorView: View {
           .keyboardShortcut(.defaultAction)
           .disabled(note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
     }
     .frame(minWidth: 560, idealWidth: 640, minHeight: 460, idealHeight: 540)
     .accessibilityIdentifier("knowledge-annotation-editor")
   }
 
   private var editorBorder: some View {
-    RoundedRectangle(cornerRadius: 6)
+    RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
       .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
   }
 
@@ -124,15 +124,18 @@ struct KnowledgeDocumentInsightsSection: View {
         backlinkGroupRow(group)
       }
     }
-    .padding(14)
-    .background(Color.secondary.opacity(0.055), in: RoundedRectangle(cornerRadius: 10))
+    .padding(WorkbenchSpacing.content)
+    .background(
+      Color.secondary.opacity(0.055),
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel)
+    )
     .accessibilityElement(children: .contain)
   }
 
   private func annotationRow(_ annotation: KnowledgeAnnotation) -> some View {
     HStack(alignment: .top, spacing: 10) {
       Image(systemName: "highlighter")
-        .foregroundStyle(.tint)
+        .foregroundStyle(.secondary)
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 4) {
         if let locator = annotation.locator?.nilIfEmpty {
@@ -203,13 +206,16 @@ struct KnowledgeDocumentInsightsSection: View {
           )
         }
       }
-      .padding(.top, 7)
-      .padding(.leading, 26)
+      .padding(.top, WorkbenchSpacing.control)
+      .padding(.leading, WorkbenchSpacing.spacious)
     } label: {
       HStack(alignment: .top, spacing: 10) {
-        Image(systemName: group.targetKind == .articleDraft ? "doc.text" : "bubble.left.and.text.bubble.right")
-          .foregroundStyle(.secondary)
-          .accessibilityHidden(true)
+        Image(
+          systemName: group.targetKind == .articleDraft
+            ? "doc.text" : "bubble.left.and.text.bubble.right"
+        )
+        .foregroundStyle(.secondary)
+        .accessibilityHidden(true)
         VStack(alignment: .leading, spacing: 3) {
           Text(group.targetTitle)
             .font(.callout.weight(.medium))

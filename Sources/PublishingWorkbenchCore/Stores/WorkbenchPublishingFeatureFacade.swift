@@ -36,12 +36,24 @@ public final class WorkbenchPublishingFeatureFacade: ObservableObject {
     store.activeProfileID
   }
 
+  /// Replays the current site, then every transition, including a quick
+  /// switch back before SwiftUI renders. Consumers choose their own lifetime.
+  public var activeProfileChanges: AnyPublisher<UUID, Never> {
+    store.publishingStore.$activeProfileID.eraseToAnyPublisher()
+  }
+
   public var activeProfile: SiteProfile {
     store.activeProfile
   }
 
   public var drafts: [ArticleDraft] {
     store.drafts
+  }
+
+  /// Snapshot-only changes should refresh version menus without invalidating
+  /// every publishing subscriber.
+  public var draftVersionChanges: AnyPublisher<[DraftVersionSnapshot], Never> {
+    store.publishingStore.documents.$draftVersions.eraseToAnyPublisher()
   }
 
   public var selectedSection: WorkspaceSection {

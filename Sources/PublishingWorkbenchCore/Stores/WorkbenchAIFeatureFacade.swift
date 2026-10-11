@@ -257,6 +257,10 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.aiStore.aiCredentialStorageMode
   }
 
+  public func credentialStorageMode(forConnectionProfileID id: UUID) -> AICredentialStorageMode {
+    store.aiStore.aiCredentialStorageMode(forConnectionProfileID: id)
+  }
+
   public func keyAvailability(
     forConnectionProfileID connectionProfileID: UUID
   ) -> KeychainTokenAvailability {
@@ -309,13 +313,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.aiChatDraftID
   }
 
-  public var chatConversationTitle: String? {
-    if store.aiChatContextMode == .general {
-      return store.aiStore.activeGeneralAIChatConversation?.title
-    }
-    return store.aiChatConversationTitle
-  }
-
   public var chatMessages: [AIPublishingChatMessage] {
     if store.aiChatContextMode == .general {
       return store.aiStore.activeGeneralAIChatConversation?.messages ?? []
@@ -331,20 +328,12 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.aiChatKnowledgePolicy
   }
 
-  public var generalChatKnowledgePolicy: KnowledgeRetrievalPolicy {
-    store.aiStore.activeGeneralAIChatKnowledgePolicy
-  }
-
   public var chatModelGrade: AIChatModelGrade {
     store.aiChatModelGrade
   }
 
   public var chatReasoningLevel: AIChatReasoningLevel {
     store.aiChatReasoningLevel
-  }
-
-  public var generalChatReasoningLevel: AIChatReasoningLevel {
-    store.aiStore.activeGeneralAIChatReasoningLevel
   }
 
   public var chatSelectedModel: String {
@@ -361,10 +350,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
       .reasoningEffortOverride?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
   }
 
-  public var chatFocusedParagraphID: String? {
-    store.aiChatFocusedParagraphID
-  }
-
   public var chatCustomPrompts: [AIPublishingCustomPrompt] {
     store.aiChatCustomPrompts
   }
@@ -372,14 +357,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
   public var activeChatConversationID: UUID? {
     guard let draftID = store.aiChatDraftID else { return nil }
     return store.aiStore.activeAIChatConversationID(for: draftID)
-  }
-
-  public var activeChatConversation: AIConversation? {
-    store.aiStore.activeAIChatConversation()
-  }
-
-  public var generalChatConversations: [AIConversation] {
-    store.aiStore.generalAIChatConversations(includingArchived: false)
   }
 
   public var generalChatConversationsIncludingArchived: [AIConversation] {
@@ -544,10 +521,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.draft(for: draftID)
   }
 
-  public var chatVisibleDrafts: [ArticleDraft] {
-    store.visibleDrafts
-  }
-
   public var chatMessage: String? {
     store.aiChatMessage
   }
@@ -590,6 +563,12 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   public func setCredentialStorageMode(_ mode: AICredentialStorageMode) {
     store.setAICredentialStorageMode(mode)
+  }
+
+  public func setCredentialStorageMode(
+    _ mode: AICredentialStorageMode, connectionProfileID: UUID
+  ) {
+    store.setAICredentialStorageMode(mode, connectionProfileID: connectionProfileID)
   }
 
   @discardableResult
@@ -1121,36 +1100,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     inlineStructuredEditReviewState.endReview(for: draftID)
   }
 
-  @discardableResult
-  public func createLinkedTranslationDraft(
-    from plan: AITranslationDraftPlan
-  ) -> ArticleDraft? {
-    guard let source = store.drafts.first(where: { $0.id == plan.sourceDraftID }) else {
-      store.setAIChatMessage("找不到翻译计划对应的原稿。")
-      return nil
-    }
-    if let existing = store.drafts.first(where: { $0.id == plan.translatedDraft.id }) {
-      store.selectDraft(existing.id)
-      store.setAIChatMessage("这份关联翻译草稿已经创建，已为你打开。")
-      return existing
-    }
-
-    do {
-      let translated = try AITranslationDraftPlanningService.materialize(
-        plan,
-        currentSource: source,
-        profile: store.profile(for: source)
-      )
-      store.updateDraft(translated)
-      store.selectDraft(translated.id)
-      store.save()
-      store.setAIChatMessage("已创建关联翻译草稿；原稿保持不变。")
-      return translated
-    } catch {
-      store.setAIChatMessage("关联翻译草稿未创建：\(error.localizedDescription)")
-      return nil
-    }
-  }
 
   public func recordStructuredEditFeedback(
     _ decision: AILocalEditFeedbackDecision,

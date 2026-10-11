@@ -2,6 +2,21 @@ import AppKit
 import ImageIO
 import PublishingMarkdownCore
 
+@MainActor
+enum MarkdownInlineAttachmentPresentationStyle {
+  static let imageInset = WorkbenchSpacing.tight
+  static let formulaHorizontalInset = WorkbenchSpacing.icon
+  static let formulaVerticalInset = WorkbenchSpacing.tight
+
+  static func cornerRadius(for displayMode: MarkdownFormulaDisplayMode?) -> CGFloat {
+    displayMode == .inline ? WorkbenchCornerRadius.badge : WorkbenchCornerRadius.control
+  }
+
+  static var backgroundColor: NSColor {
+    NSColor.quaternaryLabelColor.withAlphaComponent(0.06)
+  }
+}
+
 final class MarkdownInlineAttachmentOverlayView: NSView {
   enum Content {
     case image(accessibilityText: String)
@@ -22,32 +37,40 @@ final class MarkdownInlineAttachmentOverlayView: NSView {
     super.init(frame: frameRect)
     wantsLayer = true
     layer?.masksToBounds = true
-    layer?.cornerRadius = 10
-    layer?.borderWidth = 1
-    layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.45).cgColor
-    layer?.backgroundColor = NSColor.textBackgroundColor.withAlphaComponent(0.86).cgColor
+    layer?.cornerRadius = MarkdownInlineAttachmentPresentationStyle.cornerRadius(for: nil)
+    layer?.backgroundColor = MarkdownInlineAttachmentPresentationStyle.backgroundColor.cgColor
 
     imageView.imageScaling = .scaleProportionallyUpOrDown
     imageView.imageAlignment = .alignCenter
     placeholder.contentTintColor = .tertiaryLabelColor
     placeholder.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 28, weight: .regular)
     formulaLabel.alignment = .center
-    formulaLabel.maximumNumberOfLines = 2
-    formulaLabel.lineBreakMode = .byTruncatingTail
+    formulaLabel.maximumNumberOfLines = 0
+    formulaLabel.lineBreakMode = .byCharWrapping
+    formulaLabel.cell?.wraps = true
+    formulaLabel.cell?.usesSingleLineMode = false
 
     for view in [imageView, placeholder, formulaLabel] {
       view.translatesAutoresizingMaskIntoConstraints = false
       addSubview(view)
     }
     NSLayoutConstraint.activate([
-      imageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-      imageView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-      imageView.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-      imageView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
+      imageView.leadingAnchor.constraint(
+        equalTo: leadingAnchor, constant: MarkdownInlineAttachmentPresentationStyle.imageInset),
+      imageView.trailingAnchor.constraint(
+        equalTo: trailingAnchor, constant: -MarkdownInlineAttachmentPresentationStyle.imageInset),
+      imageView.topAnchor.constraint(
+        equalTo: topAnchor, constant: MarkdownInlineAttachmentPresentationStyle.imageInset),
+      imageView.bottomAnchor.constraint(
+        equalTo: bottomAnchor, constant: -MarkdownInlineAttachmentPresentationStyle.imageInset),
       placeholder.centerXAnchor.constraint(equalTo: centerXAnchor),
       placeholder.centerYAnchor.constraint(equalTo: centerYAnchor),
-      formulaLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-      formulaLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+      formulaLabel.leadingAnchor.constraint(
+        equalTo: leadingAnchor,
+        constant: MarkdownInlineAttachmentPresentationStyle.formulaHorizontalInset),
+      formulaLabel.trailingAnchor.constraint(
+        equalTo: trailingAnchor,
+        constant: -MarkdownInlineAttachmentPresentationStyle.formulaHorizontalInset),
       formulaLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
     ])
   }
@@ -58,6 +81,12 @@ final class MarkdownInlineAttachmentOverlayView: NSView {
 
   override func hitTest(_ point: NSPoint) -> NSView? {
     nil
+  }
+
+  override func layout() {
+    formulaLabel.preferredMaxLayoutWidth = max(
+      1, bounds.width - MarkdownInlineAttachmentPresentationStyle.formulaHorizontalInset * 2)
+    super.layout()
   }
 
   /// Clears state that belongs to the previous attachment before this view is
@@ -77,7 +106,7 @@ final class MarkdownInlineAttachmentOverlayView: NSView {
   func configure(_ content: Content) {
     switch content {
     case .image(let accessibilityText):
-      applyCardAppearance(cornerRadius: 10, backgroundAlpha: 0.86)
+      applyCardAppearance(displayMode: nil)
       imageView.isHidden = false
       placeholder.isHidden = imageView.image != nil
       formulaLabel.isHidden = true
@@ -85,10 +114,7 @@ final class MarkdownInlineAttachmentOverlayView: NSView {
       setAccessibilityRole(.image)
       setAccessibilityLabel(accessibilityText)
     case .formula(let source, let displayMode, let fontSize):
-      applyCardAppearance(
-        cornerRadius: displayMode == .inline ? 5 : 10,
-        backgroundAlpha: displayMode == .inline ? 0.68 : 0.86
-      )
+      applyCardAppearance(displayMode: displayMode)
       imageView.isHidden = true
       placeholder.isHidden = true
       formulaLabel.isHidden = false
@@ -103,11 +129,9 @@ final class MarkdownInlineAttachmentOverlayView: NSView {
     }
   }
 
-  private func applyCardAppearance(cornerRadius: CGFloat, backgroundAlpha: CGFloat) {
-    layer?.cornerRadius = cornerRadius
-    layer?.backgroundColor = NSColor.textBackgroundColor
-      .withAlphaComponent(backgroundAlpha)
-      .cgColor
+  private func applyCardAppearance(displayMode: MarkdownFormulaDisplayMode?) {
+    layer?.cornerRadius = MarkdownInlineAttachmentPresentationStyle.cornerRadius(for: displayMode)
+    layer?.backgroundColor = MarkdownInlineAttachmentPresentationStyle.backgroundColor.cgColor
   }
 
   func setImage(_ image: NSImage?) {
@@ -124,6 +148,29 @@ enum MarkdownInlineFormulaPresentation {
     return cache
   }()
 
+  static func size(
+    for formula: String,
+    displayMode: MarkdownFormulaDisplayMode,
+    fontSize: CGFloat,
+    availableWidth: CGFloat
+  ) -> NSSize {
+    let rendered = attributedString(for: formula, fontSize: fontSize)
+    let horizontalPadding = MarkdownInlineAttachmentPresentationStyle.formulaHorizontalInset * 2
+    let verticalPadding = MarkdownInlineAttachmentPresentationStyle.formulaVerticalInset * 2
+    let width =
+      displayMode == .inline
+      ? min(max(1, availableWidth), ceil(rendered.size().width) + horizontalPadding)
+      : max(1, availableWidth)
+    let measured = rendered.boundingRect(
+      with: NSSize(width: max(1, width - horizontalPadding), height: .greatestFiniteMagnitude),
+      options: [.usesLineFragmentOrigin, .usesFontLeading]
+    )
+    return NSSize(
+      width: width,
+      height: max(displayMode == .inline ? 28 : 36, ceil(measured.height) + verticalPadding)
+    )
+  }
+
   static func attributedString(
     for formula: String,
     fontSize: CGFloat = 19
@@ -138,6 +185,7 @@ enum MarkdownInlineFormulaPresentation {
       ?? NSFont.systemFont(ofSize: fontSize, weight: .medium)
     let paragraphStyle = NSMutableParagraphStyle()
     paragraphStyle.alignment = .center
+    paragraphStyle.lineBreakMode = .byCharWrapping
     var renderer = FormulaRenderer(
       source: normalizedFormula,
       baseFont: font
@@ -207,8 +255,8 @@ enum MarkdownInlineFormulaPresentation {
           } else {
             return result
           }
-        case "\n", "\r":
-          append(" ", to: result)
+        case "\n", "\r", "\r\n":
+          append("\n", to: result)
           index = source.index(after: index)
         default:
           append(String(character), to: result)
@@ -346,6 +394,8 @@ actor MarkdownInlineAttachmentImageCache {
   private var values: [Key: Entry] = [:]
   private var order: [Key] = []
   private var retainedDecodedByteCount: Int64 = 0
+  private var cacheRetentionEnabled = true
+  private var cacheRetentionGeneration: UInt64 = 0
 
   init(
     decodedByteBudget: Int64 = MarkdownInlineAttachmentImageCache.defaultDecodedByteBudget,
@@ -361,6 +411,18 @@ actor MarkdownInlineAttachmentImageCache {
 
   var cachedDecodedByteCount: Int64 {
     retainedDecodedByteCount
+  }
+
+  func setCacheRetentionEnabled(_ isEnabled: Bool, generation: UInt64) {
+    guard generation >= cacheRetentionGeneration else { return }
+    cacheRetentionGeneration = generation
+    guard cacheRetentionEnabled != isEnabled else { return }
+    cacheRetentionEnabled = isEnabled
+    if !isEnabled {
+      values.removeAll(keepingCapacity: false)
+      order.removeAll(keepingCapacity: false)
+      retainedDecodedByteCount = 0
+    }
   }
 
   func image(at sourceURL: URL, maximumPixelSize: Int = 1_024) -> Payload? {
@@ -387,7 +449,7 @@ actor MarkdownInlineAttachmentImageCache {
       image: image,
       decodedByteCount: Self.decodedByteCount(for: image)
     )
-    guard payload.decodedByteCount <= decodedByteBudget else {
+    guard cacheRetentionEnabled, payload.decodedByteCount <= decodedByteBudget else {
       return payload
     }
 

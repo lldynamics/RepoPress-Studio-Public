@@ -148,7 +148,7 @@ struct AIConnectionTestSection: View {
         .accessibilityIdentifier("settings-ai-capability-probe-\(capability.rawValue)")
       }
     }
-    .padding(.top, 4)
+    .padding(.top, WorkbenchSpacing.tight)
     .accessibilityElement(children: .contain)
   }
 

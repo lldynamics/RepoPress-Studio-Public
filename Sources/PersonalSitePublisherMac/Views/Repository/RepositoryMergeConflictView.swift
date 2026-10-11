@@ -226,7 +226,7 @@ struct RepositoryMergeConflictView: View {
         .textSelection(.enabled)
       }
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       WorkbenchBackgroundStyle.card,
@@ -549,7 +549,7 @@ struct RepositoryMergeConflictView: View {
         TextEditor(text: text)
           .font(.system(.body, design: .monospaced))
           .scrollContentBackground(.hidden)
-          .padding(6)
+          .padding(WorkbenchSpacing.icon)
           .background(
             WorkbenchBackgroundStyle.control,
             in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
@@ -577,7 +577,7 @@ struct RepositoryMergeConflictView: View {
         .font(.system(.body, design: .monospaced))
         .textSelection(.enabled)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .padding(8)
+        .padding(WorkbenchSpacing.control)
     }
     .background(
       WorkbenchBackgroundStyle.control,
@@ -823,7 +823,7 @@ private struct RepositoryMergeBaseSheet: View {
         Button("关闭") { dismiss() }
           .keyboardShortcut(.cancelAction)
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.content)
 
       Divider()
 
@@ -832,7 +832,7 @@ private struct RepositoryMergeBaseSheet: View {
           .font(.system(.body, design: .monospaced))
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .topLeading)
-          .padding(16)
+          .padding(WorkbenchSpacing.content)
       }
       .background(WorkbenchBackgroundStyle.control)
     }
@@ -864,8 +864,8 @@ private struct RepositoryMergeMaximizedSheet: View {
         choose: onChoose,
         chooseDeletion: onChooseDeletion
       )
-      .padding(.horizontal, 14)
-      .padding(.bottom, 12)
+      .padding(.horizontal, WorkbenchSpacing.content)
+      .padding(.bottom, WorkbenchSpacing.card)
       Divider()
       sheetFooter
     }
@@ -893,7 +893,7 @@ private struct RepositoryMergeMaximizedSheet: View {
       Button("关闭") { dismiss() }
         .keyboardShortcut(.cancelAction)
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
   }
 
   @ViewBuilder
@@ -910,7 +910,7 @@ private struct RepositoryMergeMaximizedSheet: View {
           selectBodyChoice: { id, choice in selectBodyChoice(choice, conflictID: id) },
           copySemanticResultToSource: copySemanticResultToSource
         )
-        .padding(14)
+        .padding(WorkbenchSpacing.content)
       }
     } else {
       sourceWorkspace
@@ -922,7 +922,7 @@ private struct RepositoryMergeMaximizedSheet: View {
       sourceModeSelector
       sourceComparison
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
     .frame(maxHeight: .infinity)
   }
 
@@ -991,7 +991,7 @@ private struct RepositoryMergeMaximizedSheet: View {
       .disabled(!semanticDraft.canApply || resolvingPath != nil)
       .help(resolveHelpText)
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.content)
   }
 
   private var resolveHelpText: String {
@@ -1023,7 +1023,7 @@ private struct RepositoryMergeMaximizedSheet: View {
           .font(.system(.body, design: .monospaced))
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .topLeading)
-          .padding(8)
+          .padding(WorkbenchSpacing.control)
       }
       .background(
         WorkbenchBackgroundStyle.control,
@@ -1043,7 +1043,7 @@ private struct RepositoryMergeMaximizedSheet: View {
       TextEditor(text: sourceBinding)
         .font(.system(.body, design: .monospaced))
         .scrollContentBackground(.hidden)
-        .padding(6)
+        .padding(WorkbenchSpacing.icon)
         .background(
           WorkbenchBackgroundStyle.control,
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)

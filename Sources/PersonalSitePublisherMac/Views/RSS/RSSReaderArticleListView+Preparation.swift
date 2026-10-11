@@ -1,6 +1,6 @@
+import PublishingCoreSupport
 import Foundation
 import PublishingKnowledgeCore
-import PublishingWorkbenchCore
 
 struct RSSPrepareInput: Equatable {
   let revision: UInt64

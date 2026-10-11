@@ -15,7 +15,7 @@ struct RepositoryWorktreePushRetryConfirmationView: View {
       HStack(spacing: 12) {
         Image(systemName: "arrow.up.circle.fill")
           .font(.title2)
-          .foregroundStyle(.tint)
+          .foregroundStyle(.secondary)
         VStack(alignment: .leading, spacing: 3) {
           Text("重试推送本地提交")
             .font(.headline)
@@ -104,7 +104,7 @@ struct RepositoryWorktreePushRetryConfirmationView: View {
       LabeledContent("目标 origin", value: confirmation.snapshot.pushOriginURL)
         .textSelection(.enabled)
     }
-    .padding(WorkbenchSpacing.section)
+    .padding(WorkbenchSpacing.content)
     .background(
       WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -129,7 +129,7 @@ struct RepositoryWorktreePushRetryConfirmationView: View {
         .font(.caption)
         .foregroundStyle(.secondary)
     }
-    .padding(WorkbenchSpacing.section)
+    .padding(WorkbenchSpacing.content)
     .background(
       WorkbenchTheme.warning.opacity(0.08),
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)

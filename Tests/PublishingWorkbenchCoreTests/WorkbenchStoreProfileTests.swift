@@ -185,7 +185,22 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(store.selectedDraftID, draft.id)
     XCTAssertEqual(store.selectedDraft?.id, draft.id)
     XCTAssertEqual(store.selectedSection, .images)
-    XCTAssertTrue(draft.bodyMarkdown.contains("从这里开始写作"))
+    XCTAssertTrue(draft.bodyMarkdown.isEmpty)
+  }
+
+  func testNewDraftRequestsTitleFocusAndDoesNotInsertPlaceholderContent() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    store.createDraft()
+    let article = try XCTUnwrap(store.selectedDraft)
+    XCTAssertTrue(article.bodyMarkdown.isEmpty)
+    XCTAssertEqual(store.editorFocusRequest?.draftID, article.id)
+    XCTAssertEqual(store.editorFocusRequest?.field, "title")
+    store.createGeneralDraft()
+    let general = try XCTUnwrap(store.selectedDraft)
+    XCTAssertTrue(general.isGeneralDraft)
+    XCTAssertTrue(general.bodyMarkdown.isEmpty)
+    XCTAssertEqual(store.editorFocusRequest?.draftID, general.id)
+    XCTAssertEqual(store.editorFocusRequest?.field, "title")
   }
 
   func testEnsureEditableDraftSelectedNormalizesStaleSelection() throws {

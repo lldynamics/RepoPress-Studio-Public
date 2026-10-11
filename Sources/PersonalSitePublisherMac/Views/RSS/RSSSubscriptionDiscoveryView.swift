@@ -61,16 +61,18 @@ struct RSSSubscriptionDiscoveryView: View {
           if !discovery.alternativeURLs.isEmpty {
             Text("该站还发现了其他订阅")
               .font(.headline)
-              .padding(.top, 4)
+              .padding(.top, WorkbenchSpacing.tight)
 
             ForEach(discovery.alternativeURLs, id: \.self) { url in
               candidateRow(url, title: "其他订阅")
             }
           }
         }
-        .padding(12)
+        .padding(WorkbenchSpacing.card)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+        .background(
+          .quaternary.opacity(0.14), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel)
+        )
       }
       .frame(maxHeight: 300)
 

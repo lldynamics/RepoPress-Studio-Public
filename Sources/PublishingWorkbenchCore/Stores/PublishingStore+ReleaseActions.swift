@@ -84,14 +84,19 @@ extension PublishingStore {
       } else {
         prependReleaseRecord(recoveredRecord)
       }
-      for execution in publishSession.executionRecords where execution.releaseRecordID == record.id
-      {
-        finishPublishExecution(execution.id, record: recoveredRecord, store: store)
-      }
-      setPublishingActionMessage(
-        CoreL10n.format("PR/MR 已恢复：%@", result.reviewURL ?? result.branchName),
-        status: .success
+      let executionIDs = publishSession.executionRecords.filter {
+        $0.releaseRecordID == record.id
+      }.map(\.id)
+      let persistence = finishPublishExecutions(
+        executionIDs, record: recoveredRecord, store: store)
+      let outcome = RemotePublishCompletionOutcome(
+        persistence: persistence,
+        remoteFeedback: PublishActionFeedback(
+          message: CoreL10n.format("PR/MR 已恢复：%@", result.reviewURL ?? result.branchName),
+          status: .success),
+        remoteProgressMessage: result.mode.completedProgressMessage
       )
+      setPublishingActionMessage(outcome.feedback.message, status: outcome.feedback.status)
       store.save()
       return result
     } catch {
@@ -487,27 +492,15 @@ extension PublishingStore {
         onProgress: progressHandler
       )
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
-      remoteRepositoryConflictSession = nil
-      store.setRemoteRepositoryPublishResult(result)
-      store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
       let releaseRecord = ReleaseRecord.remotePublish(
         package: package.freezingArticleVerification(
           finalFiles: packageForRemoteAttempt.files, profile: profile),
         profile: profile, result: result)
       result.releaseRecordID = releaseRecord.id
-      store.setRemoteRepositoryPublishResult(result)
-      prependReleaseRecord(releaseRecord)
-      finishPublishExecution(operation.id, record: releaseRecord, store: store)
-      if !deferDraftLifecycleMutation {
-        confirmDirectRemotePublishLifecycle(
-          packages: [packageForRemoteAttempt], profile: profile, result: result)
-        if mode.createsReview {
-          markRemotePublishReviewSuccess(packages: [packageForRemoteAttempt], profile: profile)
-        }
-      }
-      if mode != .previewBranch {
-        store.recordRemoteRepositoryPublishInAutoSync(result, profileID: profile.id)
-      }
+      let persistence = recordAcceptedRemotePublish(
+        result: result, releaseRecord: releaseRecord, executionID: operation.id,
+        packages: [packageForRemoteAttempt], profile: profile,
+        deferDraftLifecycleMutation: deferDraftLifecycleMutation, store: store)
       let commitSummary = result.commitSHA.map { String($0.prefix(8)) } ?? CoreL10n.text("无 commit")
       let adoptedSummary =
         result.automaticallyAdoptedPaths.isEmpty
@@ -527,26 +520,13 @@ extension PublishingStore {
         )
         guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       }
-      let completionFeedback = remotePublishCompletionFeedback(
+      applyRemotePublishCompletion(
         mode: mode,
         operationSummary: operationSummary,
-        deploymentStatus: deploymentStatus
+        deploymentStatus: deploymentStatus,
+        persistence: persistence,
+        store: store
       )
-      setPublishingActionMessage(
-        completionFeedback.message,
-        status: completionFeedback.status
-      )
-      store.save()
-      store.setRemoteRepositoryPublishProgress(
-        .init(
-          stage: .completed,
-          progress: 1,
-          message: remotePublishCompletedProgressMessage(
-            mode: mode,
-            deploymentStatus: deploymentStatus
-          ),
-          detail: completionFeedback.message
-        ))
       return result
     } catch {
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }

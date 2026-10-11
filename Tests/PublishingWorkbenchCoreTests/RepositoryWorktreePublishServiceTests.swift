@@ -1,5 +1,7 @@
 import Foundation
 import PublishingCoreSupport
+import PublishingDomainContracts
+import PublishingGitCore
 import XCTest
 import os
 
@@ -53,12 +55,14 @@ final class RepositoryWorktreePublishServiceTests: XCTestCase {
 
     let incomplete = RepositoryWorktreePublishConfirmation(
       snapshot: confirmation.snapshot, commitMessage: confirmation.commitMessage,
-      safetyReport: confirmation.safetyReport, sitePreflightResult: confirmation.sitePreflightResult,
+      safetyReport: confirmation.safetyReport,
+      sitePreflightResult: confirmation.sitePreflightResult,
       fileReviews: [])
     XCTAssertThrowsError(try service.publish(profile: fixture.profile, confirmation: incomplete)) {
       XCTAssertEqual($0 as? RepositoryWorktreePublishError, .incompleteReview)
     }
-    XCTAssertEqual(try git(["rev-parse", "HEAD"], at: fixture.worktree).trimmedForPublishing,
+    XCTAssertEqual(
+      try git(["rev-parse", "HEAD"], at: fixture.worktree).trimmedForPublishing,
       fixture.initialSHA)
 
     let result = try service.publish(profile: fixture.profile, confirmation: confirmation)
@@ -218,7 +222,8 @@ final class RepositoryWorktreePublishServiceTests: XCTestCase {
       }
     )
 
-    XCTAssertThrowsError(try service.publish(profile: fixture.profile, confirmation: confirmation)) { error in
+    XCTAssertThrowsError(try service.publish(profile: fixture.profile, confirmation: confirmation))
+    { error in
       guard case .commitSucceededButPushFailed = error as? RepositoryWorktreePublishError else {
         return XCTFail("Unexpected error: \(error)")
       }
@@ -366,7 +371,8 @@ final class RepositoryWorktreePublishServiceTests: XCTestCase {
     )
 
     let service = RepositoryWorktreePublishService()
-    let confirmation = try service.prepare(profile: fixture.profile, commitMessage: "Publish package")
+    let confirmation = try service.prepare(
+      profile: fixture.profile, commitMessage: "Publish package")
     let entry = try XCTUnwrap(
       confirmation.snapshot.entries.first(where: { $0.path == "content/package.md" })
     )
@@ -380,7 +386,9 @@ final class RepositoryWorktreePublishServiceTests: XCTestCase {
       try git(["show", "refs/heads/main:content/package.md"], at: fixture.remote),
       "new package on disk\n"
     )
-    XCTAssertEqual(result.commitSHA, try git(["rev-parse", "refs/heads/main"], at: fixture.remote).trimmedForPublishing)
+    XCTAssertEqual(
+      result.commitSHA,
+      try git(["rev-parse", "refs/heads/main"], at: fixture.remote).trimmedForPublishing)
   }
 
   func testRejectsRemoteAdvanceBeforeAnyLocalMutation() throws {
@@ -485,6 +493,184 @@ final class RepositoryWorktreePublishServiceTests: XCTestCase {
       fixture.initialSHA
     )
     XCTAssertTrue(try git(["diff", "--cached", "--name-only"], at: fixture.worktree).isEmpty)
+  }
+
+  func testExecutionPolicyChangeInvalidatesConfirmationBeforeRunningHooks() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try Data("changed\n".utf8).write(to: fixture.worktree.appendingPathComponent("tracked.md"))
+    let service = RepositoryWorktreePublishService()
+    let confirmation = try service.prepare(profile: fixture.profile, commitMessage: "Reviewed")
+    let marker = fixture.worktree.appendingPathComponent(".git/policy-hook-marker")
+    try writePolicyHook(
+      "#!/bin/sh\ntouch '\(marker.path)'\n", name: "pre-commit", root: fixture.worktree)
+    var profile = fixture.profile
+    profile.gitExecutionPolicy = try RepositoryGitExecutionPolicyService().trustingHooks(
+      at: fixture.worktree)
+    XCTAssertThrowsError(try service.publish(profile: profile, confirmation: confirmation)) {
+      XCTAssertEqual($0 as? RepositoryWorktreePublishError, .snapshotDrift)
+    }
+    XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
+    XCTAssertEqual(
+      try git(["rev-parse", "HEAD"], at: fixture.worktree).trimmedForPublishing, fixture.initialSHA)
+  }
+
+  func testTrustedHooksRunFullExplicitLifecycleBeforeExactPush() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try Data("changed\n".utf8).write(to: fixture.worktree.appendingPathComponent("tracked.md"))
+    let marker = fixture.worktree.appendingPathComponent(".git/policy-hooks")
+    for name in ["pre-commit", "prepare-commit-msg", "commit-msg", "post-commit", "pre-push"] {
+      let input = name == "pre-push" ? "cat >> '\(marker.path)'\n" : ""
+      try writePolicyHook(
+        "#!/bin/sh\nprintf '%s\\n' '\(name)' >> '\(marker.path)'\n" + input, name: name,
+        root: fixture.worktree)
+    }
+    var profile = fixture.profile
+    profile.gitExecutionPolicy = try RepositoryGitExecutionPolicyService().trustingHooks(
+      at: fixture.worktree)
+    let service = RepositoryWorktreePublishService()
+    let confirmation = try service.prepare(profile: profile, commitMessage: "Hook-reviewed commit")
+    XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
+    let result = try service.publish(profile: profile, confirmation: confirmation)
+    let lines = try String(contentsOf: marker, encoding: .utf8).split(separator: "\n").map(
+      String.init)
+    XCTAssertEqual(
+      Array(lines.prefix(5)),
+      ["pre-commit", "prepare-commit-msg", "commit-msg", "post-commit", "pre-push"])
+    XCTAssertEqual(
+      lines.last, "\(result.commitSHA) \(result.commitSHA) refs/heads/main \(fixture.initialSHA)")
+    XCTAssertTrue(result.pushed)
+  }
+
+  func testPreCommitFailureLeavesLocalAndRemoteHeadUnchanged() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try Data("changed\n".utf8).write(to: fixture.worktree.appendingPathComponent("tracked.md"))
+    try writePolicyHook(
+      "#!/bin/sh\necho rejected >&2\nexit 9\n", name: "pre-commit", root: fixture.worktree)
+    var profile = fixture.profile
+    profile.gitExecutionPolicy = try RepositoryGitExecutionPolicyService().trustingHooks(
+      at: fixture.worktree)
+    let service = RepositoryWorktreePublishService()
+    let confirmation = try service.prepare(profile: profile, commitMessage: "Rejected")
+    XCTAssertThrowsError(try service.publish(profile: profile, confirmation: confirmation)) {
+      error in
+      XCTAssertTrue(error.localizedDescription.contains("pre-commit"))
+    }
+    XCTAssertEqual(
+      try git(["rev-parse", "HEAD"], at: fixture.worktree).trimmedForPublishing, fixture.initialSHA)
+    XCTAssertEqual(
+      try git(["rev-parse", "main"], at: fixture.remote).trimmedForPublishing, fixture.initialSHA)
+    XCTAssertTrue(try git(["diff", "--cached", "--name-only"], at: fixture.worktree).isEmpty)
+  }
+
+  func testHooksCannotAbsorbChangedWorkingFileOrExtraStagedFile() throws {
+    for hookBody in [
+      "printf 'unreviewed\\n' >> tracked.md\n",
+      "printf 'extra\\n' > extra.md\ngit add extra.md\n",
+    ] {
+      let fixture = try makeFixture()
+      defer { try? FileManager.default.removeItem(at: fixture.base) }
+      try Data("changed\n".utf8).write(to: fixture.worktree.appendingPathComponent("tracked.md"))
+      try writePolicyHook("#!/bin/sh\n" + hookBody, name: "pre-commit", root: fixture.worktree)
+      var profile = fixture.profile
+      profile.gitExecutionPolicy = try RepositoryGitExecutionPolicyService().trustingHooks(
+        at: fixture.worktree)
+      let service = RepositoryWorktreePublishService()
+      let confirmation = try service.prepare(profile: profile, commitMessage: "Frozen content")
+      XCTAssertThrowsError(try service.publish(profile: profile, confirmation: confirmation)) {
+        XCTAssertEqual($0 as? RepositoryGitExecutionPolicyError, .reviewedContentChanged)
+      }
+      XCTAssertEqual(
+        try git(["rev-parse", "HEAD"], at: fixture.worktree).trimmedForPublishing,
+        fixture.initialSHA)
+      XCTAssertTrue(try git(["diff", "--cached", "--name-only"], at: fixture.worktree).isEmpty)
+    }
+  }
+
+  func testPostCommitFailureReportsCommittedFactAndDoesNotPush() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try Data("changed\n".utf8).write(to: fixture.worktree.appendingPathComponent("tracked.md"))
+    try writePolicyHook(
+      "#!/bin/sh\necho post-rejected >&2\nexit 5\n", name: "post-commit", root: fixture.worktree)
+    var profile = fixture.profile
+    profile.gitExecutionPolicy = try RepositoryGitExecutionPolicyService().trustingHooks(
+      at: fixture.worktree)
+    let service = RepositoryWorktreePublishService()
+    let confirmation = try service.prepare(profile: profile, commitMessage: "Committed before hook")
+    var committedSHA: String?
+    XCTAssertThrowsError(try service.publish(profile: profile, confirmation: confirmation)) {
+      error in
+      guard
+        case .commitSucceededButPushFailed(let sha, let message) = error
+          as? RepositoryWorktreePublishError
+      else {
+        return XCTFail("Expected committed fact, received \(error)")
+      }
+      committedSHA = sha
+      XCTAssertTrue(message.contains("post-commit"))
+      XCTAssertTrue(message.contains("未推送"))
+      XCTAssertTrue(message.contains("post-rejected"))
+    }
+    XCTAssertNotEqual(committedSHA, fixture.initialSHA)
+    XCTAssertEqual(
+      try git(["rev-parse", "HEAD"], at: fixture.worktree).trimmedForPublishing, committedSHA)
+    XCTAssertEqual(
+      try git(["rev-parse", "main"], at: fixture.remote).trimmedForPublishing, fixture.initialSHA)
+    XCTAssertTrue(try git(["status", "--porcelain"], at: fixture.worktree).isEmpty)
+  }
+
+  func testTrustedPrePushHookChangingHeadStopsFrozenCommitPush() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try Data("changed\n".utf8).write(to: fixture.worktree.appendingPathComponent("tracked.md"))
+    try writePolicyHook(
+      "#!/bin/sh\ntree=$(git rev-parse HEAD^{tree})\nhead=$(git rev-parse HEAD)\nnext=$(git commit-tree \"$tree\" -p \"$head\" -m 'hook follow-up')\ngit update-ref refs/heads/main \"$next\" \"$head\"\n",
+      name: "pre-push", root: fixture.worktree
+    )
+    var profile = fixture.profile
+    profile.gitExecutionPolicy = try RepositoryGitExecutionPolicyService().trustingHooks(
+      at: fixture.worktree)
+    let service = RepositoryWorktreePublishService()
+    let confirmation = try service.prepare(profile: profile, commitMessage: "Frozen commit")
+    XCTAssertThrowsError(try service.publish(profile: profile, confirmation: confirmation)) {
+      error in
+      guard case .commitSucceededButPushFailed = error as? RepositoryWorktreePublishError else {
+        return XCTFail("Expected local commit preserved without push, received \(error)")
+      }
+    }
+    XCTAssertNotEqual(
+      try git(["rev-parse", "HEAD"], at: fixture.worktree).trimmedForPublishing, fixture.initialSHA)
+    XCTAssertEqual(
+      try git(["rev-parse", "main"], at: fixture.remote).trimmedForPublishing, fixture.initialSHA)
+  }
+
+  func testRequiredSigningFailureLeavesHeadsAndRealIndexUntouched() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try Data("changed\n".utf8).write(to: fixture.worktree.appendingPathComponent("tracked.md"))
+    var profile = fixture.profile
+    profile.gitExecutionPolicy = RepositoryGitExecutionPolicy(
+      sshCommitSigningEnabled: true,
+      sshSigningKey: fixture.base.appendingPathComponent("missing-key").path
+    )
+    let service = RepositoryWorktreePublishService()
+    let confirmation = try service.prepare(profile: profile, commitMessage: "Signature required")
+    XCTAssertThrowsError(try service.publish(profile: profile, confirmation: confirmation))
+    XCTAssertEqual(
+      try git(["rev-parse", "HEAD"], at: fixture.worktree).trimmedForPublishing, fixture.initialSHA)
+    XCTAssertEqual(
+      try git(["rev-parse", "main"], at: fixture.remote).trimmedForPublishing, fixture.initialSHA)
+    XCTAssertTrue(try git(["diff", "--cached", "--name-only"], at: fixture.worktree).isEmpty)
+  }
+
+  private func writePolicyHook(_ script: String, name: String, root: URL) throws {
+    let url = root.appendingPathComponent(".git/hooks/\(name)")
+    try script.write(to: url, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: NSNumber(value: Int16(0o700))], ofItemAtPath: url.path)
   }
 
   private func makeFixture() throws -> Fixture {

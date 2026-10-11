@@ -1,5 +1,5 @@
 import Foundation
-import PublishingWorkbenchCore
+import PublishingMarkdownCore
 
 extension MacMarkdownComposerView {
   private var inlineAIContextService: MarkdownInlineAIContextService {
