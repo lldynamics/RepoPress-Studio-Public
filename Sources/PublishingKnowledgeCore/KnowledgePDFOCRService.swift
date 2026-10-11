@@ -13,7 +13,7 @@ package struct KnowledgePDFOCRService: Sendable {
     let request = VNRecognizeTextRequest()
     request.recognitionLevel = .accurate
     request.usesLanguageCorrection = true
-    request.automaticallyDetectsLanguage = true
+    request.automaticallyDetectsLanguage = false
     request.minimumTextHeight = 0.006
 
     let preferredLanguages = ["zh-Hans", "zh-Hant", "en-US"]

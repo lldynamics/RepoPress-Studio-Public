@@ -34,6 +34,13 @@ MAC_BATCH_MAX_SUITES = 4
 MAC_BATCH_MAX_TESTS = 60
 CORE_BATCH_MAX_SUITES = 12
 CORE_BATCH_MAX_TESTS = 150
+# Repository* suites exercise real Git repositories and launch many child
+# processes. Count limits suitable for in-memory Core suites put several
+# minutes of serial Git work into one host. Keep this naming category in
+# smaller batches, including newly added suites, without changing timeouts.
+CORE_REPOSITORY_SUITE_PREFIX = "Repository"
+CORE_REPOSITORY_BATCH_MAX_SUITES = 2
+CORE_REPOSITORY_BATCH_MAX_TESTS = 40
 LEAF_BATCH_MAX_SUITES = 16
 LEAF_BATCH_MAX_TESTS = 200
 SWIFT_CACHE_ENVIRONMENT_KEYS = (
@@ -1016,10 +1023,35 @@ def build_shards(
                 )
             )
 
+        core_repository_tests = [
+            test
+            for test in tests
+            if test.target == CORE_TARGET
+            and test.suite.startswith(CORE_REPOSITORY_SUITE_PREFIX)
+            and test.suite not in CORE_CASE_ISOLATED_SUITES
+        ]
+        repository_batches = batch_suites(
+            core_repository_tests,
+            target=CORE_TARGET,
+            excluded_suites=set(),
+            maximum_suites=CORE_REPOSITORY_BATCH_MAX_SUITES,
+            maximum_tests=CORE_REPOSITORY_BATCH_MAX_TESTS,
+        )
+        for index, batch in enumerate(repository_batches, start=1):
+            shards.append(
+                Shard(
+                    label=f"{CORE_TARGET} repository batch {index}",
+                    slug=f"core-repository-{index:02d}",
+                    filter_pattern=batch.filter_pattern,
+                    tests=batch.tests,
+                )
+            )
+
         core_batches = batch_suites(
             tests,
             target=CORE_TARGET,
-            excluded_suites=set(CORE_CASE_ISOLATED_SUITES),
+            excluded_suites=set(CORE_CASE_ISOLATED_SUITES)
+            | {test.suite for test in core_repository_tests},
             maximum_suites=CORE_BATCH_MAX_SUITES,
             maximum_tests=CORE_BATCH_MAX_TESTS,
         )
@@ -1067,9 +1099,14 @@ def build_shards(
         if len(shard_targets) != 1:
             fail(f"generated a mixed-target Swift test shard: {shard.label}")
         shard_target = next(iter(shard_targets))
+        repository_shard = shard_target == CORE_TARGET and all(
+            test.suite.startswith(CORE_REPOSITORY_SUITE_PREFIX) for test in shard.tests
+        )
         maximum_tests = (
             MAC_BATCH_MAX_TESTS
             if shard_target == MAC_TARGET
+            else CORE_REPOSITORY_BATCH_MAX_TESTS
+            if repository_shard
             else CORE_BATCH_MAX_TESTS
             if shard_target == CORE_TARGET
             else LEAF_BATCH_MAX_TESTS
@@ -1079,6 +1116,8 @@ def build_shards(
                 f"generated an oversized Swift test shard for {shard_target}: "
                 f"{len(shard.tests)} > {maximum_tests}"
             )
+        if repository_shard and len({test.suite for test in shard.tests}) > CORE_REPOSITORY_BATCH_MAX_SUITES:
+            fail(f"generated too many repository suites in Swift test shard: {shard.label}")
         matcher = re.compile(shard.filter_pattern)
         for test in tests:
             if matcher.search(test.raw):

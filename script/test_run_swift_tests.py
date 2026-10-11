@@ -255,6 +255,15 @@ def fixture_inventory() -> list[str]:
         for index in range(1, 14)
     )
     rows.extend(
+        f"PublishingWorkbenchCoreTests.RepositorySuite{suite}/testValue{index}"
+        for suite in range(1, 5)
+        for index in range(1, 22)
+    )
+    rows.extend(
+        f"PublishingWorkbenchCoreTests.RepositoryLarge/testValue{index}"
+        for index in range(1, 42)
+    )
+    rows.extend(
         (
             "PublishingWorkbenchCoreTests.AIModelDiscoveryServiceTests/testCatalog",
             "PublishingWorkbenchCoreTests.AIModelDiscoveryServiceTests/testProxy",
@@ -576,11 +585,26 @@ def test_successful_partition_and_exact_argv() -> None:
             shard["filter"] == f"^{re.escape(shard['tests'][0])}$"
             for shard in core_cases
         )
+        repository_batches = [
+            shard for shard in shards if shard["slug"].startswith("core-repository-")
+        ]
+        assert [len(shard["tests"]) for shard in repository_batches] == [40, 1, 21, 21, 21, 21]
+        assert all(
+            len({test.split("/", 1)[0] for test in shard["tests"]}) <= 2
+            for shard in repository_batches
+        )
+        assert all(
+            ".Repository" not in test
+            for shard in shards
+            if not shard["slug"].startswith("core-repository-")
+            for test in shard["tests"]
+        )
         core = [
             shard
             for shard in shards
             if shard["slug"].startswith("core-")
             and not shard["slug"].startswith("core-case-")
+            and not shard["slug"].startswith("core-repository-")
         ]
         assert len(core) == 4
         core_large = [

@@ -1046,40 +1046,30 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: rootURL) }
     let sourceURL = rootURL.appendingPathComponent("scanned-book.pdf")
 
-    let image = NSImage(size: NSSize(width: 1_600, height: 900))
-    image.lockFocus()
-    NSColor.white.setFill()
-    NSRect(x: 0, y: 0, width: 1_600, height: 900).fill()
-    let paragraphStyle = NSMutableParagraphStyle()
-    paragraphStyle.alignment = .center
-    NSAttributedString(
-      string: "SPACED REPETITION MEMORY",
-      attributes: [
-        .font: NSFont.systemFont(ofSize: 92, weight: .bold),
-        .foregroundColor: NSColor.black,
-        .paragraphStyle: paragraphStyle,
-      ]
-    ).draw(in: NSRect(x: 80, y: 360, width: 1_440, height: 180))
-    image.unlockFocus()
-
     let document = PDFDocument()
-    let page = try XCTUnwrap(PDFPage(image: image))
-    document.insert(page, at: 0)
-    do {
-      _ = try KnowledgePDFOCRService().recognizeText(in: page)
-    } catch let error as NSError {
-      // macOS 27 Vision can fail internally with a Swift Regex cast error while
-      // its recognition assets are still being prepared; the same test passes
-      // once they are ready. None of these comes from RepoPress code.
-      let isUnavailableInTestHost =
-        (error.domain == NSOSStatusErrorDomain && error.code == -6_662)
-        || (error.domain == "CRImageReaderErrorDomain" && error.code == -8)
-        || String(describing: error).contains("Cast to incorrect type 'Regex<")
-      guard isUnavailableInTestHost else { throw error }
-      throw XCTSkip("当前测试宿主无法初始化 Vision OCR：\(error.localizedDescription)")
+    for text in ["SPACED REPETITION MEMORY", "知识管理 阅读笔记", "知識管理 閱讀筆記"] {
+      let image = NSImage(size: NSSize(width: 1_600, height: 900))
+      image.lockFocus()
+      NSColor.white.setFill()
+      NSRect(x: 0, y: 0, width: 1_600, height: 900).fill()
+      let paragraphStyle = NSMutableParagraphStyle()
+      paragraphStyle.alignment = .center
+      NSAttributedString(
+        string: text,
+        attributes: [
+          .font: NSFont.systemFont(ofSize: 92, weight: .bold),
+          .foregroundColor: NSColor.black,
+          .paragraphStyle: paragraphStyle,
+        ]
+      ).draw(in: NSRect(x: 80, y: 360, width: 1_440, height: 180))
+      image.unlockFocus()
+      document.insert(try XCTUnwrap(PDFPage(image: image)), at: document.pageCount)
     }
-    try XCTUnwrap(document.dataRepresentation()).write(to: sourceURL, options: .atomic)
+    let originalData = try XCTUnwrap(document.dataRepresentation())
+    try originalData.write(to: sourceURL, options: .atomic)
 
+    // Exercise the same detached import path as the app. A synchronous Vision
+    // probe here blocks MainActor and can fail before the import is even tested.
     let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
     let preview = try await service.makeImportPreview(
       sourceURL: sourceURL,
@@ -1090,7 +1080,15 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     let recognizedText = candidate.normalizedText.lowercased()
     XCTAssertTrue(recognizedText.contains("spaced"))
     XCTAssertTrue(recognizedText.contains("repetition"))
+    XCTAssertEqual(candidate.originalData, originalData)
+    XCTAssertEqual(candidate.sections.count, 3)
     XCTAssertEqual(candidate.sections.first?.locator, "第 1 页（OCR）")
+    let simplified = try XCTUnwrap(candidate.sections.first { $0.locator == "第 2 页（OCR）" })
+    XCTAssertTrue(simplified.text.contains("知识管理"))
+    XCTAssertTrue(simplified.text.contains("阅读笔记"))
+    let traditional = try XCTUnwrap(candidate.sections.first { $0.locator == "第 3 页（OCR）" })
+    XCTAssertTrue(traditional.text.contains("知識管理"))
+    XCTAssertTrue(traditional.text.contains("閱讀筆記"))
     XCTAssertTrue(candidate.warnings.contains { $0.contains("Vision OCR") })
   }
 
