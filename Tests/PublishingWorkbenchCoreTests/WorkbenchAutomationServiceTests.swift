@@ -376,7 +376,13 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
 
   func testExecutorRunsPreflightForExplicitDraftWithoutChangingSelection() async throws {
     let store = try TestWorkbenchFactory.makeStore(prefix: "AutomationExplicitPreflight")
-    let draftA = try XCTUnwrap(store.selectedDraft)
+    var draftA = try XCTUnwrap(store.selectedDraft)
+    draftA.title = "文章 A"
+    draftA.slug = "article-a"
+    draftA.draft = false
+    draftA.summary = String(repeating: "这是文章 A 的完整摘要。", count: 8)
+    draftA.bodyMarkdown = String(repeating: "这是文章 A 的完整正文。", count: 12)
+    store.updateDraft(draftA)
 
     store.createDraft()
     var draftB = try XCTUnwrap(store.selectedDraft)

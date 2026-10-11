@@ -75,11 +75,13 @@ final class WorkbenchFocusedObservationFacadeTests: XCTestCase {
 
   func testWindowScopedSelectionRejectsAnotherWindowAndCannotBeClearedByIt() throws {
     let store = makeStore()
-    let draft = try XCTUnwrap(store.selectedDraft)
+    var draft = try XCTUnwrap(store.selectedDraft)
+    draft.bodyMarkdown = "Window-scoped selection text"
+    store.updateDraft(draft)
     let ownerWindowID = UUID()
     let otherWindowID = UUID()
     let source = draft.bodyMarkdown as NSString
-    let range = NSRange(location: 0, length: min(1, source.length))
+    let range = NSRange(location: 0, length: 1)
     store.updateActiveEditorSelection(
       draftID: draft.id,
       windowID: ownerWindowID,

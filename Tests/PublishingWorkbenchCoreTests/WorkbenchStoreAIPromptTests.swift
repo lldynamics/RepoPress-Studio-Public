@@ -292,7 +292,9 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
     )
-    let draft = try XCTUnwrap(store.selectedDraft)
+    var draft = try XCTUnwrap(store.selectedDraft)
+    draft.bodyMarkdown = "这篇文章的正文用于验证后台发布提示保留文章内容。"
+    store.updateDraft(draft)
 
     let prompt = await store.publishingAIPromptInBackground(for: draft)
 
