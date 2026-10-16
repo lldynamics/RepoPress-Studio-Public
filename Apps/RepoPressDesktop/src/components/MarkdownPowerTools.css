@@ -1,0 +1,14 @@
+.markdown-slash-menu,.markdown-outline-actions { padding:.65rem; border:1px solid var(--line,#d9dee7); border-radius:.5rem; background:var(--surface,#fff); color:inherit; }
+.markdown-slash-menu { display:flex; flex-direction:column; gap:.15rem; max-height:20rem; overflow:auto; box-shadow:0 8px 24px #0002; }
+.markdown-slash-menu__title,.markdown-outline-actions h2 { margin:0 0 .4rem; font-size:.85rem; font-weight:700; }
+.markdown-slash-menu button,.markdown-outline-actions button { display:flex; gap:.5rem; width:100%; padding:.4rem; border:0; border-radius:.3rem; background:transparent; color:inherit; text-align:left; cursor:pointer; }
+.markdown-slash-menu button:hover,.markdown-slash-menu button:focus-visible,.markdown-outline-actions button:hover,.markdown-outline-actions button.is-selected { background:color-mix(in srgb,currentColor 10%,transparent); }
+.markdown-slash-menu button span { color:var(--muted,#687386); font-size:.8rem; }
+.markdown-slash-menu p,.markdown-outline-actions p { margin:0; color:#687386; font-size:.85rem; }
+.markdown-slash-menu p { color:var(--muted,#687386); }
+.markdown-slash-menu button { flex-wrap:wrap; min-width:0; }
+.markdown-slash-menu button :is(strong,span) { min-width:0; max-width:100%; overflow-wrap:anywhere; }
+.markdown-outline-actions ol { margin:0; padding:0; list-style:none; }
+.markdown-outline-actions__buttons { display:flex; flex-wrap:wrap; gap:.3rem; margin-top:.55rem; }
+.markdown-outline-actions__buttons button { width:auto; border:1px solid var(--line,#ccd3df); padding:.3rem .5rem; }
+.markdown-outline-actions button:disabled { opacity:.45; cursor:not-allowed; }

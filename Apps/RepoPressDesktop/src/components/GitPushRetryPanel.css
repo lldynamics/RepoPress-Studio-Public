@@ -1,0 +1,8 @@
+.git-push-retry { display: grid; gap: 8px; }
+.git-push-retry h3 { margin: 0; font-size: 13px; }
+.git-push-retry p { margin: 0; font-size: 12px; line-height: 1.5; }
+.git-push-retry-plan { display: grid; gap: 7px; padding: 9px; border: 1px solid var(--accent); border-radius: 8px; background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
+.git-push-retry-plan dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 8px; margin: 0; font-size: 12px; }
+.git-push-retry-plan dt { color: var(--muted); }
+.git-push-retry-plan dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.git-push-retry-paths { max-height: 12em; margin: 0; overflow: auto; padding: 6px 6px 6px 24px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); background: var(--surface); }

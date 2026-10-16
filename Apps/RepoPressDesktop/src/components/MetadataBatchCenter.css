@@ -1,0 +1,16 @@
+.metadata-batch-backdrop { position: fixed; inset: 0; z-index: 20; background: rgb(0 0 0 / 35%); display: flex; justify-content: flex-end; }
+.metadata-batch-drawer { box-sizing: border-box; width: min(560px, 100vw); height: 100%; overflow: auto; padding: 24px; color: var(--text); background: var(--surface); box-shadow: -8px 0 24px rgb(0 0 0 / 18%); overflow-wrap: anywhere; }
+.metadata-batch-drawer header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.metadata-batch-drawer header button { font-size: 1.5rem; }
+.metadata-batch-note, .metadata-batch-unavailable { color: var(--muted); }
+.metadata-batch-files { max-height: 240px; overflow: auto; display: grid; gap: 6px; margin: 8px 0 16px; }
+.metadata-batch-form { display: grid; gap: 10px; margin: 16px 0; }
+.metadata-batch-form label { display: grid; gap: 4px; }
+.metadata-batch-plan, .metadata-batch-result { margin-top: 20px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
+.metadata-batch-drawer fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.metadata-batch-drawer input:not([type='checkbox']), .metadata-batch-drawer select { box-sizing: border-box; width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); background: var(--surface); }
+.metadata-batch-drawer button { padding: 7px 12px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); background: var(--subtle); cursor: pointer; }
+.metadata-batch-drawer button:disabled { cursor: default; opacity: .55; }
+.metadata-batch-drawer :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.metadata-batch-files label { display: flex; align-items: baseline; gap: 6px; }
+@media (max-width: 600px) { .metadata-batch-drawer { padding: 16px; } }

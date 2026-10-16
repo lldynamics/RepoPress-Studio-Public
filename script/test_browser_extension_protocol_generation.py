@@ -58,6 +58,19 @@ with tempfile.TemporaryDirectory(prefix="browser-extension-protocol-") as direct
     run(fixture, "--write")
     run(fixture, "--check")
 
+    generated_rust = (
+        fixture
+        / "Apps"
+        / "RepoPressDesktop"
+        / "src-tauri"
+        / "src"
+        / "core"
+        / "browser_protocol_generated.rs"
+    )
+    assert 'pub const LOOPBACK_HOST: &str = "127.0.0.1";' in generated_rust.read_text(
+        encoding="utf-8"
+    )
+
     generated_javascript = shared / "protocol.generated.js"
     generated_javascript.write_text(
         generated_javascript.read_text(encoding="utf-8") + "// stale\n",
@@ -108,6 +121,9 @@ with tempfile.TemporaryDirectory(prefix="browser-extension-protocol-") as direct
     assert 'chromeProductionExtensionID: String? =\n    "' + "a" * 32 in generated_swift
     assert "edgeProductionExtensionID" not in generated_swift
     assert "firefoxExtensionID" not in generated_swift
+    generated_rust_text = generated_rust.read_text(encoding="utf-8")
+    assert 'CHROME_PRODUCTION_EXTENSION_ID: Option<&str> =\n    Some("' + "a" * 32 in generated_rust_text
+    assert 'pub const FIREFOX_EXTENSION_ID: &str = "knowledge-capture@jinfang.local";' in generated_rust_text
 
     definition["extensions"]["chromeProductionID"] = "q" * 32
     definition_path.write_text(

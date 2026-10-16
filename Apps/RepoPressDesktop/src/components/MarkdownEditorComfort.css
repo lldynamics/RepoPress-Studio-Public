@@ -1,0 +1,54 @@
+.rp-markdown-editor-comfort .cm-content {
+  box-sizing: border-box;
+  width: min(100%, var(--rp-editor-body-width));
+  min-height: 100%;
+  margin-inline: auto;
+  line-height: calc(1.45em + var(--rp-editor-line-spacing));
+}
+
+.rp-markdown-editor-typewriter .cm-scroller {
+  scroll-padding-block: 48%;
+}
+
+.rp-markdown-editor-warm-paper .cm-scroller,
+.rp-markdown-editor-warm-paper .cm-gutters {
+  background: #fffaf0;
+}
+
+.rp-markdown-editor-warm-paper .cm-content {
+  caret-color: #4a3424;
+}
+
+.app-shell.dark .rp-markdown-editor-warm-paper .cm-scroller,
+.app-shell.dark .rp-markdown-editor-warm-paper .cm-gutters {
+  background: #20211d;
+}
+
+.app-shell.dark .rp-markdown-editor-warm-paper .cm-content {
+  caret-color: #f2eadb;
+}
+
+.cm-rp-editor-active-paragraph {
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 7%, transparent);
+}
+
+.rp-markdown-editor-paragraph-spotlight .cm-editor.cm-rp-editor-paragraph-spotlight-active .cm-line {
+  opacity: 0.72;
+}
+
+.rp-markdown-editor-paragraph-spotlight .cm-editor.cm-rp-editor-paragraph-spotlight-active .cm-line.cm-rp-editor-paragraph-spotlight-active {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rp-markdown-editor-typewriter .cm-scroller {
+    scroll-behavior: auto;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .rp-markdown-editor-paragraph-spotlight .cm-editor.cm-rp-editor-paragraph-spotlight-active .cm-line {
+    opacity: 1;
+  }
+}

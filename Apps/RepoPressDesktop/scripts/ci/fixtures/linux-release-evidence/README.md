@@ -1,0 +1,1 @@
+Fixtures for `test-linux-release-evidence.py` belong here. The test intentionally creates its evidence in a temporary directory so attachment paths and hashes are exercised without relying on a checkout-relative path.

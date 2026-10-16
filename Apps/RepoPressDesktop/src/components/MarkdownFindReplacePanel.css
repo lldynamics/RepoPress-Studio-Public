@@ -1,0 +1,12 @@
+.markdown-find-replace { padding: .75rem; border: 1px solid var(--line, #d9dee7); border-radius: .5rem; }
+.markdown-find-replace h2 { margin: 0 0 .55rem; font-size: .95rem; }
+.markdown-find-replace select { display: block; width: 100%; box-sizing: border-box; margin-top: .25rem; padding: .4rem; border: 1px solid var(--line, #ccd3df); border-radius: .3rem; color: var(--text); background: var(--surface); }
+.markdown-find-replace__scope { display: block; min-height: 1.2em; color: var(--muted, #687386); font-size: .78rem; }
+.markdown-find-replace__preview { display: grid; gap: .65rem; margin-top: .7rem; padding: .7rem; border: 1px solid var(--accent, #3767c7); border-radius: .4rem; background: color-mix(in srgb, var(--accent, #3767c7) 5%, var(--surface, #fff)); }
+.markdown-find-replace__preview > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; }
+.markdown-find-replace__preview > div:first-child span, .markdown-find-replace__preview p { color: var(--muted, #687386); font-size: .78rem; }
+.markdown-find-replace__preview p { margin: 0; line-height: 1.4; }
+.markdown-find-replace__columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
+.markdown-find-replace__columns label { min-width: 0; font-size: .78rem; }
+.markdown-find-replace__columns pre { max-height: 15rem; margin: .25rem 0 0; padding: .5rem; overflow: auto; border: 1px solid var(--line, #d9dee7); border-radius: .3rem; background: var(--surface, #fff); color: inherit; font: .75rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 44rem) { .markdown-find-replace__columns { grid-template-columns: 1fr; } }

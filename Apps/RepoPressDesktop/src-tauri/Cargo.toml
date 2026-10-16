@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Cross-platform RepoPress Studio desktop client"
 authors = ["RepoPress contributors"]
 license = "MPL-2.0"
+homepage = "https://github.com/lldynamics/RepoPress-Studio-Public"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -19,11 +20,28 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+libc = "0.2"
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+# Registered so the capability manifest can explicitly deny the plugin's renderer IPC commands.
+# This client never exposes or invokes the plugin's check/download/install commands.
+tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls", "stream", "blocking"] }
+base64 = "0.22"
+futures-util = "0.3"
+ring = "0.17"
+zeroize = "1"
+minisign-verify = "0.2"
+percent-encoding = "2"
+semver = "1"
 sha2 = "0.10"
 tempfile = "3"
+time = { version = "0.3", features = ["formatting", "parsing"] }
+tokio = { version = "1", features = ["net", "time"] }
+url = "2.5"
 uuid = { version = "1", features = ["v4"] }
-wait-timeout = "0.2"
+rusqlite = { version = "0.31", features = ["bundled", "backup", "serialize"] }
+quick-xml = "0.37"
+chrono = { version = "0.4", default-features = false, features = ["std"] }

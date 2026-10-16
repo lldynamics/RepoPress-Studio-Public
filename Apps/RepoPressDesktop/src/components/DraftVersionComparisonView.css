@@ -1,0 +1,31 @@
+.draft-version-comparison { display: grid; gap: 12px; min-width: 0; color: var(--text); }
+.draft-version-comparison__caption { margin: 0; color: var(--muted); font-size: 12px; font-weight: 650; overflow-wrap: anywhere; }
+.draft-version-comparison__section { display: grid; gap: 7px; min-width: 0; }
+.draft-version-comparison__section h3 { margin: 0; overflow-wrap: anywhere; font-size: 13px; line-height: 1.35; }
+.draft-version-comparison__pre { min-width: 0; max-height: 330px; margin: 0; overflow: auto; padding: 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); background: var(--surface); font: 11px/1.55 "SFMono-Regular", Consolas, "Liberation Mono", monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.draft-version-comparison__line { display: inline; }
+.draft-version-comparison__line--added { color: var(--success-text, #237a43); background: var(--success-surface, color-mix(in srgb, #237a43 12%, transparent)); }
+.draft-version-comparison__line--removed { color: var(--danger-text, #a43220); background: var(--danger-surface, color-mix(in srgb, #a43220 12%, transparent)); }
+.draft-version-comparison__empty, .draft-version-comparison__notice { margin: 0; padding: 10px; border-radius: 8px; color: var(--muted); background: var(--subtle); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.draft-version-comparison__notice { color: var(--warning-text, #78541b); background: var(--warning-surface, #fff6dd); }
+.app-shell.dark .draft-version-comparison__line--added { color: var(--success-text, #8bd6a3); }
+.app-shell.dark .draft-version-comparison__line--removed { color: var(--danger-text, #ffb4a3); }
+.app-shell.dark .draft-version-comparison__notice { color: #f9d99a; background: #3e3218; }
+.draft-version-comparison__hint { margin: 0; color: var(--muted); font-size: 11px; }
+.draft-version-comparison__controls { display: flex; flex-wrap: wrap; gap: 6px; }
+.draft-version-comparison__controls button, .draft-version-comparison__fold button { padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; color: var(--text); background: var(--surface); font: inherit; cursor: pointer; }
+.draft-version-comparison__controls button { font-size: 11px; }
+.draft-version-comparison__controls button:disabled { opacity: .55; cursor: default; }
+.draft-version-comparison__table { min-width: 0; max-height: 330px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; color: var(--text); background: var(--surface); font: 11px/1.55 "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+.draft-version-comparison__table-content { width: max-content; min-width: 100%; }
+.draft-version-comparison__row { display: grid; grid-template-columns: 8ch 8ch minmax(20ch, 1fr); min-height: 1.55em; }
+.draft-version-comparison__row > [role="cell"], .draft-version-comparison__row > [role="columnheader"] { padding: 2px 7px; }
+.draft-version-comparison__header-group { position: sticky; top: 0; z-index: 1; background: var(--surface); border-bottom: 1px solid var(--line); }
+.draft-version-comparison__header { font-weight: 650; }
+.draft-version-comparison__header > [role="columnheader"] { white-space: normal; overflow-wrap: anywhere; }
+.draft-version-comparison__number { color: var(--muted); text-align: right; border-right: 1px solid var(--line); user-select: none; }
+.draft-version-comparison__content { display: flex; white-space: pre; }
+.draft-version-comparison__prefix { flex: 0 0 2ch; user-select: none; }
+.draft-version-comparison__text { font: inherit; white-space: pre; }
+.draft-version-comparison__fold { padding: 4px 7px; background: var(--subtle); }
+.draft-version-comparison__table:focus-visible, .draft-version-comparison__controls button:focus-visible, .draft-version-comparison__fold button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

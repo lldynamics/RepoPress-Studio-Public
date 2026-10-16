@@ -1,0 +1,5 @@
+.chinese-typography-button { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .35rem; min-width: 0; }
+.chinese-typography-button button { min-height: 25px; padding: 3px 6px; border: 1px solid var(--line, #ccd3df); border-radius: 5px; color: var(--text, inherit); background: var(--surface, transparent); cursor: pointer; font-size: 11px; white-space: nowrap; }
+.chinese-typography-button button:hover:not(:disabled), .chinese-typography-button button:focus-visible { border-color: var(--accent); color: var(--accent); }
+.chinese-typography-button button:disabled { opacity: .45; cursor: not-allowed; }
+.chinese-typography-button__status { min-width: 0; min-height: 1.2em; color: var(--muted, #687386); font-size: 11px; overflow-wrap: anywhere; }

@@ -1,0 +1,16 @@
+.workspace-status-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .8rem; min-width: 0; padding: .35rem .6rem; border-top: 1px solid var(--line, #d9dee7); color: var(--muted, #687386); background: var(--surface, #fff); font-size: .76rem; line-height: 1.3; }
+.workspace-status-bar__primary, .workspace-status-bar__stats, .workspace-status-bar__format, .workspace-status-bar__diagnostics { display: inline-flex; align-items: center; flex-wrap: wrap; gap: .45rem; min-width: 0; }
+.workspace-status-bar__primary { flex: 1 1 12rem; max-width: 100%; }
+.workspace-status-bar__state { color: var(--text, inherit); font-weight: 600; white-space: nowrap; }
+.workspace-status-bar__state--dirty, .workspace-status-bar__state--conflict, .workspace-status-bar__state--failed { color: var(--accent, #3767c7); }
+.workspace-status-bar__state--saving { color: var(--muted, #687386); }
+.workspace-status-bar__path { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-status-bar__access, .workspace-status-bar__format span { padding: .1rem .35rem; border: 1px solid var(--line, #d9dee7); border-radius: .25rem; white-space: nowrap; }
+.workspace-status-bar__stats, .workspace-status-bar__format { white-space: nowrap; }
+.workspace-status-bar__stats span + span, .workspace-status-bar__format span + span { padding-left: .45rem; border-left: 1px solid var(--line, #d9dee7); }
+.workspace-status-bar__cursor { min-width: 0; }
+.workspace-status-bar__diagnostics { border: 1px solid var(--line, #ccd3df); border-radius: .3rem; padding: .2rem .4rem; color: inherit; background: transparent; cursor: pointer; }
+.workspace-status-bar__diagnostics:hover:not(:disabled) { color: var(--accent, #3767c7); background: color-mix(in srgb, currentColor 8%, transparent); }
+.workspace-status-bar__diagnostics:disabled { cursor: not-allowed; opacity: .5; }
+.workspace-status-bar button:focus-visible { outline: 2px solid var(--accent, #3767c7); outline-offset: 2px; }
+@media (max-width: 42rem) { .workspace-status-bar { align-items: flex-start; gap: .3rem .6rem; } .workspace-status-bar__primary { flex-basis: 100%; } }

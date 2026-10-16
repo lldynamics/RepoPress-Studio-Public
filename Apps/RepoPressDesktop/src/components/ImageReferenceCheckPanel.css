@@ -1,0 +1,6 @@
+.image-reference-check { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); min-width: 0; }
+.image-reference-check h3 { margin: 0 0 8px; font-size: 15px; }
+.image-reference-check > p, .image-reference-check > div > p { color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.image-reference-check-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.image-reference-check-actions button { padding: 7px 10px; }
+.image-reference-check [role="alert"] { color: var(--text); }

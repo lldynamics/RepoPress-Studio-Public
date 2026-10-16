@@ -21,10 +21,16 @@ RepoPress Studio 是 RepoPress 的桌面版本：用 Markdown 管理内容，以
 | 产品 | 定位 | 代码与发行边界 |
 | --- | --- | --- |
 | RepoPress Studio for macOS | 桌面写作、资料管理、本地 Git / SSG 与完整发布工作台 | 本仓库；原生 SwiftUI + AppKit，独立构建和发行 |
-| RepoPress Desktop（实验性） | Windows / Linux 优先的仓库浏览与轻量 Markdown 编辑；当前不提供提交、推送、认证或发布 | `Apps/RepoPressDesktop/`；Tauri 2 + Rust + React，独立 CI，不承诺与 macOS 功能对等 |
+| RepoPress Desktop（Linux Beta） | Linux 优先的安全 Markdown 工作台，提供可持久化的专业写作工具与编辑舒适度、受控 SSG 预览、可审阅 Git 写操作与选择性暂存、Secret Service 凭据、GitHub/GitLab PR/MR、选区 AI 编辑、每轮确认的连续对话与可停止流式回复、显式口令解锁的加密对话历史、逐条资料远程 AI 权限、会话内语义检索、隔离 PDF 文字层与最多 12 页的本地中英文 OCR、私有工作区恢复、文章版本历史与回收站、计划式通用草稿迁移、本地 RSS 阅读，以及带分类、版本历史、重复冲突处置、受确认导出和浏览器定位的持久化资料库 | `Apps/RepoPressDesktop/`；Tauri 2 + Rust + React，独立 CI 与“可信 tag → 无私钥构建 → 受保护环境签名 → 公钥验签”的 AppImage 候选链，以及“显式检查 → 五分钟一次性审阅计划 → 有界下载 → 签名验证 → AppImage 原子替换 → 手动重启”的客户端链；`.deb` 仍由包管理器升级；通用草稿只通过用户当前打开的仓库中转，不自动搬附件或改写站点字段；AI 对话默认不落盘，只有显式创建并解锁加密库后才持久化，且不会自动检索资料，仍不承诺与 macOS 功能完全对等 |
 | RepoPress for iOS | 面向 iPhone 和 iPad 的移动发布控制台 | 已上架 App Store；在独立仓库中维护 |
 
 跨端演进以兼容现有产品为前提：优先共享端点、front matter、slug、路径、diff 等确定性规则；App 状态、持久化模型、Keychain、StoreKit、后台任务以及 AppKit / UIKit 界面继续由各端负责。
+
+Linux AppImage 更新没有后台检查、静默安装、自动重启、自动回滚或密钥轮换；普通未配置 build 会 fail-closed。仓库当前不含真实生产 endpoint 或签名公钥，所以普通本地包不能完成端到端联网更新验证。
+
+Linux 备份目前提供独立配置与数据库导出、保存资料包、[P47 独立包校验](Apps/RepoPressDesktop/docs/p47-knowledge-package-check.md)，以及 [P48 确认式私有磁盘候选](Apps/RepoPressDesktop/docs/p48-knowledge-package-stage.md)。候选复制保留敏感明文，失败可能留下私有部分目录；当前资料库不变；[P49 候选独立复验与清单冲突预览](Apps/RepoPressDesktop/docs/p49-knowledge-candidate-check.md)已补只读候选内容和当前清单比较，[P50 当前保存资源核验与恢复资格策略计划](Apps/RepoPressDesktop/docs/p50-knowledge-restore-qualification.md)已补资源证据与只读身份策略；[P51 合并清单投影与隐私重置确认](Apps/RepoPressDesktop/docs/p51-knowledge-merge-projection.md)已补内存合并与一次性复验；[P52 确认式资料库安装与显式恢复](Apps/RepoPressDesktop/docs/p52-knowledge-restore-install.md)已接入持久意图、原子交换和保留快照；[P53 终态恢复事务归档](Apps/RepoPressDesktop/docs/p53-knowledge-restore-archive.md)已补活动槽释放并保留快照；[P54 最新恢复历史清理](Apps/RepoPressDesktop/docs/p54-knowledge-restore-cleanup.md)已补不可撤销确认、容量回收和显式中断继续；外部附件与跨平台工作区交换仍待实现。
+
+[P55 恢复历史完整快照导出](Apps/RepoPressDesktop/docs/p55-knowledge-restore-history-export.md)已补任意完整历史的确认式私有 JSON 导出，保留原历史与当前库；导出包可单独进入既有核验、候选和有界合并恢复流程。仅日志历史和超限/不完整快照拒绝导出；暂仅支持与应用数据根相同 mount 的新目标。
 
 ## 环境要求
 
@@ -120,7 +126,7 @@ bash script/check_accessibility_runtime.sh
 
 GitHub Actions 的证据层级按触发方式区分：`main` 分支 push 只运行快速静态门禁（Swift 6 严格测试清单编译、模块边界等）；Pull Request 运行快速门禁、覆盖率、分发构建和公共快照边界，但不运行真实窗口或无障碍 XCUITest。版本 tag push、固定夜间任务，以及 `workflow_dispatch` 选择 `release` 风险层，才运行发行构建后的真实启动、可见窗口与无障碍运行态检查，并附加 Release 性能证据；手动选择 `quick` 或 `pr` 时仅运行对应较低层级。Swift 6 证据由共享快速门禁提供，不存在独立的 Swift 6 migration lane。共享契约子树另有跨平台契约、Swift Core 与 .NET Core 门禁，使用说明见 [`Shared/RepoPressCoreContracts/README.md`](Shared/RepoPressCoreContracts/README.md)。
 
-Tauri 原型由 `.github/workflows/tauri-desktop.yml` 独立验证前端测试与构建、Rust 格式、单元测试和 clippy。macOS 上的本地通过只证明当前主机可构建；Linux 支持必须以 Ubuntu CI 或真实 Linux 设备上的同一套检查及窗口验证为准。
+Tauri 原型由 `.github/workflows/tauri-desktop.yml` 独立验证前端测试与构建、首屏 JavaScript 静态依赖闭包预算、Rust 格式、单元测试和 clippy。Linux 发行门禁在 Ubuntu 22.04 构建一次 `.deb` 与 AppImage，校验 SHA-256 后让 Ubuntu 22.04/24.04 使用同一份产物完成安装和 20 秒可见 X11 窗口预算，并以 Weston headless 补充原生 Wayland 1x/2x 与运行态 AT-SPI 名称检查。GNOME/KDE、IBus/Fcitx5 候选窗及读屏器体验仍按 [`Apps/RepoPressDesktop/docs/linux-release-acceptance.md`](Apps/RepoPressDesktop/docs/linux-release-acceptance.md) 收集真机证据；当前主机上的通过不能替代这套发行矩阵。
 
 ## 浏览器扩展
 

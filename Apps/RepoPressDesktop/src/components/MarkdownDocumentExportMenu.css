@@ -1,0 +1,30 @@
+.markdown-document-export-menu {
+  display: inline-flex;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.markdown-document-export-menu button {
+  max-width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--line, #ccd3df);
+  border-radius: 6px;
+  color: var(--text, inherit);
+  background: var(--surface, transparent);
+  cursor: pointer;
+  font-size: 11px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.markdown-document-export-menu button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.markdown-document-export-menu button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}

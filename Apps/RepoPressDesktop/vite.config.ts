@@ -7,6 +7,21 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react()],
+  build: {
+    // The budget check reads Vite's dependency graph, not filename heuristics.
+    manifest: true,
+    rollupOptions: {
+      output: {
+        // Lazy surfaces share React and i18n without importing the app entry.
+        // i18n's existing static catalogs follow it; scoped catalogs stay local.
+        manualChunks(id) {
+          const moduleId = id.replaceAll("\\", "/");
+          if (/\/node_modules\/(react|react-dom|scheduler)\//.test(moduleId)
+            || moduleId.endsWith("/src/i18n/i18n.tsx")) return "ui-runtime";
+        },
+      },
+    },
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
@@ -29,5 +44,8 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
-  test: { environment: "jsdom", include: ["src/**/*.test.ts"] },
+  test: {
+    environment: "jsdom",
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "scripts/**/*.test.mjs"],
+  },
 }));

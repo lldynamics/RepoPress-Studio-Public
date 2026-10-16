@@ -8,6 +8,10 @@ on:
   push:
     branches:
       - main
+    # GitHub does not apply paths filters to tag pushes; v* therefore always
+    # runs the Linux release bundle gate, even when the tag has no path match.
+    tags:
+      - "v*"
     paths:
       - "Apps/RepoPressDesktop/**"
       - ".github/workflows/tauri-desktop.yml"
@@ -44,15 +48,28 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends \
+            bubblewrap \
             build-essential \
             libayatana-appindicator3-dev \
+            poppler-utils \
             librsvg2-dev \
             libssl-dev \
             libwebkit2gtk-4.1-dev \
-            libxdo-dev
+            libxdo-dev \
+            tesseract-ocr \
+            tesseract-ocr-chi-sim \
+            tesseract-ocr-eng
 
       - name: Install frontend dependencies
         run: npm ci
+
+      - name: Test Linux CI helper scripts
+        env:
+          REPOPRESS_REQUIRE_UNIX_SOCKET_FIXTURE: "1"
+        run: bash scripts/ci/test-linux-ci-scripts.sh
+
+      - name: Check desktop version consistency
+        run: npm run check:version
 
       - name: Test frontend
         run: npm test -- --run
@@ -60,11 +77,286 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      - name: Enforce frontend startup bundle budget
+        run: npm run check:bundle
+
       - name: Check Rust formatting
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 
       - name: Test Rust backend
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked
 
+      - name: Test real PDF sandbox boundary
+        env:
+          REPOPRESS_RUN_DOCUMENT_INTEGRATION: "1"
+        run: >-
+          cargo test --manifest-path src-tauri/Cargo.toml --locked
+          real_bubblewrap_and_pdftotext_extract_text
+
+      - name: Test real local OCR sandbox boundary
+        env:
+          REPOPRESS_RUN_DOCUMENT_INTEGRATION: "1"
+        run: >-
+          cargo test --manifest-path src-tauri/Cargo.toml --locked
+          real_bubblewrap_pdftoppm_and_tesseract_ocr
+
       - name: Lint Rust backend
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
+
+  linux-release-bundle:
+    # Build on the oldest supported Ubuntu baseline so the AppImage and Debian
+    # package do not accidentally acquire a newer glibc requirement.
+    name: Ubuntu 22.04 Linux release bundles
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: Apps/RepoPressDesktop
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: Apps/RepoPressDesktop/.node-version
+          cache: npm
+          cache-dependency-path: Apps/RepoPressDesktop/package-lock.json
+
+      - name: Install Linux release build and smoke-test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends \
+            bubblewrap \
+            build-essential \
+            dbus-x11 \
+            file \
+            libayatana-appindicator3-dev \
+            libfuse2 \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf \
+            poppler-utils \
+            tesseract-ocr \
+            tesseract-ocr-chi-sim \
+            tesseract-ocr-eng \
+            x11-utils \
+            xdotool \
+            xvfb
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Check desktop version consistency
+        run: npm run check:version
+
+      - name: Test real PDF sandbox boundary on Ubuntu 22.04
+        env:
+          REPOPRESS_RUN_DOCUMENT_INTEGRATION: "1"
+        run: >-
+          cargo test --manifest-path src-tauri/Cargo.toml --locked
+          real_bubblewrap_and_pdftotext_extract_text
+
+      - name: Test real local OCR sandbox boundary on Ubuntu 22.04
+        env:
+          REPOPRESS_RUN_DOCUMENT_INTEGRATION: "1"
+        run: >-
+          cargo test --manifest-path src-tauri/Cargo.toml --locked
+          real_bubblewrap_pdftoppm_and_tesseract_ocr
+
+      - name: Build Debian and AppImage release bundles
+        env:
+          # linuxdeploy's bundled strip cannot read modern ELF SHT_RELR sections.
+          # Skipping this redundant pass also keeps local Fedora/Arch builds usable.
+          NO_STRIP: "1"
+        run: npm run tauri build -- --bundles deb,appimage
+
+      - name: Enforce packaged frontend startup bundle budget
+        run: npm run check:bundle
+
+      - name: Validate bundle contents and write checksums
+        run: |
+          bash scripts/ci/validate-linux-bundles.sh \
+            --bundle-dir src-tauri/target/release/bundle \
+            --output-dir artifacts/linux
+
+      - name: Upload immutable Linux release bundles
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: repopress-linux-release-bundles
+          if-no-files-found: warn
+          path: |
+            Apps/RepoPressDesktop/src-tauri/target/release/bundle/deb/*.deb
+            Apps/RepoPressDesktop/src-tauri/target/release/bundle/appimage/*.AppImage
+            Apps/RepoPressDesktop/artifacts/linux/**
+
+  linux-release-smoke:
+    name: Linux release smoke (${{ matrix.os }})
+    needs: linux-release-bundle
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: Apps/RepoPressDesktop
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Download immutable Linux release bundles
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: repopress-linux-release-bundles
+          path: Apps/RepoPressDesktop/release-artifact
+
+      - name: Install Linux runtime and smoke-test dependencies
+        run: |
+          fuse_package=libfuse2
+          if [[ "$(. /etc/os-release && printf '%s' "$VERSION_ID")" == "24.04" ]]; then
+            fuse_package=libfuse2t64
+          fi
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends \
+            dbus-x11 \
+            file \
+            x11-utils \
+            xdotool \
+            xvfb \
+            "$fuse_package"
+
+      - name: Verify immutable Linux bundle checksums
+        run: |
+          mapfile -t bundle_roots < <(find release-artifact -type d -path '*/src-tauri/target/release/bundle' -print | sort)
+          mapfile -t manifests < <(find release-artifact -type f -name 'linux-bundle-sha256sums.txt' -print | sort)
+          test "${#bundle_roots[@]}" -eq 1
+          test "${#manifests[@]}" -eq 1
+          test -s "${manifests[0]}"
+          manifest_path="$(realpath "${manifests[0]}")"
+          (cd "${bundle_roots[0]}" && sha256sum --strict --check "$manifest_path")
+          mapfile -t appimages < <(find "${bundle_roots[0]}/appimage" -maxdepth 1 -type f -name '*.AppImage' -print | sort)
+          test "${#appimages[@]}" -eq 1
+          chmod u+x "${appimages[0]}"
+
+      - name: Install packaged Debian application
+        run: |
+          mapfile -t debs < <(find release-artifact/src-tauri/target/release/bundle/deb -maxdepth 1 -type f -name '*.deb' -print | sort)
+          test "${#debs[@]}" -eq 1
+          sudo apt-get install --yes --no-install-recommends "${debs[0]}"
+          test -x /usr/bin/repopress-desktop
+
+      - name: Smoke-test packaged Debian application window
+        run: |
+          bash scripts/ci/smoke-linux-deb-window.sh \
+            --bundle-dir release-artifact/src-tauri/target/release/bundle \
+            --diagnostics-dir artifacts/linux/window-smoke \
+            --launcher /usr/bin/repopress-desktop \
+            --window-title "RepoPress Studio" \
+            --timeout-ms 20000
+
+      - name: Smoke-test standalone AppImage window
+        run: |
+          bash scripts/ci/smoke-linux-deb-window.sh \
+            --kind appimage \
+            --bundle-dir release-artifact/src-tauri/target/release/bundle \
+            --diagnostics-dir artifacts/linux/appimage-window-smoke \
+            --window-title "RepoPress Studio" \
+            --timeout-ms 20000
+
+      - name: Verify Debian uninstall removes package-owned files
+        run: |
+          mapfile -t debs < <(find release-artifact/src-tauri/target/release/bundle/deb -maxdepth 1 -type f -name '*.deb' -print | sort)
+          test "${#debs[@]}" -eq 1
+          bash scripts/ci/check-deb-uninstall.sh \
+            --package-file "${debs[0]}" \
+            --diagnostics-dir artifacts/linux/deb-uninstall
+
+      - name: Upload Linux ${{ matrix.os }} diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: repopress-linux-${{ matrix.os }}-diagnostics
+          if-no-files-found: warn
+          path: Apps/RepoPressDesktop/artifacts/linux/**
+
+  linux-release-wayland-accessibility:
+    name: Linux Wayland/AT-SPI (${{ matrix.os }}, ${{ matrix.lane }})
+    needs: linux-release-bundle
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            scale: 1
+            lane: 1x
+          - os: ubuntu-24.04
+            scale: 2
+            lane: hidpi-2x
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: Apps/RepoPressDesktop
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Download immutable Linux release bundles
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: repopress-linux-release-bundles
+          path: Apps/RepoPressDesktop/release-artifact
+
+      - name: Install Wayland and accessibility runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends \
+            at-spi2-core \
+            dbus-x11 \
+            fonts-noto-cjk \
+            gir1.2-atspi-2.0 \
+            libatk-bridge2.0-0 \
+            locales \
+            python3-gi \
+            wayland-utils \
+            weston
+          sudo locale-gen zh_CN.UTF-8
+          locale -a | grep -iq '^zh_CN\.utf8$'
+
+      - name: Verify immutable Linux bundle checksums
+        run: |
+          mapfile -t bundle_roots < <(find release-artifact -type d -path '*/src-tauri/target/release/bundle' -print | sort)
+          mapfile -t manifests < <(find release-artifact -type f -name 'linux-bundle-sha256sums.txt' -print | sort)
+          test "${#bundle_roots[@]}" -eq 1
+          test "${#manifests[@]}" -eq 1
+          test -s "${manifests[0]}"
+          manifest_path="$(realpath "${manifests[0]}")"
+          (cd "${bundle_roots[0]}" && sha256sum --strict --check "$manifest_path")
+          mapfile -t appimages < <(find "${bundle_roots[0]}/appimage" -maxdepth 1 -type f -name '*.AppImage' -print | sort)
+          test "${#appimages[@]}" -eq 1
+          chmod u+x "${appimages[0]}"
+
+      - name: Smoke-test native Wayland and AT-SPI names
+        run: |
+          bash scripts/ci/smoke-linux-wayland-atspi.sh \
+            --bundle-dir release-artifact/src-tauri/target/release/bundle \
+            --diagnostics-dir artifacts/linux/wayland-atspi-${{ matrix.lane }} \
+            --scale "${{ matrix.scale }}" \
+            --window-title "RepoPress Studio" \
+            --timeout-ms 20000
+
+      - name: Upload Wayland ${{ matrix.os }} ${{ matrix.lane }} diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: repopress-linux-wayland-${{ matrix.os }}-${{ matrix.lane }}-diagnostics
+          if-no-files-found: warn
+          path: Apps/RepoPressDesktop/artifacts/linux/**

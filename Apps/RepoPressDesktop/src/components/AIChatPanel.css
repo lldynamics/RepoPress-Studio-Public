@@ -1,0 +1,20 @@
+.ai-chat-panel .ai-chat-vault {
+  border-inline-start: 3px solid var(--accent, #4c7dff);
+}
+
+.ai-chat-panel .ai-chat-mode {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-block: .75rem;
+}
+
+.ai-chat-panel .ai-chat-partial {
+  border-style: dashed;
+  opacity: .88;
+}
+
+.ai-chat-panel .ai-chat-partial small {
+  display: block;
+  margin-top: .4rem;
+}

@@ -1,0 +1,8 @@
+.markdown-cursor-workflow { display: flex; align-items: center; flex-wrap: wrap; gap: .3rem; font-size: .78rem; color: var(--muted, #687386); }
+.markdown-cursor-workflow button { border: 1px solid var(--line, #ccd3df); border-radius: .3rem; padding: .25rem .45rem; background: var(--surface, transparent); color: inherit; cursor: pointer; }
+.markdown-cursor-workflow button:disabled { opacity: .45; cursor: not-allowed; }
+.markdown-cursor-workflow__position { font-variant-numeric: tabular-nums; }
+.markdown-cursor-workflow__fence-actions { display: inline-flex; gap: .2rem; }
+.markdown-cursor-workflow__dialog { display: inline-flex; align-items: center; flex-wrap: wrap; gap: .3rem; padding: .35rem; border: 1px solid var(--line, #ccd3df); border-radius: .35rem; background: var(--surface, #fff); color: inherit; }
+.markdown-cursor-workflow__dialog input { width: 4rem; padding: .25rem; border: 1px solid var(--line, #ccd3df); border-radius: .25rem; color: inherit; background: var(--surface, #fff); }
+.markdown-cursor-workflow__error { flex-basis: 100%; margin: 0; color: #b33a25; }

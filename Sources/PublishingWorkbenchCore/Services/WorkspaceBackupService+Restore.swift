@@ -708,6 +708,24 @@ extension WorkspaceBackupService {
   ) throws -> WorkbenchSnapshot {
     let referencesByMarker = Dictionary(uniqueKeysWithValues: references.map { ($0.marker, $0) })
     var snapshot = originalSnapshot
+    // Archive identifiers describe settings, never authority to reuse this
+    // machine's UUID-bound credentials. Keep the restored relationship graph
+    // intact while assigning a fresh credential identity to every connection.
+    var restoredConnectionIDs: [UUID: UUID] = [:]
+    for index in snapshot.aiConnectionProfiles.indices {
+      let oldID = snapshot.aiConnectionProfiles[index].id
+      let newID = restoredConnectionIDs[oldID] ?? UUID()
+      restoredConnectionIDs[oldID] = newID
+      snapshot.aiConnectionProfiles[index].id = newID
+    }
+    for index in snapshot.profiles.indices {
+      snapshot.profiles[index].aiConnectionProfileID = snapshot.profiles[index]
+        .aiConnectionProfileID.flatMap { restoredConnectionIDs[$0] }
+    }
+    for index in snapshot.aiConversations.indices {
+      snapshot.aiConversations[index].connectionProfileID = snapshot.aiConversations[index]
+        .connectionProfileID.flatMap { restoredConnectionIDs[$0] }
+    }
     snapshot.drafts = try snapshot.drafts.map {
       try restoredDraft($0, referencesByMarker: referencesByMarker, attachmentRootURL: attachmentRootURL)
     }

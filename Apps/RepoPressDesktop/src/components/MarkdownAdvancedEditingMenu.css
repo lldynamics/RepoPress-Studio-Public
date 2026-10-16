@@ -1,0 +1,10 @@
+.markdown-advanced-editing-menu { position:relative; z-index:8; display:inline-block; max-width:100%; font-size:11px; }
+.markdown-advanced-editing-menu[open] { z-index:9; }
+.markdown-advanced-editing-menu summary { padding:5px 8px; border:1px solid var(--line,#ccd3df); border-radius:5px; cursor:pointer; list-style:none; }
+.markdown-advanced-editing-menu summary::-webkit-details-marker { display:none; }
+.markdown-advanced-editing-menu__items { position:absolute; top:calc(100% + 4px); left:0; display:flex; width:min(340px,calc(100vw - 24px)); flex-wrap:wrap; gap:3px; padding:5px; border:1px solid var(--line,#ccd3df); border-radius:5px; background:var(--surface,#fff); box-shadow:0 8px 24px rgb(20 30 50 / 16%); }
+.markdown-advanced-editing-menu button { min-height:25px; padding:3px 6px; border:1px solid var(--line,#ccd3df); border-radius:5px; background:var(--surface,transparent); color:var(--text,inherit); cursor:pointer; font-size:11px; }
+.markdown-advanced-editing-menu button span { margin-left:3px; }
+.markdown-advanced-editing-menu button:hover:not(:disabled), .markdown-advanced-editing-menu button:focus-visible { border-color:var(--accent); color:var(--accent); }
+.markdown-advanced-editing-menu button:disabled { opacity:.45; cursor:not-allowed; }
+.markdown-advanced-editing-menu summary, .markdown-advanced-editing-menu button { max-width:100%; overflow-wrap:anywhere; }

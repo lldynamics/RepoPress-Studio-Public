@@ -9,9 +9,16 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "vitest"
+    "test": "vitest",
+    "check:bundle": "node scripts/ci/check-frontend-bundle.mjs",
+    "check:version": "node scripts/release/check-version.mjs",
+    "check:updater-release": "node scripts/release/check-updater-release.mjs",
+    "check:updater": "node scripts/release/build-signed-updater.mjs --check",
+    "build:updater": "node scripts/release/build-signed-updater.mjs",
+    "manifest:updater": "node scripts/release/generate-updater-manifest.mjs"
   },
   "dependencies": {
+    "@codemirror/commands": "6.11.0",
     "@codemirror/lang-markdown": "6.5.2",
     "@codemirror/theme-one-dark": "6.1.3",
     "@tauri-apps/api": "2.11.1",

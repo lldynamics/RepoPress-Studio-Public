@@ -1,0 +1,322 @@
+.repository-content-health-panel {
+  min-width: 0;
+}
+
+.repository-content-health-heading {
+  align-items: flex-start;
+}
+
+.repository-content-health-heading > div:first-child {
+  min-width: 0;
+}
+
+.repository-content-health-badges {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  max-width: 12rem;
+}
+
+.repository-content-health-status:empty {
+  display: none;
+}
+
+.repository-content-health-status .tool-state,
+.repository-content-health-status .tool-error {
+  margin: 0;
+}
+
+.repository-content-health-status .tool-error {
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, #b33a25 40%, var(--line));
+  border-radius: 7px;
+  background: color-mix(in srgb, #b33a25 8%, var(--surface));
+}
+
+.repository-content-health-summary {
+  min-width: 0;
+}
+
+.repository-content-health-summary-heading,
+.repository-content-health-findings-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.repository-content-health-summary-heading h2,
+.repository-content-health-findings-heading h2 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.repository-content-health-completeness {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.repository-content-health-completeness.complete {
+  color: #196b41;
+  background: color-mix(in srgb, #34a66b 14%, var(--surface));
+}
+
+.repository-content-health-completeness.partial {
+  color: #8a5500;
+  background: color-mix(in srgb, #d58b16 17%, var(--surface));
+}
+
+.repository-content-health-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.repository-content-health-metrics > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.repository-content-health-metrics dt {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.repository-content-health-metrics dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.repository-content-health-metrics .error dd {
+  color: #b33a25;
+}
+
+.repository-content-health-metrics .warning dd {
+  color: #9a5c00;
+}
+
+.repository-content-health-incomplete {
+  display: grid;
+  gap: 3px;
+  padding: 9px;
+  border: 1px solid color-mix(in srgb, #d58b16 58%, var(--line));
+  border-radius: 7px;
+  color: #805000;
+  background: color-mix(in srgb, #d58b16 10%, var(--surface));
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.repository-content-health-source-warnings {
+  display: grid;
+  gap: 3px;
+}
+
+.repository-content-health-source-warnings .tool-warning {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.repository-content-health-findings {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.repository-content-health-findings-heading > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.repository-content-health-filters {
+  display: grid;
+  grid-template-columns: max-content minmax(6.5rem, .55fr) max-content minmax(9rem, 1fr);
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.repository-content-health-filters select,
+.repository-content-health-filters input {
+  min-width: 0;
+  width: 100%;
+  padding: 6px 7px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--text);
+  background: var(--surface);
+  font: inherit;
+}
+
+.repository-content-health-issues {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.repository-content-health-issue {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-inline-start-width: 3px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.repository-content-health-issue.error {
+  border-inline-start-color: #c44832;
+}
+
+.repository-content-health-issue.warning {
+  border-inline-start-color: #d58b16;
+}
+
+.repository-content-health-issue > button,
+.repository-content-health-issue > article {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 5px;
+  padding: 9px;
+  border: 0;
+  color: var(--text);
+  background: transparent;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.repository-content-health-issue > button {
+  cursor: pointer;
+  font: inherit;
+}
+
+.repository-content-health-issue > button:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+}
+
+.repository-content-health-issue-header {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.repository-content-health-issue-header strong {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.repository-content-health-severity {
+  flex: none;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.repository-content-health-severity.error {
+  color: #a42e1b;
+  background: color-mix(in srgb, #c44832 12%, var(--surface));
+}
+
+.repository-content-health-severity.warning {
+  color: #875100;
+  background: color-mix(in srgb, #d58b16 14%, var(--surface));
+}
+
+.repository-content-health-issue-message {
+  color: var(--text);
+  white-space: pre-wrap;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.repository-content-health-issue-meta {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 4px 9px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.repository-content-health-issue-meta code {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: inherit;
+  font: inherit;
+}
+
+.repository-content-health-empty {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, #34a66b 45%, var(--line));
+  border-radius: 7px;
+  color: #196b41;
+  background: color-mix(in srgb, #34a66b 8%, var(--surface));
+  font-size: 12px;
+}
+
+.app-shell.dark .repository-content-health-completeness.complete,
+.app-shell.dark .repository-content-health-empty {
+  color: #8fd9ae;
+}
+
+.app-shell.dark .repository-content-health-completeness.partial,
+.app-shell.dark .repository-content-health-incomplete,
+.app-shell.dark .repository-content-health-metrics .warning dd,
+.app-shell.dark .repository-content-health-severity.warning {
+  color: #f0c16e;
+}
+
+.app-shell.dark .repository-content-health-metrics .error dd,
+.app-shell.dark .repository-content-health-severity.error {
+  color: #ff9b88;
+}
+
+@media (max-width: 560px) {
+  .repository-content-health-heading {
+    display: grid;
+  }
+
+  .repository-content-health-badges {
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .repository-content-health-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .repository-content-health-filters {
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+}
+
+@media (prefers-contrast: more) {
+  .repository-content-health-issue,
+  .repository-content-health-incomplete,
+  .repository-content-health-empty {
+    border-width: 2px;
+  }
+}

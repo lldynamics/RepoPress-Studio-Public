@@ -10,21 +10,79 @@ pub struct CapabilitySnapshot {
     pub git_commit: bool,
     pub git_push: bool,
     pub git_fetch: bool,
+    pub git_index: bool,
     pub remote_auth: bool,
+    pub ai_editing: bool,
+    pub semantic_search: bool,
+    pub pdf_text_extraction: bool,
+    pub ocr_readiness: bool,
+    pub knowledge_library: bool,
+    pub content_health: bool,
+    pub image_workbench: bool,
+    pub operation_log: bool,
+    pub site_profiles: bool,
+    pub metadata_batch: bool,
 }
 
-impl Default for CapabilitySnapshot {
-    fn default() -> Self {
+impl CapabilitySnapshot {
+    pub fn from_git_availability(git_status: bool) -> Self {
         Self {
             local_edit: true,
             markdown_preview: true,
-            git_status: true,
-            site_runtime: false,
-            git_commit: false,
-            git_push: false,
-            git_fetch: false,
-            remote_auth: false,
+            git_status,
+            site_runtime: true,
+            git_commit: git_status,
+            git_push: git_status,
+            git_fetch: git_status,
+            git_index: git_status,
+            remote_auth: true,
+            ai_editing: true,
+            semantic_search: true,
+            pdf_text_extraction: true,
+            ocr_readiness: true,
+            knowledge_library: true,
+            content_health: true,
+            image_workbench: true,
+            operation_log: true,
+            site_profiles: true,
+            metadata_batch: cfg!(unix),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CapabilitySnapshot;
+
+    #[test]
+    fn keeps_local_editing_available_when_git_is_unavailable() {
+        let capabilities = CapabilitySnapshot::from_git_availability(false);
+
+        assert!(capabilities.local_edit);
+        assert!(capabilities.markdown_preview);
+        assert!(!capabilities.git_status);
+        assert!(capabilities.site_runtime);
+        assert!(capabilities.ai_editing);
+        assert!(capabilities.semantic_search);
+        assert!(capabilities.pdf_text_extraction);
+        assert!(capabilities.ocr_readiness);
+        assert!(capabilities.knowledge_library);
+        assert!(capabilities.content_health);
+        assert!(capabilities.image_workbench);
+        assert!(capabilities.operation_log);
+        assert!(capabilities.site_profiles);
+    }
+
+    #[test]
+    fn enables_reviewed_p2_git_operations_when_git_is_available() {
+        let capabilities = CapabilitySnapshot::from_git_availability(true);
+
+        assert!(capabilities.git_status);
+        assert!(capabilities.git_commit);
+        assert!(capabilities.git_push);
+        assert!(capabilities.git_fetch);
+        assert!(capabilities.git_index);
+        assert!(capabilities.remote_auth);
     }
 }
 
@@ -71,6 +129,35 @@ pub struct DocumentSnapshot {
     pub revision: u64,
     pub writable: bool,
     pub read_only_reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkdownLinkMetadata {
+    pub relative_path: String,
+    pub title: Option<String>,
+    pub slug: Option<String>,
+    pub permalink: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteMarkdownDocumentResult {
+    pub relative_path: String,
+    pub recycle_id: String,
+}
+
+/// A repository-owned copy of an image selected by the user for a Markdown document.
+/// `relative_path` is the physical path relative to the repository; `markdown_path` is the
+/// site-root path which can be placed directly in Markdown image syntax.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WritingImageImportResult {
+    pub relative_path: String,
+    pub markdown_path: String,
+    pub file_name: String,
+    pub byte_size: u64,
+    pub mime_type: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]

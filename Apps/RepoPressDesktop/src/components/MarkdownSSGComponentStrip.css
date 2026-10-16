@@ -1,0 +1,16 @@
+.markdown-ssg-components { display: grid; flex: none; gap: .35rem; min-width: 0; padding: .45rem .55rem; border-bottom: 1px solid var(--line, #ccd3df); color: var(--muted, #687386); background: var(--subtle, #f6f8fb); }
+.markdown-ssg-components__heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .6rem; font-size: .78rem; }
+.markdown-ssg-components__heading span { min-width: 0; overflow-wrap: anywhere; }
+.markdown-ssg-components__heading span:first-child { color: var(--text, #1d2736); font-weight: 650; }
+.markdown-ssg-components__list { display: flex; gap: .45rem; min-width: 0; overflow-x: auto; overscroll-behavior-inline: contain; padding: .05rem .05rem .35rem; scrollbar-width: thin; scroll-snap-type: inline proximity; }
+.markdown-ssg-components__list > [role="listitem"] { display: flex; flex: 0 0 min(15rem, calc(100vw - 3rem)); min-width: 0; scroll-snap-align: start; }
+.markdown-ssg-components__card { display: grid; width: 100%; min-width: 0; gap: .2rem; border: 1px solid var(--line, #ccd3df); border-radius: .45rem; padding: .5rem .55rem; background: var(--surface, #fff); color: inherit; text-align: left; cursor: pointer; }
+.markdown-ssg-components__card:hover { border-color: var(--accent, #3e73c9); }
+.markdown-ssg-components__card:focus-visible { outline: 2px solid var(--accent, #3e73c9); outline-offset: 2px; }
+.markdown-ssg-components__card:disabled { cursor: not-allowed; opacity: .48; }
+.markdown-ssg-components__type { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .3rem; font-size: .71rem; color: var(--accent, #3e73c9); }
+.markdown-ssg-components__type b { display: inline-grid; min-width: 1.05rem; min-height: 1.05rem; place-items: center; border-radius: .2rem; background: color-mix(in srgb, var(--accent, #3e73c9) 12%, transparent); font-family: ui-monospace, monospace; font-size: .67rem; }
+.markdown-ssg-components__card strong { overflow: hidden; color: var(--text, #1d2736); font-size: .84rem; text-overflow: ellipsis; white-space: nowrap; }
+.markdown-ssg-components__preview { display: -webkit-box; overflow: hidden; min-height: 2.3em; font-size: .75rem; line-height: 1.2; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.markdown-ssg-components__line { font-variant-numeric: tabular-nums; font-size: .7rem; }
+@media (max-width: 640px) { .markdown-ssg-components__heading { align-items: flex-start; flex-direction: column; gap: .08rem; } .markdown-ssg-components__list > [role="listitem"] { flex-basis: min(13.5rem, calc(100vw - 2.5rem)); } }

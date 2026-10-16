@@ -1,0 +1,29 @@
+.ai-connection-panel {
+  display: grid;
+  gap: .65rem;
+}
+
+.ai-connection-panel .ai-connection-models {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem;
+  max-block-size: 13rem;
+  overflow: auto;
+}
+
+.ai-connection-panel .ai-connection-models button {
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-connection-panel .ai-connection-results {
+  display: grid;
+  gap: .55rem;
+}
+
+.ai-connection-panel .ai-connection-results h3,
+.ai-connection-panel .ai-connection-plan h3 {
+  margin: 0;
+}

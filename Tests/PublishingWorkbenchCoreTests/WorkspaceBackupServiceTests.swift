@@ -2,6 +2,65 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class WorkspaceBackupServiceTests: XCTestCase {
+  func testRestoreRemapsAIConnectionsWithoutReusingLocalCredentials() throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: "RestoreAICredentials")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let connection = AIConnectionProfile.template(named: "Restored AI", preset: .deepSeek)
+    let otherConnection = AIConnectionProfile.template(named: "Other AI", preset: .custom)
+    var profile = SiteProfile.defaultProfile
+    profile.aiConnectionProfileID = connection.id
+    var otherProfile = SiteProfile.defaultProfile
+    otherProfile.id = UUID()
+    otherProfile.aiConnectionProfileID = otherConnection.id
+    var danglingProfile = SiteProfile.defaultProfile
+    danglingProfile.id = UUID()
+    danglingProfile.aiConnectionProfileID = UUID()
+    let draft = ArticleDraft.empty(profile: profile)
+    let conversations = [
+      AIConversation(draftID: draft.id, connectionProfileID: connection.id, title: "Saved conversation"),
+      AIConversation(draftID: draft.id, connectionProfileID: otherConnection.id, title: "Other conversation"),
+      AIConversation(draftID: draft.id, connectionProfileID: UUID(), title: "Missing connection"),
+    ]
+    let original = WorkbenchSnapshot(
+      profiles: [profile, otherProfile, danglingProfile],
+      aiConnectionProfiles: [connection, otherConnection],
+      activeProfileID: profile.id,
+      drafts: [draft],
+      releaseRecords: [],
+      aiConversations: conversations
+    )
+    let restored = try WorkspaceBackupService().restoredSnapshot(
+      original, references: [], attachmentRootURL: rootURL.appendingPathComponent("Attachments")
+    )
+    let newID = restored.aiConnectionProfiles[0].id
+    let otherNewID = restored.aiConnectionProfiles[1].id
+    XCTAssertNotEqual(newID, connection.id)
+    XCTAssertNotEqual(otherNewID, otherConnection.id)
+    XCTAssertNotEqual(newID, otherNewID)
+    XCTAssertEqual(restored.aiConnectionProfiles[0].config, connection.config)
+    XCTAssertEqual(restored.aiConnectionProfiles[0].name, connection.name)
+    XCTAssertEqual(restored.profiles[0].aiConnectionProfileID, newID)
+    XCTAssertEqual(restored.profiles[1].aiConnectionProfileID, otherNewID)
+    XCTAssertNil(restored.profiles[2].aiConnectionProfileID)
+    XCTAssertEqual(restored.activeProfileID, original.activeProfileID)
+    XCTAssertEqual(restored.drafts.map(\.id), original.drafts.map(\.id))
+    for conversation in restored.aiConversations {
+      let old = try XCTUnwrap(original.aiConversations.first { $0.id == conversation.id })
+      let expectedID = old.connectionProfileID == connection.id ? newID
+        : old.connectionProfileID == otherConnection.id ? otherNewID : nil
+      XCTAssertEqual(conversation.connectionProfileID, expectedID)
+      XCTAssertEqual(conversation.title, old.title)
+    }
+    let keychain = KeychainTokenStore(service: "RestoreAICredentials.\(UUID().uuidString)", accountPrefix: "test", inMemory: true)
+    let credentials = AICredentialStore(keychainTokenStore: keychain, localFileURL: rootURL.appendingPathComponent("Credentials/keys.json"))
+    for mode in AICredentialStorageMode.allCases {
+      credentials.setStorageMode(mode)
+      try credentials.saveToken("synthetic-key", forConnectionProfileID: connection.id)
+      XCTAssertNil(try credentials.token(forConnectionProfileID: newID))
+      XCTAssertEqual(try credentials.token(forConnectionProfileID: connection.id), "synthetic-key")
+    }
+  }
+
   func testCancellationAfterBackupCommitStillReturnsCommittedPreview() async throws {
     let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: "WorkspaceBackupCommit")
     defer { try? FileManager.default.removeItem(at: rootURL) }

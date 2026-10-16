@@ -1,0 +1,20 @@
+export const sitePreviewMessages: Record<string, string> = {
+  "未知预览错误。": "Unknown preview error.",
+  "页面已就绪。": "The page is ready.",
+  "页面核验失败。": "The page check failed.",
+  "页面核验超时。": "The page check timed out.",
+  "页面返回了无效响应。": "The page returned an invalid response.",
+  "页面重定向不安全，已拒绝嵌入。": "The page redirected to an unsafe address, so embedding was refused.",
+  "预览进程在页面就绪前退出。": "The preview process exited before the page was ready.",
+  "预览上下文已变化，请重新验证。": "The preview context changed. Verify it again.",
+  "预览计划已过期，请重新生成。": "The preview plan expired. Generate a new plan.",
+  "当前文章没有可用的站点预览地址。": "The current article has no available site preview address.",
+  "页面尚未就绪。": "The page is not ready.",
+  "未找到预览页面。": "The preview page was not found.",
+  "无法核验预览页面。": "The preview page could not be verified.",
+  "真实预览使用已保存文件；未保存的编辑不会包含在内。":
+    "Live preview uses the saved file; unsaved edits are not included.",
+  "页面已就绪": "The page is ready",
+  "进程已运行，正在核验页面…": "The process is running; verifying the page…",
+  "重新验证页面": "Verify page again",
+};
