@@ -3,25 +3,24 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class SiteProfileLegacyAnalyticsTests: XCTestCase {
-  func testSavingAnOlderProfilePreservesAnalyticsSettingsWithoutASecret() throws {
-    let legacySettings = SiteAnalyticsSettings(
-      isEnabled: true,
-      provider: .umami,
-      baseURL: "https://stats.example.com",
-      siteID: "legacy-site-id",
-      dateRangeDays: 28
+  func testProfileSavedWithRetiredAnalyticsSettingsStillDecodesAndDropsThem() throws {
+    let encoded = try JSONEncoder.workbench.encode(SiteProfile(name: "Existing site"))
+    var object = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: encoded) as? [String: Any]
     )
-    let legacyProfile = SiteProfile(name: "Existing site", siteAnalytics: legacySettings)
+    object["siteAnalytics"] = [
+      "isEnabled": true,
+      "provider": "umami",
+      "baseURL": "https://stats.example.com",
+      "siteID": "legacy-site-id",
+      "dateRangeDays": 28,
+    ]
+    let legacyData = try JSONSerialization.data(withJSONObject: object)
 
-    let saved = try JSONEncoder.workbench.encode(legacyProfile)
-    let restored = try JSONDecoder.workbench.decode(SiteProfile.self, from: saved)
+    let restored = try JSONDecoder.workbench.decode(SiteProfile.self, from: legacyData)
     let savedAgain = try JSONEncoder.workbench.encode(restored)
 
-    XCTAssertEqual(restored.siteAnalytics, legacySettings)
-    XCTAssertEqual(
-      try JSONDecoder.workbench.decode(SiteProfile.self, from: savedAgain).siteAnalytics,
-      legacySettings
-    )
-    XCTAssertFalse(String(decoding: savedAgain, as: UTF8.self).contains("accessToken"))
+    XCTAssertEqual(restored.name, "Existing site")
+    XCTAssertFalse(String(decoding: savedAgain, as: UTF8.self).contains("siteAnalytics"))
   }
 }

@@ -6,19 +6,15 @@ import SwiftUI
 
 @main
 struct PersonalSitePublisherMacApp: App {
-  @WorkspaceModuleVisibilityStorage private var moduleVisibility
   @NSApplicationDelegateAdaptor(PersonalSitePublisherMacAppDelegate.self) private var appDelegate
   @StateObject private var launchCoordinator: WorkbenchLaunchCoordinator
   @StateObject private var appUpdateController = AppUpdateController()
-  @StateObject private var menuBarCapture = MenuBarQuickCaptureState()
   @AppStorage(WorkbenchAccentPalette.storageKey)
   private var accentPaletteRawValue = WorkbenchAccentPalette.system.rawValue
   @AppStorage(WorkbenchAppearanceMode.storageKey)
   private var appearanceModeRawValue = WorkbenchAppearanceMode.system.rawValue
   @AppStorage(WorkbenchInterfaceDensity.storageKey)
   private var interfaceDensityRawValue = WorkbenchInterfaceDensity.comfortable.rawValue
-  @AppStorage("menuBarQuickCaptureVisibleV1")
-  private var isMenuBarQuickCaptureVisible = true
 
   init() {
     // A background Git writer must report EPIPE rather than terminate the app.
@@ -70,13 +66,12 @@ struct PersonalSitePublisherMacApp: App {
           )
         )
       } else {
-        _launchCoordinator = StateObject(wrappedValue: WorkbenchLaunchCoordinator())
+        _launchCoordinator = StateObject(wrappedValue: WorkbenchLaunchCoordinator.production())
       }
     #else
-      _launchCoordinator = StateObject(wrappedValue: WorkbenchLaunchCoordinator())
+      _launchCoordinator = StateObject(wrappedValue: WorkbenchLaunchCoordinator.production())
     #endif
   }
-
   @ViewBuilder
   private var mainWorkbenchRoot: some View {
     #if DEBUG || SCREENSHOT_CAPTURE_BUILD
@@ -92,7 +87,6 @@ struct PersonalSitePublisherMacApp: App {
       workbenchLaunchRoot
     #endif
   }
-
   private var workbenchLaunchRoot: some View {
     WorkbenchLaunchRootView(
       coordinator: launchCoordinator,
@@ -105,10 +99,10 @@ struct PersonalSitePublisherMacApp: App {
     )
     .environmentObject(launchCoordinator)
   }
-
   var body: some Scene {
     WindowGroup("RepoPress Studio", id: "main-workbench") {
       mainWorkbenchRoot
+        .workbenchTypography()
         .frame(
           minWidth: WorkbenchLayoutMode.minimumWindowWidth,
           minHeight: WorkbenchLayoutMode.minimumWindowHeight
@@ -145,29 +139,6 @@ struct PersonalSitePublisherMacApp: App {
       interfaceDensity: selectedInterfaceDensity
     )
 
-    MenuBarExtra(
-      "RepoPress Studio", systemImage: "square.and.pencil",
-      isInserted: Binding(
-        get: { isMenuBarQuickCaptureVisible && moduleVisibility.libraryEnabled },
-        set: { newValue in
-          guard moduleVisibility.libraryEnabled,
-            isMenuBarQuickCaptureVisible != newValue
-          else { return }
-          isMenuBarQuickCaptureVisible = newValue
-        }
-      )
-    ) {
-      MenuBarQuickCaptureView(
-        coordinator: launchCoordinator,
-        capture: menuBarCapture,
-        openWorkbench: { appDelegate.openWorkbenchFromMenuBar() }
-      )
-      .tint(selectedAccentPalette.tint)
-      .environment(\.workbenchAccentColor, selectedAccentPalette.color)
-      .preferredColorScheme(selectedAppearanceMode.colorScheme)
-    }
-    .menuBarExtraStyle(.window)
-
     WindowGroup("独立内容", id: "content-popout", for: PopOutWindowTarget.self) { target in
       Group {
         if let store = launchCoordinator.store, let target = target.wrappedValue {
@@ -189,6 +160,7 @@ struct PersonalSitePublisherMacApp: App {
           )
         }
       }
+      .workbenchTypography()
       .tint(selectedAccentPalette.tint)
       .environment(\.workbenchAccentColor, selectedAccentPalette.color)
       .preferredColorScheme(selectedAppearanceMode.colorScheme)
@@ -225,14 +197,15 @@ struct PersonalSitePublisherMacApp: App {
         } else {
           VStack(spacing: 12) {
             Image(systemName: "externaldrive.fill.badge.plus")
-              .font(.title)
-              .foregroundStyle(.secondary)
+              .font(.workbenchTitle)
+              .foregroundStyle(.workbenchSecondary)
             Text("请先在主窗口完成数据文件夹设置。")
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
           }
           .workbenchSettingsWindowSize()
         }
       }
+      .workbenchTypography()
       .tint(selectedAccentPalette.tint)
       .environment(\.workbenchAccentColor, selectedAccentPalette.color)
       .preferredColorScheme(selectedAppearanceMode.colorScheme)
@@ -246,7 +219,6 @@ struct PersonalSitePublisherMacApp: App {
       PublishingConsoleSettingsCommands()
     }
   }
-
   private var selectedAccentPalette: WorkbenchAccentPalette {
     WorkbenchAccentPalette.resolved(rawValue: accentPaletteRawValue)
   }
@@ -340,7 +312,7 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
     requestMainWindowRestore()
   }
 
-  func openWorkbenchFromMenuBar() {
+  func openWorkbenchWindow() {
     requestMainWindowRestore()
     NSApp.activate(ignoringOtherApps: true)
   }
@@ -596,22 +568,14 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
       case .savedLocally(let count):
         let alert = NSAlert()
         alert.messageText = String(localized: "草稿已保存在本地")
-        let hasExternalDraftPendingWrites = workbenchStore.pendingExternalDraftWriteCount > 0
-        alert.informativeText =
-          hasExternalDraftPendingWrites
-          ? String(
-            format: String(localized: "%lld 篇草稿尚未写回外部文件或同步到项目。退出后两边内容都会保留，原文件不会被覆盖。"),
-            count)
-          : String(
-            format: String(localized: "%lld 篇草稿尚未同步到项目。退出后会保留待同步记录，项目文件不会被覆盖。"), count)
+        alert.informativeText = String(
+          format: String(localized: "%lld 篇草稿尚未同步到项目。退出后会保留待同步记录，项目文件不会被覆盖。"), count)
         alert.alertStyle = .informational
         alert.addButton(withTitle: String(localized: "保留草稿并退出"))
-        if !hasExternalDraftPendingWrites {
-          alert.addButton(withTitle: String(localized: "查看冲突"))
-        }
+        alert.addButton(withTitle: String(localized: "查看冲突"))
         alert.addButton(withTitle: String(localized: "继续编辑")).keyEquivalent = "\u{1b}"
         let choice = await WindowSheetPresenter.response(to: alert)
-        if !hasExternalDraftPendingWrites && choice == .alertSecondButtonReturn {
+        if choice == .alertSecondButtonReturn {
           finishTerminationRequest(sender, mayExit: false)
           if let failure = workbenchStore.siteDraftFileSaveFailureGroups
             .first(where: { $0.reason == .externalChange })?.failures.first

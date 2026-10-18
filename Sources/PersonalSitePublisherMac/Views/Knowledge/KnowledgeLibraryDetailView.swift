@@ -135,14 +135,14 @@ struct KnowledgeLibraryDetailView: View {
             {
               HStack(alignment: .center, spacing: 12) {
                 Image(systemName: "doc.text.magnifyingglass")
-                  .font(.title3)
+                  .font(.workbenchTitle3)
                   .foregroundStyle(WorkbenchTheme.info)
                 VStack(alignment: .leading, spacing: 3) {
                   Text(String(localized: "超长文档阅读保护"))
-                    .font(.callout.weight(.semibold))
+                    .font(.workbenchBody.weight(.semibold))
                   Text(contentLimitMessage)
                     .font(.workbenchSupporting)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.workbenchSecondary)
                 }
                 Spacer()
                 if let sourceURL = document.sourceURL {
@@ -187,18 +187,18 @@ struct KnowledgeLibraryDetailView: View {
   private func header(_ document: KnowledgeDocument) -> some View {
     HStack(spacing: 12) {
       Image(systemName: document.kind.systemImage)
-        .font(.title3)
-        .foregroundStyle(.secondary)
+        .font(.workbenchTitle3)
+        .foregroundStyle(.workbenchSecondary)
       VStack(alignment: .leading, spacing: 2) {
         Text(document.title)
-          .font(.title3.weight(.semibold))
-          .workbenchTruncatedIdentity(document.title)
+          .font(.workbenchTitle3.weight(.semibold))
+          .workbenchTruncatedTitle(document.title)
           .accessibilityElement(children: .ignore)
           .accessibilityLabel(document.title)
           .accessibilityIdentifier("knowledge-library-detail-title")
         Text("仅保存在本机 · \(document.kind.localizedDisplayName)")
           .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
       Spacer()
 
@@ -430,7 +430,7 @@ struct KnowledgeLibraryDetailView: View {
       )
       .foregroundStyle(document.allowsRemoteAIUse ? Color.primary : Color.secondary)
     }
-    .font(.callout)
+    .font(.workbenchBody)
   }
 
   private func readingStatsLabel(for document: KnowledgeDocument) -> String {
@@ -497,15 +497,15 @@ struct KnowledgeLibraryDetailView: View {
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 3) {
         Text("已跳转到命中段落")
-          .font(.callout.weight(.semibold))
+          .font(.workbenchBody.weight(.semibold))
         HStack(spacing: 6) {
           if let location = hit.locationLabel {
             Text(location)
           }
           Text(hit.reasons.map(\.shortDisplayName).joined(separator: "、"))
         }
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
       }
     }
     .padding(WorkbenchSpacing.card)
@@ -635,7 +635,7 @@ struct KnowledgeLibraryDetailView: View {
             .accessibilityHidden(true)
           VStack(alignment: .leading, spacing: 2) {
             Text("清洗规则已升级")
-              .font(.callout.weight(.semibold))
+              .font(.workbenchBody.weight(.semibold))
             Text(
               String(
                 format: String(localized: "当前正文使用清洗规则 v%@，新版 v%@ 可进一步过滤社交平台界面噪声。重新清洗后，阅读、搜索与 AI 检索会改用新版内容。"),
@@ -644,7 +644,7 @@ struct KnowledgeLibraryDetailView: View {
               )
             )
             .font(.workbenchSupporting)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
           }
         }
         .padding(WorkbenchSpacing.card)
@@ -670,7 +670,7 @@ struct KnowledgeLibraryDetailView: View {
       } else {
         Text("清洗内容用于阅读、搜索与 AI 检索；原始抓取正文仅供核对，不会进入 AI 索引。")
           .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
     }
     .accessibilityElement(children: .contain)

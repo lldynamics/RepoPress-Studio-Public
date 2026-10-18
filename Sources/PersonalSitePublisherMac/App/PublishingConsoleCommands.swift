@@ -175,18 +175,16 @@ struct PublishingConsoleCommands: Commands {
     }
 
     CommandMenu(String(localized: "发布")) {
-      Button(String(localized: "发布当前文章…")) {
-        publishDrawerCommandAction?.openCurrentArticle()
+      Button(String(localized: "发布这篇…")) {
+        publishCommandAction?.publishCurrentArticle()
       }
-      .disabled(publishDrawerCommandAction?.canPrepareCurrentArticle != true)
+      .disabled(publishCommandAction?.canPublishCurrentArticle != true)
 
-      Button(String(localized: "发布所有变更…")) {
-        openPublishDrawerForAllChanges(
-          message: String(localized: "发布中心已打开，请确认整个仓库的变更范围。")
-        )
+      Button(String(localized: "发布全部…")) {
+        publishCommandAction?.publishAll()
       }
       .keyboardShortcut("p", modifiers: [.command, .option])
-      .disabled(publishDrawerCommandAction == nil)
+      .disabled(publishCommandAction?.canPublishAll != true)
 
       Button(String(localized: "运行发布检查")) {
         runPreflightForCommandDraft()
@@ -248,8 +246,8 @@ struct PublishingConsoleCommands: Commands {
     commandRouter?.markdownEditorCommandActions
   }
 
-  private var publishDrawerCommandAction: PublishDrawerCommandAction? {
-    commandRouter?.publishDrawerCommandAction
+  private var publishCommandAction: PublishCommandAction? {
+    commandRouter?.publishCommandAction
   }
 
   private var localSitePreviewCommandAction: LocalSitePreviewCommandAction? {
@@ -585,12 +583,6 @@ struct PublishingConsoleCommands: Commands {
     store.selectSection(.contentHealth)
   }
 
-  private func openPublishDrawerForAllChanges(message: String) {
-    if let publishDrawerCommandAction {
-      publishDrawerCommandAction.open(message)
-    }
-  }
-
   private func copyRepositorySyncCommands() {
     guard let plan = store.repositorySyncCommandPlan else {
       store.setPublishActionMessage(
@@ -706,7 +698,7 @@ struct PublishingConsoleMarkdownCommands: Commands {
     Button(String(localized: "插入图片到当前文章")) {
       markdownEditorCommands?.insertImages()
     }
-    .keyboardShortcut("i", modifiers: [.command, .shift])
+    .keyboardShortcut(commandRouter?.knowledgeLibraryCommandActions == nil ? .insertImages : nil)
 
     Button(String(localized: "模板与片段")) {
       markdownEditorCommands?.showSnippets()

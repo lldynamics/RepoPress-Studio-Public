@@ -110,6 +110,89 @@ final class WorkbenchSiteDraftFlushErrorTests: XCTestCase {
       try String(contentsOf: fixture.destinationURL, encoding: .utf8), externalDocument)
   }
 
+  func testGlobalFlushDoesNotCancelOrRewriteAnInFlightSiteDraftWrite() async throws {
+    let fixture = try await makeBoundSiteDraft(prefix: "flush-error-in-flight")
+    defer { try? FileManager.default.removeItem(at: fixture.rootURL) }
+    let store = fixture.store
+    let draftID = try XCTUnwrap(store.selectedDraft?.id)
+    let generation = (store.siteDraftFileSaveGenerations[draftID] ?? 0) &+ 1
+    let pendingTask = Task<Void, Never> {}
+
+    // This is the interval after the async writer has claimed ownership but
+    // before its completion callback records the new repository baseline.
+    // A global flush must leave that writer responsible for both the file and
+    // its completion bookkeeping.
+    store.siteDraftFileSaveGenerations[draftID] = generation
+    store.siteDraftFileSaveStates[draftID] = .pending(repositoryPath: fixture.repositoryPath)
+    store.siteDraftFileAutosaveTasks[draftID] = pendingTask
+    store.siteDraftFileWritesInProgress.insert(draftID)
+    defer {
+      pendingTask.cancel()
+      store.siteDraftFileAutosaveTasks[draftID] = nil
+      store.siteDraftFileWritesInProgress.remove(draftID)
+    }
+
+    XCTAssertFalse(store.flushPendingSiteDraftFileWrites())
+    XCTAssertEqual(store.siteDraftFileSaveGenerations[draftID], generation)
+    XCTAssertNotNil(store.siteDraftFileAutosaveTasks[draftID])
+    XCTAssertFalse(pendingTask.isCancelled)
+    XCTAssertTrue(store.siteDraftFileWritesInProgress.contains(draftID))
+    XCTAssertTrue(store.siteDraftFileFlushFailureIDs.isEmpty)
+    XCTAssertTrue(store.siteDraftFileSaveFailures.isEmpty)
+    XCTAssertEqual(
+      try String(contentsOf: fixture.destinationURL, encoding: .utf8), fixture.initialDocument)
+  }
+
+  func testFlushAfterInFlightWriteCallbackAcceptsNewerInMemoryContent() async throws {
+    let fixture = try await makeBoundSiteDraft(prefix: "flush-error-in-flight-callback")
+    defer { try? FileManager.default.removeItem(at: fixture.rootURL) }
+    let store = fixture.store
+    let draftID = try XCTUnwrap(store.selectedDraft?.id)
+    let profile = store.profile(for: try XCTUnwrap(store.selectedDraft))
+
+    // Model the writer having completed its file mutation to B while its
+    // store callback is still pending. The direct file-store call updates the
+    // writer's serialized baseline, but deliberately does not update the
+    // Workbench draft binding yet.
+    var draftB = try XCTUnwrap(store.selectedDraft)
+    draftB.bodyMarkdown = "写入中的 B 版本"
+    _ = try store.siteDraftFileStore.write(draft: draftB, profile: profile)
+    let bDocument = try String(contentsOf: fixture.destinationURL, encoding: .utf8)
+    XCTAssertTrue(bDocument.contains("写入中的 B 版本"))
+
+    var draftC = draftB
+    draftC.bodyMarkdown = "回调完成后的 C 版本"
+    store.updateDraft(draftC)
+    let generation = (store.siteDraftFileSaveGenerations[draftID] ?? 0) &+ 1
+    store.siteDraftFileSaveGenerations[draftID] = generation
+    store.siteDraftFileSaveStates[draftID] = .pending(repositoryPath: fixture.repositoryPath)
+    store.siteDraftFileWritesInProgress.insert(draftID)
+
+    // The global flush observes the in-flight owner and leaves B untouched.
+    XCTAssertFalse(store.flushPendingSiteDraftFileWrites())
+    XCTAssertEqual(try String(contentsOf: fixture.destinationURL, encoding: .utf8), bDocument)
+    XCTAssertTrue(store.siteDraftFileSaveFailures.isEmpty)
+
+    // Finish the simulated callback: B is now the trusted baseline while C
+    // remains the current in-memory draft. The next flush must write C rather
+    // than treating the writer's completed B as an external edit.
+    var callbackDraft = draftC
+    callbackDraft.recordProjectFile(
+      profile: profile,
+      repositoryPath: fixture.repositoryPath,
+      renderedContentDigest: draftB.renderedRepositoryContentDigest(profile: profile)
+    )
+    store.updateDraft(callbackDraft)
+    store.siteDraftFileWritesInProgress.remove(draftID)
+    store.refreshSiteDraftFileAutosave(for: [draftID])
+    await store.waitForPendingSiteDraftFileWrites()
+
+    XCTAssertTrue(
+      try String(contentsOf: fixture.destinationURL, encoding: .utf8)
+        .contains("回调完成后的 C 版本"))
+    XCTAssertTrue(store.siteDraftFileSaveFailures.isEmpty)
+  }
+
   private struct BoundSiteDraftFixture {
     let rootURL: URL
     let store: WorkbenchStore
@@ -237,35 +320,6 @@ final class WorkbenchExplicitDraftSaveTests: XCTestCase {
     XCTAssertEqual(
       try persistence.loadPrimarySnapshot().drafts.first(where: { $0.id == draft.id })?.bodyMarkdown,
       "未绑定草稿只保存到工作台快照"
-    )
-  }
-
-  func testImmediateSavePreservesExternalConflictAndReturnsFalse() async throws {
-    let rootURL = try makeRepositoryRoot(prefix: "explicit-draft-save-external-conflict")
-    defer { try? FileManager.default.removeItem(at: rootURL) }
-    let folderURL = rootURL.appendingPathComponent("external", isDirectory: true)
-    try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
-    let fileURL = folderURL.appendingPathComponent("idea.md")
-    try "# 初始\n\n外部初始正文\n".write(to: fileURL, atomically: true, encoding: .utf8)
-
-    let persistence = WorkbenchPersistence(fileURL: rootURL.appendingPathComponent("workspace.json"))
-    let store = WorkbenchStore(persistence: persistence)
-    XCTAssertTrue(store.connectExternalDraftFolder(folderURL))
-    let scan = await store.scanExternalDraftFolder()
-    XCTAssertEqual(scan.addedCount, 1)
-    let draft = try XCTUnwrap(store.drafts.first { $0.externalDraftSource != nil })
-    var edited = draft
-    edited.bodyMarkdown = "# 初始\n\n软件中的修改\n"
-    store.updateDraft(edited)
-    let externalContents = "# 外部版本\n\n其他编辑器中的修改\n"
-    try externalContents.write(to: fileURL, atomically: true, encoding: .utf8)
-
-    XCTAssertFalse(store.saveDraftImmediately(draftID: draft.id))
-    XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), externalContents)
-    XCTAssertTrue(store.externalDraftConflicts.contains(draft.id))
-    XCTAssertEqual(
-      try persistence.loadPrimarySnapshot().drafts.first(where: { $0.id == draft.id })?.bodyMarkdown,
-      edited.bodyMarkdown
     )
   }
 

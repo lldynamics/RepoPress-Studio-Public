@@ -166,7 +166,7 @@ final class LocalSitePreviewPanelRenderingTests: XCTestCase {
       action: {}
     )
     XCTAssertEqual(control.draftStatus.severity, .information)
-    XCTAssertEqual(control.draftStatus.value, String(localized: "通用草稿，未绑定站点"))
+    XCTAssertEqual(control.draftStatus.value, String(localized: "仅本地草稿，未绑定站点"))
     XCTAssertNil(control.draftStatus.count)
     store.selectDraft(general.id)
     XCTAssertEqual(control.draftStatus.severity, .information)
@@ -264,24 +264,133 @@ final class LocalSitePreviewPanelRenderingTests: XCTestCase {
     XCTAssertEqual(blocked.count, 3)
   }
 
-  func testPublishingAccountUsesCredentialsBeforeThePreview() {
-    let missing = ArticlePublishAttention.account(
-      preview: nil, tokenAvailability: KeychainTokenAvailability(hasToken: false))
-    XCTAssertEqual(missing.status, .blocked)
-    let failed = ArticlePublishAttention.account(
-      preview: nil,
-      tokenAvailability: KeychainTokenAvailability(
-        hasToken: true, accessFailureMessage: "Keychain unavailable"))
-    XCTAssertEqual(failed.status, .blocked)
-    XCTAssertEqual(failed.detail, "Keychain unavailable")
-    let preparing = ArticlePublishAttention.account(
-      preview: nil, tokenAvailability: KeychainTokenAvailability(hasToken: true))
-    XCTAssertEqual(preparing.status, .pending)
+  func testPublishBadgeCountsActionableItemsWhileExcludingOptimizationsAndInfo() {
+    let readiness = Self.articleReadiness(issues: [
+      PreflightIssue(severity: .error, title: "Missing date", message: "Add a date."),
+      PreflightIssue(severity: .warning, title: "Short summary", message: "Add a sentence."),
+      PreflightIssue(
+        severity: .warning, title: "Short body", message: "Add more detail.",
+        ruleID: ContentHealthRuleID.shortBody.rawValue
+      ),
+      PreflightIssue(
+        severity: .info, title: "Writing tip", message: "Consider a stronger opening."
+      ),
+    ])
+    let attention = ArticlePublishAttention(readiness: readiness, account: ("OK", .passed))
+
+    XCTAssertEqual(readiness.blockingCount, 1)
+    XCTAssertEqual(readiness.warningCount, 2)
+    XCTAssertEqual(readiness.optimizationCount, 1)
+    XCTAssertEqual(attention.pendingCount, 3)
+
+    let status = WorkspacePreparePublishToolbarButton.status(
+      attention: attention, publishConditions: nil, draftTitle: "Draft")
+    XCTAssertEqual(status.severity, .error)
+    XCTAssertEqual(status.value, String(localized: "1 个阻断项"))
+    XCTAssertEqual(status.detail, "Missing date")
+    XCTAssertEqual(status.count, attention.pendingCount)
+  }
+
+  func testRepositoryConditionsAffectStatusWithoutInflatingArticleBadge() {
+    let warning = ArticlePublishAttention(
+      readiness: Self.articleReadiness(issues: [
+        PreflightIssue(severity: .warning, title: "Short summary", message: "Add a sentence.")
+      ]),
+      account: ("OK", .passed)
+    )
+    let blockedConditions = LocalPublishReadiness(
+      writeReadiness: .blocked, commitReadiness: .blocked,
+      changedFileCount: 1, fileCount: 1,
+      writeBlockingIssues: [
+        PreflightIssue(severity: .error, title: "Write denied", message: "Cannot write files.")
+      ],
+      commitBlockingIssues: [
+        PreflightIssue(
+          severity: .error, title: "Commit denied", message: "Cannot commit changes."
+        )
+      ],
+      warningIssues: []
+    )
+    let warningStatus = WorkspacePreparePublishToolbarButton.status(
+      attention: warning, publishConditions: blockedConditions, draftTitle: "Draft")
+    XCTAssertEqual(warning.pendingCount, 2)
+    XCTAssertEqual(warningStatus.severity, .error)
+    XCTAssertEqual(warningStatus.value, String(localized: "2 个发布条件未满足"))
+    XCTAssertEqual(warningStatus.detail, "Write denied")
+    XCTAssertEqual(warningStatus.count, warning.pendingCount)
+
+    let readyArticle = ArticlePublishAttention(
+      readiness: Self.articleReadiness(
+        issues: [], socialSnapshot: Self.completedSocialSnapshot()),
+      account: ("OK", .passed)
+    )
+    let conditionOnlyStatus = WorkspacePreparePublishToolbarButton.status(
+      attention: readyArticle, publishConditions: blockedConditions, draftTitle: "Draft")
+    XCTAssertEqual(readyArticle.pendingCount, 0)
+    XCTAssertEqual(conditionOnlyStatus.severity, .error)
+    XCTAssertEqual(conditionOnlyStatus.value, String(localized: "2 个发布条件未满足"))
+    XCTAssertEqual(conditionOnlyStatus.detail, "Write denied")
+    XCTAssertNil(conditionOnlyStatus.count)
+  }
+
+  func testFirstPreflightStaticAndInstanceCountsStayConsistent() {
+    var readiness = Self.articleReadiness(issues: [])
+    readiness.isAwaitingPreflight = true
+    let attention = ArticlePublishAttention(readiness: readiness, account: ("None", .blocked))
+
+    XCTAssertEqual(
+      ArticlePublishAttention.pendingCount(readiness: readiness, accountStatus: .blocked), 0)
+    XCTAssertEqual(attention.pendingCount, 0)
+    let status = WorkspacePreparePublishToolbarButton.status(
+      attention: attention, publishConditions: nil, draftTitle: "Draft")
+    XCTAssertEqual(status.severity, .pending)
+    XCTAssertNil(status.count)
+  }
+
+  func testRenderedAttentionSummaryIncludesBlockingAndPendingRows() {
+    let summary = NSHostingView(
+      rootView: PublishDrawerAttentionSummary(
+        blockingCount: 1, pendingCount: 3, optimizationCount: 0, isReady: false
+      )
+      .padding()
+    )
+    let compact = NSHostingView(
+      rootView: PublishDrawerAttentionSummary(
+        blockingCount: 1, pendingCount: 0, optimizationCount: 0, isReady: false
+      )
+      .padding()
+    )
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 500, height: 180),
+      styleMask: [.borderless], backing: .buffered, defer: false
+    )
+    let compactWindow = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 500, height: 180),
+      styleMask: [.borderless], backing: .buffered, defer: false
+    )
+    window.contentView = summary
+    compactWindow.contentView = compact
+    window.layoutIfNeeded()
+    compactWindow.layoutIfNeeded()
+    summary.displayIfNeeded()
+    compact.displayIfNeeded()
+
+    XCTAssertGreaterThan(summary.fittingSize.height, compact.fittingSize.height)
+    XCTAssertGreaterThan(summary.fittingSize.width, 0)
+  }
+
+  func testPublishingNeedsALocalRepositoryRatherThanAnAPIToken() {
+    var profile = SiteProfile(name: "Site", repoOwner: "owner", repoName: "site")
+    XCTAssertEqual(ArticlePublishAttention.account(profile: profile).status, .blocked)
+    profile.localRepositoryRootPath = "/tmp/site"
+    XCTAssertEqual(ArticlePublishAttention.account(profile: profile).status, .passed)
+    profile.repoName = ""
+    XCTAssertEqual(ArticlePublishAttention.account(profile: profile).status, .blocked)
   }
 
   /// Without a social snapshot the panel always lists 社交预览尚未生成.
   private static func articleReadiness(
-    issues: [PreflightIssue]
+    issues: [PreflightIssue], socialSnapshot: SEOSocialPreviewSnapshot? = nil
   ) -> PublishDrawerReadinessPresentation {
     PublishDrawerReadinessPresentation.article(
       draftID: UUID(), preflightIssues: issues, imageReport: nil, isImageReportLoading: false,
@@ -289,7 +398,16 @@ final class LocalSitePreviewPanelRenderingTests: XCTestCase {
         titleCharacterCount: 10, summaryCharacterCount: 10, bodyCharacterCount: 10, h1Count: 1,
         hasPublishableCoverImage: false, markdownPath: "post.md", frontMatterPreview: "",
         findings: []),
-      socialSnapshot: nil, isSocialPreviewStale: false
+      socialSnapshot: socialSnapshot, isSocialPreviewStale: false
+    )
+  }
+
+  private static func completedSocialSnapshot() -> SEOSocialPreviewSnapshot {
+    SEOSocialPreviewSnapshot(
+      draftID: UUID(), signature: "test", markdownPath: "post.md",
+      canonicalURLText: "https://example.com/post",
+      titleCharacterCount: 10, descriptionCharacterCount: 10, imagePath: nil,
+      cards: [], findings: []
     )
   }
 
@@ -332,6 +450,13 @@ final class WindowDraftPublishStatusTests: XCTestCase {
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
     let store = makeStore(in: directory)
+    // Publishing pushes the local repository, so a configured one passes the
+    // connection check and only each window's own conditions remain.
+    store.updateActiveProfile {
+      $0.localRepositoryRootPath = directory.path
+      $0.repoOwner = "owner"
+      $0.repoName = "site"
+    }
     let profile = store.activeProfile
     let first = draft(profile: profile, title: "Window A", slug: "window-a")
     let second = draft(profile: profile, title: "Window B", slug: "window-b")
@@ -339,7 +464,6 @@ final class WindowDraftPublishStatusTests: XCTestCase {
     store.setSelectedDraftID(first.id)
     store.preflightRefreshTask?.cancel()
     store.preflightRefreshTask = nil
-    store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
     installResults(store: store, draft: first, reason: "Window A cannot commit")
     installResults(store: store, draft: second, reason: "Window B cannot commit")
     let firstButton = WorkspacePreparePublishToolbarButton(

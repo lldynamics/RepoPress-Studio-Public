@@ -97,8 +97,9 @@ struct WorkspaceQuickSearchView: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("workspace-quick-search")
+    // On the checks page the stage navigation is the only child; keep its own
+    // repository-sidebar-stage-navigation container.
+    .workbenchAccessibilityContainer(identifier: "workspace-quick-search")
   }
 
   private func repositoryStageNavigation(
@@ -205,8 +206,6 @@ struct WorkspaceQuickSearchView: View {
       return "arrow.left.arrow.right"
     case .history:
       return "clock.arrow.circlepath"
-    case .source:
-      return "chevron.left.forwardslash.chevron.right"
     }
   }
 
@@ -226,7 +225,7 @@ struct WorkspaceQuickSearchView: View {
   private var searchField: some View {
     HStack(spacing: 7) {
       Image(systemName: "magnifyingglass")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityHidden(true)
 
       TextField("搜索当前站点文章", text: $query)
@@ -243,7 +242,7 @@ struct WorkspaceQuickSearchView: View {
           isSearchFocused = true
         } label: {
           Image(systemName: "xmark.circle.fill")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
         .buttonStyle(.plain)
         .help("清除搜索")
@@ -296,14 +295,14 @@ struct WorkspaceQuickSearchView: View {
   private var imageResourceState: some View {
     VStack(spacing: 10) {
       Image(systemName: "photo.stack")
-        .font(.title2)
-        .foregroundStyle(.secondary)
+        .font(.workbenchTitle2)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityHidden(true)
       Text("图片资源")
         .font(.workbenchItemTitle)
       Text("图片工作区只管理图片资源。文章缺图、无效引用、过大图片等问题请到“检查”处理。")
         .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -325,7 +324,7 @@ struct WorkspaceQuickSearchView: View {
           Text(LocalizedStringKey(resultSectionTitle))
           Spacer(minLength: 4)
           Text(resultCountLabel(for: snapshot))
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
     }
@@ -348,7 +347,7 @@ struct WorkspaceQuickSearchView: View {
     } label: {
       HStack(spacing: 9) {
         Image(systemName: draft.isPrivate ? "lock.doc" : "doc.text")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .frame(width: 16)
           .accessibilityHidden(true)
 
@@ -360,7 +359,7 @@ struct WorkspaceQuickSearchView: View {
           if !detail.isEmpty {
             Text(detail)
               .font(.workbenchSupporting)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
               .lineLimit(1)
           }
         }
@@ -384,8 +383,8 @@ struct WorkspaceQuickSearchView: View {
   private var noArticlesState: some View {
     VStack(spacing: 10) {
       Image(systemName: "doc.badge.plus")
-        .font(.title2)
-        .foregroundStyle(.secondary)
+        .font(.workbenchTitle2)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityHidden(true)
       Text("当前站点还没有文章")
         .font(.workbenchItemTitle)
@@ -404,8 +403,8 @@ struct WorkspaceQuickSearchView: View {
   private var noResultsState: some View {
     VStack(spacing: 8) {
       Image(systemName: "magnifyingglass")
-        .font(.title2)
-        .foregroundStyle(.secondary)
+        .font(.workbenchTitle2)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityHidden(true)
       Text("没有匹配的文章")
         .font(.workbenchItemTitle)
@@ -427,7 +426,7 @@ struct WorkspaceQuickSearchView: View {
         .font(.workbenchItemTitle)
       Text("内容健康快照完成后，这里只显示可由 AI 协助修复的文章。")
         .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -441,14 +440,14 @@ struct WorkspaceQuickSearchView: View {
   private var aiFixQueueFailureState: some View {
     VStack(spacing: 10) {
       Image(systemName: "exclamationmark.triangle")
-        .font(.title2)
+        .font(.workbenchTitle2)
         .foregroundStyle(WorkbenchTheme.warning)
         .accessibilityHidden(true)
       Text("AI 可修复队列暂时不可用")
         .font(.workbenchItemTitle)
       Text("请在右侧重新检查内容健康快照。")
         .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -462,14 +461,14 @@ struct WorkspaceQuickSearchView: View {
   private var aiFixQueueCancelledState: some View {
     VStack(spacing: 10) {
       Image(systemName: "pause.circle")
-        .font(.title2)
-        .foregroundStyle(.secondary)
+        .font(.workbenchTitle2)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityHidden(true)
       Text("内容健康检查已取消")
         .font(.workbenchItemTitle)
       Text("请在内容健康页面点击“重新开始”，生成 AI 可修复队列。")
         .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -483,14 +482,14 @@ struct WorkspaceQuickSearchView: View {
   private var noAIFixableArticlesState: some View {
     VStack(spacing: 10) {
       Image(systemName: "checkmark.circle")
-        .font(.title2)
+        .font(.workbenchTitle2)
         .foregroundStyle(WorkbenchTheme.success)
         .accessibilityHidden(true)
       Text("当前没有可由 AI 修复的文章")
         .font(.workbenchItemTitle)
       Text("当前站点的摘要、标签和 Front Matter 暂无可由 AI 协助修复的问题。")
         .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)
     }

@@ -68,11 +68,11 @@ extension RepositoryWorkspaceView {
     return VStack(alignment: .leading, spacing: 12) {
       VStack(alignment: .leading, spacing: 3) {
         Text("发布状态")
-          .font(.headline)
+          .font(.workbenchHeadline)
           .accessibilityAddTraits(.isHeader)
         Text("此处只显示站点连接和最近结果；发布确认、文件清单与差异审阅统一在“打开发布流程”中完成。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       if repositoryNeedsCheck
@@ -84,14 +84,14 @@ extension RepositoryWorkspaceView {
             : String(localized: "当前发布状态：Git 操作待处理"),
           systemImage: "exclamationmark.triangle"
         )
-        .font(.callout)
+        .font(.workbenchBody)
         .foregroundStyle(WorkbenchTheme.risk)
       } else if let preview = store.remotePublishPreviewSnapshot {
         Label(
           "当前发布状态：\(preview.readiness.localizedDisplayName)",
           systemImage: preview.readiness.systemImage
         )
-        .font(.callout)
+        .font(.workbenchBody)
         .foregroundStyle(preview.readiness == .blocked ? WorkbenchTheme.risk : Color.secondary)
 
         if !preview.remoteConflictPaths.isEmpty {
@@ -107,8 +107,8 @@ extension RepositoryWorkspaceView {
             : String(localized: "打开统一发布流程后会生成最新发布检查。"),
           systemImage: store.selectedDraft == nil ? "doc.badge.questionmark" : "paperplane"
         )
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
       }
 
       LazyVGrid(
@@ -155,8 +155,8 @@ extension RepositoryWorkspaceView {
               ? String(localized: "正在执行线上发布...")
               : String(localized: "正在检查仓库权限...")
           )
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
         }
       }
 
@@ -173,7 +173,7 @@ extension RepositoryWorkspaceView {
           "最近记录：\(latestEntry.status.localizedDisplayName)",
           systemImage: latestEntry.status.systemImage
         )
-        .font(.callout)
+        .font(.workbenchBody)
         .foregroundStyle(ledgerStatusForeground(latestEntry.status))
       }
     }
@@ -220,10 +220,10 @@ extension RepositoryWorkspaceView {
         HStack(alignment: .firstTextBaseline) {
           VStack(alignment: .leading, spacing: 3) {
             Text("同步建议")
-              .font(.headline)
+              .font(.workbenchHeadline)
               .accessibilityAddTraits(.isHeader)
             Text(plan.title)
-              .font(.callout.weight(.medium))
+              .font(.workbenchBody.weight(.medium))
           }
           Spacer()
           Button {
@@ -245,11 +245,11 @@ extension RepositoryWorkspaceView {
         }
 
         Text(plan.summary)
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
 
         Text(plan.commandText)
-          .font(.callout.monospaced())
+          .font(.workbenchBody.monospaced())
           .textSelection(.enabled)
           .lineLimit(8)
           .padding(WorkbenchSpacing.card)
@@ -260,8 +260,8 @@ extension RepositoryWorkspaceView {
 
         ForEach(plan.notes, id: \.self) { note in
           Label(note, systemImage: "info.circle")
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
       .padding(WorkbenchSpacing.content)
@@ -305,7 +305,7 @@ extension RepositoryWorkspaceView {
   var pathRules: some View {
     VStack(alignment: .leading, spacing: 10) {
       Text("路径规则")
-        .font(.headline)
+        .font(.workbenchHeadline)
         .accessibilityAddTraits(.isHeader)
       repositoryPathRule(title: "内容目录", value: store.activeProfile.contentRoot)
       repositoryPathRule(title: "图片目录", value: store.activeProfile.assetRoot)
@@ -325,10 +325,10 @@ extension RepositoryWorkspaceView {
   private func repositoryPathRule(title: LocalizedStringKey, value: String) -> some View {
     VStack(alignment: .leading, spacing: 3) {
       Text(title)
-        .font(.callout.weight(.medium))
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody.weight(.medium))
+        .foregroundStyle(.workbenchSecondary)
       Text(value)
-        .font(.callout.monospaced())
+        .font(.workbenchBody.monospaced())
         .textSelection(.enabled)
         .workbenchTruncatedIdentity(value, lineLimit: 2)
     }
@@ -338,8 +338,8 @@ extension RepositoryWorkspaceView {
     VStack(alignment: .leading, spacing: 10) {
       HStack(alignment: .firstTextBaseline) {
         Label("线上发布结果", systemImage: "checkmark.seal")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.weight(.semibold))
+          .foregroundStyle(.workbenchSecondary)
         Spacer()
         Button {
           copy(result.clipboardSummary, message: String(localized: "已复制线上发布结果。"))
@@ -357,29 +357,29 @@ extension RepositoryWorkspaceView {
 
       Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 7) {
         GridRow {
-          Text("方式").foregroundStyle(.secondary)
+          Text("方式").foregroundStyle(.workbenchSecondary)
           Text(result.displayTitle)
         }
         GridRow {
-          Text("分支").foregroundStyle(.secondary)
+          Text("分支").foregroundStyle(.workbenchSecondary)
           Text(result.branchSummary)
-            .font(.caption.monospaced())
+            .font(.workbenchMetadata.monospaced())
             .textSelection(.enabled)
         }
         if let repositoryName = result.repositoryName {
           GridRow {
-            Text("仓库").foregroundStyle(.secondary)
+            Text("仓库").foregroundStyle(.workbenchSecondary)
             Text(repositoryName)
-              .font(.caption.monospaced())
+              .font(.workbenchMetadata.monospaced())
               .textSelection(.enabled)
           }
         }
         if let commitSHA = result.commitSHA {
           GridRow {
-            Text("Commit").foregroundStyle(.secondary)
+            Text("Commit").foregroundStyle(.workbenchSecondary)
             HStack(spacing: 8) {
               Text(result.shortCommitSHA ?? commitSHA)
-                .font(.caption.monospaced())
+                .font(.workbenchMetadata.monospaced())
                 .textSelection(.enabled)
               Button {
                 copy(commitSHA, message: String(localized: "已复制 commit SHA。"))
@@ -395,20 +395,20 @@ extension RepositoryWorkspaceView {
         }
         if let reviewURL = result.reviewURL {
           GridRow {
-            Text("PR/MR").foregroundStyle(.secondary)
+            Text("PR/MR").foregroundStyle(.workbenchSecondary)
             Text(reviewURL)
-              .font(.caption.monospaced())
+              .font(.workbenchMetadata.monospaced())
               .workbenchTruncatedIdentity(reviewURL)
           }
         }
       }
-      .font(.caption)
+      .font(.workbenchMetadata)
 
       if !result.changedPaths.isEmpty {
         let changedPaths = result.changedPaths.prefix(6).joined(separator: "\n")
         Text(changedPaths)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospaced())
+          .foregroundStyle(.workbenchSecondary)
           .workbenchTruncatedIdentity(changedPaths, lineLimit: 6)
       }
     }
@@ -422,7 +422,7 @@ extension RepositoryWorkspaceView {
     VStack(alignment: .leading, spacing: 10) {
       HStack(alignment: .firstTextBaseline) {
         Label("远端仓库已创建", systemImage: "checkmark.circle")
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
           .foregroundStyle(WorkbenchTheme.success)
         Spacer()
         if let urlText = result.htmlURL ?? result.cloneURL, let url = URL(string: urlText) {
@@ -436,33 +436,33 @@ extension RepositoryWorkspaceView {
 
       Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 7) {
         GridRow {
-          Text("仓库").foregroundStyle(.secondary)
+          Text("仓库").foregroundStyle(.workbenchSecondary)
           Text(result.repositoryName)
-            .font(.caption.monospaced())
+            .font(.workbenchMetadata.monospaced())
             .textSelection(.enabled)
         }
         if let defaultBranch = result.defaultBranch {
           GridRow {
-            Text("默认分支").foregroundStyle(.secondary)
+            Text("默认分支").foregroundStyle(.workbenchSecondary)
             Text(defaultBranch)
-              .font(.caption.monospaced())
+              .font(.workbenchMetadata.monospaced())
               .textSelection(.enabled)
           }
         }
         GridRow {
-          Text("可见性").foregroundStyle(.secondary)
+          Text("可见性").foregroundStyle(.workbenchSecondary)
           Text(result.privateRepository ? String(localized: "私有") : String(localized: "公开"))
         }
         if let htmlURL = result.htmlURL ?? result.cloneURL {
           GridRow {
-            Text("URL").foregroundStyle(.secondary)
+            Text("URL").foregroundStyle(.workbenchSecondary)
             Text(htmlURL)
-              .font(.caption.monospaced())
+              .font(.workbenchMetadata.monospaced())
               .workbenchTruncatedIdentity(htmlURL)
           }
         }
       }
-      .font(.caption)
+      .font(.workbenchMetadata)
     }
     .padding(WorkbenchSpacing.card)
     .background(
@@ -487,7 +487,7 @@ extension RepositoryWorkspaceView {
 
       Text(detail)
         .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .lineSpacing(1)
 
       ForEach(paths.prefix(6), id: \.self) { path in

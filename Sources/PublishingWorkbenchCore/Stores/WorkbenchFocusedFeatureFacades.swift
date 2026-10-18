@@ -42,9 +42,9 @@ public final class WorkbenchMetadataSummaryFeatureFacade: ObservableObject {
 
   public init(store: WorkbenchStore) {
     self.store = store
-    observe(store.aiWorkspaceStore.$aiTokenAvailability)
-    observe(store.aiWorkspaceStore.$isAIActionRunning)
-    observe(store.aiWorkspaceStore.$aiActionMessage)
+    observe(store.aiWorkspaceStore.publisher(for: \.aiTokenAvailability))
+    observe(store.aiWorkspaceStore.publisher(for: \.isAIActionRunning))
+    observe(store.aiWorkspaceStore.publisher(for: \.aiActionMessage))
     observe(
       store.$aiConnectionProfiles.map { profiles in
         profiles.map {

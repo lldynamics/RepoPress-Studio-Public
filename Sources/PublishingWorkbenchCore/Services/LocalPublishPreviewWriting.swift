@@ -5,7 +5,9 @@ extension LocalPublishPreviewService {
   func writeWithEvidence(
     package: PublishPackage,
     rootURL: URL,
-    preview: LocalPublishPreview? = nil
+    preview: LocalPublishPreview? = nil,
+    beforeDestinationIsolation: ((URL) throws -> Void)? = nil,
+    afterDestinationIsolation: ((URL) throws -> Void)? = nil
   ) throws -> LocalPublishWriteResult {
     try recoverInterruptedTransaction(at: rootURL)
     let previewBaseStates: [String: LocalPublishFileState]?
@@ -177,30 +179,15 @@ extension LocalPublishPreviewService {
         else {
           throw LocalPublishPreviewError.rollbackConflict(prepared.file.repositoryPath)
         }
-        switch prepared.file.operation {
-        case .delete:
-          if fileManager.fileExists(atPath: destinationURL.path) {
-            try fileManager.removeItem(at: destinationURL)
-            rollbackEntries[index].didMutateDestination = true
-          }
-        case .upsert:
-          switch prepared.file.kind {
-          case .markdown:
-            try (prepared.file.content ?? "").write(
-              to: destinationURL, atomically: true, encoding: .utf8)
-          case .image, .video:
-            guard let sourceURL = prepared.sourceURL else {
-              throw LocalPublishPreviewError.missingSource(prepared.file.repositoryPath)
-            }
-            try replaceBinaryFileAtomically(
-              sourceURL: sourceURL,
-              expectedSourceState: prepared.expectedSourceState,
-              destinationURL: destinationURL,
-              repositoryPath: prepared.file.repositoryPath
-            )
-          }
-          rollbackEntries[index].didMutateDestination = true
-        }
+        try applyPreparedWrite(
+          prepared,
+          destinationURL: destinationURL,
+          originalState: transactionEntries[index].originalState ?? .missing,
+          rollbackDirectory: rollbackDirectory,
+          beforeDestinationIsolation: beforeDestinationIsolation,
+          afterDestinationIsolation: afterDestinationIsolation
+        )
+        rollbackEntries[index].didMutateDestination = true
 
         let appliedState = try localPublishFileState(at: destinationURL, fileManager: fileManager)
         rollbackEntries[index].appliedState = appliedState
@@ -275,6 +262,72 @@ extension LocalPublishPreviewService {
         )
       )
     )
+  }
+
+  private func applyPreparedWrite(
+    _ prepared: PreparedLocalPublishWrite,
+    destinationURL: URL,
+    originalState: LocalPublishFileState,
+    rollbackDirectory: URL,
+    beforeDestinationIsolation: ((URL) throws -> Void)?,
+    afterDestinationIsolation: ((URL) throws -> Void)?
+  ) throws {
+    try beforeDestinationIsolation?(destinationURL)
+    // Recovery already recognizes this prefix as evidence that must not be
+    // deleted after an interruption or an unresolved concurrent save.
+    let isolatedURL = rollbackDirectory.appendingPathComponent("recovery-current-\(UUID())")
+    var hasIsolatedDestination = false
+    do {
+      if originalState != .missing {
+        try moveRecoveryFileExclusively(from: destinationURL, to: isolatedURL)
+        hasIsolatedDestination = true
+        guard try localPublishFileState(at: isolatedURL, fileManager: fileManager) == originalState
+        else { throw LocalPublishPreviewError.rollbackConflict(prepared.file.repositoryPath) }
+      }
+      try afterDestinationIsolation?(destinationURL)
+      switch prepared.file.operation {
+      case .delete:
+        // The original is isolated. Never remove a replacement at its old path.
+        guard try localPublishFileState(at: destinationURL, fileManager: fileManager) == .missing
+        else { throw LocalPublishPreviewError.rollbackConflict(prepared.file.repositoryPath) }
+      case .upsert:
+        switch prepared.file.kind {
+        case .markdown:
+          let stagingURL = rollbackDirectory.appendingPathComponent("markdown-stage-\(UUID())")
+          defer { try? fileManager.removeItem(at: stagingURL) }
+          try Data((prepared.file.content ?? "").utf8).write(
+            to: stagingURL, options: .withoutOverwriting)
+          try moveRecoveryFileExclusively(from: stagingURL, to: destinationURL)
+        case .image, .video:
+          guard let sourceURL = prepared.sourceURL else {
+            throw LocalPublishPreviewError.missingSource(prepared.file.repositoryPath)
+          }
+          try replaceBinaryFileAtomically(
+            sourceURL: sourceURL,
+            expectedSourceState: prepared.expectedSourceState,
+            destinationURL: destinationURL,
+            repositoryPath: prepared.file.repositoryPath,
+            requiresMissingDestination: true
+          )
+        }
+      }
+      if hasIsolatedDestination {
+        guard try localPublishFileState(at: isolatedURL, fileManager: fileManager) == originalState
+        else { throw LocalPublishPreviewError.rollbackConflict(prepared.file.repositoryPath) }
+        try fileManager.removeItem(at: isolatedURL)
+      }
+    } catch {
+      if hasIsolatedDestination, fileManager.fileExists(atPath: isolatedURL.path) {
+        // Restore only into an empty destination; preserve both versions when
+        // another editor has created the path or changed the isolated original.
+        do {
+          try moveRecoveryFileExclusively(from: isolatedURL, to: destinationURL)
+        } catch {
+          throw LocalPublishPreviewError.recoveryFailed("并发修改已保留，需核对：\(isolatedURL.path)")
+        }
+      }
+      throw error
+    }
   }
 
   private func expectedBaseStates(

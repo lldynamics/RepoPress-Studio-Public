@@ -17,16 +17,16 @@ struct DraftVersionAlignedBodyView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       Label("正文差异", systemImage: "doc.text.magnifyingglass")
-        .font(.headline)
+        .font(.workbenchHeadline)
       Text("绿色加号表示新增，红色减号表示删除；突出显示具体字词变化。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
 
       if visibleRows.isEmpty {
         Text("正文没有变化")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       } else {
         VStack(spacing: 0) {
           if isSideBySide {
@@ -60,7 +60,7 @@ struct DraftVersionAlignedBodyView: View {
 
   private func paneHeading(_ title: LocalizedStringKey) -> some View {
     Text(title)
-      .font(.subheadline.weight(.semibold))
+      .font(.workbenchMetadata.weight(.semibold))
       .padding(WorkbenchSpacing.card)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(.quaternary.opacity(0.35))
@@ -99,17 +99,17 @@ private struct DraftVersionAlignedLineView: View {
   var body: some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
       Text(verbatim: line.map { String($0.lineNumber) } ?? "")
-        .font(.caption.monospacedDigit())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospacedDigit())
+        .foregroundStyle(.workbenchSecondary)
         .frame(minWidth: 24, alignment: .trailing)
         .accessibilityHidden(true)
       Text(verbatim: marker)
-        .font(.body.monospaced().weight(.semibold))
+        .font(.workbenchBody.monospaced().weight(.semibold))
         .foregroundStyle(changeColor)
         .frame(width: 16)
         .accessibilityHidden(true)
       Text(highlightedText)
-        .font(.body)
+        .font(.workbenchBody)
         .textSelection(.enabled)
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -145,7 +145,7 @@ private struct DraftVersionAlignedLineView: View {
       if segment.isChanged {
         piece.backgroundColor = changeColor.opacity(0.2)
         piece.foregroundColor = changeColor
-        piece.font = .body.weight(.semibold)
+        piece.font = .workbenchBody.weight(.semibold)
         if line.kind == .removed { piece.strikethroughStyle = .single }
       }
       result.append(piece)

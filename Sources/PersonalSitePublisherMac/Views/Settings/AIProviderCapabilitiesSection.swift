@@ -14,8 +14,8 @@ struct AIProviderCapabilitiesSection: View {
       DisclosureGroup("连接能力与诊断") {
         capabilitiesGrid
         Text("静态推断不等于实测；只有当前未过期的探测证据或可信静态支持才会启用可选字段。已过期和未知能力均按安全降级处理。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
     } header: {
       Text("当前连接能力")
@@ -97,9 +97,9 @@ struct AIProviderCapabilitiesSection: View {
 
       VStack(alignment: .leading, spacing: 2) {
         Text(verbatim: title)
-          .font(.callout)
+          .font(.workbenchBody)
         Text(verbatim: supportTitle(support, state: evidenceState, outcome: probeOutcome))
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(color(for: support))
       }
     }

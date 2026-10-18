@@ -34,13 +34,13 @@ struct RSSHighlightEditorSheet: View {
     VStack(alignment: .leading, spacing: 14) {
       HStack {
         Label("保存高亮与批注", systemImage: "highlighter")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
         Button("取消", role: .cancel) { dismiss() }
       }
 
       Text("高亮文字")
-        .font(.subheadline.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
       ScrollView {
         Text(text)
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -52,9 +52,9 @@ struct RSSHighlightEditorSheet: View {
         .quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
 
       Text("批注（可选）")
-        .font(.subheadline.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
       TextEditor(text: $note)
-        .font(.body)
+        .font(.workbenchBody)
         .frame(minHeight: 110)
         .overlay(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card).stroke(.quaternary))
         .accessibilityLabel("高亮批注")
@@ -66,8 +66,8 @@ struct RSSHighlightEditorSheet: View {
       HStack {
         if isSaveUnavailable {
           Label("正在完成另一项 RSS 操作，请稍候保存。", systemImage: "clock")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
         Spacer()
         Button("保存", action: save)
@@ -110,20 +110,20 @@ struct RSSArticleTagsSheet: View {
     VStack(alignment: .leading, spacing: 14) {
       HStack {
         Label("编辑文章标签", systemImage: "tag")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
         Button("取消", role: .cancel) { dismiss() }
       }
       Text(article.title)
-        .font(.subheadline.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
         .lineLimit(2)
       TextField("标签，用逗号分隔", text: $tagsText)
         .textFieldStyle(.roundedBorder)
         .accessibilityLabel("文章标签")
       HStack {
         Text("标签用于后续检索与资料整理。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         Spacer()
         Button("保存") {
           onSave(
@@ -167,13 +167,13 @@ struct RSSReaderWelcomeView: View {
     VStack(spacing: 18) {
       Image(systemName: "dot.radiowaves.left.and.right")
         .font(.system(size: WorkbenchIconSize.hero))
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityHidden(true)
       Text("开始阅读")
-        .font(.largeTitle.weight(.semibold))
+        .font(.workbenchLargeTitle.weight(.semibold))
         .fixedSize(horizontal: false, vertical: true)
       Text("把阅读、资料和写作连接起来。订阅内容只保存在本机，不会因为阅读而上传到第三方服务。")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: 520)
@@ -186,7 +186,7 @@ struct RSSReaderWelcomeView: View {
 
       VStack(alignment: .leading, spacing: 8) {
         Text("也可以粘贴博客首页，自动发现 RSS / Atom")
-          .font(.headline)
+          .font(.workbenchHeadline)
           .fixedSize(horizontal: false, vertical: true)
         HStack(spacing: 8) {
           TextField("https://example.com", text: $homepageURL)
@@ -230,13 +230,13 @@ struct RSSEditFeedURLSheet: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
       Text("修改订阅地址")
-        .font(.title2.weight(.semibold))
+        .font(.workbenchTitle2.weight(.semibold))
       Text(feed.displayTitle)
-        .font(.headline)
+        .font(.workbenchHeadline)
         .lineLimit(2)
       Text("修改后会保留这个订阅的本地文章、已读状态、稍后阅读状态、标签和高亮，然后使用新地址重新刷新。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
 
       TextField("https://example.com/feed.xml", text: $value)
@@ -247,7 +247,7 @@ struct RSSEditFeedURLSheet: View {
 
       if let errorMessage {
         Text(errorMessage)
-          .font(.callout)
+          .font(.workbenchBody)
           .foregroundStyle(WorkbenchTheme.risk)
           .textSelection(.enabled)
           .accessibilityLabel("地址修改失败：\(errorMessage)")
@@ -304,24 +304,24 @@ struct RSSExcerptNoteSheet: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
       Text("摘录并添加笔记")
-        .font(.title2.weight(.semibold))
+        .font(.workbenchTitle2.weight(.semibold))
       Text(article.title)
-        .font(.headline)
+        .font(.workbenchHeadline)
         .fixedSize(horizontal: false, vertical: true)
       Text("摘录会限制在安全长度内保存；你可以删减后再添加自己的笔记。")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
       Text("摘录")
-        .font(.subheadline.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
       TextEditor(text: $excerpt)
-        .font(.body)
+        .font(.workbenchBody)
         .frame(minHeight: 150)
         .overlay(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control).stroke(.quaternary))
         .accessibilityLabel("要保存的文章摘录")
       Text("笔记")
-        .font(.subheadline.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
       TextEditor(text: $note)
-        .font(.body)
+        .font(.workbenchBody)
         .frame(minHeight: 100)
         .overlay(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control).stroke(.quaternary))
         .accessibilityLabel("关于这段摘录的笔记")
@@ -329,8 +329,8 @@ struct RSSExcerptNoteSheet: View {
       HStack {
         if isSaveUnavailable {
           Label("正在完成另一项 RSS 操作，请稍候保存。", systemImage: "clock")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
         Spacer()
         Button("取消", action: dismiss.callAsFunction)
@@ -362,10 +362,10 @@ struct RSSAddSubscriptionView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       Text("添加 RSS 订阅")
-        .font(.title2.weight(.semibold))
+        .font(.workbenchTitle2.weight(.semibold))
         .fixedSize(horizontal: false, vertical: true)
       Text("输入 RSS / Atom 地址，或粘贴博客首页自动发现。文章会缓存到本机，默认不会上传到第三方服务。")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
 
       TextField("https://example.com", text: $value)

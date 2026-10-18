@@ -4,14 +4,6 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class UIOptimizationReleaseFailureReviewTests: XCTestCase {
-  func testReviewScopeDoesNotTurnSingleArticleFailureIntoWholeRepositoryPublish() {
-    let record = ReleaseRecord(
-      kind: .remotePublishFailure, title: "Failed", summary: "", draftID: UUID())
-    XCTAssertEqual(ReleaseFailureReviewContext.initialScope(for: record), .currentArticle)
-    let repositoryRecord = ReleaseRecord(kind: .remotePublishFailure, title: "Failed", summary: "")
-    XCTAssertEqual(ReleaseFailureReviewContext.initialScope(for: repositoryRecord), .repository)
-  }
-
   func testReviewRejectsChangedProfileBranchAndRepository() {
     var profile = SiteProfile(name: "Test", repoOwner: "owner", repoName: "site")
     let record = ReleaseRecord(

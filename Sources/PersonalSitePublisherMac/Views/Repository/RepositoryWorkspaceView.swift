@@ -11,9 +11,8 @@ struct RepositoryWorkspaceView: View {
   @StateObject var externalBrowserPreviewCoordinator: ExternalBrowserPreviewCoordinator
   @Binding var stage: RepositoryContextStage
   @Binding var changedFileSelection: RepositoryChangedFileSelection?
-  @ObservedObject var sourceSession: RepositoryHTMLSourceSession
   @Environment(\.openSettings) var openSettings
-  @Environment(\.publishDrawerCommandAction) var publishDrawerCommandAction
+  @Environment(\.publishCommandAction) var publishCommandAction
   @Environment(\.localSitePreviewCommandAction) var localSitePreviewCommandAction
   @Environment(\.settingsWorkspaceCommandAction) var settingsWorkspaceCommandAction
   @AppStorage("dataManagementRequestedSection") var dataManagementRequestedSection =
@@ -29,8 +28,7 @@ struct RepositoryWorkspaceView: View {
   init(
     store: WorkbenchStore,
     stage: Binding<RepositoryContextStage>,
-    changedFileSelection: Binding<RepositoryChangedFileSelection?>,
-    sourceSession: RepositoryHTMLSourceSession
+    changedFileSelection: Binding<RepositoryChangedFileSelection?>
   ) {
     self.store = store
     _workspaceObservation = ObservedObject(
@@ -41,12 +39,11 @@ struct RepositoryWorkspaceView: View {
     )
     _stage = stage
     _changedFileSelection = changedFileSelection
-    _sourceSession = ObservedObject(wrappedValue: sourceSession)
   }
 
   var body: some View {
     VStack(spacing: 0) {
-      if stage == .history || stage == .source, hasPendingRepositoryRecovery {
+      if stage == .history, hasPendingRepositoryRecovery {
         repositoryWorkflowBanner
           .padding(.horizontal, WorkbenchSpacing.page)
           .padding(.top, WorkbenchSpacing.card)
@@ -54,15 +51,9 @@ struct RepositoryWorkspaceView: View {
       if stage == .history {
         ReleaseHistoryDetailView(store: store)
       } else {
-        Group {
-          if stage == .source {
-            RepositoryHTMLSourceWorkspaceView(store: store, session: sourceSession)
-          } else {
-            repositoryContent
-          }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("repository-workspace")
+        repositoryContent
+          .accessibilityElement(children: .contain)
+          .accessibilityIdentifier("repository-workspace")
       }
     }
     .sheet(item: $pendingRepositoryCreationTarget) { target in
@@ -165,7 +156,7 @@ struct RepositoryWorkspaceView: View {
             .accessibilityAddTraits(.isHeader)
           Text(repositoryPageSubtitle)
             .font(.workbenchPageSubtitle)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
 
         repositoryPrimaryActions
@@ -183,7 +174,7 @@ struct RepositoryWorkspaceView: View {
     switch stage {
     case .changes:
       return "文件变更"
-    case .overview, .source, .history:
+    case .overview, .history:
       return "站点"
     }
   }
@@ -192,7 +183,7 @@ struct RepositoryWorkspaceView: View {
     switch stage {
     case .changes:
       return "先处理网站更新，再审阅这台 Mac 上的变化，确认后进入统一发布流程。"
-    case .overview, .source, .history:
+    case .overview, .history:
       return "管理仓库、图片资源和发布记录；最终写入与发布统一在发布流程中确认。"
     }
   }

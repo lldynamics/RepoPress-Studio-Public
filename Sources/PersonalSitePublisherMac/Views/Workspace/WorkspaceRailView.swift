@@ -127,7 +127,7 @@ struct WorkspacePrimaryNavigationRail: View {
         Text("任务")
           .font(.workbenchMetadata)
       }
-      .foregroundStyle(.secondary)
+      .foregroundStyle(.workbenchSecondary)
       .frame(maxWidth: .infinity, minHeight: 46)
       .contentShape(
         RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control, style: .continuous)

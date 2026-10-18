@@ -22,9 +22,9 @@ struct DraftUnpublishReviewView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       Text("下线前检查引用影响")
-        .font(.title2.weight(.semibold))
+        .font(.workbenchTitle2.weight(.semibold))
       Text("统计当前站点已纳入工作台的文章，包括未发布文章；不包含回收站、其他站点和自身引用，也不扫描外部网站。")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       let currentProfile = snapshot?.profileSnapshot ?? profile
       let currentTarget = snapshot?.targetDraft ?? target
       let strategy =
@@ -33,8 +33,8 @@ struct DraftUnpublishReviewView: View {
         : String(localized: "创建下线 PR/MR")
       let title = displayTitle(currentTarget.id, String(localized: "未命名文章"))
       Text("仍然下线会把「\(title)」移到回收站、\(strategy)，并清理本地 Markdown；图片资源不会自动删除。失败项会保留在发布抽屉中重试。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
 
       if isLoading {
         ProgressView("正在扫描文章引用…")
@@ -44,8 +44,8 @@ struct DraftUnpublishReviewView: View {
       }
       if let message {
         Text(message)
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
           .accessibilityIdentifier("unpublish-impact-message")
       }
       HStack {
@@ -73,10 +73,10 @@ struct DraftUnpublishReviewView: View {
       Label("在检查范围内未发现指向这篇文章的链接。", systemImage: "checkmark.circle")
     } else {
       Text("\(snapshot.sourceArticleCount) 篇文章，\(snapshot.referenceCount) 处引用")
-        .font(.headline)
+        .font(.workbenchHeadline)
       Text("点击来源文章处理引用，本次下线操作会取消。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 8) {
           ForEach(snapshot.sources) { source in
@@ -86,17 +86,17 @@ struct DraftUnpublishReviewView: View {
             } label: {
               VStack(alignment: .leading, spacing: 3) {
                 Text(displayTitle(source.sourceDraftID, String(localized: "未命名文章")))
-                  .font(.body.weight(.medium))
+                  .font(.workbenchBody.weight(.medium))
                 if isMasked(source.sourceDraftID) {
                   Text("引用详情已隐藏")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.workbenchMetadata)
+                    .foregroundStyle(.workbenchSecondary)
                 } else {
                   Text(
                     "\(source.anchorText.nilIfEmpty ?? source.target) · \(source.sourceURL ?? "")"
                   )
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchMetadata)
+                  .foregroundStyle(.workbenchSecondary)
                   .lineLimit(2)
                 }
               }

@@ -13,20 +13,22 @@ extension WorkbenchAIStore {
     let previewService = seoSocialPreviewService
     let task = Task.detached(priority: .utility) {
       try Task.checkCancellation()
+      let themeTitleH1Resolution = await profile.resolveThemeTitleH1(
+        repositoryRevision: repositoryRevision
+      )
       var resolvedProfile = profile
-      if resolvedProfile.warnsWhenBodyH1DuplicatesTitle == nil {
-        resolvedProfile.warnsWhenBodyH1DuplicatesTitle =
-          ThemeTitleH1Detector().cachedOrDetect(
-            profile: profile, repositoryRevision: repositoryRevision) ?? true
-      }
+      // Pass the resolved fact into this immutable audit snapshot without
+      // changing the user's independent duplicate-warning preference.
+      resolvedProfile.themeProvidesTitleH1 = themeTitleH1Resolution.providesTitleH1
       try Task.checkCancellation()
       let report = auditService.report(draft: draft, profile: resolvedProfile)
       try Task.checkCancellation()
-      let currentSnapshot = previewService.snapshot(draft: draft, profile: resolvedProfile)
+      let currentSnapshot = previewService.snapshot(draft: draft, profile: profile)
       try Task.checkCancellation()
       return WorkbenchSEOInspectorPresentation(
         draftID: draft.id,
         report: report,
+        themeTitleH1Resolution: themeTitleH1Resolution,
         socialPreviewSnapshot: cachedSnapshot,
         cachePresentation: SEOSocialPreviewCachePresentation(
           snapshot: cachedSnapshot,

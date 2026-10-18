@@ -498,7 +498,7 @@ final class TranslationDraftCreationTests: XCTestCase {
     }
   }
 
-  func testZolaDoesNotImportRenderOrCopyHugoKey() throws {
+  func testZolaPreservesUnknownImportedHugoKeyWithoutAdoptingOrCopyingIt() throws {
     var profile = SiteProfile.defaultProfile
     profile.applyPublishingDefaults(for: .zola)
     let document = """
@@ -515,16 +515,26 @@ final class TranslationDraftCreationTests: XCTestCase {
         document, repositoryPath: "content/posts/2026/zola.md",
         rootURL: FileManager.default.temporaryDirectory, profile: profile)
     XCTAssertNil(imported.translationKey)
+    let originalHeader = try XCTUnwrap(imported.importedFrontMatter?.rawBlock)
+    XCTAssertTrue(originalHeader.contains("translationKey = \"hugo-only\""))
     var source = imported
     source.translationKey = "stored-from-an-earlier-hugo-profile"
     let plan = try makePlan(source: source, profile: profile)
     XCTAssertNil(plan.sourceTranslationKey)
     XCTAssertNil(plan.translatedDraft.translationKey)
+    // The imported key belongs to the original document, not Zola's editable
+    // translation metadata. A legacy model value must not replace its bytes.
+    XCTAssertEqual(FrontMatterRenderer().render(draft: source, profile: profile), originalHeader)
+    XCTAssertEqual(
+      MarkdownFrontMatterEditingService().render(draft: source, profile: profile), originalHeader)
+    XCTAssertNil(plan.translatedDraft.importedFrontMatter)
     XCTAssertFalse(
-      FrontMatterRenderer().render(draft: source, profile: profile).contains("translationKey"))
-    XCTAssertFalse(
-      MarkdownFrontMatterEditingService().render(draft: source, profile: profile).contains(
+      FrontMatterRenderer().render(draft: plan.translatedDraft, profile: profile).contains(
         "translationKey"))
+    var freshDraft = source
+    freshDraft.importedFrontMatter = nil
+    XCTAssertFalse(
+      FrontMatterRenderer().render(draft: freshDraft, profile: profile).contains("translationKey"))
     XCTAssertEqual(
       MarkdownFrontMatterEditingService().applying(
         document.components(separatedBy: "\n\n")[0],

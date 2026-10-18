@@ -14,7 +14,7 @@ struct KnowledgeNoteImportPreviewSheet: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       Text(isSnapshotRestore ? String(localized: "预览快照恢复") : String(localized: "预览笔记导入"))
-        .font(.title3.weight(.semibold))
+        .font(.workbenchTitle3.weight(.semibold))
 
       HStack(spacing: 20) {
         Text("新增 \(preview.newCount)")
@@ -35,7 +35,7 @@ struct KnowledgeNoteImportPreviewSheet: View {
 
       if !preview.conflictingTitles.isEmpty {
         Text("冲突笔记")
-          .font(.headline)
+          .font(.workbenchHeadline)
         ScrollView {
           VStack(alignment: .leading) {
             ForEach(preview.conflictingTitles.indices, id: \.self) { index in
@@ -47,7 +47,7 @@ struct KnowledgeNoteImportPreviewSheet: View {
       }
 
       Text("冲突笔记将作为新副本导入，本机原笔记会保留。")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
 
       HStack {
         Spacer()

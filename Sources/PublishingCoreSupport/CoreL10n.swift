@@ -48,12 +48,24 @@ public enum CoreL10n {
     locale.identifier.lowercased().hasPrefix("zh") ? chineseBundle : englishBundle
   }
 
+  /// SwiftPM's native driver emits a flat resource bundle, while Swift Build
+  /// and packaged apps use a standard bundle with `Contents/Resources`, and
+  /// folder names may be lowercased (`zh-hans.lproj`). Locating the folder
+  /// under `resourceURL` keeps an explicit locale from silently falling back
+  /// to the user's preferred language.
   private static func bundle(forLanguage language: String) -> Bundle {
-    let bundleURL = localizedBundle.bundleURL
-      .appendingPathComponent("\(language).lproj", isDirectory: true)
-    guard let bundle = Bundle(url: bundleURL) else {
-      return localizedBundle
-    }
-    return bundle
+    localization(language, in: localizedBundle) ?? localizedBundle
+  }
+
+  static func localization(_ language: String, in bundle: Bundle) -> Bundle? {
+    let resourceRoot = bundle.resourceURL ?? bundle.bundleURL
+    let entries =
+      (try? FileManager.default.contentsOfDirectory(
+        at: resourceRoot, includingPropertiesForKeys: nil)) ?? []
+    return entries.first(where: {
+      $0.pathExtension == "lproj"
+        && $0.deletingPathExtension().lastPathComponent
+          .caseInsensitiveCompare(language) == .orderedSame
+    }).flatMap(Bundle.init(url:))
   }
 }

@@ -40,7 +40,7 @@ public enum LocalSiteExternalPreviewPreparationError: LocalizedError, Equatable,
     case .draftNotFound:
       return CoreL10n.text("找不到要预览的文章。")
     case .generalDraftRequiresProject:
-      return CoreL10n.text("通用草稿尚未属于站点；请先将它加入项目再预览。")
+      return CoreL10n.text("仅本地草稿尚未属于站点；请先将它加入项目再预览。")
     case .draftNotAddedToProject:
       return CoreL10n.text("这篇草稿尚未加入项目；写入项目后才能在浏览器预览。")
     case .inactiveSite:

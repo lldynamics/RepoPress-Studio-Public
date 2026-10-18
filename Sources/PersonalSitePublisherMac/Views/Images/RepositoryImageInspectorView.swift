@@ -104,12 +104,12 @@ struct RepositoryImageInspectorView: View {
       .accessibilityHidden(true)
 
       Text(asset.filename)
-        .font(.headline)
+        .font(.workbenchHeadline)
         .workbenchTruncatedIdentity(asset.filename, lineLimit: 2)
 
       Text(fileSummary)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .workbenchTruncatedIdentity(fileSummary, lineLimit: 2)
 
       HStack(spacing: 8) {
@@ -188,14 +188,14 @@ struct RepositoryImageInspectorView: View {
         }
         LabeledContent(String(localized: "引用文章"), value: "\(asset.references.count)")
       }
-      .font(.callout)
+      .font(.workbenchBody)
 
       VStack(alignment: .leading, spacing: 4) {
         Text(String(localized: "完整路径"))
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.weight(.semibold))
+          .foregroundStyle(.workbenchSecondary)
         Text(asset.absoluteFilePath)
-          .font(.caption.monospaced())
+          .font(.workbenchMetadata.monospaced())
           .textSelection(.enabled)
           .fixedSize(horizontal: false, vertical: true)
           .workbenchTruncatedIdentity(asset.absoluteFilePath, lineLimit: 4)
@@ -213,8 +213,8 @@ struct RepositoryImageInspectorView: View {
       if !asset.references.isEmpty {
         Divider()
         Text(String(localized: "已登记到"))
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.weight(.semibold))
+          .foregroundStyle(.workbenchSecondary)
         ForEach(asset.references, id: \.self) { reference in
           Button {
             onOpenDraft(reference.draftID)
@@ -228,8 +228,8 @@ struct RepositoryImageInspectorView: View {
                 .multilineTextAlignment(.leading)
               Spacer(minLength: 4)
               Image(systemName: "arrow.right")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.workbenchMetadata)
+                .foregroundStyle(.workbenchSecondary)
                 .accessibilityHidden(true)
             }
           }

@@ -1270,7 +1270,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     store.updateActiveProfile(profile)
     let draft = try XCTUnwrap(store.selectedDraft)
     var messagePublications = 0
-    let observation = store.aiWorkspaceStore.$aiChatMessages
+    let observation = store.aiWorkspaceStore.publisher(for: \.aiChatMessages)
       .dropFirst()
       .sink { _ in messagePublications += 1 }
     defer { observation.cancel() }

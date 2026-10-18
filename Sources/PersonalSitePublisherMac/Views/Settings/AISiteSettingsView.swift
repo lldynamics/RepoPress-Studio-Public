@@ -2,6 +2,7 @@ import PublishingAICore
 import PublishingWorkbenchCore
 import SwiftUI
 
+/// Current-site sections embedded in the AI settings form; the shared connection editor owns the page.
 struct AISiteSettingsView: View {
   let activeProfileBinding: Binding<SiteProfile>
   let connectionProfiles: [AIConnectionProfile]
@@ -15,11 +16,10 @@ struct AISiteSettingsView: View {
   let generateWritingStylePreview: (Set<UUID>) async -> AIWritingStyleProfilePreview?
   let applyWritingStylePreview: (AIWritingStyleProfilePreview) -> Bool
   let discardWritingStylePreview: () -> Void
-  let openSharedConnectionSettings: () -> Void
   let warnsWhenBodyH1DuplicatesTitle: Binding<Bool>
 
   var body: some View {
-    Form {
+    Group {
       AIConnectionProfilesSection(
         profiles: connectionProfiles,
         referencingSiteProfiles: [],
@@ -32,11 +32,23 @@ struct AISiteSettingsView: View {
         deletableProfiles: [],
         presentation: .siteSelection,
         currentSiteName: activeProfile.name,
-        editSharedConnection: openSharedConnectionSettings,
         subsectionAnchor: .aiSiteConnection
       )
 
       AIWritingStyleScopeNotice(siteName: activeProfile.name)
+      Section("写作检查") {
+        Toggle("提示正文 H1 与标题重复", isOn: warnsWhenBodyH1DuplicatesTitle)
+          .help("启用后，正文 H1 与 Front Matter title 相同会在 SEO 检查中显示一条非阻断建议。")
+          .accessibilityIdentifier("site-h1-duplicate-warning")
+        Text(
+          String(
+            format: String(localized: "此设置应用到“%@”的所有文章。"),
+            activeProfile.name
+          )
+        )
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
+      }
       AIWritingStyleSection(
         siteProfileID: activeProfile.id,
         presetBinding: aiWritingStylePresetBinding,
@@ -57,26 +69,7 @@ struct AISiteSettingsView: View {
         discardPreview: discardWritingStylePreview,
         currentActionMessage: currentActionMessage
       )
-
-      Section("写作检查") {
-        Toggle("提示正文 H1 与标题重复", isOn: warnsWhenBodyH1DuplicatesTitle)
-          .help("启用后，正文 H1 与 Front Matter title 相同会在 SEO 检查中显示一条非阻断建议。")
-          .accessibilityIdentifier("site-h1-duplicate-warning")
-        Text(
-          String(
-            format: String(localized: "此设置应用到“%@”的所有文章。"),
-            activeProfile.name
-          )
-        )
-        .font(.caption)
-        .foregroundStyle(.secondary)
-      }
     }
-    .formStyle(.grouped)
-    .padding(WorkbenchSpacing.content)
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("site-ai-settings")
   }
 
   private var activeProfile: SiteProfile {
@@ -155,8 +148,8 @@ private struct AIWritingStyleScopeNotice: View {
         "写作偏好只应用于当前站点“\(siteName)”。修改语气、受众和 SEO 指引不会改动共享的连接档案。",
         systemImage: "text.quote"
       )
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
       .accessibilityIdentifier("settings-ai-writing-style-current-site-scope")
       .settingsSubsectionAnchor(.aiWritingStyle)
     }

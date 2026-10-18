@@ -82,8 +82,8 @@ extension KnowledgeSourceListColumn {
     VStack(spacing: 8) {
       HStack(spacing: 8) {
         Image(systemName: "magnifyingglass")
-          .foregroundStyle(.secondary)
-          .font(.footnote)
+          .foregroundStyle(.workbenchSecondary)
+          .font(.workbenchMetadata)
 
         TextField(String(localized: "搜索资料全文"), text: $searchText)
           .textFieldStyle(.plain)
@@ -103,7 +103,7 @@ extension KnowledgeSourceListColumn {
             Image(systemName: "xmark.circle.fill")
           }
           .buttonStyle(.plain)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .help("清除搜索")
           .accessibilityLabel("清除资料搜索")
         }
@@ -217,7 +217,7 @@ extension KnowledgeSourceListColumn {
           ForEach(collection.rules, id: \.id) { rule in
             Text(rule.localizedDisplayName)
               .font(.workbenchMetadata)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
               .padding(.horizontal, WorkbenchSpacing.control)
               .padding(.vertical, WorkbenchSpacing.tight)
               .background(WorkbenchBackgroundStyle.card, in: Capsule())

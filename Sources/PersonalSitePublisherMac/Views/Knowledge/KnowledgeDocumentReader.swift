@@ -27,11 +27,11 @@ struct KnowledgeDocumentReader: View {
     } else if let errorMessage {
       VStack(alignment: .leading, spacing: 8) {
         Label("正文读取失败", systemImage: "exclamationmark.triangle")
-          .font(.headline)
+          .font(.workbenchHeadline)
           .foregroundStyle(WorkbenchTheme.risk)
         Text(errorMessage)
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
         Button("重新读取", action: retry)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -133,7 +133,7 @@ struct KnowledgeDocumentReader: View {
     case .orderedListItem(let number):
       HStack(alignment: .firstTextBaseline, spacing: 8) {
         Text(verbatim: number.map { "\($0)." } ?? "•")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .frame(minWidth: 20, alignment: .trailing)
           .accessibilityHidden(true)
         readerBodyText(
@@ -153,11 +153,11 @@ struct KnowledgeDocumentReader: View {
       VStack(alignment: .leading, spacing: 6) {
         if let language {
           Text(language.uppercased())
-            .font(.caption.weight(.semibold))
+            .font(.workbenchMetadata.weight(.semibold))
             .foregroundStyle(palette.comment)
         }
         codeText(block, language: language)
-          .font(.body.monospaced())
+          .font(.workbenchBody.monospaced())
           .frame(maxWidth: .infinity, alignment: .leading)
       }
       .padding(WorkbenchSpacing.card)
@@ -173,8 +173,8 @@ struct KnowledgeDocumentReader: View {
 
     case .locator:
       Label(block.text, systemImage: "mappin.and.ellipse")
-        .font(.caption.weight(.medium))
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.weight(.medium))
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityLabel("原文位置：\(block.text)")
 
     case .separator:

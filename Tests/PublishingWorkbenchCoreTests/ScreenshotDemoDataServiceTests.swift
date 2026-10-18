@@ -360,6 +360,54 @@ import XCTest
       XCTAssertEqual(try journal.load().map(\.recoveredBodyMarkdown), ["用户未保存的正文"])
     }
 
+    func testScreenshotUITestPreparationReseedsAnUnreadableSharedFixture() throws {
+      let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent(
+          "PersonalSitePublisherMacScreenshotStaleFixtureTests-\(UUID().uuidString)",
+          isDirectory: true
+        )
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      defer {
+        try? FileManager.default.removeItem(at: directory)
+      }
+      let persistence = WorkbenchPersistence(
+        fileURL: directory.appendingPathComponent(ScreenshotDemoDataService.persistenceFilename))
+      _ = try persistence.save(ScreenshotDemoDataService().makeSnapshot())
+      // Reproduce the state an interrupted run left in the shared system-temp
+      // fixture: no primary marker, and a recovery store missing a document.
+      try FileManager.default.removeItem(at: persistence.fileURL)
+      let storeDirectory = try XCTUnwrap(
+        FileManager.default.contentsOfDirectory(
+          at: persistence.recordStoreDirectoryURL, includingPropertiesForKeys: nil
+        ).first)
+      let recoveryDocument = try XCTUnwrap(
+        FileManager.default.contentsOfDirectory(
+          at: storeDirectory.appendingPathComponent("RecoveryDocuments"),
+          includingPropertiesForKeys: nil
+        ).first)
+      try FileManager.default.removeItem(at: recoveryDocument)
+      XCTAssertThrowsError(
+        try WorkbenchPersistence(fileURL: persistence.fileURL).loadWithRecovery())
+
+      XCTAssertThrowsError(
+        try ScreenshotDemoDataService.preparePersistence(
+          WorkbenchPersistence(fileURL: persistence.fileURL),
+          resetsDraftRecovery: false
+        ),
+        "Outside UI tests an unreadable workbench must be preserved for recovery."
+      )
+      try ScreenshotDemoDataService.preparePersistence(
+        WorkbenchPersistence(fileURL: persistence.fileURL),
+        resetsDraftRecovery: true,
+        discardsUnreadableFixture: true
+      )
+
+      let reloaded = try WorkbenchPersistence(fileURL: persistence.fileURL).loadWithRecovery()
+      XCTAssertNil(reloaded.recoveryMessage)
+      XCTAssertTrue(
+        reloaded.snapshot?.drafts.contains { $0.title == "RepoPress Studio 发布流程" } == true)
+    }
+
     @MainActor
     func testScreenshotUITestPreparationSeedsOfflineRSSWorkspace() throws {
       let directory = FileManager.default.temporaryDirectory
@@ -411,7 +459,7 @@ import XCTest
       ScreenshotDemoSurface.generalDrafts.apply(to: store)
       XCTAssertEqual(store.selectedSection, .writing)
       XCTAssertEqual(store.draftListContentScope, .general)
-      XCTAssertEqual(store.publishActionMessage, "截图模式：通用草稿已载入。")
+      XCTAssertEqual(store.publishActionMessage, "截图模式：仅本地草稿已载入。")
 
     }
 
@@ -449,6 +497,71 @@ import XCTest
       XCTAssertEqual(store.repositoryReport?.preflightIssues, [])
       XCTAssertEqual(store.localPublishReadiness?.blockingIssueCount, 0)
       XCTAssertNotNil(store.remotePublishPreviewSnapshot)
+    }
+
+    @MainActor
+    func testRepositoryFixturePreservesMetadataThroughRealWritesAndRejectsExternalChanges() throws {
+      let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent(
+          "ScreenshotRepositoryWriteTests-\(UUID().uuidString)", isDirectory: true)
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      let key = ScreenshotDemoDataService.uiTestRepositoryRootEnvironmentKey
+      let previousRoot = ProcessInfo.processInfo.environment[key]
+      setenv(key, directory.appendingPathComponent("repository").path, 1)
+      defer {
+        if let previousRoot { setenv(key, previousRoot, 1) } else { unsetenv(key) }
+        try? FileManager.default.removeItem(at: directory)
+      }
+      let persistence = WorkbenchPersistence(
+        fileURL: directory.appendingPathComponent("workbench.json"))
+      _ = try persistence.save(ScreenshotDemoDataService().makeSnapshot())
+      let store = WorkbenchStore(persistence: persistence)
+      ScreenshotDemoDataService.prepareRepositoryFixture(in: store, isUITest: true)
+      let profile = store.activeProfile
+      let root = try XCTUnwrap(profile.localRepositoryRootURL)
+      var draft = try XCTUnwrap(store.drafts.first { $0.title == "RepoPress Studio 发布流程" })
+      let originalPath = try XCTUnwrap(draft.repositoryPath)
+      let originalURL = root.appendingPathComponent(originalPath)
+      let original = try String(contentsOf: originalURL, encoding: .utf8)
+      let renderer = FrontMatterRenderer()
+      XCTAssertEqual(originalPath, profile.markdownPath(for: draft))
+      XCTAssertTrue(
+        FileManager.default.fileExists(atPath: root.appendingPathComponent(".git").path))
+      XCTAssertNotNil(draft.importedFrontMatter)
+      XCTAssertNil(renderer.preservationIssue(draft: draft, profile: profile))
+      XCTAssertEqual(original, renderer.renderDocument(draft: draft, profile: profile))
+      XCTAssertEqual(
+        draft.repositoryBinding?.projectFileContentDigest,
+        ArticleDraft.repositoryDocumentDigest(original))
+      XCTAssertEqual(
+        draft.repositoryBinding?.projectFileRenderedContentDigest,
+        draft.renderedRepositoryContentDigest(profile: profile))
+      let originalTags = draft.tags
+      let originalCategories = draft.categories
+      let writer = SiteDraftFileStore()
+      draft.bodyMarkdown += "\n\nSaved fixture body."
+      draft.slug = "edited-fixture-slug"
+      let result = try writer.write(draft: draft, profile: profile)
+      let destination = root.appendingPathComponent(result.repositoryPath)
+      let saved = try String(contentsOf: destination, encoding: .utf8)
+      XCTAssertFalse(FileManager.default.fileExists(atPath: originalURL.path))
+      let imported = try LocalContentImportService().parseProjectDocument(
+        saved, repositoryPath: result.repositoryPath, rootURL: root, profile: profile)
+      XCTAssertEqual(imported.slug, draft.slug)
+      XCTAssertEqual(imported.tags, originalTags)
+      XCTAssertEqual(imported.categories, originalCategories)
+      XCTAssertTrue(imported.bodyMarkdown.contains("Saved fixture body."))
+      XCTAssertTrue(saved.contains("/images/2026/social-preview.png"))
+      let external = saved + "\nExternal edit must survive.\n"
+      try external.write(to: destination, atomically: true, encoding: .utf8)
+      draft = imported
+      draft.bodyMarkdown += "\nA concurrent app edit."
+      XCTAssertThrowsError(try writer.write(draft: draft, profile: profile)) { error in
+        guard case .projectFileChangedExternally = error as? SiteDraftFileStoreError else {
+          return XCTFail("Expected external-change protection, got \(error)")
+        }
+      }
+      XCTAssertEqual(try String(contentsOf: destination, encoding: .utf8), external)
     }
 
     @MainActor

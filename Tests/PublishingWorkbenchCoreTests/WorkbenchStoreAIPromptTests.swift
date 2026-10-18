@@ -1380,7 +1380,7 @@ final class WorkbenchStoreAIQuickPromptDeliveryTests: XCTestCase {
     let facade = WorkbenchAIChatFeatureFacade(store: store, draftID: draft.id)
     var publishedIDs: [UUID] = []
     var facadeChanges = 0
-    let requestObservation = store.aiWorkspaceStore.$pendingAIQuickPromptRequest
+    let requestObservation = store.aiWorkspaceStore.publisher(for: \.pendingAIQuickPromptRequest)
       .compactMap { $0?.id }
       .sink { publishedIDs.append($0) }
     let facadeObservation = facade.objectWillChange.sink { facadeChanges += 1 }

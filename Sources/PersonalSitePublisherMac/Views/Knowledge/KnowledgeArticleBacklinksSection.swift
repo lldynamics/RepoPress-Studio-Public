@@ -51,7 +51,7 @@ struct KnowledgeArticleBacklinksSection: View {
         } else {
           Text("\(groups.count) 条资料 · \(knowledge.articleBacklinks.count) 个片段")
             .font(.workbenchMetadata)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
 
@@ -61,12 +61,12 @@ struct KnowledgeArticleBacklinksSection: View {
             .controlSize(.small)
           Text("正在读取本文引用…")
             .font(.workbenchSupporting)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
       } else if groups.isEmpty {
         Text("在右侧知识建议中插入引用后，这里会自动显示资料反向链接。")
           .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       } else {
         ForEach(groups) { group in
           citationGroupRow(group)
@@ -106,7 +106,7 @@ struct KnowledgeArticleBacklinksSection: View {
             if let excerpt = backlink.chunkExcerpt?.nilIfEmpty {
               Text(excerpt)
                 .font(.workbenchMetadata)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.workbenchSecondary)
                 .lineLimit(2)
             }
           }
@@ -115,7 +115,7 @@ struct KnowledgeArticleBacklinksSection: View {
         if group.backlinks.count > 3 {
           Text("还有 \(group.backlinks.count - 3) 个片段")
             .font(.workbenchMetadata)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
       .padding(.top, WorkbenchSpacing.icon)
@@ -126,15 +126,15 @@ struct KnowledgeArticleBacklinksSection: View {
       } label: {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           Image(systemName: "books.vertical")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
             .accessibilityHidden(true)
           Text(group.documentTitle)
             .font(.workbenchSupporting.weight(.medium))
-            .workbenchTruncatedIdentity(group.documentTitle)
+            .workbenchTruncatedTitle(group.documentTitle)
           Spacer(minLength: 4)
           Text("引用 \(group.backlinks.count)")
             .font(.workbenchMetadata)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
       .buttonStyle(.plain)

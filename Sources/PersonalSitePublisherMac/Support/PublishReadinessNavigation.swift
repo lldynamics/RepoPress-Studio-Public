@@ -32,10 +32,20 @@ private struct PublishReadinessNavigationRequestKey: EnvironmentKey {
   static let defaultValue: PublishReadinessNavigationRequest? = nil
 }
 
+private struct ShowPublishChecksActionKey: EnvironmentKey {
+  static let defaultValue: (@MainActor () -> Void)? = nil
+}
+
 extension EnvironmentValues {
   var publishReadinessNavigationRequest: PublishReadinessNavigationRequest? {
     get { self[PublishReadinessNavigationRequestKey.self] }
     set { self[PublishReadinessNavigationRequestKey.self] = newValue }
+  }
+
+  /// Switches the window inspector to 发布检查, the single list of article issues.
+  var showPublishChecks: (@MainActor () -> Void)? {
+    get { self[ShowPublishChecksActionKey.self] }
+    set { self[ShowPublishChecksActionKey.self] = newValue }
   }
 }
 

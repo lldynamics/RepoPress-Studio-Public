@@ -22,12 +22,6 @@ public enum WorkbenchAutomationRisk: String, Codable, CaseIterable, Sendable {
   public var requiresExplicitConfirmation: Bool {
     self == .contentChange || self == .externalEffect
   }
-
-  /// Agent-proposed commands use a stricter boundary than legacy/manual
-  /// automation: only genuinely read-only work may run without a user action.
-  public var requiresAgentConfirmation: Bool {
-    self != .readOnly
-  }
 }
 
 public enum WorkbenchAutomationCommandID: String, Codable, CaseIterable, Identifiable, Sendable {
@@ -351,12 +345,6 @@ public struct WorkbenchAutomationCommandDescriptor: Identifiable, Hashable, Send
   public var systemImage: String
   public var risk: WorkbenchAutomationRisk
   public var requiresDraft: Bool
-  /// Whether an agent loop may execute this command without an explicit
-  /// confirmation step. This is intentionally command-level rather than
-  /// derived from the broad risk category: a reversible command may still
-  /// need review, while a narrowly scoped command such as createDraft can be
-  /// explicitly allowed.
-  public var allowsAgentAutomaticExecution: Bool
 
   public init(
     id: WorkbenchAutomationCommandID,
@@ -364,8 +352,7 @@ public struct WorkbenchAutomationCommandDescriptor: Identifiable, Hashable, Send
     detail: String,
     systemImage: String,
     risk: WorkbenchAutomationRisk,
-    requiresDraft: Bool = false,
-    allowsAgentAutomaticExecution: Bool? = nil
+    requiresDraft: Bool = false
   ) {
     self.id = id
     self.title = title
@@ -373,8 +360,6 @@ public struct WorkbenchAutomationCommandDescriptor: Identifiable, Hashable, Send
     self.systemImage = systemImage
     self.risk = risk
     self.requiresDraft = requiresDraft
-    self.allowsAgentAutomaticExecution =
-      allowsAgentAutomaticExecution ?? (risk == .readOnly)
   }
 }
 

@@ -99,7 +99,7 @@ private struct RepositoryImageInspectorContent: View {
       )
       if let failure = saveStatus.saveFailure, currentUsage != nil {
         VStack(alignment: .leading, spacing: 6) {
-          Text(failure.message).font(.caption).foregroundStyle(.red)
+          Text(failure.message).font(.workbenchMetadata).foregroundStyle(.red)
           if failure.canRetry {
             Button("重试保存") { saveStatus.retrySave() }.buttonStyle(.bordered)
           }

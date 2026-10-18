@@ -37,8 +37,8 @@ struct RSSArticleTranslationControls: View {
         .accessibilityHint(translationBackendHint)
 
         Text(translationBackendDescription)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
 
@@ -69,8 +69,8 @@ struct RSSArticleTranslationControls: View {
           }
         } else {
           Text("自定义语言仅适用于当前 AI 服务；Apple 本机翻译请从预设语言中选择。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .fixedSize(horizontal: false, vertical: true)
         }
       }
@@ -81,8 +81,8 @@ struct RSSArticleTranslationControls: View {
         .accessibilityValue(automaticTranslation ? "开启" : "关闭")
         .accessibilityHint(automaticTranslationDescription)
       Text(automaticTranslationDescription)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
 
       Toggle("自动翻译列表标题", isOn: $automaticTitleTranslationEnabled)
@@ -90,8 +90,8 @@ struct RSSArticleTranslationControls: View {
         .accessibilityHint(automaticTitleTranslationDescription)
         .accessibilityIdentifier("rss-reader-automatic-title-translation")
       Text(automaticTitleTranslationDescription)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
 
       Divider()
@@ -122,8 +122,8 @@ struct RSSArticleTranslationControls: View {
         Divider()
         Section("发送权限") {
           Text(consentSummary)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .fixedSize(horizontal: false, vertical: true)
           Button("管理 AI 发送权限", systemImage: "gearshape", action: onOpenAISettings)
         }
@@ -288,9 +288,9 @@ private struct RSSArticleTranslationLanguageSheet: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       Text("自定义目标语言")
-        .font(.title3.weight(.semibold))
+        .font(.workbenchTitle3.weight(.semibold))
       Text("输入语言名称或地区变体，例如“葡萄牙语（巴西）”。")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
       TextField("目标语言", text: $language)
         .textFieldStyle(.roundedBorder)
@@ -298,7 +298,7 @@ private struct RSSArticleTranslationLanguageSheet: View {
         .onSubmit(save)
       if let validationMessage {
         Text(validationMessage)
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(WorkbenchTheme.risk)
       }
       HStack {

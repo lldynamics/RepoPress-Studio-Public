@@ -20,16 +20,16 @@ struct RemoteRepositoryCreationConfirmationView: View {
     VStack(spacing: 0) {
       HStack(alignment: .top, spacing: 12) {
         Image(systemName: "shippingbox.and.arrow.backward")
-          .font(.title2)
-          .foregroundStyle(.secondary)
+          .font(.workbenchTitle2)
+          .foregroundStyle(.workbenchSecondary)
           .accessibilityHidden(true)
 
         VStack(alignment: .leading, spacing: 4) {
           Text("确认创建仓库")
-            .font(.title3.weight(.semibold))
+            .font(.workbenchTitle3.weight(.semibold))
           Text("创建前请核对平台、Owner、仓库名和可见性。")
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
         }
         Spacer()
       }
@@ -45,12 +45,12 @@ struct RemoteRepositoryCreationConfirmationView: View {
           }
           LabeledContent("仓库 Owner 或 Namespace") {
             Text(verbatim: owner.nilIfEmpty ?? "—")
-              .font(.body.monospaced())
+              .font(.workbenchBody.monospaced())
               .textSelection(.enabled)
           }
           LabeledContent {
             Text(verbatim: repositoryName.nilIfEmpty ?? "—")
-              .font(.body.monospaced())
+              .font(.workbenchBody.monospaced())
               .textSelection(.enabled)
           } label: {
             Text("仓库名称")
@@ -71,7 +71,7 @@ struct RemoteRepositoryCreationConfirmationView: View {
             } icon: {
               Image(systemName: "exclamationmark.triangle")
             }
-            .font(.caption)
+            .font(.workbenchMetadata)
             .foregroundStyle(WorkbenchTheme.warning)
           }
         }
@@ -83,7 +83,7 @@ struct RemoteRepositoryCreationConfirmationView: View {
             } icon: {
               Image(systemName: "exclamationmark.circle")
             }
-            .font(.caption)
+            .font(.workbenchMetadata)
             .foregroundStyle(WorkbenchTheme.warning)
           }
         }

@@ -35,18 +35,18 @@ struct CodexAppServerModelSelectionSection: View {
       if let selectedModel {
         if let description = selectedModel.description {
           Text(description)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .fixedSize(horizontal: false, vertical: true)
         }
       } else if isLoading {
         Label("正在加载账户可用模型…", systemImage: "arrow.triangle.2.circlepath")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       } else if let errorMessage {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           Label(errorMessage, systemImage: "exclamationmark.triangle")
-            .font(.caption)
+            .font(.workbenchMetadata)
             .foregroundStyle(WorkbenchTheme.warning)
           Spacer(minLength: 8)
           Button("重试", action: onRefresh)
@@ -55,13 +55,13 @@ struct CodexAppServerModelSelectionSection: View {
         }
       } else {
         Text("账户暂未返回可用模型；可以点击刷新重试。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       if selectedModel != nil, let errorMessage {
         Label("模型列表刷新失败：\(errorMessage)", systemImage: "exclamationmark.triangle")
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(WorkbenchTheme.warning)
           .fixedSize(horizontal: false, vertical: true)
       }
@@ -80,13 +80,13 @@ struct CodexAppServerModelSelectionSection: View {
 
         if let selectedEffortDescription {
           Text(selectedEffortDescription)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .fixedSize(horizontal: false, vertical: true)
         }
       } else {
         LabeledContent("推理等级", value: "跟随模型默认")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .accessibilityHint("当前模型未声明可选推理等级")
           .accessibilityIdentifier("settings-ai-codex-reasoning-unavailable")
       }
@@ -247,7 +247,7 @@ struct CodexAppServerRuntimeStatusContent: View {
       DisclosureGroup("组件路径") {
         Text(path)
           .font(.workbenchMetadata.monospaced())
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .textSelection(.enabled)
       }
     }
@@ -255,7 +255,7 @@ struct CodexAppServerRuntimeStatusContent: View {
     if let runtimeStatus, !runtimeStatus.isCompatible {
       Text(runtimeRecoveryHint(for: runtimeStatus))
         .font(.workbenchMetadata)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 
@@ -461,10 +461,10 @@ struct CodexAppServerAccountSetupSteps: View {
 
       VStack(alignment: .leading, spacing: 1) {
         Text(title)
-          .font(.subheadline.weight(.medium))
+          .font(.workbenchMetadata.weight(.medium))
         Text(detail)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
     }
@@ -495,9 +495,9 @@ struct CodexAppServerDeviceCodeContent: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       Text("在浏览器输入设备码")
-        .font(.headline)
+        .font(.workbenchHeadline)
       Text(login.userCode)
-        .font(.title3.monospaced().weight(.semibold))
+        .font(.workbenchTitle3.monospaced().weight(.semibold))
         .textSelection(.enabled)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("设备码 \(login.userCode)")

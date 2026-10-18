@@ -70,6 +70,8 @@ PROCESS_POLL_INTERVAL_SECONDS = 0.05
 PROCESS_SNAPSHOT_TIMEOUT_SECONDS = 0.25
 DEFAULT_SHARD_RETRIES = 1
 MAX_SHARD_RETRIES = 1
+SWIFT_TEST_CACHE_PROVENANCE_FILENAME = "workspace-provenance.json"
+SWIFT_TEST_CACHE_PROVENANCE_SCHEMA_VERSION = 1
 
 
 class _ProcBSDInfo(ctypes.Structure):
@@ -172,6 +174,133 @@ def atomic_write_json(path: Path, payload: dict[str, object]) -> None:
         encoding="utf-8",
     )
     os.replace(temporary, path)
+
+
+class SwiftTestCachePolicyError(RuntimeError):
+    """The shard cache cannot be proven safe to reuse."""
+
+
+def swift_test_cache_provenance_path(output_directory: Path) -> Path:
+    return output_directory / SWIFT_TEST_CACHE_PROVENANCE_FILENAME
+
+
+def _read_swift_test_cache_provenance(path: Path) -> str | None:
+    """Return the recorded workspace, or None for a legacy cache.
+
+    A missing marker is legacy. Malformed or symlinked markers fail closed so
+    the runner never blesses an ambiguous cache as belonging to this checkout.
+    """
+
+    if path.is_symlink():
+        raise SwiftTestCachePolicyError(
+            f"refusing symlink Swift test cache provenance marker: {path}"
+        )
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise SwiftTestCachePolicyError(
+            f"cannot read Swift test cache provenance marker {path}: {error}"
+        ) from error
+    if not isinstance(payload, dict):
+        raise SwiftTestCachePolicyError(
+            f"invalid Swift test cache provenance marker: {path}"
+        )
+    workspace_root = payload.get("workspaceRoot")
+    if payload.get("schemaVersion") != SWIFT_TEST_CACHE_PROVENANCE_SCHEMA_VERSION:
+        raise SwiftTestCachePolicyError(
+            f"unsupported Swift test cache provenance marker: {path}"
+        )
+    if not isinstance(workspace_root, str) or not os.path.isabs(workspace_root):
+        raise SwiftTestCachePolicyError(
+            f"invalid workspace in Swift test cache provenance marker: {path}"
+        )
+    return str(Path(workspace_root).resolve(strict=False))
+
+
+def ensure_swift_test_cache_workspace(root: Path, output_directory: Path) -> None:
+    """Remove an untrusted shard cache before creating this run's artifacts.
+
+    Only ``manage_build_cache.py`` is allowed to remove the cache.  Explicit
+    caller-owned HOME/XDG/compiler cache directories are never passed to it.
+    """
+
+    root = root.resolve()
+    workspace_root = str(root)
+    build_root = root / ".build"
+    if build_root.is_symlink():
+        raise SwiftTestCachePolicyError(
+            f"refusing symlink Swift test build root: {build_root}"
+        )
+    expected_output_directory = build_root / "swift-test-shards"
+    if output_directory.resolve(strict=False) != expected_output_directory:
+        raise SwiftTestCachePolicyError(
+            f"invalid Swift test cache path: {output_directory}"
+        )
+    if output_directory.is_symlink():
+        raise SwiftTestCachePolicyError(
+            f"refusing symlink Swift test cache directory: {output_directory}"
+        )
+    cache_exists = output_directory.exists()
+    recorded_root = _read_swift_test_cache_provenance(
+        swift_test_cache_provenance_path(output_directory)
+    ) if cache_exists and output_directory.is_dir() and not output_directory.is_symlink() else None
+    needs_cleanup = cache_exists and recorded_root != workspace_root
+    if needs_cleanup:
+        if recorded_root is None:
+            print(
+                "swift test shards: legacy cache has no trusted workspace "
+                "provenance; removing it before migration",
+                file=sys.stderr,
+            )
+        elif recorded_root != workspace_root:
+            print(
+                "swift test shards: cache belongs to another workspace; "
+                "removing it before the run",
+                file=sys.stderr,
+            )
+        manager = Path(__file__).with_name("manage_build_cache.py")
+        command = [
+            sys.executable,
+            str(manager),
+            "--root",
+            workspace_root,
+            "--remove",
+            "swift-test-shards",
+            "--apply",
+        ]
+        try:
+            cleanup = subprocess.run(
+                command,
+                check=False,
+                text=True,
+                capture_output=True,
+                timeout=30,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise SwiftTestCachePolicyError(
+                f"unable to clean Swift test cache safely: {error}"
+            ) from error
+        if cleanup.returncode != 0:
+            diagnostic = (cleanup.stderr or cleanup.stdout).strip()
+            raise SwiftTestCachePolicyError(
+                "Swift test cache cleanup failed"
+                + (f": {diagnostic}" if diagnostic else "")
+            )
+    try:
+        output_directory.mkdir(parents=True, exist_ok=True)
+        atomic_write_json(
+            swift_test_cache_provenance_path(output_directory),
+            {
+                "schemaVersion": SWIFT_TEST_CACHE_PROVENANCE_SCHEMA_VERSION,
+                "workspaceRoot": workspace_root,
+            },
+        )
+    except OSError as error:
+        raise SwiftTestCachePolicyError(
+            f"unable to initialize Swift test cache provenance: {error}"
+        ) from error
 
 
 def libproc_library() -> ctypes.CDLL | None:
@@ -327,7 +456,8 @@ def process_snapshot() -> list[tuple[int, int, int, str]]:
         result = subprocess.run(
             [ps_binary, "-axo", "pid=,ppid=,pgid=,args="],
             check=False,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             # Keep process discovery within the outer release gate's
             # five-second termination budget even if `ps` itself stalls.
@@ -1157,7 +1287,11 @@ def shard_payload(shard: Shard, output_directory: Path) -> dict[str, object]:
 
 def run_all(root: Path) -> int:
     output_directory = root / ".build" / "swift-test-shards"
-    output_directory.mkdir(parents=True, exist_ok=True)
+    try:
+        ensure_swift_test_cache_workspace(root, output_directory)
+    except SwiftTestCachePolicyError as error:
+        print(f"swift test shards: {error}", file=sys.stderr)
+        return 2
     result_path = output_directory / "result.json"
     inventory_path = output_directory / "inventory.txt"
     swift_binary = os.environ.get("SWIFT_BIN", "swift")

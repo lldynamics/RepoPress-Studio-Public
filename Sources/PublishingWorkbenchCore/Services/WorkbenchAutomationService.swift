@@ -26,8 +26,7 @@ public enum WorkbenchAutomationRegistry {
       detail: "创建一篇可从回收站恢复的本地草稿",
       systemImage: "square.and.pencil",
       risk: .reversible,
-      arguments: [.value],
-      allowsAgentAutomaticExecution: true
+      arguments: [.value]
     ),
     entry(
       .focusEditor,
@@ -203,8 +202,7 @@ public enum WorkbenchAutomationRegistry {
       systemImage: "magnifyingglass",
       risk: .readOnly,
       arguments: [.query],
-      required: [.query],
-      isAgentExposed: false
+      required: [.query]
     ),
     entry(
       .siteCheckLinks,
@@ -248,132 +246,6 @@ public enum WorkbenchAutomationRegistry {
     byID[command]?.specification
   }
 
-  /// The same command entries drive model declarations, prompt text, parsing,
-  /// and runtime validation. A declaration never grants execution authority.
-  public static var agentToolDefinitions: [AIToolDefinition] {
-    entries.compactMap { entry in
-      guard entry.isAgentExposed else { return nil }
-      return entry.specification.definition(descriptor: entry.descriptor)
-    }
-  }
-
-  public static func agentToolDefinitions(
-    allowing commands: Set<WorkbenchAutomationCommandID>
-  ) -> [AIToolDefinition] {
-    entries.compactMap { entry in
-      guard entry.isAgentExposed, commands.contains(entry.descriptor.id) else { return nil }
-      return entry.specification.definition(descriptor: entry.descriptor)
-    }
-  }
-
-  /// Converts the persisted fine-grained policy into the command allowlist
-  /// declared to the model. Execution still validates the same allowlist.
-  public static func agentCommands(
-    allowedBy policy: AIAgentPermissionPolicy,
-    masterEnabled: Bool
-  ) -> Set<WorkbenchAutomationCommandID> {
-    guard masterEnabled else { return [] }
-    return Set(
-      entries.compactMap { entry in
-        guard entry.isAgentExposed,
-          policy.allows(requiredPermission(for: entry.descriptor.id))
-        else { return nil }
-        return entry.descriptor.id
-      })
-  }
-
-  /// Legacy model/persistence adapters use the same exact built-in mapping as
-  /// `WorkbenchAutomationAgentToolRegistry`; no external or wildcard identity
-  /// is accepted here.
-  static func agentToolID(
-    for command: WorkbenchAutomationCommandID
-  ) -> AIAgentToolID {
-    AIAgentToolID("workbench/\(command.rawValue)")
-  }
-
-  static func agentCommand(
-    for toolID: AIAgentToolID
-  ) -> WorkbenchAutomationCommandID? {
-    let prefix = "workbench/"
-    guard toolID.rawValue.hasPrefix(prefix) else { return nil }
-    let rawValue = String(toolID.rawValue.dropFirst(prefix.count))
-    guard let command = WorkbenchAutomationCommandID(rawValue: rawValue),
-      agentToolID(for: command) == toolID
-    else {
-      return nil
-    }
-    return command
-  }
-
-  static func agentInvocation(
-    for toolCall: AIToolCall,
-    draftVersions: [UUID: Date]
-  ) throws -> WorkbenchAIAgentToolInvocation {
-    let step = try agentStep(for: toolCall, draftVersions: draftVersions)
-    return WorkbenchAIAgentToolInvocation(
-      toolCallID: toolCall.id,
-      toolID: agentToolID(for: step.command),
-      modelToolName: step.command.rawValue,
-      executionPolicy: descriptor(for: step.command)?.allowsAgentAutomaticExecution == true
-        ? .automatic : .requiresConfirmation,
-      catalogRevision: WorkbenchAutomationAgentToolRegistry.builtInCatalogRevision,
-      correlationID: step.id,
-      targetDraftID: step.arguments.draftID,
-      targetDraftVersion: step.arguments.expectedDraftUpdatedAt,
-      automationStep: step
-    )
-  }
-
-  /// The shared built-in parser and validator used by both the legacy Agent
-  /// loop entry point and the source-qualified tool registry. Keeping this
-  /// here prevents the registry from duplicating JSON or argument rules.
-  static func agentStep(
-    for toolCall: AIToolCall,
-    draftVersions: [UUID: Date]
-  ) throws -> WorkbenchAutomationStep {
-    guard let command = WorkbenchAutomationCommandID(rawValue: toolCall.function.name),
-      let entry = byID[command], entry.isAgentExposed
-    else {
-      throw WorkbenchAutomationAgentToolError.unknownTool(toolCall.function.name)
-    }
-    let specification = entry.specification
-    guard let data = toolCall.function.arguments.data(using: .utf8) else {
-      throw WorkbenchAutomationAgentToolError.invalidJSON
-    }
-
-    let json: AIStructuredOutputJSONValue
-    do {
-      json = try JSONDecoder().decode(AIStructuredOutputJSONValue.self, from: data)
-    } catch {
-      throw WorkbenchAutomationAgentToolError.invalidJSON
-    }
-    guard case .object(let object) = json else {
-      throw WorkbenchAutomationAgentToolError.argumentMismatch
-    }
-
-    do {
-      let arguments = try specification.arguments(
-        from: object,
-        draftVersions: draftVersions
-      )
-      let step = WorkbenchAutomationStep(command: command, arguments: arguments)
-      try specification.validate(arguments)
-      return step
-    } catch {
-      throw WorkbenchAutomationAgentToolError.argumentMismatch
-    }
-  }
-
-  public static var promptCatalog: String {
-    entries.compactMap { entry in
-      guard entry.isAgentExposed else { return nil }
-      let descriptor = entry.descriptor
-      return
-        "- \(descriptor.id.rawValue): \(descriptor.title)；risk=\(descriptor.risk.rawValue)；arguments=\(entry.specification.promptCatalog)"
-    }
-    .joined(separator: "\n")
-  }
-
   private static func entry(
     _ id: WorkbenchAutomationCommandID,
     title: String,
@@ -382,9 +254,7 @@ public enum WorkbenchAutomationRegistry {
     risk: WorkbenchAutomationRisk,
     arguments: [WorkbenchAutomationArgumentKey] = [],
     required: Set<WorkbenchAutomationArgumentKey> = [],
-    semanticRule: WorkbenchAutomationSemanticRule = .none,
-    allowsAgentAutomaticExecution: Bool? = nil,
-    isAgentExposed: Bool = true
+    semanticRule: WorkbenchAutomationSemanticRule = .none
   ) -> WorkbenchAutomationRegistryEntry {
     let specification = WorkbenchAutomationCommandSpecification(
       allowedArguments: arguments,
@@ -398,35 +268,10 @@ public enum WorkbenchAutomationRegistry {
         detail: CoreL10n.text(detail),
         systemImage: systemImage,
         risk: risk,
-        requiresDraft: required.contains(.draftID),
-        allowsAgentAutomaticExecution: allowsAgentAutomaticExecution
+        requiresDraft: required.contains(.draftID)
       ),
-      specification: specification,
-      isAgentExposed: isAgentExposed
+      specification: specification
     )
-  }
-
-  static func requiredPermission(
-    for command: WorkbenchAutomationCommandID
-  ) -> AIAgentPermissionScope {
-    switch command {
-    case .openSection, .selectDraft, .focusEditor, .showInspector, .runPreflight,
-      .refreshPublishPreview, .draftRead, .searchDrafts, .knowledgeSearch,
-      .knowledgeRead, .auditContent,
-      .siteCheckLinks, .siteOptimizeImages:
-      return .localRead
-    case .createDraft:
-      return .draftCreation
-    case .saveWorkbench, .updateMetadata, .appendToBody, .replaceBody, .deleteDraft,
-      .applyDiff, .generateFrontmatter:
-      return .contentModification
-    case .webFetch, .webSearch, .siteDeployStatus:
-      return .networkAccess
-    case .writeLocalRepository:
-      return .repositoryWrite
-    case .publishOnline:
-      return .publishing
-    }
   }
 }
 
@@ -435,23 +280,17 @@ extension WorkbenchAutomationPlan {
     guard let risk = WorkbenchAutomationRegistry.descriptor(for: step.command)?.risk else {
       return true
     }
-    return source == .agentLoop
-      ? !(WorkbenchAutomationRegistry.descriptor(for: step.command)?.allowsAgentAutomaticExecution
-        ?? false)
-      : risk.requiresExplicitConfirmation
+    return risk.requiresExplicitConfirmation
   }
 }
 
-enum WorkbenchAutomationAgentToolError: Error, Equatable, Sendable {
-  case unknownTool(String)
-  case invalidJSON
+enum WorkbenchAutomationArgumentError: Error, Equatable, Sendable {
   case argumentMismatch
 }
 
 private struct WorkbenchAutomationRegistryEntry: Sendable {
   var descriptor: WorkbenchAutomationCommandDescriptor
   var specification: WorkbenchAutomationCommandSpecification
-  var isAgentExposed: Bool
 }
 
 enum WorkbenchAutomationArgumentKey: String, CaseIterable, Hashable, Sendable {
@@ -488,112 +327,6 @@ enum WorkbenchAutomationArgumentKey: String, CaseIterable, Hashable, Sendable {
       return []
     }
   }
-
-  var schema: AIStructuredOutputJSONValue {
-    switch self {
-    case .section, .editorField, .metadataField, .mode:
-      return .object([
-        "type": .string("string"),
-        "enum": .array(allowedStringValues.map(AIStructuredOutputJSONValue.string)),
-      ])
-    case .draftID:
-      return .object([
-        "type": .string("string"),
-        "description": .string("Stable draft UUID from the supplied workbench context."),
-      ])
-    case .documentID:
-      return .object([
-        "type": .string("string"),
-        "description": .string("Stable knowledge document UUID returned by knowledgeSearch."),
-      ])
-    case .chunkID:
-      return .object([
-        "type": .string("string"),
-        "description": .string("Stable knowledge chunk UUID returned by knowledgeSearch."),
-      ])
-    case .readCursor:
-      return .object([
-        "type": .string("integer"),
-        "minimum": .number(0),
-        "description": .string("Zero-based cursor returned by a previous bounded knowledgeRead."),
-      ])
-    case .value:
-      return .object(["type": .string("string")])
-    case .values:
-      return .object([
-        "type": .string("array"),
-        "items": .object(["type": .string("string"), "minLength": .number(1)]),
-      ])
-    case .content:
-      return .object([
-        "type": .string("string"),
-        "description": .string("Markdown content."),
-      ])
-    case .paragraphIndices:
-      return .object([
-        "type": .string("array"),
-        "items": .object(["type": .string("integer"), "minimum": .number(0)]),
-        "description": .string("0-indexed paragraph indices to read."),
-      ])
-    case .url:
-      return .object([
-        "type": .string("string"),
-        "description": .string("Web page URL to fetch."),
-      ])
-    case .query:
-      return .object([
-        "type": .string("string"),
-        "description": .string("Search query."),
-      ])
-    case .originalText:
-      return .object([
-        "type": .string("string"),
-        "description": .string("Original text to match and replace."),
-      ])
-    case .replacementText:
-      return .object([
-        "type": .string("string"),
-        "description": .string("New replacement text."),
-      ])
-    }
-  }
-
-  var promptCatalog: String {
-    switch self {
-    case .section:
-      return "section: \(allowedStringValues.joined(separator: "|"))"
-    case .draftID:
-      return "draftID: UUID"
-    case .editorField:
-      return "editorField: \(allowedStringValues.joined(separator: "|"))"
-    case .metadataField:
-      return "metadataField: \(allowedStringValues.joined(separator: "|"))"
-    case .value:
-      return "value: string"
-    case .values:
-      return "values: [string]"
-    case .content:
-      return "content: Markdown"
-    case .mode:
-      return "mode: \(allowedStringValues.joined(separator: "|"))"
-    case .paragraphIndices:
-      return "paragraphIndices: [int]"
-    case .url:
-      return "url: string"
-    case .query:
-      return "query: string"
-    case .documentID:
-      return "documentID: UUID"
-    case .chunkID:
-      return "chunkID: UUID"
-    case .readCursor:
-      return "readCursor: int"
-    case .originalText:
-      return "originalText: string"
-    case .replacementText:
-      return "replacementText: string"
-    }
-  }
 }
 
 enum WorkbenchAutomationSemanticRule: Equatable, Sendable {
@@ -607,50 +340,6 @@ struct WorkbenchAutomationCommandSpecification: Sendable {
   var requiredArguments: Set<WorkbenchAutomationArgumentKey>
   var semanticRule: WorkbenchAutomationSemanticRule
 
-  var promptCatalog: String {
-    guard !allowedArguments.isEmpty else { return "none" }
-    let arguments = allowedArguments.map { key in
-      let required = requiredArguments.contains(key) ? "required" : "optional"
-      return "\(key.promptCatalog) (\(required))"
-    }
-    .joined(separator: ", ")
-    switch semanticRule {
-    case .none:
-      return arguments
-    case .metadataValue:
-      return arguments
-        + "; tags requires a non-empty value or values; other metadata fields require a non-empty value"
-    case .valueOrValues:
-      return arguments + "; requires a non-empty value or values"
-    }
-  }
-
-  func definition(
-    descriptor: WorkbenchAutomationCommandDescriptor
-  ) -> AIToolDefinition {
-    let properties = Dictionary(
-      uniqueKeysWithValues: allowedArguments.map { ($0.rawValue, $0.schema) }
-    )
-    var schema: [String: AIStructuredOutputJSONValue] = [
-      "type": .string("object"),
-      "properties": .object(properties),
-      "required": .array(requiredArguments.map { .string($0.rawValue) }.sortedJSONStrings),
-      "additionalProperties": .bool(false),
-    ]
-    if semanticRule == .metadataValue {
-      schema["allOf"] = Self.metadataConditionalSchema
-    } else if semanticRule == .valueOrValues {
-      schema["anyOf"] = Self.valueOrValuesSchema
-    }
-    return AIToolDefinition(
-      function: AIToolFunctionDefinition(
-        name: descriptor.id.rawValue,
-        description: "\(descriptor.detail) Risk: \(descriptor.risk.rawValue).",
-        parameters: .object(schema)
-      )
-    )
-  }
-
   func arguments(
     from object: [String: AIStructuredOutputJSONValue],
     draftVersions: [UUID: Date]
@@ -659,38 +348,38 @@ struct WorkbenchAutomationCommandSpecification: Sendable {
     guard Set(object.keys).isSubset(of: allowed),
       requiredArguments.allSatisfy({ object[$0.rawValue] != nil })
     else {
-      throw WorkbenchAutomationAgentToolError.argumentMismatch
+      throw WorkbenchAutomationArgumentError.argumentMismatch
     }
 
     var arguments = WorkbenchAutomationArguments()
     for (rawKey, value) in object {
       guard let key = WorkbenchAutomationArgumentKey(rawValue: rawKey) else {
-        throw WorkbenchAutomationAgentToolError.argumentMismatch
+        throw WorkbenchAutomationArgumentError.argumentMismatch
       }
       switch (key, value) {
       case (.section, .string(let raw)):
         guard let section = WorkspaceSection(rawValue: raw),
           WorkspaceVisibilityPolicy.commandPaletteSections.contains(section)
         else {
-          throw WorkbenchAutomationAgentToolError.argumentMismatch
+          throw WorkbenchAutomationArgumentError.argumentMismatch
         }
         arguments.section = section
       case (.draftID, .string(let raw)):
         guard let draftID = UUID(uuidString: raw),
           let version = draftVersions[draftID]
         else {
-          throw WorkbenchAutomationAgentToolError.argumentMismatch
+          throw WorkbenchAutomationArgumentError.argumentMismatch
         }
         arguments.draftID = draftID
         arguments.expectedDraftUpdatedAt = version
       case (.editorField, .string(let raw)):
         guard key.allowedStringValues.contains(raw) else {
-          throw WorkbenchAutomationAgentToolError.argumentMismatch
+          throw WorkbenchAutomationArgumentError.argumentMismatch
         }
         arguments.editorField = raw
       case (.metadataField, .string(let raw)):
         guard let field = AIPublishingMetadataField(rawValue: raw) else {
-          throw WorkbenchAutomationAgentToolError.argumentMismatch
+          throw WorkbenchAutomationArgumentError.argumentMismatch
         }
         arguments.metadataField = field
       case (.value, .string(let raw)):
@@ -698,7 +387,7 @@ struct WorkbenchAutomationCommandSpecification: Sendable {
       case (.values, .array(let rawValues)):
         arguments.values = try rawValues.map { value in
           guard case .string(let raw) = value else {
-            throw WorkbenchAutomationAgentToolError.argumentMismatch
+            throw WorkbenchAutomationArgumentError.argumentMismatch
           }
           return raw
         }
@@ -706,13 +395,13 @@ struct WorkbenchAutomationCommandSpecification: Sendable {
         arguments.content = raw
       case (.mode, .string(let raw)):
         guard key.allowedStringValues.contains(raw) else {
-          throw WorkbenchAutomationAgentToolError.argumentMismatch
+          throw WorkbenchAutomationArgumentError.argumentMismatch
         }
         arguments.mode = raw
       case (.paragraphIndices, .array(let rawValues)):
         arguments.paragraphIndices = try rawValues.map { value in
           guard case .number(let num) = value else {
-            throw WorkbenchAutomationAgentToolError.argumentMismatch
+            throw WorkbenchAutomationArgumentError.argumentMismatch
           }
           return Int(num)
         }
@@ -722,12 +411,12 @@ struct WorkbenchAutomationCommandSpecification: Sendable {
         arguments.query = raw
       case (.documentID, .string(let raw)):
         guard let documentID = UUID(uuidString: raw) else {
-          throw WorkbenchAutomationAgentToolError.argumentMismatch
+          throw WorkbenchAutomationArgumentError.argumentMismatch
         }
         arguments.documentID = documentID
       case (.chunkID, .string(let raw)):
         guard let chunkID = UUID(uuidString: raw) else {
-          throw WorkbenchAutomationAgentToolError.argumentMismatch
+          throw WorkbenchAutomationArgumentError.argumentMismatch
         }
         arguments.chunkID = chunkID
       case (.readCursor, .number(let raw)):
@@ -735,7 +424,7 @@ struct WorkbenchAutomationCommandSpecification: Sendable {
         guard raw == Double(cursor), cursor >= 0,
           cursor <= WorkbenchAgentKnowledgeService.maximumReadCursor
         else {
-          throw WorkbenchAutomationAgentToolError.argumentMismatch
+          throw WorkbenchAutomationArgumentError.argumentMismatch
         }
         arguments.readCursor = cursor
       case (.originalText, .string(let raw)):
@@ -743,7 +432,7 @@ struct WorkbenchAutomationCommandSpecification: Sendable {
       case (.replacementText, .string(let raw)):
         arguments.replacementText = raw
       default:
-        throw WorkbenchAutomationAgentToolError.argumentMismatch
+        throw WorkbenchAutomationArgumentError.argumentMismatch
       }
     }
     return arguments
@@ -873,63 +562,6 @@ struct WorkbenchAutomationCommandSpecification: Sendable {
       return arguments.originalText != nil
     case .replacementText:
       return arguments.replacementText != nil
-    }
-  }
-
-  private static let metadataConditionalSchema: AIStructuredOutputJSONValue = .array([
-    .object([
-      "if": .object([
-        "properties": .object([
-          "metadataField": .object(["const": .string("tags")])
-        ]),
-        "required": .array([.string("metadataField")]),
-      ]),
-      "then": .object([
-        "anyOf": .array([
-          .object([
-            "required": .array([.string("value")]),
-            "properties": .object([
-              "value": .object(["minLength": .number(1)])
-            ]),
-          ]),
-          .object([
-            "required": .array([.string("values")]),
-            "properties": .object([
-              "values": .object(["minItems": .number(1)])
-            ]),
-          ]),
-        ])
-      ]),
-      "else": .object([
-        "required": .array([.string("value")]),
-        "properties": .object([
-          "value": .object(["minLength": .number(1)])
-        ]),
-      ]),
-    ])
-  ])
-
-  private static let valueOrValuesSchema: AIStructuredOutputJSONValue = .array([
-    .object([
-      "required": .array([.string("value")]),
-      "properties": .object([
-        "value": .object(["minLength": .number(1)])
-      ]),
-    ]),
-    .object([
-      "required": .array([.string("values")]),
-      "properties": .object([
-        "values": .object(["minItems": .number(1)])
-      ]),
-    ]),
-  ])
-}
-
-extension Array where Element == AIStructuredOutputJSONValue {
-  fileprivate var sortedJSONStrings: [AIStructuredOutputJSONValue] {
-    sorted { lhs, rhs in
-      guard case .string(let left) = lhs, case .string(let right) = rhs else { return false }
-      return left < right
     }
   }
 }

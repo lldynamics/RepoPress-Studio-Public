@@ -14,8 +14,6 @@ extension RepositoryWorkspaceView {
       repositoryMergeConflictSection
       remoteChangedFiles
       changedFiles
-    case .source:
-      EmptyView()
     case .history:
       ReleaseHistoryDetailView(store: store)
     }
@@ -27,17 +25,17 @@ extension RepositoryWorkspaceView {
     // dashboards and could enter an AppKit/SwiftUI layout feedback loop.
     LazyVGrid(
       columns: [
-        GridItem(
-          .adaptive(minimum: 460, maximum: 720),
-          spacing: 16,
-          alignment: .top
-        )
+        GridItem(.adaptive(minimum: 460, maximum: 720), spacing: 16, alignment: .top)
       ],
       alignment: .leading,
       spacing: 16
     ) {
-      repositoryOverviewPrimaryColumn
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+      // An empty primary cell would still occupy the first grid column and
+      // push the tools to the middle of a wide window, so omit it entirely.
+      if hasRepositoryOverviewPrimaryContent {
+        repositoryOverviewPrimaryColumn
+          .frame(maxWidth: .infinity, alignment: .topLeading)
+      }
       repositoryOverviewContextColumn
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
@@ -47,9 +45,7 @@ extension RepositoryWorkspaceView {
     VStack(alignment: .leading, spacing: 16) {
       repositoryScanProgress
       repositoryMergeConflictSection
-      if store.repositoryReport?.hasGitDirectory != false
-        && store.repositoryOperationLifecycle?.readFailure == nil
-      {
+      if showsRepositoryDashboard {
         repositorySummary
         repositoryPublishReadinessSummary
         onlinePublishCenterSection
@@ -231,7 +227,7 @@ extension RepositoryWorkspaceView {
     {
       workflowBanner(
         title: "当前文章存在 \(readiness.blockingIssueCount) 个发布阻断项",
-        detail: "先处理文章检查结果，再写入或线上发布。",
+        detail: "先处理文章检查结果，再发布。",
         systemImage: "checklist",
         tint: WorkbenchTheme.risk,
         isExceptional: true,
@@ -240,11 +236,11 @@ extension RepositoryWorkspaceView {
       )
     } else if store.selectedDraft != nil {
       workflowBanner(
-        title: "可以继续保存或发布",
-        detail: "打开发布流程，先选择发布范围，再审阅文件与目标分支。",
+        title: "可以发布",
+        detail: "发布全部会提交并推送仓库里的所有改动；只发一篇请在写作页用“发布这篇”。",
         systemImage: "paperplane",
         tint: .secondary,
-        actionTitle: "打开发布",
+        actionTitle: "发布全部…",
         action: openUnifiedPublishFlow
       )
     } else {
@@ -290,12 +286,6 @@ extension RepositoryWorkspaceView {
         String(localized: "扫描会读取 Git 状态、远端差异和发布相关文件，不会修改仓库。"),
         "arrow.left.arrow.right"
       )
-    case .source:
-      content = (
-        String(localized: "查看仓库中的 HTML 文件"),
-        String(localized: "选择 HTML 文件后，可在 Finder 中显示或用默认应用打开。"),
-        "doc.text"
-      )
     case .history:
       content = (
         String(localized: "扫描后关联发布记录"),
@@ -325,14 +315,12 @@ extension RepositoryWorkspaceView {
   }
 
   func openUnifiedPublishFlow() {
-    if let publishDrawerCommandAction {
-      publishDrawerCommandAction.open(
-        "选择保存到本地或发布上线；需要时再展开检查结果和文件差异。"
-      )
+    if let publishCommandAction {
+      publishCommandAction.publishAll()
     } else {
       store.runPreflight()
       store.setPublishActionMessage(
-        String(localized: "请从顶部发布状态打开统一发布流程。"),
+        String(localized: "请从工具栏的“发布”选择发布全部。"),
         status: .information
       )
     }
@@ -347,20 +335,19 @@ extension RepositoryWorkspaceView {
     actionTitle: LocalizedStringKey,
     action: @escaping () -> Void
   ) -> some View {
-    VStack(alignment: .leading, spacing: 9) {
+    VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
       Text("下一步")
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
+        .font(.workbenchSectionTitle)
+        .foregroundStyle(.workbenchSecondary)
 
       ViewThatFits(in: .horizontal) {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: WorkbenchSpacing.card) {
           workflowBannerMessage(
             title: title,
             detail: detail,
             systemImage: systemImage,
             tint: tint
           )
-          Spacer(minLength: 12)
           Button(action: action) {
             Text(actionTitle)
           }
@@ -368,7 +355,7 @@ extension RepositoryWorkspaceView {
           .accessibilityIdentifier("repository-next-action")
         }
 
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: WorkbenchSpacing.card) {
           workflowBannerMessage(
             title: title,
             detail: detail,
@@ -386,6 +373,7 @@ extension RepositoryWorkspaceView {
     }
     .padding(.vertical, WorkbenchSpacing.control)
     .padding(.horizontal, isExceptional ? WorkbenchSpacing.control : 0)
+    .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       isExceptional ? tint.opacity(WorkbenchOpacity.warningBackground) : .clear,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
@@ -400,17 +388,17 @@ extension RepositoryWorkspaceView {
     systemImage: String,
     tint: Color
   ) -> some View {
-    HStack(alignment: .center, spacing: 12) {
+    HStack(alignment: .center, spacing: WorkbenchSpacing.card) {
       Image(systemName: systemImage)
         .foregroundStyle(tint)
-        .font(.title2)
+        .font(.workbenchTitle2)
         .frame(width: 30)
-      VStack(alignment: .leading, spacing: 3) {
+      VStack(alignment: .leading, spacing: WorkbenchSpacing.tight) {
         Text(title)
-          .font(.headline)
+          .font(.workbenchHeadline)
         Text(detail)
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
     }
@@ -438,8 +426,8 @@ extension RepositoryWorkspaceView {
         ProgressView()
           .controlSize(.small)
         Text(store.repository.scanState.message)
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
         Spacer()
         Button {
           store.repository.cancelScan()
@@ -455,8 +443,8 @@ extension RepositoryWorkspaceView {
       store.repositoryOperationLifecycle?.readFailure == nil
     {
       Label(store.repository.scanState.message, systemImage: "checkmark.circle")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 
@@ -514,14 +502,14 @@ extension RepositoryWorkspaceView {
           .help("公开检查只说明当前发布包是否可继续审阅；推送完成不等于网站已经上线。")
         Spacer()
         Text(summary.targetTitle)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospaced())
+          .foregroundStyle(.workbenchSecondary)
       }
 
       Divider()
 
       Label(summary.preflightTitle, systemImage: summary.preflightSystemImage)
-        .font(.callout)
+        .font(.workbenchBody)
         .foregroundStyle(
           summary.preflightSystemImage.hasPrefix("xmark")
             ? WorkbenchTheme.risk
@@ -535,12 +523,12 @@ extension RepositoryWorkspaceView {
           Label("\(summary.deletionCount) 篇下线", systemImage: "trash")
         }
       }
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
 
       Text(summary.pipelineTitle)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -655,7 +643,7 @@ extension RepositoryWorkspaceView {
 
         let rootDisplayText = repositoryRootDisplayText(for: report)
         Text(rootDisplayText)
-          .font(.callout.monospaced())
+          .font(.workbenchBody.monospaced())
           .textSelection(.enabled)
           .workbenchTruncatedIdentity(rootDisplayText, lineLimit: 2)
 
@@ -686,8 +674,8 @@ extension RepositoryWorkspaceView {
             systemImage: "point.3.connected.trianglepath.dotted"
           )
           Text(remote.remoteURL)
-            .font(.caption.monospaced())
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.monospaced())
+            .foregroundStyle(.workbenchSecondary)
             .workbenchTruncatedIdentity(remote.remoteURL, lineLimit: 2)
           let permissionAction = RepositoryPermissionActionPresentation.make(
             configuredOwner: store.activeProfile.repoOwner,
@@ -714,7 +702,7 @@ extension RepositoryWorkspaceView {
           .accessibilityHint(permissionAction.help)
         }
       }
-      .font(.callout)
+      .font(.workbenchBody)
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("repository-section-information")
     }
@@ -754,10 +742,10 @@ extension RepositoryWorkspaceView {
               .frame(width: 18)
             VStack(alignment: .leading, spacing: 2) {
               Text(issue.title)
-                .font(.callout.weight(.medium))
+                .font(.workbenchBody.weight(.medium))
               Text(issue.message)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(.workbenchBody)
+                .foregroundStyle(.workbenchSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             }
           }
@@ -776,17 +764,17 @@ extension RepositoryWorkspaceView {
   ) -> some View {
     HStack(alignment: .top, spacing: 12) {
       Text("\(number)")
-        .font(.caption.weight(.bold))
+        .font(.workbenchMetadata.weight(.bold))
         .foregroundStyle(.primary)
         .frame(width: 24, height: 24)
         .background(WorkbenchBackgroundStyle.control, in: Circle())
         .accessibilityLabel("第 \(number) 步")
       VStack(alignment: .leading, spacing: 2) {
         Text(title)
-          .font(.callout.weight(.semibold))
+          .font(.workbenchBody.weight(.semibold))
         Text(detail)
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       }
     }
     .accessibilityElement(children: .combine)

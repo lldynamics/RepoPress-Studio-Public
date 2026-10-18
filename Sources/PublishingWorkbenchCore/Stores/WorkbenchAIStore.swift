@@ -234,18 +234,10 @@ public final class WorkbenchAIStore: ObservableObject {
     set {
       aiConversationRetentionPassCount &+= 1
       aiChatSessionLifecycleRevision &+= 1
-      let pendingAgentConversationIDs = Set(
-        newValue.compactMap { conversation in
-          conversation.messages.contains(where: { message in
-            message.agentContinuation?.phase.requiresExplicitDisposition == true
-          }) ? conversation.id : nil
-        }
-      )
       let limitedConversations = AIConversationRetentionPolicy.limited(
         newValue,
         preserving: Set(workspace.activeAIConversationIDsByDraftID.values)
           .union(workspace.activeAIConversationIDsByScope.values)
-          .union(pendingAgentConversationIDs)
       )
       workspace.aiConversations = limitedConversations
       workspace.activeAIConversationIDsByDraftID =
@@ -358,7 +350,14 @@ public final class WorkbenchAIStore: ObservableObject {
   }
 
   public func seoReport(for draft: ArticleDraft) -> SEOAuditReport {
-    seoAuditService.report(draft: draft, profile: store.profile(for: draft))
+    var profile = store.profile(for: draft)
+    if profile.themeProvidesTitleH1 == nil {
+      profile.themeProvidesTitleH1 = ThemeTitleH1Detector().cachedResult(
+        profile: profile,
+        repositoryRevision: store.repositoryReportRevision
+      )
+    }
+    return seoAuditService.report(draft: draft, profile: profile)
   }
 
   public var aiDataSharingConsentPresentation: AIDataSharingConsentPresentation {

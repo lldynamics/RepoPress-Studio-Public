@@ -22,7 +22,7 @@ Quartz 4 静态预览的固定 Python 运行器保存在 `Sources/PublishingWork
 
 | 文件 | 职责 | 主要调用者 / 验证方式 |
 |---|---|---|
-| `check_accessibility.sh` | 检查 SwiftUI/AppKit 源码的可访问性标签、控件契约和必需资源；发布写入限定在抽屉，拆分的单篇操作仅允许一次携带冻结审阅预期的首选策略发布。 | `check_release_gate.sh` quick/CI；由脚本内静态断言验证，界面组件拆分时同步其精确归属。 |
+| `check_accessibility.sh` | 检查 SwiftUI/AppKit 源码的可访问性标签、控件契约和必需资源；发布写入限定在窗口发布会话，单篇与全部操作共用一次携带冻结确认清单的 Git 发布调用。 已由行为回归覆盖的实现细节不重复固定源码拼写；菜单快捷键接线仍保留静态保护。 | `check_release_gate.sh` quick/CI；由脚本内静态断言验证，界面组件拆分时同步其精确归属。 |
 | `check_accessibility_runtime.sh` | 运行 macOS 无障碍 UI 回归，支持通过脚本 help 中的 `--only-testing` 参数定向回归；可构建隔离 fixture 或验证指定应用。 | 发行 profile / CI；非截图回归要求显式应用路径，失败即退出非零。 |
 | `check_build_version.sh` | 校验 `BuildVersion.xcconfig`、Info.plist 与应用版本字段一致。 | 构建/发布门；`test_build_version_gate.sh`。 |
 | `check_ci_quality_workflow.sh` | 检查 GitHub Actions 质量、工具链和共享 Swift 工作流的固定 action。 | CI 配置维护；脚本断言。 |
@@ -58,7 +58,7 @@ Quartz 4 静态预览的固定 Python 运行器保存在 `Sources/PublishingWork
 | `export_public_snapshot.sh` | 从开发树导出空目录中的公开快照并执行边界检查；传入 `--public-repository` 时先运行完整远端历史检查，失败不创建输出。 | 公开快照发布；`test_public_snapshot_export.sh`，操作步骤由[直发指南](../docs/direct-release.md)维护。 |
 | `generate_direct_appcast.sh` | 使用 Sparkle 工具为直接分发归档生成 appcast。 | 直接发布专题；检查签名、公钥、URL 和生成文件。 |
 | `run_release_performance_benchmarks.py` | 运行独立 Release 性能测试，拒绝跳过/缺失证据并写自包含 JSON。 | release 性能 profile；`test_release_performance_benchmarks.py`。 |
-| `run_swift_tests.sh` | 固定调用 Swift 测试进程执行器，提供完整测试清单入口。 | release gate/CI；`test_run_swift_tests.py`。 |
+| `run_swift_tests.sh` | 固定调用 Swift 测试进程执行器，提供完整测试清单入口；进程诊断容忍系统命令行中的非 UTF-8 字节，同时保留进程身份以完成清理。 | release gate/CI；`test_run_swift_tests.py`。 |
 | `sign_sparkle_framework.sh` | 对 Sparkle framework 执行签名、验证和开发者 ID 约束。 | 直接分发打包；检查 `codesign`/`plutil` 输出和退出码。 |
 | `stamp_article_version.py` | 将构建 HTML 绑定到精确 UTF-8 Markdown 源的摘要和版本。 | 站点/文章构建；`test_stamp_article_version.py`。 |
 | `sync_ui_localizations.py` | 编译应用 target 导出 `stringsdata`，补充源码提取并同步应用 UI catalog、快捷指令扩展的 `Localizable` / `AppShortcuts` catalog，校验 Core 展示资源；清理主表时保留三者仍引用的译文。 | 本地化专题；`test_sync_ui_localizations.py`。默认直接维护主表；临时协作片段须在同次变更用 `--merge-reviewed-translations` 合并归档。 |
@@ -83,7 +83,7 @@ macOS 无障碍 UI 回归的构建和运行共用 `PERSONAL_SITE_PUBLISHER_RUNTI
 | `quality_gate_common.py` | 提供 Swift 质量门共享 schema、差异和离线辅助函数。 | `check_swift_coverage.py`、相关 gate；由各自回归测试覆盖。 |
 | `release_artifact_manifest.py` | 创建并验证 Release 应用 artifact 交接 manifest；构建输入摘要包含本地共享 Swift 包的声明和产品源码，输入缺失或变化时拒绝复用旧产物。 | `check_ui_runtime.sh`、直接打包；`test_release_artifact_manifest.py`。 |
 | `release_gate_runner.py` | 读取 `release_checks.json`，选择并执行质量门，输出结果 schema。 | `check_release_gate.sh`；`test_release_gate_runner_contract.py`、`test_release_gate_selection.py`。 |
-| `run_swift_test_process.py` | 在独立进程中运行完整 SwiftPM 测试清单，负责分片、证据和子进程清理。 | `run_swift_tests.sh`、release gate；`test_run_swift_test_process.py`、`test_run_swift_tests.py`。 |
+| `run_swift_test_process.py` | 在独立进程中运行完整 SwiftPM 测试清单，负责分片、证据和子进程清理；启动前用原子工作区 provenance 校验 `.build/swift-test-shards`，发现跨工作区或无 provenance 的旧缓存时只通过缓存管理器清理。 | `run_swift_tests.sh`、release gate；`test_run_swift_test_process.py`、`test_run_swift_tests.py`。 |
 | `verify_cloud_signature.py` | 核对已签名 Mac 应用与嵌入的 iCloud provisioning profile：App ID、团队、CloudKit/iCloud Documents/推送环境、有效期及签名证书。 | `build_and_run.sh` 的云调试签名与 `package_direct_release.sh` 的云发行验证；`test_verify_cloud_signature.py` 离线验证匹配、过期与错配；失败返回非零且不修改应用包。 |
 | `window_visibility_probe.swift` | 等待指定 PID 的可见、前置窗口并输出运行时证据。 | `build_and_run.sh --verify` 或人工启动验证；编译为临时 probe 后运行。 |
 

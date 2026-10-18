@@ -21,4 +21,19 @@ final class WorkbenchAppearancePreferencesTests: XCTestCase {
     XCTAssertEqual(WorkbenchInterfaceDensity.comfortable.controlSize, .regular)
     XCTAssertEqual(WorkbenchInterfaceDensity.compact.controlSize, .small)
   }
+
+  func testTextScalePreferenceUsesStableValuesAndFallsBackToStandard() {
+    XCTAssertEqual(
+      WorkbenchTextScalePreference.allCases,
+      [.standard, .large, .extraLarge, .largest]
+    )
+    XCTAssertEqual(WorkbenchTextScalePreference.storageKey, "workbenchTextScaleV1")
+    XCTAssertEqual(WorkbenchTextScalePreference.resolved(rawValue: nil), .standard)
+    XCTAssertEqual(WorkbenchTextScalePreference.resolved(rawValue: "unknown"), .standard)
+    XCTAssertEqual(WorkbenchTextScalePreference.resolved(rawValue: "extraLarge"), .extraLarge)
+    XCTAssertEqual(WorkbenchTextScalePreference.standard.scale, 1)
+    XCTAssertEqual(WorkbenchTextScalePreference.large.scale, 1.15)
+    XCTAssertEqual(WorkbenchTextScalePreference.extraLarge.scale, 1.3)
+    XCTAssertEqual(WorkbenchTextScalePreference.largest.scale, 1.5)
+  }
 }

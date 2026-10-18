@@ -81,7 +81,7 @@ struct OperationLogView: View {
   private var activityToolbar: some View {
     HStack(spacing: 10) {
       Image(systemName: "magnifyingglass")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityHidden(true)
       TextField("搜索活动记录", text: $filters.searchText)
         .textFieldStyle(.roundedBorder)

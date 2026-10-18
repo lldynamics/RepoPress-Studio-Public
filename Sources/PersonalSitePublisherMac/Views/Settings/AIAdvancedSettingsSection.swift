@@ -35,10 +35,10 @@ struct AIAdvancedSettingsSection: View {
 
   private var networkProxyContent: some View {
     VStack(alignment: .leading, spacing: 8) {
-      Text("网络代理 (Network Proxy)").font(.headline)
+      Text("网络代理 (Network Proxy)").font(.workbenchHeadline)
       Text("此代理仅对当前连接的 AI 网络请求生效。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
       Toggle("配置 AI 独立网络代理", isOn: proxyEnabledBinding)
         .accessibilityIdentifier("settings-ai-proxy-toggle")
       if settings.proxyURL != nil {
@@ -46,7 +46,7 @@ struct AIAdvancedSettingsSection: View {
           "代理地址 (如 http://127.0.0.1:7890 或 socks5://127.0.0.1:7890)",
           text: proxyURLBinding
         )
-        .font(.body.monospaced())
+        .font(.workbenchBody.monospaced())
         .accessibilityLabel(
           String(localized: "代理地址 (如 http://127.0.0.1:7890 或 socks5://127.0.0.1:7890)")
         )
@@ -57,14 +57,14 @@ struct AIAdvancedSettingsSection: View {
 
   private var conversationGenerationContent: some View {
     VStack(alignment: .leading, spacing: 8) {
-      Text("模型生成与推理参数").font(.headline)
+      Text("模型生成与推理参数").font(.workbenchHeadline)
       Text("以下设置仅对当前连接的聊天生成生效。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
       if usesCodexAppServer {
         Label("ChatGPT 模型与推理等级在上方账户区设置。", systemImage: "slider.horizontal.3")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .accessibilityIdentifier("settings-ai-codex-reasoning-location")
       } else {
         Picker("思考深度 (Reasoning Effort)", selection: $settings.reasoningPreference) {
@@ -84,16 +84,16 @@ struct AIAdvancedSettingsSection: View {
                 Text(
                   settings.normalizedTemperature ?? 0, format: .number.precision(.fractionLength(1))
                 )
-                .font(.callout.monospacedDigit())
+                .font(.workbenchBody.monospacedDigit())
                 .frame(width: 30, alignment: .trailing)
               }
             }
             HStack {
-              Text("0.0 精确严谨").font(.workbenchMetadata).foregroundStyle(.secondary)
+              Text("0.0 精确严谨").font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
               Spacer()
-              Text("0.7 平衡默认").font(.workbenchMetadata).foregroundStyle(.secondary)
+              Text("0.7 平衡默认").font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
               Spacer()
-              Text("2.0 创意发散").font(.workbenchMetadata).foregroundStyle(.secondary)
+              Text("2.0 创意发散").font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
             }
           }
         }
@@ -105,7 +105,7 @@ struct AIAdvancedSettingsSection: View {
               in: 256...AIProviderAdvancedSettings.maximumOutputTokenLimit, step: 256
             ) {
               Text(settings.normalizedMaximumOutputTokens ?? 0, format: .number)
-                .font(.callout.monospacedDigit())
+                .font(.workbenchBody.monospacedDigit())
             }
           }
         }
@@ -116,8 +116,6 @@ struct AIAdvancedSettingsSection: View {
           Spacer()
           Button("恢复自动参数") {
             settings = AIProviderAdvancedSettings(
-              allowsApplicationTools: settings.allowsApplicationTools,
-              agentPermissionPolicy: settings.agentPermissionPolicy,
               proxyURL: settings.proxyURL,
               fallbackProfileID: settings.fallbackProfileID
             )
@@ -137,11 +135,11 @@ struct AIAdvancedSettingsSection: View {
           verbatim:
             "\(settings.normalizedSystemPrompt.count)/\(AIProviderAdvancedSettings.maximumSystemPromptLength)"
         )
-        .font(.caption.monospacedDigit())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospacedDigit())
+        .foregroundStyle(.workbenchSecondary)
       }
       TextEditor(text: systemPromptBinding)
-        .font(.body)
+        .font(.workbenchBody)
         .frame(minHeight: 72, maxHeight: 120)
         .padding(WorkbenchSpacing.tight)
         .background(

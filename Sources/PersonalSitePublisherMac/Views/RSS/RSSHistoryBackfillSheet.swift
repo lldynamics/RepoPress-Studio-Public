@@ -15,11 +15,11 @@ struct RSSHistoryBackfillSheet: View {
   var body: some View {
     VStack(alignment: .leading, spacing: WorkbenchSpacing.card) {
       Text("补齐历史文章")
-        .font(.title2.weight(.semibold))
+        .font(.workbenchTitle2.weight(.semibold))
       Text(feed.displayTitle)
-        .font(.headline)
+        .font(.workbenchHeadline)
       Text("从作者公开目录寻找历史链接，每批处理 20 篇。可发现的链接与正文获取结果分别统计；部分网站无法补齐全部历史。")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
       TextField("公开文章目录地址", text: $directoryAddress)
         .textFieldStyle(.roundedBorder)
@@ -27,12 +27,12 @@ struct RSSHistoryBackfillSheet: View {
         .accessibilityIdentifier("rss-history-directory-address")
         .disabled(store.isHistoryBackfillRunning)
       Text("仅读取该订阅网站内明确标记的文章目录、下一页与网站公布的 sitemap，不跟随其他网站。已有文章、阅读状态与写作草稿会保留。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
       if store.isHistoryBackfillRunning, progress == nil {
         Text("其他订阅正在补齐，请等待或打开该订阅查看进度。")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
       if let progress {
         if store.isHistoryBackfillRunning {
@@ -49,12 +49,12 @@ struct RSSHistoryBackfillSheet: View {
         }
         .accessibilityIdentifier("rss-history-progress")
         Text(progress.message)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
         if let retryAt = progress.retryAt, retryAt > Date() {
           Text("可以继续的时间：\(retryAt.formatted(date: .abbreviated, time: .shortened))")
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
       if let errorMessage { Text(errorMessage).foregroundStyle(WorkbenchTheme.risk) }

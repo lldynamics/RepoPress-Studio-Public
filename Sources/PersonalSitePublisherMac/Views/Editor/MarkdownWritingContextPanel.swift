@@ -19,7 +19,7 @@ struct MarkdownWritingContextPanelContainer<Content: View>: View {
     VStack(spacing: 0) {
       HStack(spacing: 8) {
         Label(selectedPanel.title, systemImage: selectedPanel.systemImage)
-          .font(.headline)
+          .font(.workbenchHeadline)
 
         Spacer(minLength: 8)
 

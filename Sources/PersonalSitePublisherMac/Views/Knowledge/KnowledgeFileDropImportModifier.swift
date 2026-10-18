@@ -93,12 +93,12 @@ struct KnowledgeFileDropImportModifier: ViewModifier {
 
         VStack(spacing: 6) {
           Text(String(localized: "释放以生成导入预览"))
-            .font(.title2.weight(.bold))
+            .font(.workbenchTitle2.weight(.bold))
             .foregroundStyle(.primary)
 
           Text(destinationMessage)
-            .font(.callout.weight(.medium))
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody.weight(.medium))
+            .foregroundStyle(.workbenchSecondary)
             .multilineTextAlignment(.center)
             .frame(maxWidth: 380)
 
@@ -107,8 +107,8 @@ struct KnowledgeFileDropImportModifier: ViewModifier {
             Label("图片", systemImage: "photo")
             Label("PDF", systemImage: "doc.richtext")
           }
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospaced())
+          .foregroundStyle(.workbenchSecondary)
           .padding(.top, WorkbenchSpacing.tight)
         }
       }

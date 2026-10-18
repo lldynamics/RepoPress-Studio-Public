@@ -362,8 +362,7 @@ extension MacMarkdownComposerView {
     let status = WorkbenchMarkdownEditorSaveStatusFeatureFacade(store: store, draftID: draft.id)
     let message = succeeded
       ? String(localized: "当前文章已保存。")
-      : store.externalDraftWriteFailures[draft.id]
-        ?? status.saveFailure?.message
+      : status.saveFailure?.message
         ?? String(localized: "当前文章尚未保存完成，请检查保存状态后重试。")
     reportExplicitSave(message)
   }

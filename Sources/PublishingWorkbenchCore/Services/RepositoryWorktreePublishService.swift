@@ -60,10 +60,16 @@ public struct RepositoryWorktreePublishService: Sendable {
   /// Performs no new publication mutation. If a previous process stopped in
   /// the short HEAD/index transition, its app-owned journal is recovered
   /// before a new frozen review is produced.
+  ///
+  /// A `pathScope` limits the review, commit and drift checks to those exact
+  /// repository paths; every other worktree change stays uncommitted and
+  /// untouched. The real index must still be clean repository-wide because the
+  /// committed tree replaces it after the branch moves.
   public func prepare(
     profile: SiteProfile,
     commitMessage: String,
-    articleDraft: ArticleDraft? = nil
+    articleDraft: ArticleDraft? = nil,
+    pathScope: [String]? = nil
   ) throws -> RepositoryWorktreePublishConfirmation {
     let normalizedMessage = commitMessage.trimmedForPublishing
     guard !normalizedMessage.isEmpty else {
@@ -72,9 +78,10 @@ public struct RepositoryWorktreePublishService: Sendable {
     guard let root = profile.localRepositoryRootURL else {
       throw RepositoryWorktreePublishError.missingRepositoryRoot
     }
+    let scope = try normalizedPathScope(pathScope, root: root.standardizedFileURL)
     try executionPolicyService.validate(policy: profile.gitExecutionPolicy, rootURL: root)
     try transitionCoordinator.recoverIfNeeded(profile: profile, root: root)
-    let snapshot = try inspect(profile: profile, root: root)
+    let snapshot = try inspect(profile: profile, root: root, pathScope: scope)
     let safetyReport = try validatedSafetyReport(snapshot: snapshot, profile: profile)
     let sitePreflightResult = try validatedSitePreflight(profile: profile)
     let fileReviews = RepositoryWorktreeReviewService(git: git).capture(
@@ -83,7 +90,7 @@ public struct RepositoryWorktreePublishService: Sendable {
     let articleTarget = RepositoryWorktreeArticleVerificationTarget.capture(
       draft: articleDraft, profile: profile, snapshot: snapshot
     )
-    let afterPreflight = try inspect(profile: profile, root: root)
+    let afterPreflight = try inspect(profile: profile, root: root, pathScope: scope)
     guard afterPreflight == snapshot else {
       throw RepositoryWorktreePublishError.snapshotDrift
     }
@@ -94,15 +101,18 @@ public struct RepositoryWorktreePublishService: Sendable {
       sitePreflightResult: sitePreflightResult,
       articleVerificationTarget: articleTarget,
       fileReviews: fileReviews,
-      executionPolicy: profile.gitExecutionPolicy
+      executionPolicy: profile.gitExecutionPolicy,
+      pathScope: scope
     )
   }
 
-  /// Revalidates the complete frozen review, stages all paths, verifies the
-  /// resulting index, commits, and pushes one exact non-force refspec.
+  /// Revalidates the complete frozen review, stages all reviewed paths,
+  /// verifies the resulting index, commits, and pushes one exact non-force
+  /// refspec.
   public func publish(
     profile: SiteProfile,
-    confirmation: RepositoryWorktreePublishConfirmation
+    confirmation: RepositoryWorktreePublishConfirmation,
+    beforeMovingHead: (@Sendable (String) throws -> Void)? = nil
   ) throws -> RepositoryWorktreePublishResult {
     guard profile.gitExecutionPolicy == confirmation.executionPolicy else {
       throw RepositoryWorktreePublishError.snapshotDrift
@@ -115,11 +125,15 @@ public struct RepositoryWorktreePublishService: Sendable {
     guard let root = profile.localRepositoryRootURL else {
       throw RepositoryWorktreePublishError.missingRepositoryRoot
     }
+    let scope = confirmation.pathScope
+    guard try normalizedPathScope(scope, root: root.standardizedFileURL) == scope else {
+      throw RepositoryWorktreePublishError.snapshotDrift
+    }
     try transitionCoordinator.recoverIfNeeded(profile: profile, root: root)
     guard !confirmation.commitMessage.trimmedForPublishing.isEmpty else {
       throw RepositoryWorktreePublishError.invalidCommitMessage
     }
-    let current = try inspect(profile: profile, root: root)
+    let current = try inspect(profile: profile, root: root, pathScope: scope)
     guard current == confirmation.snapshot else {
       throw RepositoryWorktreePublishError.snapshotDrift
     }
@@ -134,7 +148,7 @@ public struct RepositoryWorktreePublishService: Sendable {
     guard sitePreflightResult.outcome == confirmation.sitePreflightResult?.outcome else {
       throw RepositoryWorktreePublishError.snapshotDrift
     }
-    let afterPreflight = try inspect(profile: profile, root: root)
+    let afterPreflight = try inspect(profile: profile, root: root, pathScope: scope)
     guard afterPreflight == confirmation.snapshot else {
       throw RepositoryWorktreePublishError.snapshotDrift
     }
@@ -152,9 +166,15 @@ public struct RepositoryWorktreePublishService: Sendable {
 
     _ = try output(
       ["read-tree", confirmation.snapshot.headSHA], root: root, indexURL: temporaryIndex)
-    _ = try output(["add", "-A", "--", "."], root: root, indexURL: temporaryIndex)
+    // A scoped publish stages only the reviewed paths that actually changed;
+    // a pathspec naming an absent, untracked file would make `git add` fail.
+    _ = try output(
+      ["add", "-A", "--"] + pathspecs(for: scope.map { _ in confirmation.snapshot.paths }),
+      root: root, indexURL: temporaryIndex)
+    // Paths outside a scope stay uncommitted; hooks must still leave them alone.
+    let repositoryStatusBeforeHooks = try repositoryStatus(root: root)
     guard try stagedIndexMatches(confirmation.snapshot, root: root, indexURL: temporaryIndex),
-      try worktreeHasNoChangesBeyondIndex(root: root, indexURL: temporaryIndex)
+      try worktreeHasNoChangesBeyondIndex(root: root, indexURL: temporaryIndex, pathScope: scope)
     else {
       throw RepositoryWorktreePublishError.stagedVerificationFailed
     }
@@ -168,10 +188,11 @@ public struct RepositoryWorktreePublishService: Sendable {
       confirmation: confirmation, tree: stagedTree, root: root, index: temporaryIndex,
       temporaryDirectory: temporaryDirectory
     ) {
-      guard try inspect(profile: profile, root: root) == confirmation.snapshot,
+      guard try inspect(profile: profile, root: root, pathScope: scope) == confirmation.snapshot,
         try indexFingerprint(root: root) == realIndexFingerprint,
         try stagedIndexMatches(confirmation.snapshot, root: root, indexURL: temporaryIndex),
-        try worktreeHasNoChangesBeyondIndex(root: root, indexURL: temporaryIndex),
+        try worktreeHasNoChangesBeyondIndex(root: root, indexURL: temporaryIndex, pathScope: scope),
+        try repositoryStatus(root: root) == repositoryStatusBeforeHooks,
         try output(["write-tree"], root: root, indexURL: temporaryIndex).trimmedForPublishing
           == stagedTree
       else { throw RepositoryGitExecutionPolicyError.reviewedContentChanged }
@@ -182,12 +203,16 @@ public struct RepositoryWorktreePublishService: Sendable {
 
     // The real index is never used to build the tree. Recheck it immediately
     // before moving the branch so a concurrent `git add` cannot be absorbed.
-    let beforeCAS = try inspect(profile: profile, root: root)
+    let beforeCAS = try inspect(profile: profile, root: root, pathScope: scope)
     guard beforeCAS == confirmation.snapshot,
       try indexFingerprint(root: root) == realIndexFingerprint
     else {
       throw RepositoryWorktreePublishError.snapshotDrift
     }
+
+    // Persist the immutable receipt before the first durable ref mutation.
+    // A failed receipt write prevents both the ref update and network push.
+    try beforeMovingHead?(commitSHA)
 
     let realIndexURL = try repositoryIndexURL(root: root)
     let transition = try transitionCoordinator.begin(
@@ -255,33 +280,36 @@ public struct RepositoryWorktreePublishService: Sendable {
       throw error
     }
 
-    try execution.postCommit(policy: confirmation.executionPolicy, root: root, commitSHA: commitSHA)
-
-    guard try worktreeIsClean(root: root) else {
-      throw RepositoryWorktreePublishError.commitSucceededButPushFailed(
-        commitSHA: commitSHA,
-        message: "提交后工作区或真实 index 发生变化，未执行推送。"
-      )
-    }
-    let remoteBeforePush = try requiredRemoteSHA(branch: confirmation.snapshot.branch, root: root)
-    guard remoteBeforePush == confirmation.snapshot.remoteBranchSHA else {
-      throw RepositoryWorktreePublishError.commitSucceededButPushFailed(
-        commitSHA: commitSHA,
-        message: "远端分支在提交期间发生变化，非强制推送已停止。"
-      )
-    }
-
     do {
+      try execution.postCommit(
+        policy: confirmation.executionPolicy, root: root, commitSHA: commitSHA)
+
+      guard try worktreeIsClean(root: root, pathScope: scope) else {
+        throw RepositoryWorktreePublishError.commitSucceededButPushFailed(
+          commitSHA: commitSHA,
+          message: "提交后工作区或真实 index 发生变化，未执行推送。"
+        )
+      }
+      let remoteBeforePush = try requiredRemoteSHA(branch: confirmation.snapshot.branch, root: root)
+      guard remoteBeforePush == confirmation.snapshot.remoteBranchSHA else {
+        throw RepositoryWorktreePublishError.commitSucceededButPushFailed(
+          commitSHA: commitSHA,
+          message: "远端分支在提交期间发生变化，非强制推送已停止。"
+        )
+      }
+
       let pushOriginBeforePush = try validatedPushOrigin(profile: profile, root: root)
       guard pushOriginBeforePush == confirmation.snapshot.pushOriginURL else {
         throw RepositoryWorktreePublishError.snapshotDrift
       }
+      let repositoryStatusBeforePush = try repositoryStatus(root: root)
       try execution.prePush(
         policy: confirmation.executionPolicy, branch: confirmation.snapshot.branch,
         root: root, commitSHA: commitSHA, remoteSHA: remoteBeforePush, origin: pushOriginBeforePush,
         temporaryDirectory: temporaryDirectory
       ) {
-        guard try worktreeIsClean(root: root),
+        guard try worktreeIsClean(root: root, pathScope: scope),
+          try repositoryStatus(root: root) == repositoryStatusBeforePush,
           try validatedPushOrigin(profile: profile, root: root) == pushOriginBeforePush,
           try requiredRemoteSHA(branch: confirmation.snapshot.branch, root: root)
             == remoteBeforePush
@@ -342,7 +370,8 @@ public struct RepositoryWorktreePublishService: Sendable {
 
   private func inspect(
     profile: SiteProfile,
-    root: URL
+    root: URL,
+    pathScope: [String]?
   ) throws -> RepositoryWorktreePublishSnapshot {
     let standardizedRoot = root.standardizedFileURL
     guard FileManager.default.fileExists(atPath: standardizedRoot.path) else {
@@ -416,13 +445,15 @@ public struct RepositoryWorktreePublishService: Sendable {
       ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
       root: standardizedRoot
     )
-    let rawEntries = try parseStatus(status)
-    guard !rawEntries.isEmpty else {
+    let repositoryEntries = try parseStatus(status)
+    guard !repositoryEntries.isEmpty else {
       throw RepositoryWorktreePublishError.noChanges
     }
 
+    // Unmerged and staged paths block every scope: the committed tree later
+    // replaces the real index, so it must equal HEAD repository-wide.
     let unmerged =
-      rawEntries
+      repositoryEntries
       .filter { isUnmerged(status: $0.status) }
       .flatMap { [$0.path, $0.sourcePath].compactMap { $0 } }
       .sorted()
@@ -431,12 +462,28 @@ public struct RepositoryWorktreePublishService: Sendable {
     }
 
     let staged =
-      rawEntries
+      repositoryEntries
       .filter { isStaged(status: $0.status) }
       .flatMap { [$0.path, $0.sourcePath].compactMap { $0 } }
       .sorted()
     guard staged.isEmpty else {
       throw RepositoryWorktreePublishError.dirtyIndex(staged)
+    }
+
+    let rawEntries: [RawStatusEntry]
+    let statusFingerprint: String
+    if let pathScope {
+      let scopedPaths = Set(pathScope)
+      rawEntries = repositoryEntries.filter { scopedPaths.contains($0.path) }
+      // Unrelated edits elsewhere in the worktree must not invalidate a
+      // scoped review, so only the scoped records form the fingerprint.
+      statusFingerprint = rawEntries.map { "\($0.status) \($0.path)\0" }.joined()
+    } else {
+      rawEntries = repositoryEntries
+      statusFingerprint = status
+    }
+    guard !rawEntries.isEmpty else {
+      throw RepositoryWorktreePublishError.noChanges
     }
 
     for rawEntry in rawEntries {
@@ -487,7 +534,7 @@ public struct RepositoryWorktreePublishService: Sendable {
       originURL: safeOrigin,
       pushOriginURL: safePushOrigin,
       remoteBranchSHA: remoteSHA,
-      statusFingerprint: status,
+      statusFingerprint: statusFingerprint,
       entries: entries
     )
   }
@@ -601,29 +648,25 @@ public struct RepositoryWorktreePublishService: Sendable {
     return true
   }
 
-  private func worktreeHasNoChangesBeyondIndex(root: URL, indexURL: URL) throws -> Bool {
+  private func worktreeHasNoChangesBeyondIndex(
+    root: URL, indexURL: URL, pathScope: [String]?
+  ) throws -> Bool {
+    let diffArguments = ["diff", "--quiet", "--"] + pathspecs(for: pathScope)
     let diff = git.run(
-      ["diff", "--quiet", "--"],
+      diffArguments,
       rootURL: root,
       environmentOverrides: ["GIT_INDEX_FILE": indexURL.path]
     )
     guard diff.terminationStatus == 0 || diff.terminationStatus == 1 else {
-      throw gitFailure(arguments: ["diff", "--quiet", "--"], result: diff)
+      throw gitFailure(arguments: diffArguments, result: diff)
     }
     guard diff.terminationStatus == 0 else { return false }
     let untracked = try output(
-      ["ls-files", "--others", "--exclude-standard", "-z"],
+      ["ls-files", "--others", "--exclude-standard", "-z", "--"] + pathspecs(for: pathScope),
       root: root,
       indexURL: indexURL
     )
     return untracked.isEmpty
-  }
-
-  private func worktreeIsClean(root: URL) throws -> Bool {
-    try output(
-      ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
-      root: root
-    ).isEmpty
   }
 
   private func indexFingerprint(root: URL) throws -> String {
@@ -685,16 +728,6 @@ public struct RepositoryWorktreePublishService: Sendable {
   private func normalizedRepositoryBaseURL(_ value: String) -> String {
     value.trimmedForPublishing.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
       .lowercased()
-  }
-
-  private func localRemoteURL(_ value: String, root: URL) -> URL? {
-    if value.lowercased().hasPrefix("file://") {
-      return URL(string: value)?.standardizedFileURL
-    }
-    guard value.hasPrefix("/") || value.hasPrefix("./") || value.hasPrefix("../") else {
-      return nil
-    }
-    return URL(fileURLWithPath: value, relativeTo: root).standardizedFileURL
   }
 
   private func requiredRemoteSHA(branch: String, root: URL) throws -> String {
@@ -798,7 +831,7 @@ public struct RepositoryWorktreePublishService: Sendable {
     }
   }
 
-  private func validateRelativePath(_ path: String, root: URL) throws {
+  func validateRelativePath(_ path: String, root: URL) throws {
     let normalized = path.normalizedRelativePath()
     let components = path.split(separator: "/", omittingEmptySubsequences: false)
     let resolvedPath = root.appendingPathComponent(path).standardizedFileURL.path
@@ -814,45 +847,4 @@ public struct RepositoryWorktreePublishService: Sendable {
       throw RepositoryWorktreePublishError.unsupportedPaths([path])
     }
   }
-
-  private func isSensitive(_ path: String) -> Bool {
-    let components = path.lowercased().split(separator: "/").map(String.init)
-    guard let filename = components.last else { return true }
-    if components.contains(where: { [".ssh", ".aws", ".gnupg"].contains($0) }) {
-      return true
-    }
-    if filename == ".env" || filename.hasPrefix(".env.") {
-      return true
-    }
-    if [
-      ".npmrc", ".pypirc", ".netrc", "credentials", "credentials.json",
-      "id_rsa", "id_ed25519",
-    ].contains(filename) {
-      return true
-    }
-    if filename.hasPrefix("service-account") && filename.hasSuffix(".json") {
-      return true
-    }
-    return ["pem", "key", "p12", "pfx", "mobileprovision"]
-      .contains((filename as NSString).pathExtension)
-  }
-
-  private func isUnmerged(status: String) -> Bool {
-    ["DD", "AU", "UD", "UA", "DU", "AA", "UU"].contains(status)
-  }
-
-  private func isStaged(status: String) -> Bool {
-    guard let first = status.first else { return false }
-    return first != " " && first != "?"
-  }
-
-  private func entryKind(status: String) -> RepositoryWorktreePublishEntryKind {
-    if status.contains("R") { return .renamed }
-    if status.contains("C") { return .copied }
-    if status.contains("D") { return .deleted }
-    if status.contains("T") { return .typeChanged }
-    if status == "??" || status.contains("A") { return .added }
-    return .modified
-  }
-
 }

@@ -47,23 +47,23 @@ struct EditorAIReviewBar: View {
     VStack(alignment: .leading, spacing: 8) {
       HStack {
         Label("AI 修改审阅 \(position.current)/\(position.total)", systemImage: "text.badge.checkmark")
-          .font(.callout.weight(.semibold))
+          .font(.workbenchBody.weight(.semibold))
         Spacer()
         Button("退出", action: onExit)
           .accessibilityIdentifier("editor-ai-review-exit")
       }
       Text(hunk.reason)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .lineLimit(2)
       Label(decisionLabel, systemImage: decisionIcon)
-        .font(.caption.weight(.medium))
+        .font(.workbenchMetadata.weight(.medium))
         .foregroundStyle(decisionColor)
       Text(
         "待处理 \(decisionSummary.pending.formatted()) · 已接受 \(decisionSummary.accepted.formatted()) · 已拒绝 \(decisionSummary.rejected.formatted())"
       )
       .font(.workbenchMetadata)
-      .foregroundStyle(.secondary)
+      .foregroundStyle(.workbenchSecondary)
       AIChangeComparisonView(
         before: hunk.originalText,
         after: hunk.replacementText

@@ -51,8 +51,10 @@ final class ModernSiteFrameworkSupportTests: XCTestCase {
           atomically: true,
           encoding: .utf8
         )
-        let dependencyDirectory = rootURL.appendingPathComponent("node_modules/example", isDirectory: true)
-        try FileManager.default.createDirectory(at: dependencyDirectory, withIntermediateDirectories: true)
+        let dependencyDirectory = rootURL.appendingPathComponent(
+          "node_modules/example", isDirectory: true)
+        try FileManager.default.createDirectory(
+          at: dependencyDirectory, withIntermediateDirectories: true)
         try "# Dependency readme\n".write(
           to: dependencyDirectory.appendingPathComponent("README.md"),
           atomically: true,
@@ -258,6 +260,50 @@ final class ModernSiteFrameworkSupportTests: XCTestCase {
     XCTAssertTrue(draft.draft)
   }
 
+  func testImportsSummaryAndPublishDateAliasesFromYAMLAndTOML() throws {
+    let fixtures: [(FrontMatterStyle, String, String, String)] = [
+      (.yaml, "socialDescription", "publishDate", "YAML camel aliases"),
+      (.yaml, "socialdescription", "publishdate", "YAML lowercase aliases"),
+      (.toml, "socialDescription", "publishDate", "TOML camel aliases"),
+      (.toml, "socialdescription", "publishdate", "TOML lowercase aliases"),
+    ]
+
+    for (style, summaryKey, dateKey, title) in fixtures {
+      let rootURL = try temporaryDirectory()
+      defer { try? FileManager.default.removeItem(at: rootURL) }
+      var profile = SiteProfile.defaultProfile
+      profile.applyPublishingDefaults(for: style == .toml ? .zola : .quartz)
+      profile.frontMatterStyle = style
+      profile.markdownPathPattern = "content/{slug}.md"
+      let (delimiter, assignment) = style == .toml ? ("+++", " = ") : ("---", ": ")
+      let source = """
+        \(delimiter)
+        title\(assignment)"\(title)"
+        \(dateKey)\(assignment)"2026-08-29"
+        \(summaryKey)\(assignment)"Imported summary"
+        \(delimiter)
+
+        Body
+        """
+      try FileManager.default.createDirectory(
+        at: rootURL.appendingPathComponent("content", isDirectory: true),
+        withIntermediateDirectories: true
+      )
+      try source.write(
+        to: rootURL.appendingPathComponent(
+          "content/\(title.replacingOccurrences(of: " ", with: "-").lowercased()).md"),
+        atomically: true,
+        encoding: .utf8
+      )
+
+      let result = LocalContentImportService(isContentIndexEnabled: false).importDrafts(
+        rootURL: rootURL, profile: profile)
+      let draft = try XCTUnwrap(result.importedDrafts.first)
+      XCTAssertEqual(draft.summary, "Imported summary", "\(style) \(summaryKey)")
+      XCTAssertEqual(formattedDate(draft.date), "2026-08-29", "\(style) \(dateKey)")
+    }
+  }
+
   func testImportsFoamWorkspaceRootAndDraftStatus() throws {
     let rootURL = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -275,8 +321,10 @@ final class ModernSiteFrameworkSupportTests: XCTestCase {
       atomically: true,
       encoding: .utf8
     )
-    let dependencyDirectory = rootURL.appendingPathComponent("node_modules/example", isDirectory: true)
-    try FileManager.default.createDirectory(at: dependencyDirectory, withIntermediateDirectories: true)
+    let dependencyDirectory = rootURL.appendingPathComponent(
+      "node_modules/example", isDirectory: true)
+    try FileManager.default.createDirectory(
+      at: dependencyDirectory, withIntermediateDirectories: true)
     try "# Dependency readme\n".write(
       to: dependencyDirectory.appendingPathComponent("README.md"),
       atomically: true,
@@ -299,5 +347,13 @@ final class ModernSiteFrameworkSupportTests: XCTestCase {
       .appendingPathComponent("ModernSiteFrameworkSupport-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
+  }
+
+  private func formattedDate(_ date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "yyyy-MM-dd"
+    return formatter.string(from: date)
   }
 }

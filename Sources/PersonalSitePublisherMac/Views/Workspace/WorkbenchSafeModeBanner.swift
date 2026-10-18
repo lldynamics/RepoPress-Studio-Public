@@ -5,11 +5,11 @@ struct WorkbenchSafeModeBanner: View {
   var body: some View {
     HStack(alignment: .firstTextBaseline, spacing: 10) {
       Label("安全模式", systemImage: "wrench.and.screwdriver")
-        .font(.callout.weight(.semibold))
+        .font(.workbenchBody.weight(.semibold))
 
       Text("自动预检、预览和后台维护已暂停；关闭应用后重新打开即可退出安全模式。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .lineLimit(2)
 
       Spacer(minLength: 8)

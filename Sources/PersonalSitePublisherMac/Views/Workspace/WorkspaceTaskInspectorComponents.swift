@@ -66,7 +66,7 @@ struct InspectorSection<Content: View>: View {
     VStack(alignment: .leading, spacing: 9) {
       Text(LocalizedStringKey(title))
         .font(.workbenchCardTitle)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityAddTraits(.isHeader)
       content
     }
@@ -108,11 +108,11 @@ struct InspectorDisclosureSection<Content: View>: View {
         if let detail, !detail.isEmpty {
           Text(detail)
             .font(.workbenchMetadata.monospacedDigit())
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.workbenchSecondary)
             .lineLimit(1)
         }
       }
-      .foregroundStyle(.secondary)
+      .foregroundStyle(.workbenchSecondary)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .accessibilityElement(children: .contain)
@@ -127,10 +127,10 @@ struct InspectorStatRow: View {
   var body: some View {
     HStack(spacing: 8) {
       Image(systemName: systemImage)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .frame(width: 16)
       Text(LocalizedStringKey(title))
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       Spacer()
       Text(value)
         .workbenchTruncatedIdentity(value)
@@ -185,7 +185,7 @@ func actionMessage(_ message: String?) -> some View {
   if let message, !message.isEmpty {
     Text(message)
       .font(.workbenchSupporting)
-      .foregroundStyle(.secondary)
+      .foregroundStyle(.workbenchSecondary)
       .padding(WorkbenchSpacing.control)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))

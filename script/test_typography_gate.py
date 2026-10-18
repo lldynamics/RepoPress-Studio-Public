@@ -48,16 +48,37 @@ import SwiftUI
 struct FixtureView: View {
   var body: some View {
     VStack {
-      Text("Readable").font(.callout)
-      Text("Metadata").font(.caption)
+      Text("Readable").font(.workbenchBody)
+      Text("Metadata").font(.workbenchMetadata.monospacedDigit()).foregroundStyle(.workbenchSecondary)
+      Text(attachment.caption).font(.workbenchMetadata)
       Image(systemName: "photo").font(.system(size: WorkbenchIconSize.hero))
       Button("Secondary") {}.controlSize(.small)
     }
+    .onTapGesture { edit(.caption(value), style: .footnote, scope: .body, field: .title) }
   }
 }
 """
     )
     assert_fails('Text("Too small").font(.caption2)\n', "TYP001")
+    assert_fails('Text("Too small").font(.caption.weight(.semibold))\n', "TYP001")
+    assert_fails('Text("Too small").font(.footnote)\n', "TYP001")
+    assert_fails('Text("Code").font(.system(.caption, design: .monospaced))\n', "TYP001")
+    assert_fails('Text("Toggle").font(isCompact ? .caption : .body)\n', "TYP001")
+    assert_fails('static let workbenchMetadata: Font = .caption\n', "TYP001")
+    assert_fails('Text("Wrapped").font(\n  .caption.weight(.medium))\n', "TYP001")
+    assert_fails('label.font = NSFont.preferredFont(forTextStyle: .caption1)\n', "TYP001")
+    assert_fails('Text("Faint").foregroundStyle(.secondary)\n', "TYP006")
+    assert_fails('Text("Raw").font(.body)\n', "TYP007")
+    assert_fails('Text("Raw").font(.headline.weight(.bold))\n', "TYP007")
+    assert_fails('Text("Code").font(.system(.body, design: .monospaced))\n', "TYP007")
+    assert_fails('Text("Toggle").font(isRead ? .workbenchBody : .title3)\n', "TYP007")
+    assert_fails('piece.font = .body.weight(.semibold)\n', "TYP007")
+    assert_fails('stateCopy(titleFont: .headline, messageFont: .workbenchBody)\n', "TYP007")
+    assert_fails('Text("Wrapped").font(\n  .subheadline.weight(.medium))\n', "TYP007")
+    assert_passes(
+        'static var workbenchBody: Font { workbenchLevel(.body, baseSize: 13) }\n',
+        filename="WorkbenchTypography.swift",
+    )
     assert_fails('Button("Tiny") {}.controlSize(.mini)\n', "TYP002")
     assert_fails(
         'Text("Writing").lineLimit(1).minimumScaleFactor(0.8)\n',

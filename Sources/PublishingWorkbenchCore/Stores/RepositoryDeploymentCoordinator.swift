@@ -20,7 +20,7 @@ final class RepositoryDeploymentCoordinator {
   @discardableResult
   func tickOperationalPolling(store: WorkbenchStore, now: Date) async -> Bool {
     let profiles = store.profiles.filter { $0.purpose == .publishing }
-    var didRun = false
+    var didRun = await deploymentStore.tickArticlePublishTracking(store: store, now: now)
     for profile in profiles {
       // Both stores receive an explicit profile ID. The repository store uses
       // a non-importing background path for non-active profiles, while the

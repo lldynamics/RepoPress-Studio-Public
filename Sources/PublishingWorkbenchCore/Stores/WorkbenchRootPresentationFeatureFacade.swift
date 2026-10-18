@@ -20,7 +20,7 @@ public final class WorkbenchRootPresentationFeatureFacade: ObservableObject {
     observe(store.publishingStore.$isInspectorPresented)
     observe(store.persistenceStore.$recoveryMessage)
     observe(store.persistenceStore.$isRecoveryWriteProtected)
-    observe(store.aiWorkspaceStore.$isAIPublishingAssistantPresented)
+    observe(store.aiWorkspaceStore.publisher(for: \.isAIPublishingAssistantPresented))
   }
 
   public var selectedDraftID: UUID? { store.selectedDraftID }

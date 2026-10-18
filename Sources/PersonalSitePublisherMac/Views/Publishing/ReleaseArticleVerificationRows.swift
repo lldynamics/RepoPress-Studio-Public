@@ -18,7 +18,7 @@ struct ReleaseArticleVerificationRows: View {
           .first { ["http", "https"].contains($0.scheme?.lowercased() ?? "") && $0.host != nil }
         VStack(alignment: .leading, spacing: 5) {
           Label(target.draftTitle, systemImage: (result?.level ?? .unknown).systemImage)
-            .font(.callout.weight(.medium))
+            .font(.workbenchBody.weight(.medium))
           if snapshot?.verifiesArticle(target, in: record) == true, let articleURL {
             HStack(spacing: 8) {
               Label("已上线", systemImage: "checkmark.seal.fill")
@@ -29,10 +29,12 @@ struct ReleaseArticleVerificationRows: View {
             }
           }
           Text(target.publicURLText ?? target.publicPath ?? target.markdownPath)
-            .font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+            .font(.workbenchMetadata.monospaced())
+            .foregroundStyle(.workbenchSecondary)
+            .textSelection(.enabled)
           if target.publicPath == nil {
             Text("历史记录未保存公开路径，当前结果使用文件路径推导。")
-              .font(.caption).foregroundStyle(.secondary)
+              .font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
           }
           HStack {
             Button(
@@ -60,19 +62,21 @@ struct ReleaseArticleVerificationRows: View {
                 ? String(localized: "正文版本已确认")
                 : String(localized: "正文版本尚未确认")
             )
-            .font(.caption).foregroundStyle(.secondary)
+            .font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
             DisclosureGroup("检查详情") {
               ForEach(result.signals) { signal in
                 VStack(alignment: .leading, spacing: 3) {
                   Label(signal.title, systemImage: signal.level.systemImage)
-                  Text(signal.message).font(.caption).foregroundStyle(.secondary).textSelection(
-                    .enabled)
+                  Text(signal.message)
+                    .font(.workbenchMetadata)
+                    .foregroundStyle(.workbenchSecondary)
+                    .textSelection(.enabled)
                 }
               }
             }
           } else {
             Text("此文章尚未验证，请检查全部文章。")
-              .font(.caption).foregroundStyle(.secondary)
+              .font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
           }
         }
         .accessibilityElement(children: .contain)

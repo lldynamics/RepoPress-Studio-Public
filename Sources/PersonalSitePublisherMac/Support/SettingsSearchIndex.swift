@@ -154,7 +154,7 @@ enum SettingsSearchIndex {
     ),
     SettingsSearchItem(
       id: "ai.writingStyle",
-      tab: .siteAI,
+      tab: .ai,
       sectionTitle: String(localized: "AI 写作风格与个性化设定"),
       destination: .ai(.writingStyle),
       keywords: ["写作风格", "System Prompt", "语气", "润色偏好", "审稿规则", "提示词", "Template", "style"],

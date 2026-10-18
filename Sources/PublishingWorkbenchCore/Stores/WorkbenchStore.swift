@@ -125,12 +125,6 @@ public final class WorkbenchStore: ObservableObject {
   var siteDraftFileReconciliationGeneration: UInt64 = 0
   var siteDraftFileWritesInProgress: Set<UUID> = []
   var siteDraftFileSaveGenerations: [UUID: UInt64] = [:]
-  var externalDraftFolderScanGeneration: UInt64 = 0
-  var externalDraftWriteTasks: [UUID: Task<Void, Never>] = [:]
-  var externalDraftWriteGenerations: [UUID: UInt64] = [:]
-  var externalDraftWritesInProgress: Set<UUID> = []
-  @Published public internal(set) var externalDraftWriteFailures: [UUID: String] = [:]
-  @Published public internal(set) var externalDraftConflicts: Set<UUID> = []
   var siteMaintenanceRefreshTask: Task<SiteMaintenanceReport, Error>?
   var siteMaintenanceRefreshScheduleTask: Task<Void, Never>?
   var siteMaintenanceRefreshGeneration: UInt64 = 0
@@ -301,8 +295,8 @@ public final class WorkbenchStore: ObservableObject {
     self.rssReaderFileURL = rssReaderFileURL
     self.workspaceBackupDirectoryURL = workspaceBackupDirectoryURL
     self.siteDraftFileStore = SiteDraftFileStore(
-      packageBuilder: publishPackageBuilder,
-      previewService: localPublishPreviewService
+      packageBuilder: publishPackageBuilder, previewService: localPublishPreviewService,
+      moveJournalURL: persistence.fileURL.appendingPathExtension("article-moves")
     )
     self.draftRecoveryJournal = draftRecoveryJournal
     self.draftRecoveryRecords = Self.mergedRecoveryRecords(from: loadedDraftRecoveryRecords)
@@ -730,6 +724,7 @@ public final class WorkbenchStore: ObservableObject {
       refreshPublishPreviewInBackground(for: selectedDraft)
       aiStore.restoreSEOSocialPreviewSnapshotForCurrentSelection()
       scheduleMissingSiteDraftFileWrites()
+      resumeArticlePublishTracking()
     }
   }
 
@@ -743,10 +738,6 @@ public final class WorkbenchStore: ObservableObject {
 
   public func profile(for draft: ArticleDraft) -> SiteProfile {
     publishingStore.profile(for: draft)
-  }
-
-  public func profile(for record: ReleaseRecord) -> SiteProfile {
-    publishingStore.profile(for: record)
   }
 
   func profile(for package: PublishPackage) -> SiteProfile { publishingStore.profile(for: package) }
@@ -777,21 +768,18 @@ public final class WorkbenchStore: ObservableObject {
   public func flushPendingChanges() -> Bool {
     flushDraftBodyEditorBuffers()
     let siteDraftFilesSucceeded = flushPendingSiteDraftFileWrites()
-    let externalDraftFilesSucceeded = flushPendingExternalDraftWrites()
     let input = persistenceStore.persistence.snapshotInput(from: self)
     let persistenceSucceeded = persistenceStore.flush(
       input: input
     )
     let primarySaveSucceeded =
       siteDraftFilesSucceeded
-      && externalDraftFilesSucceeded
       && persistenceSucceeded
       && !persistenceStore.isRecoveryWriteProtected
     let draftRecoverySucceeded = flushDraftRecoveryJournal(
       pruningResolvedRecords: primarySaveSucceeded
     )
-    return siteDraftFilesSucceeded && externalDraftFilesSucceeded
-      && persistenceSucceeded && draftRecoverySucceeded
+    return siteDraftFilesSucceeded && persistenceSucceeded && draftRecoverySucceeded
   }
 
   /// Marks the current in-memory snapshot dirty and commits it synchronously.

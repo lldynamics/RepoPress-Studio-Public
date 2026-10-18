@@ -32,6 +32,7 @@ enum ProjectFileConflictReviewPanel {
       rootView: ProjectFileConflictReviewView(store: store, draftID: draftID) {
         panel.close()
       }
+      .workbenchTypography()
     )
     coordinators[draftID] = coordinator
     panel.center()
@@ -111,7 +112,7 @@ private struct ProjectFileConflictReviewView: View {
     VStack(alignment: .leading, spacing: 6) {
       HStack(alignment: .firstTextBaseline) {
         Label("项目文件冲突审阅", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
         Button("关闭", action: close)
           .keyboardShortcut(.cancelAction)
@@ -120,21 +121,21 @@ private struct ProjectFileConflictReviewView: View {
       }
       if let review {
         Text(review.draft.title)
-          .font(.title3.weight(.semibold))
+          .font(.workbenchTitle3.weight(.semibold))
           .lineLimit(2)
           .textSelection(.enabled)
         Text(review.repositoryPath)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospaced())
+          .foregroundStyle(.workbenchSecondary)
           .textSelection(.enabled)
         Text("项目根目录：\(review.rootPath)")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .textSelection(.enabled)
       } else {
         Text("正在读取软件草稿和项目文件…")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       }
     }
     .padding(16)
@@ -150,8 +151,8 @@ private struct ProjectFileConflictReviewView: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
           Text("下方两份内容都是完整 Markdown，包含 Front Matter 元数据。处理前请先核对外部修改。")
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
 
           HStack(alignment: .top, spacing: 12) {
             readOnlyDocument(
@@ -170,12 +171,12 @@ private struct ProjectFileConflictReviewView: View {
 
           VStack(alignment: .leading, spacing: 8) {
             Text("合并后保存")
-              .font(.callout.weight(.semibold))
+              .font(.workbenchBody.weight(.semibold))
             Text("如需保留两边内容，请在这里编辑完整 Markdown。提交前还会再次确认。")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
             TextEditor(text: $mergedDocument)
-              .font(.system(.body, design: .monospaced))
+              .font(.workbenchBody.monospaced())
               .scrollContentBackground(.hidden)
               .padding(8)
               .background(
@@ -206,15 +207,15 @@ private struct ProjectFileConflictReviewView: View {
     VStack(spacing: 8) {
       if let resolutionError {
         Label(resolutionError, systemImage: "exclamationmark.triangle")
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(.orange)
           .frame(maxWidth: .infinity, alignment: .leading)
           .accessibilityIdentifier("project-file-conflict-resolution-error")
       }
       HStack(alignment: .center, spacing: 10) {
         Text(actionExplanation)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .frame(maxWidth: .infinity, alignment: .leading)
         if isLoading || isResolving {
           ProgressView().controlSize(.small)
@@ -298,11 +299,11 @@ private struct ProjectFileConflictReviewView: View {
     identifier: String
   ) -> some View {
     VStack(alignment: .leading, spacing: 6) {
-      Text(title).font(.callout.weight(.semibold))
-      Text(detail).font(.caption).foregroundStyle(.secondary)
+      Text(title).font(.workbenchBody.weight(.semibold))
+      Text(detail).font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
       ScrollView {
         Text(verbatim: document)
-          .font(.system(.body, design: .monospaced))
+          .font(.workbenchBody.monospaced())
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .topLeading)
           .padding(8)

@@ -21,7 +21,7 @@ struct AIChatModelQuickSwitchSheet: View {
     VStack(spacing: 0) {
       HStack {
         Label(String(localized: "AI 快捷切换"), systemImage: "cpu")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
         Button {
           dismiss()
@@ -196,11 +196,11 @@ struct AIChatModelQuickSwitchSheet: View {
           .fill(connectionStatusColor)
           .frame(width: 9, height: 9)
         Text(connectionStatusTitle)
-          .font(.callout.weight(.semibold))
+          .font(.workbenchBody.weight(.semibold))
         Spacer()
         Text(modelSummary)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospaced())
+          .foregroundStyle(.workbenchSecondary)
           .lineLimit(2)
           .truncationMode(.tail)
           .fixedSize(horizontal: false, vertical: true)
@@ -208,8 +208,8 @@ struct AIChatModelQuickSwitchSheet: View {
       }
 
       Text(connectionReport?.detailText ?? connectionDetail)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .lineLimit(connectionReport == nil ? 2 : 4)
         .textSelection(.enabled)
     }
@@ -234,19 +234,19 @@ struct AIChatModelQuickSwitchSheet: View {
   private var searchBar: some View {
     HStack(spacing: 8) {
       Image(systemName: "magnifyingglass")
-        .font(.subheadline)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
       TextField(String(localized: "搜索模型名称或配置档案…"), text: $searchText)
         .textFieldStyle(.plain)
-        .font(.callout)
+        .font(.workbenchBody)
         .accessibilityLabel(String(localized: "搜索模型名称或配置档案…"))
       if !searchText.isEmpty {
         Button {
           searchText = ""
         } label: {
           Image(systemName: "xmark.circle.fill")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(String(localized: "清空搜索"))
@@ -269,11 +269,11 @@ struct AIChatModelQuickSwitchSheet: View {
   private var noSearchResultsView: some View {
     VStack(spacing: 8) {
       Image(systemName: "magnifyingglass")
-        .font(.title2)
-        .foregroundStyle(.secondary)
+        .font(.workbenchTitle2)
+        .foregroundStyle(.workbenchSecondary)
       Text(String(localized: "未找到匹配的模型或连接配置"))
-        .font(.callout.weight(.medium))
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody.weight(.medium))
+        .foregroundStyle(.workbenchSecondary)
       Button(String(localized: "清空搜索")) {
         searchText = ""
       }
@@ -331,13 +331,13 @@ struct AIChatModelQuickSwitchSheet: View {
   private var connectionProfilesSection: some View {
     VStack(alignment: .leading, spacing: 8) {
       Text(String(localized: "连接配置档案"))
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.weight(.semibold))
+        .foregroundStyle(.workbenchSecondary)
 
       if filteredProfiles.isEmpty {
         Text(String(localized: "还没有可复用的连接档案。"))
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       } else {
         ForEach(filteredProfiles) { profile in
           Button {
@@ -358,10 +358,10 @@ struct AIChatModelQuickSwitchSheet: View {
               )
               VStack(alignment: .leading, spacing: 2) {
                 Text(profile.name)
-                  .font(.callout.weight(.medium))
+                  .font(.workbenchBody.weight(.medium))
                 Text(profile.summary)
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchMetadata)
+                  .foregroundStyle(.workbenchSecondary)
                   .lineLimit(2)
                   .truncationMode(.tail)
                   .help(profile.summary)
@@ -386,8 +386,8 @@ struct AIChatModelQuickSwitchSheet: View {
           ? String(localized: "模型与思考等级")
           : String(localized: "模型档位")
       )
-      .font(.caption.weight(.semibold))
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata.weight(.semibold))
+      .foregroundStyle(.workbenchSecondary)
 
       if currentConfig.usesCodexAppServer {
         codexModelSection
@@ -435,19 +435,19 @@ struct AIChatModelQuickSwitchSheet: View {
             VStack(alignment: .leading, spacing: 2) {
               HStack(spacing: 6) {
                 Text(candidate.title)
-                  .font(.callout.weight(.medium))
+                  .font(.workbenchBody.weight(.medium))
                 if !candidate.model.isEmpty {
                   Text(AIChatRequestTokenBudget.formattedContextWindow(forModel: candidate.model))
                     .font(.workbenchMetadata.weight(.medium).monospaced())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.workbenchSecondary)
                     .padding(.horizontal, WorkbenchSpacing.tight)
                     .padding(.vertical, 1.5)
                     .background(Color.secondary.opacity(0.12), in: Capsule())
                 }
               }
               Text(candidate.model)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
+                .font(.workbenchMetadata.monospaced())
+                .foregroundStyle(.workbenchSecondary)
                 .lineLimit(2)
                 .truncationMode(.tail)
                 .help(candidate.model)
@@ -479,7 +479,7 @@ struct AIChatModelQuickSwitchSheet: View {
                 ? WorkbenchTheme.primary : Color.secondary
             )
             Text(String(localized: "自定义模型"))
-              .font(.callout.weight(.medium))
+              .font(.workbenchBody.weight(.medium))
             Spacer(minLength: 8)
           }
           .contentShape(Rectangle())
@@ -496,7 +496,7 @@ struct AIChatModelQuickSwitchSheet: View {
           if !customModelInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             Text(AIChatRequestTokenBudget.formattedContextWindow(forModel: customModelInput))
               .font(.workbenchMetadata.weight(.medium).monospaced())
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
               .padding(.horizontal, WorkbenchSpacing.tight)
               .padding(.vertical, 2)
               .background(Color.secondary.opacity(0.12), in: Capsule())

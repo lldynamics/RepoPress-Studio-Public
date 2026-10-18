@@ -59,7 +59,7 @@ struct RemoteRepositoryConflictResolverView: View {
   private var header: some View {
     HStack(spacing: 12) {
       Label("远端三方冲突协调", systemImage: "arrow.triangle.merge")
-        .font(.headline)
+        .font(.workbenchHeadline)
       Picker("冲突文件", selection: $selectedPath) {
         ForEach(session.conflicts) { item in
           Text(
@@ -77,7 +77,7 @@ struct RemoteRepositoryConflictResolverView: View {
         Text(
           "\(draftSelection.resolvedCount(in: session))/\(session.totalConflictCount) 已协调"
         )
-        .font(.caption.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
         ProgressView(
           value: Double(draftSelection.resolvedCount(in: session)),
           total: Double(max(session.totalConflictCount, 1))
@@ -85,7 +85,7 @@ struct RemoteRepositoryConflictResolverView: View {
         .frame(width: 100)
         .accessibilityLabel("冲突协调进度")
       }
-      .foregroundStyle(.secondary)
+      .foregroundStyle(.workbenchSecondary)
       Button("关闭") { dismiss() }
         .keyboardShortcut(.cancelAction)
         .disabled(isResolving)
@@ -100,15 +100,15 @@ struct RemoteRepositoryConflictResolverView: View {
   private func targetSummary(_ item: RemoteRepositoryConflictItem) -> some View {
     VStack(alignment: .leading, spacing: 5) {
       Text(item.repositoryPath)
-        .font(.callout.monospaced().weight(.semibold))
+        .font(.workbenchBody.monospaced().weight(.semibold))
         .textSelection(.enabled)
       Text("远端版本：\(item.actualSHA ?? "未知") · 本地基线：\(item.expectedSHA ?? "未记录")")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .textSelection(.enabled)
       Text("保留本地或合并内容会创建 PR/MR；不会直接覆盖目标分支。使用远端只更新草稿，不写远端。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 
@@ -117,10 +117,10 @@ struct RemoteRepositoryConflictResolverView: View {
       readOnlyColumn(title: "我的修改", subtitle: "本地准备发布", content: item.local)
       readOnlyColumn(title: "远端版本", subtitle: "当前目标分支", content: item.remote)
       VStack(alignment: .leading, spacing: 5) {
-        Text("合并协调区").font(.callout.weight(.semibold))
+        Text("合并协调区").font(.workbenchBody.weight(.semibold))
         Text("安全逐块选择；复杂格式保留完整源码")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         if draftSelection.choice(for: item.repositoryPath) == .merge,
           let state = draftSelection.mergeState(for: item.repositoryPath)
         {
@@ -156,8 +156,8 @@ struct RemoteRepositoryConflictResolverView: View {
           )
         } else {
           Text("选择“合并双方内容”后，这里会显示逐字段和逐段落协调。")
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
             .frame(maxWidth: .infinity, minHeight: 320, alignment: .center)
             .background(
               WorkbenchBackgroundStyle.control,
@@ -261,7 +261,7 @@ struct RemoteRepositoryConflictResolverView: View {
     DisclosureGroup("查看共同基线") {
       ScrollView {
         Text(verbatim: item.base.displayText)
-          .font(.system(.body, design: .monospaced))
+          .font(.workbenchBody.monospaced())
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .topLeading)
           .padding(WorkbenchSpacing.control)
@@ -277,7 +277,7 @@ struct RemoteRepositoryConflictResolverView: View {
   private func footer(_ item: RemoteRepositoryConflictItem) -> some View {
     HStack {
       Text(resolutionFeedback ?? transactionExplanation(for: item))
-        .font(.caption)
+        .font(.workbenchMetadata)
         .foregroundStyle(resolutionFeedback == nil ? Color.secondary : Color.orange)
       Spacer()
       if isResolving { ProgressView().controlSize(.small) }
@@ -366,11 +366,11 @@ struct RemoteRepositoryConflictResolverView: View {
     content: RepositoryMergeConflictContent
   ) -> some View {
     VStack(alignment: .leading, spacing: 5) {
-      Text(title).font(.callout.weight(.semibold))
-      Text(subtitle).font(.caption).foregroundStyle(.secondary)
+      Text(title).font(.workbenchBody.weight(.semibold))
+      Text(subtitle).font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
       ScrollView {
         Text(verbatim: content.displayText)
-          .font(.system(.body, design: .monospaced))
+          .font(.workbenchBody.monospaced())
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .topLeading)
           .padding(WorkbenchSpacing.control)

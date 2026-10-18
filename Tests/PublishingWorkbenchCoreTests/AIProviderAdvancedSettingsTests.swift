@@ -58,17 +58,6 @@ final class AIProviderAdvancedSettingsTests: XCTestCase {
 
     XCTAssertNil(config.advancedSettings)
     XCTAssertTrue(config.resolvedAdvancedSettings.isDefault)
-    XCTAssertTrue(config.resolvedAdvancedSettings.resolvedAllowsApplicationTools)
-  }
-
-  func testNewConnectionTemplatesDisableAgentToolsExplicitly() {
-    let template = AIConnectionProfile.template(named: "New", preset: .custom)
-
-    XCTAssertFalse(template.config.resolvedAdvancedSettings.resolvedAllowsApplicationTools)
-    XCTAssertFalse(
-      SiteProfile(name: "New Site")
-        .aiProviderConfig.resolvedAdvancedSettings.resolvedAllowsApplicationTools
-    )
   }
 
   func testCodexReasoningEffortOverrideEntersInteractiveNormalizedRequest() throws {

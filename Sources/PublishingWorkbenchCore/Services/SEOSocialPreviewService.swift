@@ -1,4 +1,5 @@
 import CoreGraphics
+import CryptoKit
 import Foundation
 import ImageIO
 import PublishingDomainContracts
@@ -19,10 +20,10 @@ public struct SEOSocialPreviewService: Sendable {
       profile: profile,
       localPreviewURL: localPreviewURL
     )
-    let cover = coverAttachment(for: draft)
-    let imagePath = draft.isPrivate ? nil : cover?.relativePublishPath.nilIfEmpty
-    let imageAltText = draft.isPrivate ? nil : cover?.altText.nilIfEmpty
-    let imageDimensions = draft.isPrivate ? nil : cover.flatMap(imageDimensions(for:))
+    let sharingImage = profile.seoSharingImageResolution(for: draft)
+    let imagePath = sharingImage.path
+    let imageAltText = sharingImage.altText
+    let imageDimensions = sharingImage.attachment.flatMap(imageDimensions(for:))
     let imageURLText = socialImageURL(imagePath: imagePath, canonicalURLText: canonicalURLText)
 
     let cards = SEOSocialPreviewCardKind.allCases.map { kind in
@@ -61,6 +62,8 @@ public struct SEOSocialPreviewService: Sendable {
       description: description,
       canonicalURLText: canonicalURLText,
       imageURLText: imageURLText,
+      shouldWarnWhenImageMissing: !draft.isPrivate
+        && !(sharingImage.articleIntent == .noIndividualImage && sharingImage.source == .none),
       siteName: profile.name,
       publishedAt: draft.date,
       modifiedAt: draft.updatedAt,
@@ -77,6 +80,8 @@ public struct SEOSocialPreviewService: Sendable {
       titleCharacterCount: title.count,
       descriptionCharacterCount: description.count,
       imagePath: imagePath,
+      imageSource: sharingImage.source,
+      articleImageIntent: sharingImage.articleIntent,
       socialImageURLText: imageURLText,
       imageDimensions: imageDimensions,
       imageAltText: imageAltText,
@@ -84,11 +89,14 @@ public struct SEOSocialPreviewService: Sendable {
       cards: cards,
       metaTags: metaTags,
       structuredData: structuredData,
-      findings: findings(
+      findings: socialPreviewFindings(
         title: title,
         description: description,
         imagePath: imagePath,
         imageAltText: imageAltText,
+        imageDimensions: imageDimensions,
+        imageSource: sharingImage.source,
+        articleImageIntent: sharingImage.articleIntent,
         draft: draft,
         structuredData: structuredData
       ),
@@ -102,7 +110,8 @@ public struct SEOSocialPreviewService: Sendable {
     localPreviewURL: URL? = nil
   ) -> String {
     let cover = coverAttachment(for: draft)
-    let dimensions = cover.flatMap(imageDimensions(for:))
+    let sharingImage = profile.seoSharingImageResolution(for: draft)
+    let dimensions = sharingImage.attachment.flatMap(imageDimensions(for:))
     let parts: [String] = [
       draft.title,
       draft.summary,
@@ -116,6 +125,12 @@ public struct SEOSocialPreviewService: Sendable {
       String(cover?.byteSize ?? 0),
       cover.flatMap(sourceFileModifiedTimestamp(for:)).map { String($0) } ?? "",
       dimensions?.displayName ?? "",
+      sharingImage.source.rawValue,
+      sharingImage.articleIntent?.rawValue ?? "",
+      profile.defaultSocialImagePath ?? "",
+      profile.defaultSocialImageAltText ?? "",
+      profile.themeProvidesTitleH1.map { String($0) } ?? "unknown",
+      profile.warnsWhenBodyH1DuplicatesTitle.map { String($0) } ?? "default",
       draft.tags.joined(separator: ","),
       draft.categories.joined(separator: ","),
       draft.authors.joined(separator: ","),
@@ -126,7 +141,8 @@ public struct SEOSocialPreviewService: Sendable {
       profile.markdownPath(for: draft),
       localPreviewURL?.absoluteString ?? "",
     ]
-    return parts.joined(separator: "\u{1F}")
+    let digest = SHA256.hash(data: Data(parts.joined(separator: "\u{1F}").utf8))
+    return Data(digest).base64EncodedString()
   }
 
   private func socialTitle(for draft: ArticleDraft) -> String {
@@ -274,6 +290,7 @@ public struct SEOSocialPreviewService: Sendable {
     description: String,
     canonicalURLText: String,
     imageURLText: String?,
+    shouldWarnWhenImageMissing: Bool,
     siteName: String,
     publishedAt: Date,
     modifiedAt: Date,
@@ -293,7 +310,7 @@ public struct SEOSocialPreviewService: Sendable {
     } else if URL(string: canonicalURLText)?.scheme == nil {
       warnings.append("JSON-LD url 当前是相对路径，发布前建议使用部署站点绝对 URL。")
     }
-    if imageURLText == nil {
+    if imageURLText == nil && shouldWarnWhenImageMissing {
       warnings.append("缺少 image，Article JSON-LD 在搜索结果中可能失去富媒体展示机会。")
     }
     if authors.isEmpty {
@@ -478,127 +495,4 @@ public struct SEOSocialPreviewService: Sendable {
       .trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
-  private func findings(
-    title: String,
-    description: String,
-    imagePath: String?,
-    imageAltText: String?,
-    draft: ArticleDraft,
-    structuredData: SEOStructuredDataPreview
-  ) -> [SEOAuditFinding] {
-    var findings: [SEOAuditFinding] = []
-
-    if title.count > 60 {
-      findings.append(
-        SEOAuditFinding(
-          severity: .warning,
-          title: "社交标题可能截断",
-          message: "当前 \(title.count) 字，建议控制在 60 字以内。",
-          field: "title"
-        )
-      )
-    }
-
-    if description.count < 50 {
-      findings.append(
-        SEOAuditFinding(
-          severity: .warning,
-          title: "社交描述偏短",
-          message: "当前 \(description.count) 字，建议补足结论、场景或价值。",
-          field: "summary"
-        )
-      )
-    } else if description.count > 200 {
-      findings.append(
-        SEOAuditFinding(
-          severity: .warning,
-          title: "社交描述可能截断",
-          message: "当前 \(description.count) 字，建议控制在 200 字以内。",
-          field: "summary"
-        )
-      )
-    }
-
-    if imagePath == nil && !draft.isPrivate {
-      findings.append(
-        SEOAuditFinding(
-          severity: .warning,
-          title: "缺少社交预览图",
-          message: "Open Graph 和 Twitter/X 卡片会缺少图片。",
-          field: "cover"
-        )
-      )
-    }
-
-    if imagePath != nil,
-       imageAltText?.trimmedForPublishing.nilIfEmpty == nil,
-       !draft.isPrivate {
-      findings.append(
-        SEOAuditFinding(
-          severity: .warning,
-          title: "社交预览图缺少 Alt",
-          message: "建议为封面图补充 Alt 文本，以输出 og:image:alt 和 twitter:image:alt。",
-          field: "coverAlt"
-        )
-      )
-    }
-
-    if !draft.isPrivate,
-       let cover = coverAttachment(for: draft),
-       let dimensions = imageDimensions(for: cover) {
-      if dimensions.width < 1200 || dimensions.height < 628 {
-        findings.append(
-          SEOAuditFinding(
-            severity: .warning,
-            title: "社交预览图尺寸偏小",
-            message: "当前 \(dimensions.displayName)，Open Graph / Twitter 大图建议至少 1200x630 左右。",
-            field: "cover"
-          )
-        )
-      }
-    }
-
-    if findings.isEmpty {
-      findings.append(
-        SEOAuditFinding(
-          severity: .info,
-          title: "社交预览字段完整",
-          message: "标题、描述和预览图都可用于生成社交卡片。",
-          field: nil
-        )
-      )
-    }
-
-    switch structuredData.status {
-    case .missing:
-      findings.append(
-        SEOAuditFinding(
-          severity: .warning,
-          title: "JSON-LD 缺少字段",
-          message: structuredData.message,
-          field: "jsonLD"
-        )
-      )
-    case .warning:
-      findings.append(
-        SEOAuditFinding(
-          severity: .info,
-          title: "JSON-LD 需确认",
-          message: structuredData.message,
-          field: "jsonLD"
-        )
-      )
-    case .ready:
-      findings.append(
-        SEOAuditFinding(
-          severity: .info,
-          title: "JSON-LD 已生成",
-          message: "Article 结构化数据可复制到发布模板。",
-          field: "jsonLD"
-        )
-      )
-    }
-
-    return findings
-  }
 }

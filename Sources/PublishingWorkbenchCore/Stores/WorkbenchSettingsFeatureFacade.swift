@@ -46,9 +46,9 @@ public final class WorkbenchSettingsFeatureFacade: ObservableObject {
     observe(store.deploymentStore.$deploymentStatusMessage)
 
     observe(store.$aiConnectionProfiles)
-    observe(store.aiWorkspaceStore.$aiTokenAvailability)
-    observe(store.aiWorkspaceStore.$isAIActionRunning)
-    observe(store.aiWorkspaceStore.$aiActionMessage)
+    observe(store.aiWorkspaceStore.publisher(for: \.aiTokenAvailability))
+    observe(store.aiWorkspaceStore.publisher(for: \.isAIActionRunning))
+    observe(store.aiWorkspaceStore.publisher(for: \.aiActionMessage))
 
     observe(store.privacyProtectionStore.$privacySettings)
   }

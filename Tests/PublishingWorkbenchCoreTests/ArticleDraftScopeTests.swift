@@ -24,11 +24,11 @@ final class ArticleDraftScopeTests: XCTestCase {
         .first { $0.softwareGuideID == "getting-started" }
     )
 
-    XCTAssertEqual(ArticleDraft.currentSoftwareGuideSeedVersion, 11)
+    XCTAssertEqual(ArticleDraft.currentSoftwareGuideSeedVersion, 12)
     XCTAssertTrue(guide.bodyMarkdown.contains("全局搜索（⇧⌘K）"))
     XCTAssertTrue(guide.bodyMarkdown.contains("五个一级入口"))
     XCTAssertTrue(guide.bodyMarkdown.contains("站点检查"))
-    XCTAssertTrue(guide.bodyMarkdown.contains("通用草稿（General Drafts）"))
+    XCTAssertTrue(guide.bodyMarkdown.contains("仅本地草稿（Local-only Drafts）"))
     XCTAssertFalse(guide.bodyMarkdown.contains("编辑 / 预览 / 分屏"))
   }
 
@@ -41,7 +41,7 @@ final class ArticleDraftScopeTests: XCTestCase {
     XCTAssertTrue(guide.bodyMarkdown.contains("Global search (⇧⌘K)"))
     XCTAssertTrue(guide.bodyMarkdown.contains("five primary workspace entries"))
     XCTAssertTrue(guide.bodyMarkdown.contains("Site Checks"))
-    XCTAssertTrue(guide.bodyMarkdown.contains("General Drafts"))
+    XCTAssertTrue(guide.bodyMarkdown.contains("Local-only Drafts"))
     XCTAssertFalse(guide.bodyMarkdown.contains("Edit, Preview, and Split"))
   }
 
@@ -238,23 +238,6 @@ final class ArticlePublishReminderPlanTests: XCTestCase {
       ArticleDraft.self, from: JSONSerialization.data(withJSONObject: legacy)
     )
     XCTAssertNil(restored.publishReminderAt)
-  }
-
-  func testWorkflowFragmentPreservesGeneratorBoundary() {
-    var profile = SiteProfile.defaultProfile
-    profile.siteKind = .hugo
-    let hugo = ScheduledPublishWorkflowTemplate(profile: profile)
-    XCTAssertTrue(hugo.supportsFutureContent)
-    XCTAssertTrue(hugo.triggerYAML.contains("17 * * * *"))
-    XCTAssertTrue(hugo.triggerYAML.contains("workflow_dispatch"))
-    profile.siteKind = .jekyll
-    XCTAssertTrue(
-      ScheduledPublishWorkflowTemplate(profile: profile).supportsFutureContent,
-      "Jekyll skips future-dated posts unless `future` is enabled")
-    profile.siteKind = .zola
-    XCTAssertFalse(ScheduledPublishWorkflowTemplate(profile: profile).supportsFutureContent)
-    profile.siteKind = .hexo
-    XCTAssertFalse(ScheduledPublishWorkflowTemplate(profile: profile).supportsFutureContent)
   }
 
   func testControlledSitesCannotStartAnUnsignedAutomaticRebase() {

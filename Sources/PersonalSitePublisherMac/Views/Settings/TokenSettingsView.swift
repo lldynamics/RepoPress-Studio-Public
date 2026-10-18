@@ -160,20 +160,19 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
       .accessibilityLabel("打开仓库连接诊断")
 
       Text("连接诊断只会在你点击后运行；正常发布会在需要时自动验证当前仓库连接。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
 
       if let publishActionMessage {
         LabeledContent("最近结果") {
           Text(publishActionMessage)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
             .multilineTextAlignment(.trailing)
         }
       }
     }
 
     TokenRepositoryAutomationSection(automationSettings: automationSettings)
-    ScheduledPublishTemplateSection(profile: activeProfile)
   }
 
   @ViewBuilder
@@ -232,27 +231,27 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
       )
 
       Text(readiness.nextStep)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
 
       if !readiness.missingRequirements.isEmpty {
         Text("待补齐：\(readiness.missingRequirements.joined(separator: "、"))")
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(WorkbenchTheme.warning)
       }
 
       Text(readiness.fallbackMessage)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
 
       Text("这里仅显示配置就绪状态，不会自动发起线上部署测试。实际结果来自已有的发布后校验。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
 
       if let deploymentStatusMessage {
         LabeledContent("最近结果") {
           Text(deploymentStatusMessage)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
             .multilineTextAlignment(.trailing)
         }
       }

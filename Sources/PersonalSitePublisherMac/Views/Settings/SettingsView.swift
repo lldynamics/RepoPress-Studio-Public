@@ -177,7 +177,7 @@ struct SettingsView: View {
       .padding(.top, WorkbenchSpacing.content)
       .padding(.bottom, WorkbenchSpacing.card)
 
-      if selectedSettingsTab.isSiteScoped {
+      if selectedSettingsTab.showsSiteSwitcher {
         profileBar
           .padding(.horizontal, WorkbenchSpacing.content)
           .padding(.bottom, WorkbenchSpacing.card)
@@ -189,7 +189,7 @@ struct SettingsView: View {
           isSearchFocused = true
         } label: {
           Label("返回搜索结果", systemImage: "arrow.uturn.backward")
-            .font(.callout)
+            .font(.workbenchBody)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
@@ -221,8 +221,8 @@ struct SettingsView: View {
   private func settingsSidebarSearchField(minimumHeight: CGFloat) -> some View {
     HStack(spacing: WorkbenchSpacing.control) {
       Image(systemName: "magnifyingglass")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityHidden(true)
 
       TextField(
@@ -232,7 +232,7 @@ struct SettingsView: View {
           set: { searchSession.updateQuery($0) }
         )
       )
-      .font(.callout)
+      .font(.workbenchBody)
       .textFieldStyle(.plain)
       .focused($isSearchFocused)
       .accessibilityLabel("搜索所有设置")
@@ -243,7 +243,7 @@ struct SettingsView: View {
           searchSession.updateQuery("")
         } label: {
           Image(systemName: "xmark.circle.fill")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
         .buttonStyle(.plain)
         .help("清除搜索")

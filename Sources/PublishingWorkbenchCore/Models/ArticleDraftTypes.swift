@@ -1,5 +1,7 @@
 import Foundation
+import PublishingCoreSupport
 import PublishingDomainContracts
+import RepoPressCore
 
 extension ArticleDraft {
   /// Advances the content timestamp. Prefer metadata/body-specific edits
@@ -127,6 +129,7 @@ public struct GeneralDraftReuseSourceSnapshot: Codable, Hashable, Sendable {
 /// excludes the body, derived word count and the content-write timestamp so an
 /// autosave cannot invalidate those projections.
 public struct ArticleDraftMetadataProjection: Equatable, Hashable, Sendable {
+  public let importedFrontMatterDigest: String?
   public let id: UUID
   public let siteProfileID: UUID
   public let scope: ArticleDraftScope
@@ -155,6 +158,9 @@ public struct ArticleDraftMetadataProjection: Equatable, Hashable, Sendable {
   public let softwareGuideTemplateVersion: Int?
 
   init(draft: ArticleDraft) {
+    importedFrontMatterDigest = draft.importedFrontMatter.map {
+      ArticleDraft.repositoryDocumentDigest($0.rawBlock)
+    }
     id = draft.id
     siteProfileID = draft.siteProfileID
     scope = draft.scope
@@ -190,10 +196,14 @@ public struct ArticleDraftMetadataProjection: Equatable, Hashable, Sendable {
 public struct ArticleDraftEditorObservationProjection: Equatable, Hashable, Sendable {
   public let metadata: ArticleDraftMetadataProjection
   public let revision: UInt64
+  public let importedFrontMatterDigest: String?
 
   init(draft: ArticleDraft) {
     metadata = draft.metadataProjection
     revision = draft.editorMetadataRevision
+    importedFrontMatterDigest = draft.importedFrontMatter.map {
+      ArticleDraft.repositoryDocumentDigest($0.rawBlock)
+    }
   }
 }
 
@@ -247,5 +257,41 @@ extension ArticleDraft {
       value.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) })
     else { return nil }
     return value
+  }
+}
+
+struct RepositoryContentFingerprintSnapshot: Encodable {
+  var title: String
+  var date: Date
+  var slug: String
+  var tags: [String]
+  var categories: [String]
+  var importedFrontMatter: ImportedFrontMatter?
+  var authors: [String]
+  var aliases: [String]
+  var permalink: String?
+  var translationKey: String?
+  var draft: Bool
+  var visibility: ArticleVisibility
+  var summary: String
+  var coverRepositoryPath: String?
+  var bodyMarkdown: String
+  var attachments: [RepositoryAttachmentFingerprintSnapshot]
+  var status: DraftStatus
+}
+
+struct RepositoryAttachmentFingerprintSnapshot: Encodable {
+  var originalFilename: String
+  var relativePublishPath: String
+  var repositoryPath: String
+  var altText: String
+  var caption: String
+
+  init(_ attachment: DraftAttachment) {
+    originalFilename = attachment.originalFilename
+    relativePublishPath = attachment.relativePublishPath.normalizedRelativePath()
+    repositoryPath = attachment.repositoryPath.normalizedRelativePath()
+    altText = attachment.altText
+    caption = attachment.caption
   }
 }

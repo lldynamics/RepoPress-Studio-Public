@@ -1,6 +1,7 @@
 import Foundation
 import PublishingCoreSupport
 import PublishingDomainContracts
+import RepoPressCore
 
 public struct LocalContentImportResult: Codable, Hashable, Sendable {
   public var importedDrafts: [ArticleDraft]
@@ -789,7 +790,10 @@ public struct LocalContentImportService: Sendable {
     repositorySHA: String? = nil,
     projectFileContentDigest: String? = nil
   ) -> ArticleDraft {
-    let values = parsedDocument.values
+    let values =
+      parsedDocument.frontMatter.map {
+        ArticleFrontMatterPreservation.values(from: $0, profile: profile)
+      } ?? parsedDocument.values
     let fileModificationDate =
       (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
       ?? Date()
@@ -848,6 +852,12 @@ public struct LocalContentImportService: Sendable {
       repositoryPath: repositoryPath,
       repositorySHA: repositorySHA?.trimmedForPublishing.nilIfEmpty
     )
+    let source =
+      parsedDocument.frontMatter
+      ?? ImportedFrontMatter(
+        rawBlock: "", syntax: profile.frontMatterStyle == .toml ? .toml : .yaml)
+    importedDraft.importedFrontMatter = ArticleFrontMatterPreservation.capturing(
+      source, draft: importedDraft, profile: profile)
     let renderedDigest = importedDraft.renderedRepositoryContentDigest(profile: profile)
     if let repositorySHA = repositorySHA?.trimmedForPublishing.nilIfEmpty {
       importedDraft.confirmRepositoryBinding(
@@ -963,10 +973,12 @@ public struct LocalContentImportService: Sendable {
   private func parseImportDocument(_ document: String) -> ParsedImportDocument {
     frontMatterParseObserver?()
     guard let parsed = DelimitedFrontMatterParser().split(document) else {
+      let envelope = ImportedFrontMatter.split(document).frontMatter
       return ParsedImportDocument(
         values: [:],
-        body: document,
-        imageReferences: markdownImageReferences(in: document)
+        body: envelope == nil ? document : "",
+        imageReferences: markdownImageReferences(in: document),
+        frontMatter: envelope
       )
     }
     let values: [String: [String]]
@@ -979,83 +991,13 @@ public struct LocalContentImportService: Sendable {
     return ParsedImportDocument(
       values: values,
       body: parsed.body,
-      imageReferences: markdownImageReferences(in: parsed.body)
+      imageReferences: markdownImageReferences(in: parsed.body),
+      frontMatter: ImportedFrontMatter.split(document).frontMatter
+        ?? ImportedFrontMatter(
+          rawBlock: parsed.frontMatter,
+          syntax: parsed.delimiter == .toml ? .toml : .yaml
+        )
     )
-  }
-
-  private func parseYAMLFrontMatter(_ lines: [String]) -> [String: [String]] {
-    var values: [String: [String]] = [:]
-    var index = 0
-
-    while index < lines.count {
-      let line = lines[index]
-      let trimmed = line.trimmedForPublishing
-      guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else {
-        index += 1
-        continue
-      }
-
-      guard let separator = trimmed.firstIndex(of: ":") else {
-        index += 1
-        continue
-      }
-
-      let key = String(trimmed[..<separator]).trimmedForPublishing.lowercased()
-      let rawValue = String(trimmed[trimmed.index(after: separator)...]).trimmedForPublishing
-
-      if rawValue.isEmpty {
-        var listValues: [String] = []
-        var lookahead = index + 1
-        while lookahead < lines.count {
-          let item = lines[lookahead].trimmedForPublishing
-          guard item.hasPrefix("- ") else { break }
-          listValues.append(cleanScalar(String(item.dropFirst(2))))
-          lookahead += 1
-        }
-        if !listValues.isEmpty {
-          values[key] = listValues
-          index = lookahead
-          continue
-        }
-      } else {
-        values[key] = parseScalarOrArray(rawValue)
-      }
-
-      index += 1
-    }
-
-    return values
-  }
-
-  private func parseTOMLFrontMatter(_ lines: [String]) -> [String: [String]] {
-    var values: [String: [String]] = [:]
-
-    for line in lines {
-      let trimmed = line.trimmedForPublishing
-      guard !trimmed.isEmpty, !trimmed.hasPrefix("#"), let separator = trimmed.firstIndex(of: "=")
-      else {
-        continue
-      }
-
-      let key = String(trimmed[..<separator]).trimmedForPublishing.lowercased()
-      let rawValue = String(trimmed[trimmed.index(after: separator)...]).trimmedForPublishing
-      values[key] = parseScalarOrArray(rawValue)
-    }
-
-    return values
-  }
-
-  private func parseScalarOrArray(_ rawValue: String) -> [String] {
-    let value = rawValue.trimmedForPublishing
-    if value.hasPrefix("["), value.hasSuffix("]") {
-      let inner = String(value.dropFirst().dropLast())
-      return
-        inner
-        .split(separator: ",")
-        .map { cleanScalar(String($0)) }
-        .filter { !$0.isEmpty }
-    }
-    return [cleanScalar(value)].filter { !$0.isEmpty }
   }
 
   private func parsedBool(_ value: String?) -> Bool? {
@@ -1205,6 +1147,7 @@ public struct LocalContentImportService: Sendable {
     var values: [String: [String]]
     var body: String
     var imageReferences: [ImportedMarkdownImageReference]
+    var frontMatter: ImportedFrontMatter? = nil
   }
 
   private func markdownImageReferences(in markdown: String) -> [ImportedMarkdownImageReference] {

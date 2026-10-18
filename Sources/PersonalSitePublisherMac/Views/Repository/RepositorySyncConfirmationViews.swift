@@ -44,15 +44,15 @@ struct RepositorySafeSyncConfirmationView: View {
             "执行前会重新核对分支、远端提交和工作区快照。此操作不会暂存、提交、推送、stash、reset 或 clean。",
             systemImage: "lock.shield"
           )
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
           Label(
             "同步只更新磁盘上的 Git 仓库；软件草稿不会被静默覆盖，文章变化需在文件变更中审阅导入。",
             systemImage: "doc.badge.arrow.up"
           )
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
         }
         .padding(WorkbenchSpacing.spacious)
@@ -71,7 +71,7 @@ struct RepositorySafeSyncConfirmationView: View {
   private var targetCard: some View {
     syncCard {
       Label("同步目标", systemImage: "arrow.triangle.branch")
-        .font(.headline)
+        .font(.workbenchHeadline)
       LabeledContent("当前分支", value: snapshot.branch)
       LabeledContent("Upstream", value: snapshot.upstream)
       LabeledContent("本地版本", value: String(snapshot.localHeadSHA.prefix(12)))
@@ -83,13 +83,13 @@ struct RepositorySafeSyncConfirmationView: View {
   private var identicalCollisionCard: some View {
     syncCard {
       Label("内容相同的同路径文件", systemImage: "checkmark.shield")
-        .font(.headline)
+        .font(.workbenchHeadline)
       Text("这些未跟踪文件与远端内容及权限完全一致；软件会先建立并校验恢复备份。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
       ForEach(snapshot.identicalUntrackedCollisions) { collision in
         Text(collision.path)
-          .font(.system(.callout, design: .monospaced))
+          .font(.workbenchBody.monospaced())
           .textSelection(.enabled)
       }
     }
@@ -102,17 +102,17 @@ struct RepositorySafeSyncConfirmationView: View {
     changes: [RepositorySafeSyncChange]
   ) -> some View {
     syncCard {
-      Label(title, systemImage: systemImage).font(.headline)
+      Label(title, systemImage: systemImage).font(.workbenchHeadline)
       if changes.isEmpty {
-        Text(emptyMessage).font(.callout).foregroundStyle(.secondary)
+        Text(emptyMessage).font(.workbenchBody).foregroundStyle(.workbenchSecondary)
       } else {
         ForEach(changes) { change in
           HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(verbatim: change.status)
-              .font(.caption.weight(.semibold).monospaced())
+              .font(.workbenchMetadata.weight(.semibold).monospaced())
               .frame(minWidth: 34, alignment: .leading)
             Text(verbatim: change.path)
-              .font(.system(.callout, design: .monospaced))
+              .font(.workbenchBody.monospaced())
               .textSelection(.enabled)
             Spacer(minLength: 0)
           }
@@ -129,7 +129,7 @@ struct RepositorySafeSyncConfirmationView: View {
         feedback.message,
         systemImage: feedback.status == .failure ? "xmark.octagon" : "exclamationmark.triangle"
       )
-      .font(.callout)
+      .font(.workbenchBody)
       .foregroundStyle(feedback.status == .failure ? WorkbenchTheme.risk : WorkbenchTheme.warning)
       .textSelection(.enabled)
     }
@@ -179,7 +179,7 @@ struct RepositoryRebaseSyncConfirmationView: View {
         VStack(alignment: .leading, spacing: 14) {
           syncCard {
             Label("分支与提交", systemImage: "point.3.connected.trianglepath.dotted")
-              .font(.headline)
+              .font(.workbenchHeadline)
             LabeledContent("当前分支", value: snapshot.branch)
             LabeledContent("Upstream", value: snapshot.upstream)
             LabeledContent("本地版本", value: String(snapshot.localHeadSHA.prefix(12)))
@@ -188,26 +188,26 @@ struct RepositoryRebaseSyncConfirmationView: View {
           }
           syncCard {
             Label("确认后依次执行", systemImage: "list.number")
-              .font(.headline)
+              .font(.workbenchHeadline)
             rebaseStep(1, "安全暂存当前未提交改动")
             rebaseStep(2, "同步远端最新提交并变基")
             rebaseStep(3, "恢复暂存的本地改动")
           }
           syncCard {
             Label("将封存的本地改动（\(snapshot.localChanges.count)）", systemImage: "shippingbox")
-              .font(.headline)
+              .font(.workbenchHeadline)
             if snapshot.localChanges.isEmpty {
               Text("当前工作区干净；将直接变基本地提交。")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(.workbenchBody)
+                .foregroundStyle(.workbenchSecondary)
             } else {
               ForEach(snapshot.localChanges) { change in
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                   Text(verbatim: change.status)
-                    .font(.caption.weight(.semibold).monospaced())
+                    .font(.workbenchMetadata.weight(.semibold).monospaced())
                     .frame(minWidth: 34, alignment: .leading)
                   Text(verbatim: change.path)
-                    .font(.system(.callout, design: .monospaced))
+                    .font(.workbenchBody.monospaced())
                     .textSelection(.enabled)
                   Spacer(minLength: 0)
                 }
@@ -217,7 +217,7 @@ struct RepositoryRebaseSyncConfirmationView: View {
           }
           if let feedback, feedback.status == .failure || feedback.status == .warning {
             Label(feedback.message, systemImage: "exclamationmark.triangle")
-              .font(.callout)
+              .font(.workbenchBody)
               .foregroundStyle(WorkbenchTheme.warning)
               .textSelection(.enabled)
           }
@@ -225,14 +225,14 @@ struct RepositoryRebaseSyncConfirmationView: View {
             "确认前不会改变 HEAD、索引、工作区或 stash；冲突时会停止并保留 sequencer 与恢复 stash。",
             systemImage: "lock.shield"
           )
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           Label(
             "同步后会重新扫描磁盘仓库；软件草稿不会被静默覆盖，文章变化需在文件变更中审阅导入。",
             systemImage: "doc.badge.arrow.up"
           )
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         }
         .padding(WorkbenchSpacing.spacious)
       }
@@ -261,10 +261,10 @@ struct RepositoryRebaseSyncConfirmationView: View {
   private func rebaseStep(_ number: Int, _ title: LocalizedStringKey) -> some View {
     HStack(alignment: .top, spacing: 10) {
       Text(verbatim: "\(number)")
-        .font(.caption.weight(.bold).monospacedDigit())
+        .font(.workbenchMetadata.weight(.bold).monospacedDigit())
         .frame(width: 22, height: 22)
         .background(Color.secondary.opacity(0.12), in: Circle())
-      Text(title).font(.callout)
+      Text(title).font(.workbenchBody)
     }
     .accessibilityElement(children: .combine)
   }
@@ -277,14 +277,14 @@ private func confirmationHeader(
 ) -> some View {
   HStack(alignment: .top, spacing: 12) {
     Image(systemName: systemImage)
-      .font(.title2)
-      .foregroundStyle(.secondary)
+      .font(.workbenchTitle2)
+      .foregroundStyle(.workbenchSecondary)
       .accessibilityHidden(true)
     VStack(alignment: .leading, spacing: 4) {
-      Text(title).font(.headline)
+      Text(title).font(.workbenchHeadline)
       Text(detail)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
     }
     Spacer()

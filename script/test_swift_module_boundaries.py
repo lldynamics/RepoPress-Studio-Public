@@ -132,6 +132,7 @@ def valid_payload() -> dict[str, Any]:
                 "PublishingWorkbenchCore",
                 "regular",
                 [
+                    product("RepoPressCore", "RepoPressShared"),
                     dependency("PublishingCoreSupport"),
                     dependency("PublishingDomainContracts"),
                     dependency("PublishingMarkdownCore"),

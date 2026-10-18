@@ -67,7 +67,7 @@ extension WritingDraftColumn {
       } header: {
         Text(section.group.title)
           .font(.workbenchMetadata.weight(.semibold))
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .accessibilityAddTraits(.isHeader)
       }
     }
@@ -114,12 +114,12 @@ extension WritingDraftColumn {
     } label: {
       HStack(spacing: 7) {
         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.weight(.semibold))
+          .foregroundStyle(.workbenchSecondary)
           .frame(width: 12)
 
         Image(systemName: folderSystemImage(for: folder))
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .frame(width: 16)
 
         Text(displayName)
@@ -130,7 +130,7 @@ extension WritingDraftColumn {
 
         Text(folder.totalDescendantDraftCount.formatted())
           .font(.workbenchSupporting.monospacedDigit())
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
       .padding(.leading, CGFloat(depth) * 14)
       .padding(.horizontal, WorkbenchSpacing.tight)
@@ -268,13 +268,13 @@ extension WritingDraftColumn {
     } label: {
       HStack(spacing: 8) {
         Image(systemName: "chevron.down.circle")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .frame(width: 16)
         Text("显示更多文章")
         Spacer(minLength: 8)
         Text("\(paginatedDrafts.count) / \(filteredDraftCount)")
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospacedDigit())
+          .foregroundStyle(.workbenchSecondary)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
       .padding(.horizontal, WorkbenchSpacing.tight)

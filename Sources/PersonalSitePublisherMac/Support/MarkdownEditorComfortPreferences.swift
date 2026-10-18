@@ -85,7 +85,7 @@ struct MarkdownEditorComfortConfiguration: Equatable {
   static let lineSpacingRange = 0.0...12.0
   static let bodyWidthRange = 560.0...1_200.0
 
-  static let defaultFontSize = 14.0
+  static let defaultFontSize = 16.0
   static let defaultLineSpacing = 4.0
   static let defaultBodyWidth = 720.0
   static let defaultSpellCheckEnabled = false

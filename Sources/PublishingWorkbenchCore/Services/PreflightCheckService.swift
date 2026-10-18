@@ -12,7 +12,8 @@ struct PreflightDuplicateIndex: Sendable {
     )
     indexedDraftIDs = Set(uniqueDrafts.map(\.id))
 
-    let titledDrafts = uniqueDrafts
+    let titledDrafts =
+      uniqueDrafts
       .filter { !$0.title.isEmpty }
       .sorted { lhs, rhs in
         let comparison = lhs.title.caseInsensitiveCompare(rhs.title)
@@ -26,7 +27,9 @@ struct PreflightDuplicateIndex: Sendable {
     while groupStart < titledDrafts.endIndex {
       var groupEnd = titledDrafts.index(after: groupStart)
       while groupEnd < titledDrafts.endIndex,
-            titledDrafts[groupStart].title.caseInsensitiveCompare(titledDrafts[groupEnd].title) == .orderedSame {
+        titledDrafts[groupStart].title.caseInsensitiveCompare(titledDrafts[groupEnd].title)
+          == .orderedSame
+      {
         groupEnd = titledDrafts.index(after: groupEnd)
       }
       if titledDrafts.distance(from: groupStart, to: groupEnd) > 1 {
@@ -101,36 +104,42 @@ public struct PreflightCheckService: Sendable {
     duplicateIndex: PreflightDuplicateIndex?
   ) -> [PreflightIssue] {
     var issues: [PreflightIssue] = []
+    if let issue = FrontMatterRenderer().preservationIssue(draft: draft, profile: profile) {
+      issues.append(issue)
+    }
     let title = draft.title.trimmedForPublishing
     let slug = draft.slug.trimmedForPublishing
 
     if title.isEmpty {
-      issues.append(.init(
-        severity: .error,
-        title: CoreL10n.text("标题为空"),
-        message: CoreL10n.text("发布前必须填写 title。"),
-        field: "title"
-      ))
+      issues.append(
+        .init(
+          severity: .error,
+          title: CoreL10n.text("标题为空"),
+          message: CoreL10n.text("发布前必须填写 title。"),
+          field: "title"
+        ))
     }
 
     if slug.isEmpty {
-      issues.append(.init(
-        severity: .error,
-        title: CoreL10n.text("Slug 为空"),
-        message: CoreL10n.text("发布路径需要稳定 slug。"),
-        field: "slug"
-      ))
+      issues.append(
+        .init(
+          severity: .error,
+          title: CoreL10n.text("Slug 为空"),
+          message: CoreL10n.text("发布路径需要稳定 slug。"),
+          field: "slug"
+        ))
     } else if !SlugService.isValid(slug, rule: profile.slugValidationRule) {
-      issues.append(.init(
-        // Keep the slug visible in publishing review without preventing an
-        // otherwise safe publish. Unsafe rendered paths are checked
-        // independently below, while an empty slug remains a hard error.
-        severity: .warning,
-        title: CoreL10n.text("Slug 格式非法"),
-        message: profile.slugValidationRule.detail,
+      issues.append(
+        .init(
+          // Keep the slug visible in publishing review without preventing an
+          // otherwise safe publish. Unsafe rendered paths are checked
+          // independently below, while an empty slug remains a hard error.
+          severity: .warning,
+          title: CoreL10n.text("Slug 格式非法"),
+          message: profile.slugValidationRule.detail,
           field: "slug",
           ruleID: ContentHealthRuleID.slugFormat.rawValue
-      ))
+        ))
     } else if SlugService.isFallbackSlug(slug) {
       issues.append(
         .init(
@@ -142,33 +151,36 @@ public struct PreflightCheckService: Sendable {
     }
 
     if draft.draft && !draft.isPrivate {
-      issues.append(.init(
-        severity: .warning,
-        title: CoreL10n.text("仍是草稿"),
-        message: CoreL10n.text("draft 为 true，发布前需要确认这是计划行为。"),
+      issues.append(
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("仍是草稿"),
+          message: CoreL10n.text("draft 为 true；正式发布时会自动取消草稿标记，也可在其他发布方式中仅同步为网站草稿。"),
           field: "draft",
           ruleID: ContentHealthRuleID.draftFlag.rawValue
-      ))
+        ))
     }
 
     if draft.date > Date().addingTimeInterval(60) {
-      issues.append(.init(
-        severity: .warning,
-        title: CoreL10n.text("日期在未来"),
-        message: CoreL10n.text("确认文章发布日期是否正确。"),
+      issues.append(
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("日期在未来"),
+          message: CoreL10n.text("确认文章发布日期是否正确。"),
           field: "date",
           ruleID: ContentHealthRuleID.futureDate.rawValue
-      ))
+        ))
     }
 
     if draft.bodyMarkdown.trimmedForPublishing.count < 80 {
-      issues.append(.init(
-        severity: .warning,
-        title: CoreL10n.text("正文偏短"),
-        message: CoreL10n.text("正文少于 80 个字符，发布前建议确认内容完整。"),
+      issues.append(
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("正文偏短"),
+          message: CoreL10n.text("正文少于 80 个字符，发布前建议确认内容完整。"),
           field: "body",
           ruleID: ContentHealthRuleID.shortBody.rawValue
-      ))
+        ))
     }
 
     if draft.translationLink != nil {
@@ -237,16 +249,18 @@ public struct PreflightCheckService: Sendable {
           ))
       }
     }
-    issues.append(contentsOf: rootPathIssues(
-      label: CoreL10n.text("内容目录"),
-      path: profile.contentRoot,
-      field: "contentRoot"
-    ))
-    issues.append(contentsOf: rootPathIssues(
-      label: CoreL10n.text("图片目录"),
-      path: profile.assetRoot,
-      field: "assetRoot"
-    ))
+    issues.append(
+      contentsOf: rootPathIssues(
+        label: CoreL10n.text("内容目录"),
+        path: profile.contentRoot,
+        field: "contentRoot"
+      ))
+    issues.append(
+      contentsOf: rootPathIssues(
+        label: CoreL10n.text("图片目录"),
+        path: profile.assetRoot,
+        field: "assetRoot"
+      ))
 
     let hasDuplicateTitle =
       duplicateIndex?.hasDuplicateTitle(for: draft.id)
@@ -257,34 +271,43 @@ public struct PreflightCheckService: Sendable {
             == profile.translationLanguageCode(for: draft)
       }
     if hasDuplicateTitle {
-      issues.append(.init(
-        severity: .error,
-        title: CoreL10n.text("标题重复"),
-        message: CoreL10n.text("本地已有同名文章，发布前需要区分标题。"),
-        field: "title"
-      ))
+      issues.append(
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("标题重复"),
+          message: CoreL10n.text("本地已有同名文章，发布前建议确认标题是否需要区分。"),
+          field: "title",
+          ruleID: "content.title.duplicate"
+        ))
     }
 
-    let hasDuplicatePath = duplicateIndex?.hasDuplicatePath(for: draft.id) ?? allDrafts.contains {
-      $0.id != draft.id && profile.markdownPath(for: $0) == markdownPath
-    }
+    let hasDuplicatePath =
+      duplicateIndex?.hasDuplicatePath(for: draft.id)
+      ?? allDrafts.contains {
+        $0.id != draft.id && profile.markdownPath(for: $0) == markdownPath
+      }
     if hasDuplicatePath {
-      issues.append(.init(
-        severity: .error,
-        title: CoreL10n.text("发布路径重复"),
-        message: CoreL10n.format("%@ 已被另一篇草稿占用。", markdownPath),
-        field: "slug"
-      ))
+      issues.append(
+        .init(
+          severity: .error,
+          title: CoreL10n.text("发布路径重复"),
+          message: CoreL10n.format("%@ 已被另一篇草稿占用。", markdownPath),
+          field: "slug"
+        ))
     }
 
-    let shouldIncludeRepositoryReadiness = includeRepositoryReadiness && profile.purpose.requiresRepositoryReadiness
-    if shouldIncludeRepositoryReadiness && profile.localRepositoryRootPath.trimmedForPublishing.isEmpty {
-      issues.append(.init(
-        severity: .warning,
-        title: CoreL10n.text("未选择本地仓库"),
-        message: profile.purpose.repositoryRootMissingMessage,
-        field: "repository"
-      ))
+    let shouldIncludeRepositoryReadiness =
+      includeRepositoryReadiness && profile.purpose.requiresRepositoryReadiness
+    if shouldIncludeRepositoryReadiness
+      && profile.localRepositoryRootPath.trimmedForPublishing.isEmpty
+    {
+      issues.append(
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("未选择本地仓库"),
+          message: profile.purpose.repositoryRootMissingMessage,
+          field: "repository"
+        ))
     }
 
     if shouldIncludeRepositoryReadiness, let repositoryReport {
@@ -298,28 +321,30 @@ public struct PreflightCheckService: Sendable {
     for attachment in draft.attachments {
       let isVideo = attachment.mediaKind == .video
       if !isVideo, attachment.altText.trimmedForPublishing.isEmpty {
-        issues.append(.init(
-          severity: .warning,
-          title: CoreL10n.text("图片缺少 alt"),
-          message: CoreL10n.format("%@ 还没有可发布的 alt 文本。", attachment.originalFilename),
-          field: "attachments",
+        issues.append(
+          .init(
+            severity: .warning,
+            title: CoreL10n.text("图片缺少 alt"),
+            message: CoreL10n.format("%@ 还没有可发布的 alt 文本。", attachment.originalFilename),
+            field: "attachments",
             category: .missingMediaAlt,
             relatedValue: attachment.repositoryPath,
             ruleID: ContentHealthRuleID.missingMediaAlt.rawValue
-        ))
+          ))
       }
 
       if attachment.relativePublishPath.trimmedForPublishing.isEmpty {
-        issues.append(.init(
-          severity: .error,
-          title: CoreL10n.text(isVideo ? "视频发布路径为空" : "图片发布路径为空"),
-          message: CoreL10n.format(
-            isVideo ? "%@ 缺少视频发布路径。" : "%@ 缺少发布路径。",
-            attachment.originalFilename
-          ),
-          field: "attachments",
-          category: .missingMediaPublishPath
-        ))
+        issues.append(
+          .init(
+            severity: .error,
+            title: CoreL10n.text(isVideo ? "视频发布路径为空" : "图片发布路径为空"),
+            message: CoreL10n.format(
+              isVideo ? "%@ 缺少视频发布路径。" : "%@ 缺少发布路径。",
+              attachment.originalFilename
+            ),
+            field: "attachments",
+            category: .missingMediaPublishPath
+          ))
       }
 
       issues.append(
@@ -332,7 +357,9 @@ public struct PreflightCheckService: Sendable {
           category: .unsafeMediaRepositoryPath
         )
       )
-      issues.append(contentsOf: publicPathIssues(path: attachment.relativePublishPath, filename: attachment.originalFilename))
+      issues.append(
+        contentsOf: publicPathIssues(
+          path: attachment.relativePublishPath, filename: attachment.originalFilename))
 
       if !isVideo, let sourceFilePath = attachment.sourceFilePath?.nilIfEmpty {
         do {
@@ -371,23 +398,25 @@ public struct PreflightCheckService: Sendable {
     }
 
     for missingImagePath in missingMarkdownImagePaths(in: draft) {
-      issues.append(.init(
-        severity: .warning,
-        title: CoreL10n.text("正文图片未登记"),
-        message: CoreL10n.format("%@ 不在当前文章附件列表中。", missingImagePath),
-        field: "body",
-        category: .unregisteredBodyImage,
+      issues.append(
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("正文图片未登记"),
+          message: CoreL10n.format("%@ 不在当前文章附件列表中。", missingImagePath),
+          field: "body",
+          category: .unregisteredBodyImage,
           relatedValue: missingImagePath,
           ruleID: ContentHealthRuleID.unregisteredBodyImage.rawValue
-      ))
+        ))
     }
 
     if issues.isEmpty {
-      issues.append(.init(
-        severity: .info,
-        title: CoreL10n.text("检查通过"),
-        message: CoreL10n.text("当前文章满足本地发布前检查条件。")
-      ))
+      issues.append(
+        .init(
+          severity: .info,
+          title: CoreL10n.text("检查通过"),
+          message: CoreL10n.text("当前文章满足本地发布前检查条件。")
+        ))
     }
 
     return issues.sorted {
@@ -397,70 +426,6 @@ public struct PreflightCheckService: Sendable {
       return $0.severity.sortRank < $1.severity.sortRank
     }
   }
-
-  private func shortcodeIssues(body: String, profile: SiteProfile) -> [PreflightIssue] {
-    guard profile.siteKind == .hugo || profile.siteKind == .zola else { return [] }
-    let detected = MarkdownSSGComponentLibraryService.detectedReferences(in: body)
-    guard !detected.isEmpty else { return [] }
-    let catalog = ThemeShortcodeCatalogService().catalog(profile: profile)
-    let references = detected.filter { reference in
-      guard !reference.isClosing else { return false }
-      switch profile.siteKind {
-      case .hugo:
-        return reference.engineSyntax == .hugoAngle
-          || reference.engineSyntax == .hugoPercent
-          || reference.engineSyntax == .zolaInlineComponent
-      case .zola:
-        return catalog.usesLegacyZolaShortcodes
-          ? reference.engineSyntax == .zolaLegacy || reference.engineSyntax == .zolaComponent
-          : reference.engineSyntax == .zolaInlineComponent
-      default: return false
-      }
-    }
-    guard !references.isEmpty else { return [] }
-
-    let known = Set(catalog.definitions.map { $0.name.lowercased() })
-      .union(profile.siteKind == .hugo ? Self.hugoEmbeddedShortcodes : [])
-    let unknown = Dictionary(
-      grouping: references.filter {
-        !known.contains($0.name.lowercased())
-          && !(profile.siteKind == .zola && $0.engineSyntax == .zolaLegacy
-            && Self.zolaTeraFunctions.contains($0.name.lowercased()))
-      },
-      by: { $0.name.lowercased() }
-    )
-    guard !unknown.isEmpty else { return [] }
-
-    let catalogIncomplete = catalog.diagnostics.contains {
-      $0.code != .unsupportedSiteKind
-    }
-    return unknown.keys.sorted().compactMap { name in
-      guard let occurrences = unknown[name], let first = occurrences.first else { return nil }
-      let lines = occurrences.map(\.lineNumber).sorted().map(String.init).joined(separator: "、")
-      return PreflightIssue(
-        severity: catalogIncomplete ? .warning : .error,
-        title: catalogIncomplete ? CoreL10n.text("短代码目录无法核实") : CoreL10n.text("未知短代码"),
-        message: catalogIncomplete
-          ? CoreL10n.format("第 %@ 行的 %@ 尚无法与主题目录核对，请检查仓库或主题配置。", lines, first.name)
-          : CoreL10n.format("第 %@ 行使用了主题中不存在的短代码 %@。", lines, first.name),
-        field: PreflightIssueField.body.rawValue,
-        relatedValue: first.name
-      )
-    }
-  }
-
-  private static let hugoEmbeddedShortcodes: Set<String> = [
-    "details", "figure", "highlight", "instagram", "param", "qr",
-    "ref", "relref", "vimeo", "x", "youtube",
-  ]
-
-  // Zola 0.23+ parses content as Tera. A function call resembles the old
-  // `{{ shortcode(...) }}` form, so documented built-ins are not shortcode errors.
-  private static let zolaTeraFunctions: Set<String> = [
-    "get_env", "get_hash", "get_image_metadata", "get_page", "get_section",
-    "get_taxonomy", "get_taxonomy_term", "get_taxonomy_url", "get_url", "load_data",
-    "range", "resize_image", "text_direction", "throw", "trans",
-  ]
 
   private func repositoryPathIssues(
     label: String,
@@ -474,25 +439,27 @@ public struct PreflightCheckService: Sendable {
     let value = path.trimmedForPublishing
 
     if value.isEmpty {
-      issues.append(.init(
-        severity: .error,
-        title: CoreL10n.format("%@为空", label),
-        message: CoreL10n.text("路径规则渲染结果为空。"),
-        field: field,
-        category: category
-      ))
+      issues.append(
+        .init(
+          severity: .error,
+          title: CoreL10n.format("%@为空", label),
+          message: CoreL10n.text("路径规则渲染结果为空。"),
+          field: field,
+          category: category
+        ))
       return issues
     }
 
     let normalizedPath = value.normalizedRelativePath()
     if hasUnsafeRepositoryPathSyntax(value) {
-      issues.append(.init(
-        severity: .error,
-        title: CoreL10n.format("%@不安全", label),
-        message: CoreL10n.format("%@ 必须是仓库内的相对路径，且不能包含 ..、反斜杠或 URL。", value),
-        field: field,
-        category: category
-      ))
+      issues.append(
+        .init(
+          severity: .error,
+          title: CoreL10n.format("%@不安全", label),
+          message: CoreL10n.format("%@ 必须是仓库内的相对路径，且不能包含 ..、反斜杠或 URL。", value),
+          field: field,
+          category: category
+        ))
       return issues
     }
 
@@ -515,12 +482,14 @@ public struct PreflightCheckService: Sendable {
   private func patternIssues(label: String, pattern: String, field: String) -> [PreflightIssue] {
     let value = pattern.trimmedForPublishing
     guard !value.isEmpty else {
-      return [.init(
-        severity: .error,
-        title: CoreL10n.format("%@为空", label),
-        message: CoreL10n.text("路径规则不能为空。"),
-        field: field
-      )]
+      return [
+        .init(
+          severity: .error,
+          title: CoreL10n.format("%@为空", label),
+          message: CoreL10n.text("路径规则不能为空。"),
+          field: field
+        )
+      ]
     }
 
     guard hasUnsafeRepositoryPathSyntax(value) else {
@@ -590,6 +559,5 @@ public struct PreflightCheckService: Sendable {
   private func isWithin(_ path: String, root: String) -> Bool {
     path == root || path.hasPrefix(root + "/")
   }
-
 
 }

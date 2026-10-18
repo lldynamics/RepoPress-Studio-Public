@@ -30,13 +30,13 @@ struct MarkdownOutlinePopover: View {
     VStack(spacing: 0) {
       HStack(spacing: 8) {
         Label("文章大纲", systemImage: "list.bullet.indent")
-          .font(.headline)
+          .font(.workbenchHeadline)
 
         Spacer()
 
         Text(String(localized: "章节 \(items.count)"))
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
 
         Button(action: onTogglePinned) {
           Image(systemName: isPinned ? "pin.fill" : "pin")
@@ -61,12 +61,12 @@ struct MarkdownOutlinePopover: View {
         VStack(spacing: 8) {
           Image(systemName: "text.badge.plus")
             .font(.system(size: WorkbenchIconSize.section, weight: .medium))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
           Text("还没有可导航的标题")
-            .font(.headline)
+            .font(.workbenchHeadline)
           Text("在正文中添加 ## 或 ### 标题后，就能从这里快速跳转。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .multilineTextAlignment(.center)
         }
         .padding(WorkbenchSpacing.spacious)
@@ -98,18 +98,18 @@ struct MarkdownOutlinePopover: View {
       } label: {
         HStack(spacing: 8) {
           Text("H\(item.level)")
-            .font(.caption.monospaced().weight(.semibold))
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.monospaced().weight(.semibold))
+            .foregroundStyle(.workbenchSecondary)
             .frame(width: 26, alignment: .leading)
 
           Text(item.title)
-            .workbenchTruncatedIdentity(item.title)
+            .workbenchTruncatedTitle(item.title)
 
           Spacer(minLength: 8)
 
           if !item.publicRiskSummary.isClear {
             Image(systemName: "exclamationmark.triangle.fill")
-              .font(.caption)
+              .font(.workbenchMetadata)
               .foregroundStyle(
                 item.publicRiskSummary.errorCount > 0
                   ? WorkbenchTheme.risk
@@ -217,7 +217,7 @@ struct MarkdownOutlinePopover: View {
       }
     } label: {
       Image(systemName: "ellipsis.circle")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .frame(width: 30, height: 30)
         .contentShape(Rectangle())
     }

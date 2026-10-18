@@ -42,13 +42,13 @@ extension ReleaseHistoryDetailView {
 
       VStack(alignment: .leading, spacing: 4) {
         Text(record.title)
-          .font(.headline)
+          .font(.workbenchHeadline)
           .accessibilityAddTraits(.isHeader)
         Text(record.summary)
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
         Text(entry.statusMessage)
-          .font(.callout)
+          .font(.workbenchBody)
           .foregroundStyle(ReleaseHistoryStatusStyle.ledgerForeground(entry.status))
       }
 
@@ -88,15 +88,19 @@ extension ReleaseHistoryDetailView {
       if !record.changedPaths.isEmpty {
         VStack(alignment: .leading, spacing: 6) {
           Text("文件")
-            .font(.callout.weight(.medium))
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody.weight(.medium))
+            .foregroundStyle(.workbenchSecondary)
           ForEach(record.changedPaths, id: \.self) { path in
             WorkbenchPathIdentity(path: path)
           }
         }
       }
 
-      ReleaseArticleVerificationRows(store: store, record: record, snapshot: deploymentStatus)
+      if record.articlePublishTrackingRequest != nil {
+        ArticlePublishProgressView(store: store, recordID: record.id)
+      } else {
+        ReleaseArticleVerificationRows(store: store, record: record, snapshot: deploymentStatus)
+      }
 
       if let deploymentStatus {
         VStack(alignment: .leading, spacing: 8) {
@@ -113,13 +117,13 @@ extension ReleaseHistoryDetailView {
             }
           }
           Text(deploymentStatus.message)
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
           Label(
             "\(deploymentStatus.nextActionTitle)：\(deploymentStatus.nextActionMessage)",
             systemImage: "checklist"
           )
-          .font(.callout)
+          .font(.workbenchBody)
           .foregroundStyle(ReleaseHistoryStatusStyle.deploymentForeground(deploymentStatus.level))
 
           if deploymentHistory.count > 1 {
@@ -136,10 +140,10 @@ extension ReleaseHistoryDetailView {
                   .foregroundStyle(ReleaseHistoryStatusStyle.deploymentForeground(signal.level))
                   .frame(width: 16)
                 Text(signal.title)
-                  .font(.callout.weight(.medium))
+                  .font(.workbenchBody.weight(.medium))
                 Text(signal.message)
-                  .font(.callout)
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchBody)
+                  .foregroundStyle(.workbenchSecondary)
                   .fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 if let urlText = signal.urlText,
@@ -175,17 +179,17 @@ extension ReleaseHistoryDetailView {
       if !recoveryPackage.nextActions.isEmpty {
         VStack(alignment: .leading, spacing: 8) {
           Label("恢复下一步", systemImage: "list.bullet.clipboard")
-            .font(.callout.weight(.medium))
+            .font(.workbenchBody.weight(.medium))
 
           ForEach(Array(recoveryPackage.nextActions.enumerated()), id: \.offset) { index, action in
             HStack(alignment: .top, spacing: 8) {
               Text("\(index + 1).")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .font(.workbenchMetadata.monospacedDigit())
+                .foregroundStyle(.workbenchSecondary)
                 .frame(width: 18, alignment: .trailing)
               Text(action)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(.workbenchBody)
+                .foregroundStyle(.workbenchSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             }
           }
@@ -195,21 +199,20 @@ extension ReleaseHistoryDetailView {
           WorkbenchBackgroundStyle.card,
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
       }
-
       if let rollbackDraft = entry.rollbackDraft {
         VStack(alignment: .leading, spacing: 8) {
           Label("回滚计划", systemImage: "arrow.uturn.backward")
-            .font(.callout.weight(.medium))
+            .font(.workbenchBody.weight(.medium))
           Text(rollbackDraft.summary)
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
 
           if !rollbackDraft.commandLines.isEmpty {
             DisclosureGroup {
               VStack(alignment: .leading, spacing: 6) {
                 ForEach(rollbackDraft.commandLines, id: \.self) { command in
                   Text(command)
-                    .font(.callout.monospaced())
+                    .font(.workbenchBody.monospaced())
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                 }
@@ -217,7 +220,7 @@ extension ReleaseHistoryDetailView {
               .padding(.top, WorkbenchSpacing.icon)
             } label: {
               Label("高级：Git 命令（\(rollbackDraft.commandLines.count) 条）", systemImage: "terminal")
-                .font(.callout.weight(.medium))
+                .font(.workbenchBody.weight(.medium))
             }
             .accessibilityIdentifier("release-record-\(record.id)-advanced-commands")
           }
@@ -225,8 +228,8 @@ extension ReleaseHistoryDetailView {
           if rollbackDraft.reviewTitle != nil || rollbackDraft.reviewBody != nil {
             VStack(alignment: .leading, spacing: 6) {
               Label("回滚 PR/MR 草稿", systemImage: "arrow.triangle.pull")
-                .font(.callout.weight(.medium))
-                .foregroundStyle(.secondary)
+                .font(.workbenchBody.weight(.medium))
+                .foregroundStyle(.workbenchSecondary)
 
               if let branchName = rollbackDraft.reviewBranchName {
                 metadataTextRow("分支", branchName)
@@ -236,8 +239,8 @@ extension ReleaseHistoryDetailView {
               }
               if let reviewBody = rollbackDraft.reviewBody {
                 Text(reviewBody)
-                  .font(.callout)
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchBody)
+                  .foregroundStyle(.workbenchSecondary)
                   .textSelection(.enabled)
                   .lineLimit(8)
               }
@@ -253,7 +256,6 @@ extension ReleaseHistoryDetailView {
           WorkbenchBackgroundStyle.card,
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
       }
-
       releaseRecordActions(entry)
     }
   }
@@ -269,13 +271,13 @@ extension ReleaseHistoryDetailView {
     return VStack(alignment: .leading, spacing: 7) {
       HStack(alignment: .firstTextBaseline, spacing: 7) {
         Label("构建日志摘录", systemImage: "doc.text.magnifyingglass")
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
         Text("\(orderedEntries.count) 条")
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospacedDigit())
+          .foregroundStyle(.workbenchSecondary)
         if let primaryFailure {
           Text("首条失败：\(primaryFailure.message)")
-            .font(.caption.monospaced())
+            .font(.workbenchMetadata.monospaced())
             .foregroundStyle(WorkbenchTheme.risk)
             .lineLimit(2)
             .textSelection(.enabled)
@@ -291,18 +293,18 @@ extension ReleaseHistoryDetailView {
           VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
               Text(entry.source)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
+                .font(.workbenchMetadata.weight(.medium))
+                .foregroundStyle(.workbenchSecondary)
               if let stepName = entry.stepName?.nilIfEmpty {
                 Text(stepName)
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
-                  .workbenchTruncatedIdentity(stepName)
+                  .font(.workbenchMetadata)
+                  .foregroundStyle(.workbenchSecondary)
+                  .workbenchTruncatedTitle(stepName)
               }
               if let locationText = entry.locationText {
                 Text(locationText)
-                  .font(.caption.monospaced())
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchMetadata.monospaced())
+                  .foregroundStyle(.workbenchSecondary)
                   .workbenchTruncatedIdentity(locationText)
                 if let profile {
                   DeploymentSourceLocationButton(
@@ -312,7 +314,7 @@ extension ReleaseHistoryDetailView {
               }
             }
             Text(entry.message)
-              .font(.caption.monospaced())
+              .font(.workbenchMetadata.monospaced())
               .textSelection(.enabled)
               .fixedSize(horizontal: false, vertical: true)
               .lineLimit(12)
@@ -350,23 +352,23 @@ extension ReleaseHistoryDetailView {
   private func releaseRecordStatusBadges(_ entry: ReleaseLedgerEntry) -> some View {
     HStack(spacing: 10) {
       Label(entry.record.kind.localizedDisplayName, systemImage: entry.record.kind.systemImage)
-        .font(.caption.weight(.medium))
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.weight(.medium))
+        .foregroundStyle(.workbenchSecondary)
       Label(entry.status.localizedDisplayName, systemImage: entry.status.systemImage)
-        .font(.caption.weight(.medium))
+        .font(.workbenchMetadata.weight(.medium))
         .foregroundStyle(ReleaseHistoryStatusStyle.ledgerForeground(entry.status))
     }
   }
 
   private func releaseRecordTimestamp(_ record: ReleaseRecord) -> some View {
     Text(record.createdAt.workbenchShortText)
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
   }
 
   private func deploymentStatusTitle(_ deploymentStatus: DeploymentStatusSnapshot) -> some View {
     Label(deploymentStatus.title, systemImage: deploymentStatus.level.systemImage)
-      .font(.callout.weight(.medium))
+      .font(.workbenchBody.weight(.medium))
       .foregroundStyle(ReleaseHistoryStatusStyle.deploymentForeground(deploymentStatus.level))
       .fixedSize(horizontal: false, vertical: true)
   }
@@ -414,7 +416,7 @@ extension ReleaseHistoryDetailView {
 
     return VStack(alignment: .leading, spacing: 10) {
       Label("记录操作", systemImage: "slider.horizontal.3")
-        .font(.callout.weight(.semibold))
+        .font(.workbenchBody.weight(.semibold))
         .accessibilityAddTraits(.isHeader)
 
       WorkbenchFlowLayout(horizontalSpacing: 8, verticalSpacing: 8) {
@@ -630,7 +632,6 @@ extension ReleaseHistoryDetailView {
       return false
     }
   }
-
   func canWithdrawRemoteReview(_ record: ReleaseRecord) -> Bool {
     switch record.kind {
     case .remoteReviewRequest:
@@ -641,5 +642,4 @@ extension ReleaseHistoryDetailView {
       return false
     }
   }
-
 }

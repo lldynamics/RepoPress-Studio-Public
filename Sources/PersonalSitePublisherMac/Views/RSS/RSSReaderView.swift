@@ -627,7 +627,7 @@ private struct RSSWorkflowFeedback: View {
   var body: some View {
     HStack(alignment: .top, spacing: 10) {
       Label(message, systemImage: "info.circle")
-        .font(.callout)
+        .font(.workbenchBody)
         .foregroundStyle(.primary)
         .multilineTextAlignment(.leading)
         .fixedSize(horizontal: false, vertical: true)

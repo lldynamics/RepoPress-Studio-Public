@@ -71,7 +71,7 @@ struct RSSLibraryInspectorPanel: View {
           systemImage: "tray"
         )
         .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
       } else {
         Picker("拖拽格式", selection: $dragStyle) {
@@ -92,7 +92,7 @@ struct RSSLibraryInspectorPanel: View {
         if entries.count > 30 {
           Text("仅显示最近 30 条 RSS 稍后阅读文章与高亮。")
             .font(.workbenchMetadata)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
     }
@@ -122,7 +122,7 @@ struct RSSLibraryInspectorPanel: View {
       if !entries.isEmpty {
         Text("\(entries.count)")
           .font(.workbenchMetadata.monospacedDigit())
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
     }
     .accessibilityElement(children: .combine)
@@ -147,7 +147,7 @@ struct RSSLibraryInspectorPanel: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
               Text(entry.kindTitle)
                 .font(.workbenchMetadata.weight(.medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.workbenchSecondary)
               if entry.isStarred {
                 Image(systemName: "star.fill")
                   .font(.workbenchMetadata)
@@ -157,10 +157,10 @@ struct RSSLibraryInspectorPanel: View {
             }
             Text(entry.article.title)
               .font(.workbenchItemTitle)
-              .workbenchTruncatedIdentity(entry.article.title)
+              .workbenchTruncatedTitle(entry.article.title)
             Text(entry.excerpt)
               .font(.workbenchSupporting)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
               .lineLimit(4)
               .fixedSize(horizontal: false, vertical: true)
           }
@@ -196,8 +196,8 @@ struct RSSLibraryInspectorPanel: View {
         }
 
         Image(systemName: "hand.draw")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .help("拖拽到正文")
           .accessibilityLabel("拖拽到正文")
           .onDrag {

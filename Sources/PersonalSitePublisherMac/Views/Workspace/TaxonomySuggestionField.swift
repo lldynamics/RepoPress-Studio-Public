@@ -18,8 +18,8 @@ struct TaxonomySuggestionField: View {
 
     VStack(alignment: .leading, spacing: 6) {
       Text(LocalizedStringKey(title))
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
 
       if !selected.isEmpty {
         WorkbenchFlowLayout(horizontalSpacing: 6, verticalSpacing: 6) {
@@ -58,7 +58,7 @@ struct TaxonomySuggestionField: View {
   private func selectedChip(_ value: String) -> some View {
     HStack(spacing: 4) {
       Text(value)
-        .font(.caption.weight(.medium))
+        .font(.workbenchMetadata.weight(.medium))
       Button {
         remove(value)
       } label: {
@@ -85,11 +85,11 @@ struct TaxonomySuggestionField: View {
         Image(systemName: "plus")
           .font(.workbenchMetadata)
         Text(suggestion)
-          .font(.caption)
+          .font(.workbenchMetadata)
       }
       .padding(.horizontal, WorkbenchSpacing.control)
       .padding(.vertical, WorkbenchSpacing.tight)
-      .foregroundStyle(.secondary)
+      .foregroundStyle(.workbenchSecondary)
       .overlay(
         Capsule()
           .strokeBorder(

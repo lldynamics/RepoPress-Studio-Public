@@ -64,7 +64,7 @@
       case .generalDrafts:
         store.selectSection(.writing)
         store.setDraftListContentScope(.general)
-        store.setPublishActionMessage(String(localized: "截图模式：通用草稿已载入。"), status: .information)
+        store.setPublishActionMessage(String(localized: "截图模式：仅本地草稿已载入。"), status: .information)
       case .knowledgeLibrary:
         store.selectSection(.library)
         store.setInspectorPresented(false)

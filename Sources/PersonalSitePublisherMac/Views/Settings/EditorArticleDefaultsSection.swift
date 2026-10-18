@@ -5,8 +5,8 @@ struct EditorArticleDefaultsSection: View {
     Section {
       VStack(alignment: .leading, spacing: 8) {
         Text("此预设适用于所有站点的新文章；站点专属的作者、标签、分类和路径仍在“内容与路径”中设置。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
         DefaultRuleCustomFrontMatterSection()
           .padding(.top, WorkbenchSpacing.tight)

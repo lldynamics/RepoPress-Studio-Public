@@ -114,7 +114,7 @@ struct RSSArticleRow: View {
 
         VStack(alignment: .leading, spacing: 5) {
           Text(translatedTitle ?? article.title)
-            .font(article.isRead ? .body : .body.weight(.semibold))
+            .font(article.isRead ? .workbenchBody : .workbenchBody.weight(.semibold))
             .lineLimit(2)
             .fixedSize(horizontal: false, vertical: true)
             .help(article.title)
@@ -132,20 +132,20 @@ struct RSSArticleRow: View {
                 .accessibilityHidden(true)
             }
           }
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .lineLimit(1)
           .fixedSize(horizontal: false, vertical: true)
 
           if summary.isEmpty {
             Text("暂无摘要")
-              .font(.caption)
-              .foregroundStyle(.tertiary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
               .lineLimit(1)
           } else {
             Text(summary)
-              .font(.callout)
-              .foregroundStyle(.secondary)
+              .font(.workbenchBody)
+              .foregroundStyle(.workbenchSecondary)
               .lineLimit(2)
               .truncationMode(.tail)
               .fixedSize(horizontal: false, vertical: true)

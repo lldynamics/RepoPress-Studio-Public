@@ -61,8 +61,8 @@ struct FindReplaceBar: View {
 
       if !findReplaceMessage.isEmpty {
         Text(findReplaceMessage)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .lineLimit(1)
       }
 
@@ -89,8 +89,8 @@ struct FindReplaceBar: View {
         replaceControls
         if !findReplaceMessage.isEmpty {
           Text(findReplaceMessage)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .lineLimit(1)
         }
         Spacer(minLength: 0)
@@ -118,8 +118,8 @@ struct FindReplaceBar: View {
   private var findControls: some View {
     HStack(spacing: 4) {
       Text(findMatchStatus)
-        .font(.caption.monospacedDigit())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospacedDigit())
+        .foregroundStyle(.workbenchSecondary)
         .frame(minWidth: 38)
         .accessibilityLabel("查找匹配位置")
         .accessibilityValue(findMatchStatus)
@@ -223,16 +223,16 @@ struct MarkdownFindReplacePreviewSheet: View {
     VStack(alignment: .leading, spacing: 16) {
       HStack {
         Label("确认全部替换", systemImage: "arrow.triangle.2.circlepath")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
         Text("\(preview.replacementCount) 处")
-          .font(.callout.monospacedDigit().weight(.semibold))
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody.monospacedDigit().weight(.semibold))
+          .foregroundStyle(.workbenchSecondary)
       }
 
       Text("范围：\(preview.scope.title)；确认后会作为一次可撤销编辑写入正文。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
 
       HStack(alignment: .top, spacing: 12) {
         previewColumn(title: "替换前", text: preview.originalScope)
@@ -255,10 +255,10 @@ struct MarkdownFindReplacePreviewSheet: View {
   private func previewColumn(title: String, text: String) -> some View {
     VStack(alignment: .leading, spacing: 6) {
       Text(title)
-        .font(.subheadline.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
       ScrollView {
         Text(text)
-          .font(.system(.body, design: .monospaced))
+          .font(.workbenchBody.monospaced())
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(WorkbenchSpacing.card)

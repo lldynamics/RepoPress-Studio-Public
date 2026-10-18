@@ -3,12 +3,12 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class SettingsSubsectionNavigationTests: XCTestCase {
-  func testOverviewOpensAtTaskShortcutsWhileHealthSearchTargetsReadiness() {
+  func testOverviewOpensAtReadinessWhichHealthSearchAlsoTargets() {
     XCTAssertEqual(
       SettingsSubsection.sections(for: .configurationStatus),
-      [.configurationTasks, .configurationReadiness]
+      [.configurationReadiness]
     )
-    XCTAssertEqual(SettingsRoute.tab(.configurationStatus).subsection, .configurationTasks)
+    XCTAssertEqual(SettingsRoute.tab(.configurationStatus).subsection, .configurationReadiness)
     XCTAssertEqual(
       SettingsSubsection.section(forSearchItemID: "status.health"),
       .configurationReadiness
@@ -35,16 +35,14 @@ final class SettingsSubsectionNavigationTests: XCTestCase {
     )
     XCTAssertEqual(
       SettingsSubsection.sections(for: .ai),
-      [.aiConnection, .aiAdvanced]
+      [.aiConnection, .aiAdvanced, .aiSiteConnection, .aiWritingStyle]
     )
   }
 
   func testMovedSettingsRetainTheirLegacyEntryPoints() {
-    XCTAssertEqual(
-      SettingsSubsection.sections(for: .siteAI), [.aiSiteConnection, .aiWritingStyle]
-    )
     XCTAssertEqual(SettingsRoute.requestedID("ai.writingStyle"), .subsection(.aiWritingStyle))
-    XCTAssertEqual(SettingsRoute.requestedID("ai.writingStyle")?.tab, .siteAI)
+    XCTAssertEqual(SettingsRoute.requestedID("ai.writingStyle")?.tab, .ai)
+    XCTAssertEqual(SettingsRoute.requestedID("siteAI"), .tab(.ai))
     XCTAssertEqual(
       SettingsRoute.requestedID("appearance.defaults"), .subsection(.appearanceDefaults))
     XCTAssertEqual(SettingsRoute.requestedID("appearance.defaults")?.tab, .editor)

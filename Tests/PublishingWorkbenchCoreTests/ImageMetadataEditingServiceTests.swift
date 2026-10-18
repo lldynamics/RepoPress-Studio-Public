@@ -164,10 +164,7 @@ final class RepositoryImageUsageEditingTests: XCTestCase {
 
   func testAltPreservesInputWhitespaceAndSynchronizesEscapedMarkdownAndStagedBody() throws {
     let store = makeStore()
-    var draft = makeDraft(body: "![old](/images/hero.png)")
-    draft.externalDraftSource = ExternalDraftSource(
-      mappingID: UUID(), relativePath: "hero.md", importedTitle: "Hero", importedFingerprint: "fp"
-    )
+    let draft = makeDraft(body: "![old](/images/hero.png)")
     store.updateDraft(draft)
     let staged = "前置\n![old](/images/hero.png)\n结尾"
     let buffer = store.draftBodyEditorBuffer(for: draft.id)
@@ -187,7 +184,6 @@ final class RepositoryImageUsageEditingTests: XCTestCase {
     XCTAssertTrue(updated.bodyMarkdown.contains("![\\[hero\\]](/images/hero.png)"))
     XCTAssertTrue(updated.bodyMarkdown.contains("前置"))
     XCTAssertTrue(updated.bodyMarkdown.contains("结尾"))
-    XCTAssertEqual(updated.externalDraftSource?.relativePath, "hero.md")
   }
 
   func testCaptionAndCoverDoNotRewriteBodyAndStalePathOrForeignProfileAreRejected() throws {

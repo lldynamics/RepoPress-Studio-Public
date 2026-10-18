@@ -46,11 +46,20 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
   public var automaticallyImportsNewRepositoryArticles: Bool?
   /// Whether the SEO audit should warn when a Markdown H1 repeats the Front
   /// Matter title. Optional storage keeps older snapshots backward compatible;
-  /// `nil` follows the locally inspected theme when its title layout is known.
-  /// An unknown theme preserves the historical enabled behavior.
+  /// `nil` preserves the historical enabled behavior. Theme facts are stored
+  /// and resolved independently by `themeProvidesTitleH1`.
   public var warnsWhenBodyH1DuplicatesTitle: Bool?
-  /// Optional for snapshots created before external Markdown source mapping.
-  public var externalDraftFolder: ExternalDraftFolderMapping?
+  /// An explicit override for whether the selected theme renders the page title
+  /// as an H1. `nil` keeps local template inspection enabled. This fact is
+  /// intentionally separate from the user's duplicate-warning preference.
+  public var themeProvidesTitleH1: Bool?
+  /// RepoPress-only evidence for the sharing image a site supplies when an
+  /// article has no cover. This does not write Front Matter or alter the theme.
+  public var defaultSocialImagePath: String?
+  public var defaultSocialImageAltText: String?
+  /// Explicit per-article decisions. A missing entry remains unspecified and
+  /// must never be inferred from an article that happens to have no cover.
+  public var seoArticleSocialImagePreferences: [SEOArticleSocialImagePreference]?
   /// The reusable AI connection selected by this site. The legacy config is
   /// retained for decoding older workbench files and non-store clients.
   public var aiConnectionProfileID: UUID?
@@ -62,9 +71,6 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
   public var deploymentStatusEndpointUsesToken: Bool?
   public var deploymentProjectID: String?
   public var deploymentAccountID: String?
-  /// Legacy reading analytics settings are preserved when older profiles are
-  /// loaded and saved. Access tokens were never serialized in this profile.
-  public var siteAnalytics: SiteAnalyticsSettings?
   /// Explicit review preferences. Missing legacy values keep all checks visible.
   public var contentHealthSuppressions: [ContentHealthSuppression]?
   /// Local Git execution remains isolated unless this site explicitly opts in.
@@ -98,21 +104,19 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     slugValidationRule: SiteSlugValidationRule = .lowercaseKebab,
     automaticallyImportsNewRepositoryArticles: Bool? = true,
     warnsWhenBodyH1DuplicatesTitle: Bool? = nil,
-    externalDraftFolder: ExternalDraftFolderMapping? = nil,
+    themeProvidesTitleH1: Bool? = nil,
+    defaultSocialImagePath: String? = nil,
+    defaultSocialImageAltText: String? = nil,
+    seoArticleSocialImagePreferences: [SEOArticleSocialImagePreference]? = nil,
     aiConnectionProfileID: UUID? = nil,
-    aiProviderConfig: AIProviderConfig = AIProviderConfig(
-      advancedSettings: AIProviderAdvancedSettings(
-        allowsApplicationTools: false
-      )
-    ),
+    aiProviderConfig: AIProviderConfig = AIProviderConfig(),
     aiWritingStyle: AIWritingStyleConfig? = .default,
     deploymentProvider: DeploymentProvider? = nil,
     deploymentSiteURL: String? = nil,
     deploymentStatusEndpointURL: String? = nil,
     deploymentStatusEndpointUsesToken: Bool = false,
     deploymentProjectID: String? = nil,
-    deploymentAccountID: String? = nil,
-    siteAnalytics: SiteAnalyticsSettings? = nil
+    deploymentAccountID: String? = nil
   ) {
     self.id = id
     self.name = name
@@ -141,7 +145,10 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     self.slugValidationRule = slugValidationRule
     self.automaticallyImportsNewRepositoryArticles = automaticallyImportsNewRepositoryArticles
     self.warnsWhenBodyH1DuplicatesTitle = warnsWhenBodyH1DuplicatesTitle
-    self.externalDraftFolder = externalDraftFolder
+    self.themeProvidesTitleH1 = themeProvidesTitleH1
+    self.defaultSocialImagePath = defaultSocialImagePath
+    self.defaultSocialImageAltText = defaultSocialImageAltText
+    self.seoArticleSocialImagePreferences = seoArticleSocialImagePreferences
     self.aiConnectionProfileID = aiConnectionProfileID
     self.aiProviderConfig = aiProviderConfig
     self.aiWritingStyle = aiWritingStyle
@@ -151,7 +158,6 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     self.deploymentStatusEndpointUsesToken = deploymentStatusEndpointUsesToken
     self.deploymentProjectID = deploymentProjectID
     self.deploymentAccountID = deploymentAccountID
-    self.siteAnalytics = siteAnalytics
   }
 
   public var resolvedAutomaticallyImportsNewRepositoryArticles: Bool {

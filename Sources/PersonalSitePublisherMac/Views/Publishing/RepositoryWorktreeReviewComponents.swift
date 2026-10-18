@@ -18,17 +18,17 @@ struct RepositoryWorktreeReviewFileList: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       Label("审阅文件内容", systemImage: "doc.text.magnifyingglass")
-        .font(.headline)
+        .font(.workbenchHeadline)
       Text("展示当前发布预览差异；确认时会自动核对文件是否变动。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
       TextField("搜索文件路径", text: $search)
         .textFieldStyle(.roundedBorder)
         .accessibilityLabel("搜索文件路径")
         .accessibilityIdentifier("publish-worktree-file-search")
       if visibleEntries.isEmpty {
         Text(entries.isEmpty ? String(localized: "没有净文件差异。") : String(localized: "没有匹配的文件。"))
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
       LazyVStack(alignment: .leading, spacing: 8) {
         ForEach(visibleEntries) { entry in
@@ -49,15 +49,15 @@ struct RepositoryWorktreeReviewFileList: View {
               if !review.patch.isEmpty {
                 ScrollView(.horizontal) {
                   Text(review.patch)
-                    .font(.system(.caption, design: .monospaced))
+                    .font(.workbenchMetadata.monospaced())
                     .textSelection(.enabled)
                     .fixedSize(horizontal: true, vertical: true)
                     .padding(.vertical, WorkbenchSpacing.icon)
                 }
               } else if review.notice == nil {
                 Text("仅文件状态变化，没有文本差异。")
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchMetadata)
+                  .foregroundStyle(.workbenchSecondary)
               }
             } else {
               Text("此快照没有内容差异，请重新审阅。")
@@ -65,13 +65,13 @@ struct RepositoryWorktreeReviewFileList: View {
             }
             DisclosureGroup(String(localized: "文件技术信息")) {
               Text(RepositoryWorktreePublishPresentation.metadataDescription(for: entry))
-                .font(.caption.monospaced())
+                .font(.workbenchMetadata.monospaced())
                 .textSelection(.enabled)
             }
           } label: {
             Label {
               Text(RepositoryWorktreePublishPresentation.pathDescription(for: entry))
-                .font(.callout)
+                .font(.workbenchBody)
                 .textSelection(.enabled)
             } icon: {
               Image(systemName: entry.kind == .deleted ? "minus.circle" : "doc")
@@ -83,7 +83,7 @@ struct RepositoryWorktreeReviewFileList: View {
         }
       }
     }
-    .accessibilityIdentifier("publish-worktree-file-review")
+    .workbenchAccessibilityContainer(identifier: "publish-worktree-file-review")
   }
 }
 
@@ -105,7 +105,7 @@ struct RepositoryPublishConfirmationFeedback: View {
             String(localized: "文件差异尚未完整审阅，请重新审阅后再发布。"),
             systemImage: "exclamationmark.triangle"
           )
-          .font(.callout)
+          .font(.workbenchBody)
           .foregroundStyle(WorkbenchTheme.warning)
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityIdentifier("publish-confirmation-review-incomplete")
@@ -118,7 +118,7 @@ struct RepositoryPublishConfirmationFeedback: View {
             feedback.message,
             systemImage: Self.needsReview(feedback) ? "exclamationmark.triangle" : "info.circle"
           )
-          .font(.callout)
+          .font(.workbenchBody)
           .foregroundStyle(Self.needsReview(feedback) ? WorkbenchTheme.warning : .secondary)
           .fixedSize(horizontal: false, vertical: true)
           .textSelection(.enabled)

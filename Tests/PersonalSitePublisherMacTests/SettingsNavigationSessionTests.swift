@@ -78,10 +78,10 @@ final class SettingsNavigationSessionTests: XCTestCase {
 
   func testStaleGeometryCannotNavigateBackToThePreviousPage() {
     var session = SettingsNavigationSession(selectedRoute: .tab(.ai))
-    _ = session.selectSidebarRoute(.tab(.siteAI))
+    _ = session.selectSidebarRoute(.tab(.token))
 
     XCTAssertFalse(session.synchronizeManuallyScrolledSubsection(.aiAdvanced))
-    XCTAssertEqual(session.selectedRoute, .tab(.siteAI))
-    XCTAssertEqual(session.detailScrollRequest?.subsection, .aiSiteConnection)
+    XCTAssertEqual(session.selectedRoute, .tab(.token))
+    XCTAssertEqual(session.detailScrollRequest?.subsection, .tokenRepository)
   }
 }

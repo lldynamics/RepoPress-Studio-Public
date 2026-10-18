@@ -5,7 +5,6 @@ import SwiftUI
 /// Top-level tabs keep their identifiers for deep links and restoration.
 /// Subsections are transient scroll anchors within the selected page.
 enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
-  case configurationTasks
   case configurationReadiness
 
   case rulesBasics
@@ -50,16 +49,14 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
 
   var tab: SettingsTab {
     switch self {
-    case .configurationTasks, .configurationReadiness:
+    case .configurationReadiness:
       return .configurationStatus
     case .rulesBasics, .rulesDiscovery, .rulesFrontMatter, .rulesPaths:
       return .defaultRules
     case .tokenRepository, .tokenDeployment:
       return .token
-    case .aiConnection, .aiAdvanced:
+    case .aiConnection, .aiAdvanced, .aiSiteConnection, .aiWritingStyle:
       return .ai
-    case .aiSiteConnection, .aiWritingStyle:
-      return .siteAI
     case .dataDrafts, .dataStorage, .dataBackup, .dataMigration:
       return .dataManagement
     case .appearanceBehavior, .appearanceTheme, .appearanceModules:
@@ -76,7 +73,6 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
 
   var title: String {
     switch self {
-    case .configurationTasks: return String(localized: "常用任务")
     case .configurationReadiness: return String(localized: "就绪状态")
     case .rulesBasics: return String(localized: "常用默认值")
     case .rulesDiscovery: return String(localized: "仓库发现")
@@ -112,7 +108,6 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
 
   var subtitle: String {
     switch self {
-    case .configurationTasks: return String(localized: "常用设置快捷入口")
     case .configurationReadiness: return String(localized: "发布基础、凭据和需要处理的项目")
     case .rulesBasics: return String(localized: "作者、分类与站点类型")
     case .rulesDiscovery: return String(localized: "识别仓库中的内容结构")
@@ -148,7 +143,6 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
 
   var systemImage: String {
     switch self {
-    case .configurationTasks: return "square.grid.2x2"
     case .configurationReadiness: return "checkmark.seal"
     case .rulesBasics: return "slider.horizontal.3"
     case .rulesDiscovery: return "magnifyingglass"
@@ -187,7 +181,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
   }
 
   static func defaultSection(for tab: SettingsTab) -> SettingsSubsection {
-    sections(for: tab).first ?? .configurationTasks
+    sections(for: tab).first ?? .configurationReadiness
   }
 
   static func section(for destination: SettingsDestination) -> SettingsSubsection {
@@ -254,7 +248,7 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
 }
 
 private struct SettingsSubsectionEnvironmentKey: EnvironmentKey {
-  static let defaultValue = SettingsSubsection.configurationTasks
+  static let defaultValue = SettingsSubsection.configurationReadiness
 }
 
 extension EnvironmentValues {

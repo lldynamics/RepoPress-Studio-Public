@@ -271,8 +271,8 @@ struct DraftVersionComparisonView: View {
 
   private var restoreNotice: some View {
     Text("恢复只替换文章内容；当前仓库路径、远端版本和发布状态会保留。")
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
       .fixedSize(horizontal: false, vertical: true)
   }
 
@@ -328,7 +328,7 @@ struct DraftVersionComparisonView: View {
 
   private var sourcePicker: some View {
     VStack(alignment: .leading, spacing: 5) {
-      Text("旧版（左侧）").font(.caption).foregroundStyle(.secondary)
+      Text("旧版（左侧）").font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
       Picker("旧版（左侧）", selection: $sourceVersionID) {
         if selectedSourceVersion == nil {
           Text("所选版本已不存在。").tag(sourceVersionID)
@@ -346,7 +346,7 @@ struct DraftVersionComparisonView: View {
 
   private var targetPicker: some View {
     VStack(alignment: .leading, spacing: 5) {
-      Text("新版（右侧）").font(.caption).foregroundStyle(.secondary)
+      Text("新版（右侧）").font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
       Picker("新版（右侧）", selection: $target) {
         Text("当前文章").tag(DraftVersionComparisonTarget.current)
         if case .version(let versionID) = target,
@@ -388,7 +388,7 @@ struct DraftVersionComparisonView: View {
 
   private func comparisonBadge(_ text: String, color: Color) -> some View {
     Text(text)
-      .font(.caption.monospacedDigit().weight(.semibold))
+      .font(.workbenchMetadata.monospacedDigit().weight(.semibold))
       .foregroundStyle(color)
       .padding(.horizontal, WorkbenchSpacing.control)
       .padding(.vertical, WorkbenchSpacing.tight)
@@ -416,12 +416,12 @@ struct DraftVersionComparisonView: View {
   private func metadataChanges(_ changes: [DraftVersionFieldChange]) -> some View {
     VStack(alignment: .leading, spacing: 10) {
       Label("元数据变化", systemImage: "list.bullet.rectangle")
-        .font(.headline)
+        .font(.workbenchHeadline)
 
       if changes.isEmpty {
         Text("元数据没有变化")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       } else {
         ForEach(changes, id: \.field) { change in
           ViewThatFits(in: .horizontal) {
@@ -436,12 +436,12 @@ struct DraftVersionComparisonView: View {
   private func metadataChangeRow(_ change: DraftVersionFieldChange) -> some View {
     HStack(alignment: .top, spacing: 12) {
       Text(change.field.localizedDisplayName)
-        .font(.subheadline.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
         .frame(width: 84, alignment: .leading)
       comparisonValue(change.previousValue, color: WorkbenchTheme.risk)
       Image(systemName: "arrow.right")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityHidden(true)
       comparisonValue(change.currentValue, color: WorkbenchTheme.success)
     }
@@ -453,11 +453,11 @@ struct DraftVersionComparisonView: View {
   private func metadataChangeColumn(_ change: DraftVersionFieldChange) -> some View {
     VStack(alignment: .leading, spacing: 6) {
       Text(change.field.localizedDisplayName)
-        .font(.subheadline.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
       comparisonValue(change.previousValue, color: WorkbenchTheme.risk)
       Image(systemName: "arrow.down")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityHidden(true)
         .frame(maxWidth: .infinity, alignment: .center)
       comparisonValue(change.currentValue, color: WorkbenchTheme.success)
@@ -471,7 +471,7 @@ struct DraftVersionComparisonView: View {
     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
     let isEmpty = trimmed.isEmpty
     return Text(isEmpty ? String(localized: "（空）") : value)
-      .font(.callout)
+      .font(.workbenchBody)
       .foregroundStyle(isEmpty ? Color.secondary.opacity(0.6) : color)
       .italic(isEmpty)
       .textSelection(.enabled)

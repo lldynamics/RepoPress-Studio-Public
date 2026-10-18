@@ -34,11 +34,11 @@ struct SettingsNavigationList: View {
     if searchItems.isEmpty {
       VStack(alignment: .leading, spacing: 4) {
         Text("未找到匹配的设置项")
-          .font(.callout.weight(.medium))
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody.weight(.medium))
+          .foregroundStyle(.workbenchSecondary)
         Text("可尝试搜索“Token”、“主题”、“Ollama”或“路径”")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
       .padding(.vertical, WorkbenchSpacing.control)
       .accessibilityElement(children: .combine)
@@ -51,18 +51,18 @@ struct SettingsNavigationList: View {
           } label: {
             VStack(alignment: .leading, spacing: 2) {
               Label(item.sectionTitle, systemImage: item.systemImage)
-                .font(.callout.weight(.medium))
+                .font(.workbenchBody.weight(.medium))
                 .foregroundStyle(Color.primary)
                 .lineLimit(1)
 
               Text(item.tab.title)
                 .font(.workbenchMetadata)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.workbenchSecondary)
                 .lineLimit(1)
 
               Text(item.detail)
                 .font(.workbenchMetadata)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.workbenchSecondary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
             }
@@ -114,6 +114,7 @@ struct SettingsNavigationList: View {
         .accessibilityHidden(true)
 
       Text(tab.title)
+        .font(.workbenchBody)
         .lineLimit(2)
         .fixedSize(horizontal: false, vertical: true)
         .layoutPriority(1)
@@ -148,13 +149,13 @@ struct SettingsNavigationList: View {
   private func subsectionRow(_ subsection: SettingsSubsection) -> some View {
     HStack(spacing: WorkbenchSpacing.control) {
       Image(systemName: subsection.systemImage)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .frame(width: 16)
         .accessibilityHidden(true)
 
       Text(subsection.title)
-        .font(.callout)
+        .font(.workbenchBody)
         .lineLimit(2)
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -169,8 +170,8 @@ struct SettingsNavigationList: View {
 
   private func sidebarSectionHeader(_ title: String) -> some View {
     Text(title)
-      .font(.caption.weight(.semibold))
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata.weight(.semibold))
+      .foregroundStyle(.workbenchSecondary)
       .textCase(nil)
   }
 
@@ -189,7 +190,7 @@ struct SettingsDetailHeader: View {
       VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
         HStack(spacing: WorkbenchSpacing.card) {
           Text(tab.title)
-            .font(.title2.weight(.semibold))
+            .font(.workbenchTitle2.weight(.semibold))
             .layoutPriority(1)
             .accessibilityAddTraits(.isHeader)
             .accessibilityIdentifier("settings-detail-title")
@@ -198,8 +199,8 @@ struct SettingsDetailHeader: View {
         }
 
         Text(tab.subtitle)
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
           .layoutPriority(1)
       }
@@ -217,8 +218,8 @@ struct SettingsDetailHeader: View {
       tab.scopePresentation.badgeTitle,
       systemImage: tab.scopePresentation.systemImage
     )
-    .font(.caption.weight(.medium))
-    .foregroundStyle(.secondary)
+    .font(.workbenchMetadata.weight(.medium))
+    .foregroundStyle(.workbenchSecondary)
     .padding(.horizontal, WorkbenchSpacing.control)
     .padding(.vertical, WorkbenchSpacing.tight)
     .background(Color.primary.opacity(0.06), in: Capsule())

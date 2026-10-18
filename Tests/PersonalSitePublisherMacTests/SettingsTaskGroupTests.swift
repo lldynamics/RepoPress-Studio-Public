@@ -18,7 +18,7 @@ final class SettingsTaskGroupTests: XCTestCase {
     )
     XCTAssertEqual(
       SettingsTaskGroup.currentSite.tabs,
-      [.configurationStatus, .defaultRules, .token, .siteAI]
+      [.configurationStatus, .defaultRules, .token]
     )
     XCTAssertTrue(SettingsTaskGroup.application.tabs.allSatisfy { !$0.isSiteScoped })
     XCTAssertTrue(SettingsTaskGroup.currentSite.tabs.allSatisfy(\.isSiteScoped))

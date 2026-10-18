@@ -2,13 +2,12 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 /// Window-local state for a repair entered from the publishing checklist.
-/// It deliberately keeps the publish scope and exact article identity so a
-/// return to publishing cannot silently switch to another draft.
+/// It deliberately keeps the exact article identity so a return to the
+/// checks cannot silently switch to another draft.
 struct ArticlePublishRepairSession: Identifiable, Equatable {
   let id = UUID()
   let draftID: UUID
   let target: PublishReadinessTarget
-  let publishScope: PublishScope
 }
 
 /// A non-modal return path while an author repairs a publishing issue in the
@@ -28,10 +27,10 @@ struct ArticlePublishRepairBar: View {
 
       VStack(alignment: .leading, spacing: 2) {
         Text("正在修复发布问题")
-          .font(.callout.weight(.semibold))
+          .font(.workbenchBody.weight(.semibold))
         Text(session.target.title)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       Spacer(minLength: 12)

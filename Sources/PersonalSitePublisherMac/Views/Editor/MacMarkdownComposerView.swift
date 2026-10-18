@@ -465,7 +465,7 @@ struct MacMarkdownComposerView: View {
       if let toast = automaticImageImportToast {
         Spacer(minLength: 0)
         Label(toast.message, systemImage: "photo.badge.checkmark")
-          .font(.callout.weight(.medium))
+          .font(.workbenchBody.weight(.medium))
           .padding(.horizontal, WorkbenchSpacing.content)
           .padding(.vertical, WorkbenchSpacing.control)
           .workbenchGlassSurface(material: .regularMaterial, in: Capsule())
@@ -741,13 +741,13 @@ struct MacMarkdownComposerView: View {
         if let frontMatterIssue {
           VStack(alignment: .leading, spacing: 7) {
             Label("Front Matter 尚未保存", systemImage: "exclamationmark.triangle.fill")
-              .font(.callout.weight(.semibold))
+              .font(.workbenchBody.weight(.semibold))
               .foregroundStyle(WorkbenchTheme.warning)
             Text(frontMatterIssue.workbenchMessage)
-              .font(.caption)
+              .font(.workbenchMetadata)
             Text("无效原文已写入本地恢复副本；修正格式前不会覆盖结构化文章信息。")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
             HStack {
               Button("复制恢复原文") {
                 NSPasteboard.general.clearContents()
@@ -817,7 +817,7 @@ struct MacMarkdownComposerView: View {
               Image(systemName: "photo.badge.plus")
                 .font(.system(size: WorkbenchIconSize.hero, weight: .semibold))
               Text("拖入图片到当前文章")
-                .font(.headline)
+                .font(.workbenchHeadline)
             }
             .foregroundStyle(.tint)
           }

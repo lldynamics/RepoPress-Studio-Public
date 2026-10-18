@@ -11,9 +11,6 @@ struct SettingsConfigurationStatusView: View {
       )
       ScrollView {
         VStack(alignment: .leading, spacing: WorkbenchSpacing.content) {
-          SettingsTaskShortcutsView(selectDestination: context.selectSettingsDestination)
-            .settingsSubsectionAnchor(.configurationTasks)
-
           SettingsConfigurationHealthCard(
             profile: context.store.activeProfile,
             aiProviderConfig: context.store.aiProviderConfig(for: context.store.activeProfile),

@@ -16,10 +16,10 @@ extension AIChatModelQuickSwitchSheet {
           )
           VStack(alignment: .leading, spacing: 2) {
             Text(String(localized: "跟随连接默认"))
-              .font(.callout.weight(.medium))
+              .font(.workbenchBody.weight(.medium))
             Text(String(localized: "使用 AI 设置中保存的默认模型"))
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
           Spacer(minLength: 8)
         }
@@ -36,15 +36,15 @@ extension AIChatModelQuickSwitchSheet {
           ProgressView()
             .controlSize(.small)
           Text(String(localized: "正在读取账户可用模型…"))
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
         .accessibilityLabel(String(localized: "正在读取账户可用模型"))
       } else if let codexModelsError, codexModels.isEmpty {
         VStack(alignment: .leading, spacing: 6) {
           Text(codexModelsError)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .textSelection(.enabled)
           Button {
             loadCodexModelsIfNeeded(force: true)
@@ -57,13 +57,13 @@ extension AIChatModelQuickSwitchSheet {
         .accessibilityElement(children: .contain)
       } else if codexModels.isEmpty {
         Text(String(localized: "暂未返回可用模型；仍可使用账户默认模型。"))
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .accessibilityLabel(String(localized: "暂未返回可用模型，仍可使用账户默认模型"))
       } else if filteredCodexModels.isEmpty {
         Text(String(localized: "未找到匹配的 Codex 模型。"))
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       } else {
         ForEach(filteredCodexModels, id: \.id) { model in
           Button {
@@ -80,23 +80,23 @@ extension AIChatModelQuickSwitchSheet {
               VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                   Text(model.localizedDisplayName)
-                    .font(.callout.weight(.medium))
+                    .font(.workbenchBody.weight(.medium))
                   Text(AIChatRequestTokenBudget.formattedContextWindow(forModel: model.model))
                     .font(.workbenchMetadata.weight(.medium).monospaced())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.workbenchSecondary)
                     .padding(.horizontal, WorkbenchSpacing.tight)
                     .padding(.vertical, 1.5)
                     .background(Color.secondary.opacity(0.12), in: Capsule())
                 }
                 Text(model.model)
-                  .font(.caption.monospaced())
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchMetadata.monospaced())
+                  .foregroundStyle(.workbenchSecondary)
                   .lineLimit(1)
                   .truncationMode(.middle)
                 if let description = model.description?.nilIfEmpty {
                   Text(description)
                     .font(.workbenchMetadata)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.workbenchSecondary)
                     .lineLimit(2)
                 }
               }
@@ -115,7 +115,7 @@ extension AIChatModelQuickSwitchSheet {
 
       if let codexModelsError, !codexModels.isEmpty {
         Label(codexModelsError, systemImage: "exclamationmark.triangle")
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(WorkbenchTheme.warning)
           .textSelection(.enabled)
           .accessibilityLabel(
@@ -162,8 +162,8 @@ extension AIChatModelQuickSwitchSheet {
         .accessibilityValue(reasoningEffortAccessibilityValue(for: model))
       } else if activeCodexModel != nil {
         Text(String(localized: "当前模型未提供可选思考等级，将使用模型默认设置。"))
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .accessibilityLabel(String(localized: "当前模型未提供可选思考等级，将使用模型默认设置"))
       }
     }

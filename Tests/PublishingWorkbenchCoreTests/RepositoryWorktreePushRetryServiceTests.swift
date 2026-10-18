@@ -97,7 +97,7 @@ final class RepositoryWorktreePushRetryServiceTests: XCTestCase {
     )
   }
 
-  func testRejectsNewWorktreeChangeBeforeRetry() throws {
+  func testRetryPushesOnlyTheCommitAndKeepsUncommittedEditsLocal() throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture.baseURL) }
     try "committed\n".write(
@@ -106,20 +106,43 @@ final class RepositoryWorktreePushRetryServiceTests: XCTestCase {
       encoding: .utf8
     )
     _ = try git(["commit", "-am", "local"], at: fixture.worktreeURL)
-    try "not reviewed\n".write(
+    let localHead = try git(["rev-parse", "HEAD"], at: fixture.worktreeURL)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    try "not reviewed tracked\n".write(
+      to: fixture.worktreeURL.appendingPathComponent("tracked.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+    try "not reviewed untracked\n".write(
       to: fixture.worktreeURL.appendingPathComponent("later.txt"),
       atomically: true,
       encoding: .utf8
     )
 
-    XCTAssertThrowsError(
-      try RepositoryWorktreePushRetryService().prepare(profile: fixture.profile)
-    ) { error in
-      guard case .invalidRepository(let message) = error as? RepositoryWorktreePublishError else {
-        return XCTFail("Unexpected error: \(error)")
-      }
-      XCTAssertTrue(message.contains("未提交"))
-    }
+    try writePushPolicyHook("#!/bin/sh\nexit 0\n", root: fixture.worktreeURL)
+    var profile = fixture.profile
+    profile.gitExecutionPolicy = try RepositoryGitExecutionPolicyService().trustingHooks(
+      at: fixture.worktreeURL)
+    let service = RepositoryWorktreePushRetryService()
+    let confirmation = try service.prepare(profile: profile)
+    XCTAssertEqual(confirmation.snapshot.paths, ["tracked.md"])
+    let result = try service.push(profile: profile, confirmation: confirmation)
+
+    XCTAssertEqual(result.commitSHA, localHead)
+    XCTAssertFalse(
+      try git(["ls-tree", "-r", "--name-only", "refs/heads/main"], at: fixture.remoteURL)
+        .contains("later.txt"))
+    XCTAssertEqual(
+      try String(
+        contentsOf: fixture.worktreeURL.appendingPathComponent("tracked.md"), encoding: .utf8),
+      "not reviewed tracked\n")
+    XCTAssertEqual(
+      try git(["status", "--porcelain=v1", "--untracked-files=all"], at: fixture.worktreeURL),
+      " M tracked.md\n?? later.txt\n")
+    XCTAssertEqual(
+      try String(
+        contentsOf: fixture.worktreeURL.appendingPathComponent("later.txt"), encoding: .utf8),
+      "not reviewed untracked\n")
   }
 
   func testRejectsSensitivePathAlreadyCommittedByAnotherTool() throws {
@@ -437,6 +460,54 @@ final class RepositoryWorktreePushRetryServiceTests: XCTestCase {
       XCTAssertEqual(
         try git(["rev-parse", "main"], at: fixture.remoteURL).trimmedForPublishing,
         fixture.remoteBaseline)
+    }
+  }
+
+  func testPushRetryRejectsTrustedHookRewritingExistingDirtyPath() throws {
+    for (path, hookBody, expectedContent, expectedStatus) in [
+      (
+        "tracked.md", "printf 'hook changed tracked\\n' > tracked.md\n", "hook changed tracked\n",
+        " M tracked.md\n"
+      ),
+      (
+        "later.txt", "printf 'hook changed untracked\\n' > later.txt\n", "hook changed untracked\n",
+        "?? later.txt\n"
+      ),
+    ] {
+      let fixture = try makeFixture()
+      defer { try? FileManager.default.removeItem(at: fixture.baseURL) }
+      try "ahead\n".write(
+        to: fixture.worktreeURL.appendingPathComponent("tracked.md"), atomically: true,
+        encoding: .utf8)
+      _ = try git(["commit", "-am", "local ahead"], at: fixture.worktreeURL)
+      let head = try git(["rev-parse", "HEAD"], at: fixture.worktreeURL).trimmedForPublishing
+      let dirtyPath = fixture.worktreeURL.appendingPathComponent(path)
+      try "dirty before hook\n".write(to: dirtyPath, atomically: true, encoding: .utf8)
+      try writePushPolicyHook("#!/bin/sh\n" + hookBody, root: fixture.worktreeURL)
+      var profile = fixture.profile
+      profile.gitExecutionPolicy = try RepositoryGitExecutionPolicyService().trustingHooks(
+        at: fixture.worktreeURL)
+
+      let service = RepositoryWorktreePushRetryService()
+      let confirmation = try service.prepare(profile: profile)
+      XCTAssertThrowsError(try service.push(profile: profile, confirmation: confirmation)) {
+        error in
+        guard
+          case .commitSucceededButPushFailed(let sha, _) = error as? RepositoryWorktreePublishError
+        else {
+          return XCTFail("Expected already committed failure, received \(error)")
+        }
+        XCTAssertEqual(sha, head)
+      }
+      XCTAssertEqual(
+        try git(["rev-parse", "HEAD"], at: fixture.worktreeURL).trimmedForPublishing, head)
+      XCTAssertEqual(
+        try git(["rev-parse", "main"], at: fixture.remoteURL).trimmedForPublishing,
+        fixture.remoteBaseline)
+      XCTAssertEqual(try String(contentsOf: dirtyPath, encoding: .utf8), expectedContent)
+      XCTAssertEqual(
+        try git(["status", "--porcelain=v1", "--untracked-files=all"], at: fixture.worktreeURL),
+        expectedStatus)
     }
   }
 

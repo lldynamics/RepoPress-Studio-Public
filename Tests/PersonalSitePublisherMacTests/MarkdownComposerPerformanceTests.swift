@@ -263,97 +263,10 @@ final class MarkdownEditorStatusBarPresentationTests: XCTestCase {
         writingUnitCount: 1_284, readingMinutes: 4
       ),
       String(
-        format: String(localized: "%lld 字/词 · 约 %lld 分钟"),
+        format: String(localized: "%1$lld 字/词 · 约 %2$lld 分钟"),
         locale: .current, Int64(1_284), Int64(4)
       )
     )
-  }
-
-  func testBranchUsesScannedWorktreeInsteadOfConfiguredPublishTarget() throws {
-    let (store, root) = try makeStore()
-    var profile = store.activeProfile
-    profile.branch = "production"
-    store.setProfiles([profile])
-    store.setRepositoryReport(report(root: root, branch: "writing/editor"))
-
-    let state = MarkdownEditorBranchState(store: store, profileID: profile.id)
-
-    XCTAssertEqual(state.branchName, "writing/editor")
-    XCTAssertNotEqual(state.branchName, profile.branch)
-  }
-
-  func testGeneralDraftAndMissingProfileDoNotBorrowActiveSiteBranch() throws {
-    let (store, root) = try makeStore()
-    store.setRepositoryReport(report(root: root, branch: "main"))
-
-    XCTAssertNil(MarkdownEditorBranchState(store: store, profileID: nil).branchName)
-    XCTAssertNil(MarkdownEditorBranchState(store: store, profileID: UUID()).branchName)
-  }
-
-  func testDifferentSiteWithSameRepositoryDoesNotBorrowReport() throws {
-    let (store, root) = try makeStore()
-    var otherProfile = store.activeProfile
-    otherProfile.id = UUID()
-    store.setProfiles([store.activeProfile, otherProfile])
-    store.setRepositoryReport(report(root: root, branch: "main"))
-
-    XCTAssertNil(MarkdownEditorBranchState(store: store, profileID: otherProfile.id).branchName)
-  }
-
-  func testMissingGitUnknownBranchAndDetachedHeadDoNotInventBranch() throws {
-    let (store, root) = try makeStore()
-    let profileID = store.activeProfileID
-    for invalidReport in [
-      report(root: root, branch: "main", hasGit: false),
-      report(root: root, branch: nil),
-      report(root: root, branch: "   "),
-      report(root: root, branch: "HEAD", isDetached: true),
-    ] {
-      store.setRepositoryReport(invalidReport)
-      XCTAssertNil(MarkdownEditorBranchState(store: store, profileID: profileID).branchName)
-    }
-    store.setRepositoryReport(nil)
-    XCTAssertNil(MarkdownEditorBranchState(store: store, profileID: profileID).branchName)
-  }
-
-  func testBranchRefreshReadsCommittedReportAndDeduplicatesUnrelatedEdits() async throws {
-    let (store, root) = try makeStore()
-    store.setRepositoryReport(report(root: root, branch: "before"))
-    let state = MarkdownEditorBranchState(store: store, profileID: store.activeProfileID)
-    var values: [String?] = []
-    let updated = expectation(description: "committed branch is observed")
-    let observation = state.$branchName.dropFirst().sink { value in
-      values.append(value)
-      if value == "after" { updated.fulfill() }
-    }
-
-    store.setDrafts([
-      ArticleDraft(siteProfileID: store.activeProfileID, title: "Unrelated", bodyMarkdown: "Typed")
-    ])
-    store.setRepositoryReport(report(root: root, branch: "after"))
-    await fulfillment(of: [updated], timeout: 1)
-
-    XCTAssertEqual(values, ["after"])
-    XCTAssertEqual(state.branchName, "after")
-    withExtendedLifetime(observation) {}
-  }
-
-  func testRepositoryReconfigurationClearsOldBranch() async throws {
-    let (store, root) = try makeStore()
-    store.setRepositoryReport(report(root: root, branch: "old-repository"))
-    let state = MarkdownEditorBranchState(store: store, profileID: store.activeProfileID)
-    let cleared = expectation(description: "old repository branch is removed")
-    let observation = state.$branchName.dropFirst().sink { value in
-      if value == nil { cleared.fulfill() }
-    }
-
-    var profile = store.activeProfile
-    profile.rememberLocalRepositoryRoot(root.appendingPathComponent("different-repository"))
-    store.setProfiles([profile])
-    await fulfillment(of: [cleared], timeout: 1)
-
-    XCTAssertNil(state.branchName)
-    withExtendedLifetime(observation) {}
   }
 
   private func makeStore() throws -> (WorkbenchStore, URL) {

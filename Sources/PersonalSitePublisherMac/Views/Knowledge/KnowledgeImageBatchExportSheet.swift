@@ -29,14 +29,14 @@ struct KnowledgeImageBatchExportSheet: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       Text("批量导出图片")
-        .font(.title2.weight(.semibold))
+        .font(.workbenchTitle2.weight(.semibold))
 
       Text(selectionSummary)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
 
       VStack(alignment: .leading, spacing: 8) {
         Text("导出位置")
-          .font(.headline)
+          .font(.workbenchHeadline)
         HStack(spacing: 10) {
           Text(destinationDirectory?.path ?? "尚未选择文件夹")
             .foregroundStyle(destinationDirectory == nil ? .secondary : .primary)
@@ -69,20 +69,20 @@ struct KnowledgeImageBatchExportSheet: View {
         .accessibilityIdentifier("knowledge-image-export-remove-metadata")
       if removesSensitiveMetadata {
         Text("分享副本会移除 EXIF、GPS 等敏感元数据，可能重新编码；资料库中的原图不会被修改。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       } else {
         Text("默认导出原图文件，按原始字节复制；资料库中的原图不会被修改。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       if isExporting {
         VStack(alignment: .leading, spacing: 6) {
           ProgressView(value: progressValue)
           Text("正在处理 \(completedCount) / \(max(totalCount, documentIDs.count)) 项…")
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
         }
         .accessibilityIdentifier("knowledge-image-export-progress")
       }
@@ -136,7 +136,7 @@ struct KnowledgeImageBatchExportSheet: View {
       Text(
         "已导出 \(report.exportedCount) 张，跳过 \(report.skippedCount) 项，失败 \(report.failedCount) 项。"
       )
-      .font(.headline)
+      .font(.workbenchHeadline)
       if report.failedCount > 0 || report.skippedCount > 0 {
         ScrollView {
           VStack(alignment: .leading, spacing: 6) {
@@ -146,7 +146,7 @@ struct KnowledgeImageBatchExportSheet: View {
                 EmptyView()
               case .skipped(let reason):
                 Text("跳过“\(item.sourceName)”：\(reason)")
-                  .foregroundStyle(.secondary)
+                  .foregroundStyle(.workbenchSecondary)
               case .failed(let reason):
                 Text("未导出“\(item.sourceName)”：\(reason)")
                   .foregroundStyle(.red)

@@ -12,7 +12,7 @@ public final class WorkbenchContentPresentationFeatureFacade: ObservableObject {
 
   init(store: WorkbenchStore) {
     self.store = store
-    observeValue(store.aiWorkspaceStore.$isAIPublishingAssistantPresented)
+    observeValue(store.aiWorkspaceStore.publisher(for: \.isAIPublishingAssistantPresented))
   }
 
   public var isAssistantPresented: Bool {

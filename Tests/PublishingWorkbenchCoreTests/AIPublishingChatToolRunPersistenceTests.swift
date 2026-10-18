@@ -4,115 +4,34 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class AIPublishingChatToolRunPersistenceTests: XCTestCase {
-  func testAgentContinuationRoundTripsAndLegacyMessageDefaultsToNil() throws {
-    let draftID = UUID()
-    let messageID = UUID()
-    let step = WorkbenchAutomationStep(
-      command: .replaceBody,
-      arguments: WorkbenchAutomationArguments(
-        draftID: draftID,
-        expectedDraftUpdatedAt: Date(timeIntervalSince1970: 100),
-        content: "new body"
-      ),
-      status: .awaitingConfirmation
-    )
-    let call = AIToolCall(
-      id: "persisted-review",
-      function: AIToolFunctionCall(
-        name: WorkbenchAutomationCommandID.replaceBody.rawValue,
-        arguments: #"{"draftID":"00000000-0000-0000-0000-000000000000","content":"new body"}"#
-      )
-    )
+  func testRetiredAgentContinuationIsDroppedWhenAnOldMessageIsDecoded() throws {
     let run = WorkbenchAIAgentToolRunRecord(
-      toolCallID: call.id,
+      toolCallID: "persisted-review",
       command: .replaceBody,
       status: .awaitingConfirmation,
       summary: "waiting",
-      automationStepID: step.id,
-      targetDraftID: draftID,
       startedAt: Date(timeIntervalSince1970: 101)
     )
-    let checkpoint = WorkbenchAIAgentLoopCheckpoint(
-      transcript: [
-        AIChatMessage(role: "system", content: "trusted boundary"),
-        AIChatMessage(role: "user", content: "update"),
-        AIChatMessage(role: "assistant", toolCalls: [call]),
-      ],
-      trustedBoundaryIndex: 0,
-      agentTranscriptStartIndex: 2,
-      limits: .default,
-      allowedCommands: [.replaceBody],
-      pendingCalls: [
-        WorkbenchAIAgentLoopPendingCall(
-          toolCallID: call.id,
-          automationStepID: step.id,
-          command: .replaceBody,
-          targetDraftID: draftID,
-          step: step
-        )
-      ],
-      toolRuns: [run],
-      modelRoundCount: 1,
-      toolCallCount: 1,
-      totalArgumentByteCount: call.function.arguments.utf8.count,
-      totalToolResultByteCount: 0,
-      totalAssistantByteCount: 0,
-      totalTranscriptByteCount: 1
+    let message = AIPublishingChatMessage(role: .assistant, content: "review", toolRuns: [run])
+    var object = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: JSONEncoder.workbench.encode(message))
+        as? [String: Any]
     )
-    let continuation = AIPublishingChatAgentContinuation(
-      ownerConversationID: UUID(),
-      ownerScope: .draft(draftID),
-      ownerMessageID: messageID,
-      planID: UUID(),
-      requestTemplate: AIChatCompletionRequest(model: "test", messages: []),
-      checkpoint: checkpoint,
-      providerConfig: AIProviderConfig(model: "test"),
-      taskConfig: AIProviderConfig(model: "test"),
-      promptRevision: AIPublishingChatAgentPromptRevision(),
-      reviewDraftFingerprint: "review-baseline",
-      reviewDraftUpdatedAt: Date(timeIntervalSince1970: 199),
-      createdAt: Date(timeIntervalSince1970: 200),
-      updatedAt: Date(timeIntervalSince1970: 201)
-    )
-    XCTAssertTrue(continuation.isValidForPersistence)
-    let message = AIPublishingChatMessage(
-      id: messageID,
-      role: .assistant,
-      content: "review",
-      toolRuns: [run],
-      agentContinuation: continuation
-    )
+    object["agentContinuation"] = [
+      "schemaVersion": 3,
+      "phase": "awaitingReview",
+      "checkpoint": ["schemaVersion": 2, "pendingCalls": []],
+    ]
 
-    let encoded = try JSONEncoder.workbench.encode(message)
     let decoded = try JSONDecoder.workbench.decode(
       AIPublishingChatMessage.self,
-      from: encoded
+      from: JSONSerialization.data(withJSONObject: object)
     )
-    XCTAssertEqual(decoded.agentContinuation, continuation)
+    let savedAgain = try JSONEncoder.workbench.encode(decoded)
 
-    var legacyObject = try XCTUnwrap(
-      JSONSerialization.jsonObject(with: encoded) as? [String: Any]
-    )
-    var staleContinuation = try XCTUnwrap(
-      legacyObject["agentContinuation"] as? [String: Any]
-    )
-    staleContinuation.removeValue(forKey: "promptRevision")
-    staleContinuation.removeValue(forKey: "reviewDraftFingerprint")
-    staleContinuation.removeValue(forKey: "reviewDraftUpdatedAt")
-    var staleObject = legacyObject
-    staleObject["agentContinuation"] = staleContinuation
-    let staleDecoded = try JSONDecoder.workbench.decode(
-      AIPublishingChatMessage.self,
-      from: JSONSerialization.data(withJSONObject: staleObject)
-    )
-    XCTAssertNil(staleDecoded.agentContinuation)
-
-    legacyObject.removeValue(forKey: "agentContinuation")
-    let legacy = try JSONDecoder.workbench.decode(
-      AIPublishingChatMessage.self,
-      from: JSONSerialization.data(withJSONObject: legacyObject)
-    )
-    XCTAssertNil(legacy.agentContinuation)
+    XCTAssertEqual(decoded.content, "review")
+    XCTAssertEqual(decoded.toolRuns, [run])
+    XCTAssertFalse(String(decoding: savedAgain, as: UTF8.self).contains("agentContinuation"))
   }
 
   func testToolRunsRoundTripWithChatMessage() throws {

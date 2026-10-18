@@ -70,14 +70,6 @@ extension WorkbenchAIStore {
       store.setAIChatMessage(CoreL10n.text("请先选择一篇文章。"))
       return nil
     }
-    guard
-      !blockChatMutationForDeliveryUncertainty(
-        conversationID: activeAIChatConversationID(for: chatDraft.id)
-      )
-    else {
-      return nil
-    }
-
     let profile = store.profile(for: chatDraft)
     let privacyService = AIOutboundPayloadPrivacyService()
     let config = privacyService.sanitizedProviderConfig(

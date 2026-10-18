@@ -20,10 +20,10 @@ struct DraftRecoveryPanel: View {
     VStack(alignment: .leading, spacing: 16) {
       VStack(alignment: .leading, spacing: 4) {
         Text("发现未保存草稿")
-          .font(.title3.weight(.semibold))
+          .font(.workbenchTitle3.weight(.semibold))
         Text("这些内容来自上次异常结束前的编辑缓冲区。恢复已有草稿时，如果当前内容已经变化，会自动创建恢复副本。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
 
@@ -105,12 +105,12 @@ private struct DraftRecoveryRow: View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(alignment: .firstTextBaseline, spacing: 8) {
         Text(record.title)
-          .font(.headline)
+          .font(.workbenchHeadline)
           .lineLimit(2)
         Spacer(minLength: 8)
         Text(record.capturedAt, style: .relative)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       HStack(spacing: 8) {
@@ -121,8 +121,8 @@ private struct DraftRecoveryRow: View {
             .truncationMode(.middle)
         }
       }
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
 
       HStack {
         Button("恢复") {

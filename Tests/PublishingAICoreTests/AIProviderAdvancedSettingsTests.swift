@@ -4,110 +4,18 @@ import XCTest
 @testable import PublishingAICore
 
 final class AIProviderAdvancedSettingsTests: XCTestCase {
-  func testMissingAgentToolsFieldKeepsLegacyEnabledBehaviour() throws {
+  func testRetiredAgentToolFieldsAreIgnoredAndDroppedOnSave() throws {
     let data = Data(
-      #"{"systemPrompt":"legacy","reasoningPreference":"automatic"}"#.utf8
+      #"{"systemPrompt":"legacy","allowsApplicationTools":false,"agentPermissionPolicy":{"enabledScopes":["localRead"]}}"#
+        .utf8
     )
 
     let settings = try JSONDecoder().decode(AIProviderAdvancedSettings.self, from: data)
+    let encoded = String(decoding: try JSONEncoder().encode(settings), as: UTF8.self)
 
-    XCTAssertNil(settings.allowsApplicationTools)
-    XCTAssertTrue(settings.resolvedAllowsApplicationTools)
-  }
-
-  func testMissingFineGrainedPolicyUsesOnlyMigrationSafeScopes() throws {
-    let settings = try JSONDecoder().decode(
-      AIProviderAdvancedSettings.self,
-      from: Data(#"{"allowsApplicationTools":true}"#.utf8)
-    )
-
-    XCTAssertNil(settings.agentPermissionPolicy)
-    XCTAssertEqual(
-      settings.resolvedAgentPermissionPolicy.enabledScopes,
-      [.localRead, .draftCreation]
-    )
-    XCTAssertFalse(
-      settings.resolvedAgentPermissionPolicy.allows(
-        .networkAccess,
-        masterEnabled: settings.resolvedAllowsApplicationTools
-      )
-    )
-    XCTAssertFalse(
-      settings.resolvedAgentPermissionPolicy.allows(
-        .contentModification,
-        masterEnabled: settings.resolvedAllowsApplicationTools
-      )
-    )
-    XCTAssertFalse(
-      settings.resolvedAgentPermissionPolicy.allows(
-        .repositoryWrite,
-        masterEnabled: settings.resolvedAllowsApplicationTools
-      )
-    )
-    XCTAssertFalse(
-      settings.resolvedAgentPermissionPolicy.allows(
-        .publishing,
-        masterEnabled: settings.resolvedAllowsApplicationTools
-      )
-    )
-  }
-
-  func testMasterSwitchDisablesAllScopesWithoutDiscardingSelections() {
-    let policy = AIAgentPermissionPolicy(
-      enabledScopes: [.localRead, .draftCreation, .networkAccess, .publishing]
-    )
-    let enabled = AIProviderAdvancedSettings(
-      allowsApplicationTools: true,
-      agentPermissionPolicy: policy
-    )
-    let disabled = AIProviderAdvancedSettings(
-      allowsApplicationTools: false,
-      agentPermissionPolicy: policy
-    )
-
-    XCTAssertEqual(disabled.effectiveAgentPermissionPolicy.enabledScopes, [])
-    XCTAssertEqual(
-      enabled.effectiveAgentPermissionPolicy.enabledScopes,
-      policy.enabledScopes
-    )
-  }
-
-  func testPolicyRoundTripsUnknownScopesAndResetKeepsSafeBaseline() throws {
-    let data = Data(
-      #"{"enabledScopes":["localRead","networkAccess","futureScope"]}"#.utf8
-    )
-    let decoded = try JSONDecoder().decode(AIAgentPermissionPolicy.self, from: data)
-
-    XCTAssertEqual(decoded.enabledScopes, [.localRead, .networkAccess])
-    XCTAssertFalse(decoded.isDefault)
-
-    var reset = decoded
-    reset.reset()
-    XCTAssertEqual(reset, .legacySafeDefault)
-    XCTAssertTrue(reset.isDefault)
-
-    let encoded = try JSONEncoder().encode(decoded)
-    let payload = try XCTUnwrap(
-      JSONSerialization.jsonObject(with: encoded) as? [String: Any]
-    )
-    XCTAssertEqual(payload["enabledScopes"] as? [String], ["localRead", "networkAccess"])
-  }
-
-  func testExplicitMigrationSafePolicyDoesNotMakeAdvancedSettingsNonDefault() {
-    let settings = AIProviderAdvancedSettings(
-      agentPermissionPolicy: .legacySafeDefault
-    )
-
-    XCTAssertTrue(settings.isDefault)
-  }
-
-  func testExplicitAgentToolsSettingRoundTripsAndIsNotDefault() throws {
-    let disabled = AIProviderAdvancedSettings(allowsApplicationTools: false)
-    let data = try JSONEncoder().encode(disabled)
-    let decoded = try JSONDecoder().decode(AIProviderAdvancedSettings.self, from: data)
-
-    XCTAssertFalse(decoded.resolvedAllowsApplicationTools)
-    XCTAssertFalse(decoded.isDefault)
+    XCTAssertEqual(settings.normalizedSystemPrompt, "legacy")
+    XCTAssertFalse(encoded.contains("allowsApplicationTools"))
+    XCTAssertFalse(encoded.contains("agentPermissionPolicy"))
   }
 
   func testConnectionOnlyProxyAndFallbackSettingsAreNotDefault() {
@@ -127,15 +35,13 @@ final class AIProviderAdvancedSettingsTests: XCTestCase {
       systemPrompt: "session prompt",
       temperature: 0.4,
       reasoningPreference: .high,
-      allowsApplicationTools: false,
       proxyURL: "socks5://127.0.0.1:1080",
       fallbackProfileID: fallback
     )
 
     // Mirrors the reset action in AIAdvancedSettingsSection: session-only
-    // values are cleared while the connection-level safety choices survive.
+    // values are cleared while the connection-level choices survive.
     let reset = AIProviderAdvancedSettings(
-      allowsApplicationTools: original.allowsApplicationTools,
       proxyURL: original.proxyURL,
       fallbackProfileID: original.fallbackProfileID
     )
@@ -143,7 +49,6 @@ final class AIProviderAdvancedSettingsTests: XCTestCase {
     XCTAssertTrue(reset.normalizedSystemPrompt.isEmpty)
     XCTAssertNil(reset.temperature)
     XCTAssertEqual(reset.reasoningPreference, .automatic)
-    XCTAssertEqual(reset.allowsApplicationTools, false)
     XCTAssertEqual(reset.proxyURL, original.proxyURL)
     XCTAssertEqual(reset.fallbackProfileID, fallback)
   }

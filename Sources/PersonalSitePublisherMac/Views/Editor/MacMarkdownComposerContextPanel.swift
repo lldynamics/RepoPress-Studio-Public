@@ -164,13 +164,13 @@ extension MacMarkdownComposerView {
   ) -> some View {
     VStack(spacing: 8) {
       Image(systemName: systemImage)
-        .font(.title2)
-        .foregroundStyle(.secondary)
+        .font(.workbenchTitle2)
+        .foregroundStyle(.workbenchSecondary)
       Text(title)
-        .font(.callout.weight(.medium))
+        .font(.workbenchBody.weight(.medium))
       Text(message)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .multilineTextAlignment(.center)
     }
     .frame(maxWidth: .infinity, minHeight: 150)

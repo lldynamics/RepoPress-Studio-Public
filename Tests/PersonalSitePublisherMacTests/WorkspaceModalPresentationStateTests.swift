@@ -7,16 +7,16 @@ final class WorkspaceModalPresentationStateTests: XCTestCase {
     var state = WorkspaceModalPresentationState()
 
     state.present(.commandPalette)
-    state.present(.singleArticlePublishConfirmation)
+    state.present(.publish)
 
-    XCTAssertEqual(state.presented, .singleArticlePublishConfirmation)
+    XCTAssertEqual(state.presented, .publish)
   }
 
   func testExpectedDismissDoesNotCloseADifferentModal() {
     var state = WorkspaceModalPresentationState()
     state.present(.commandPalette)
 
-    state.dismiss(.singleArticlePublishConfirmation)
+    state.dismiss(.publish)
     XCTAssertEqual(state.presented, .commandPalette)
 
     state.dismiss(.commandPalette)
@@ -27,8 +27,8 @@ final class WorkspaceModalPresentationStateTests: XCTestCase {
     var state = WorkspaceModalPresentationState()
     state.present(.compactPublishInspector)
     XCTAssertEqual(state.presented, .compactPublishInspector)
-    state.present(.singleArticlePublishConfirmation)
+    state.present(.publish)
     state.dismiss(.compactPublishInspector)
-    XCTAssertEqual(state.presented, .singleArticlePublishConfirmation)
+    XCTAssertEqual(state.presented, .publish)
   }
 }

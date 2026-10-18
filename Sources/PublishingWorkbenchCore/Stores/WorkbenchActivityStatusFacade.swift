@@ -27,14 +27,14 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
     observe(store.repositoryStore.$isRemoteRepositoryChecking)
     observe(store.repositoryStore.$remoteRepositoryPublishProgress)
     observe(store.repositoryStore.$remoteRepositoryPublishResult)
-    observe(store.aiWorkspaceStore.$isAIChatRunning)
-    observe(store.aiWorkspaceStore.$isAIActionRunning)
-    observe(store.aiWorkspaceStore.$isAIMetadataSuggestionRunning)
-    observe(store.aiWorkspaceStore.$isAutomationRunning)
-    observeAIMessage(store.aiWorkspaceStore.$aiChatMessage)
-    observeAIMessage(store.aiWorkspaceStore.$aiActionMessage)
-    observe(store.aiWorkspaceStore.$aiChatMessageIsFailure)
-    observe(store.aiWorkspaceStore.$aiActionMessageIsFailure)
+    observe(store.aiWorkspaceStore.publisher(for: \.isAIChatRunning))
+    observe(store.aiWorkspaceStore.publisher(for: \.isAIActionRunning))
+    observe(store.aiWorkspaceStore.publisher(for: \.isAIMetadataSuggestionRunning))
+    observe(store.aiWorkspaceStore.publisher(for: \.isAutomationRunning))
+    observeAIMessage(store.aiWorkspaceStore.publisher(for: \.aiChatMessage))
+    observeAIMessage(store.aiWorkspaceStore.publisher(for: \.aiActionMessage))
+    observe(store.aiWorkspaceStore.publisher(for: \.aiChatMessageIsFailure))
+    observe(store.aiWorkspaceStore.publisher(for: \.aiActionMessageIsFailure))
     observe(store.aiStore.$aiChatManualRetryState)
     observe(store.aiStore.$aiGeneralChatManualRetryState)
     observe(store.knowledge.$isImporting)
@@ -710,7 +710,7 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
       .store(in: &cancellables)
   }
 
-  private func observeAIMessage(_ publisher: Published<String?>.Publisher) {
+  private func observeAIMessage(_ publisher: some Publisher<String?, Never>) {
     publisher
       .dropFirst()
       .throttle(for: .milliseconds(120), scheduler: RunLoop.main, latest: true)

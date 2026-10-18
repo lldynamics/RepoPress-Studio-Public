@@ -23,7 +23,7 @@ struct InteractiveBreadcrumbView: View {
     } label: {
       Text(verbatim: markdownPath)
         .font(.workbenchMetadata.monospaced())
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .lineLimit(1)
         .truncationMode(.middle)
         .accessibilityElement(children: .ignore)

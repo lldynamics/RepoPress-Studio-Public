@@ -22,7 +22,7 @@ struct KnowledgeAnnotationEditorView: View {
     VStack(spacing: 0) {
       HStack {
         Label(original.note.isEmpty ? "新增资料标注" : "编辑资料标注", systemImage: "highlighter")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
       }
       .padding(WorkbenchSpacing.content)
@@ -31,25 +31,25 @@ struct KnowledgeAnnotationEditorView: View {
       VStack(alignment: .leading, spacing: 14) {
         if let locator = original.locator?.nilIfEmpty {
           Label(locator, systemImage: "scope")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
         VStack(alignment: .leading, spacing: 6) {
           Text("引用文字（可选）")
-            .font(.callout.weight(.medium))
+            .font(.workbenchBody.weight(.medium))
           TextEditor(text: $highlightedText)
             .accessibilityLabel("引用文字（可选）")
             .frame(minHeight: 110)
-            .font(.body)
+            .font(.workbenchBody)
             .overlay(editorBorder)
         }
         VStack(alignment: .leading, spacing: 6) {
           Text("笔记")
-            .font(.callout.weight(.medium))
+            .font(.workbenchBody.weight(.medium))
           TextEditor(text: $note)
             .accessibilityLabel("笔记")
             .frame(minHeight: 180)
-            .font(.body)
+            .font(.workbenchBody)
             .overlay(editorBorder)
         }
       }
@@ -101,7 +101,7 @@ struct KnowledgeDocumentInsightsSection: View {
       if showsHeader {
         HStack {
           Label("标注与反向链接", systemImage: "link.badge.plus")
-            .font(.headline)
+            .font(.workbenchHeadline)
           Spacer()
           Button("添加笔记", action: onAddAnnotation)
             .controlSize(.small)
@@ -110,8 +110,8 @@ struct KnowledgeDocumentInsightsSection: View {
 
       if annotations.isEmpty && backlinkGroups.isEmpty {
         Text("还没有标注或引用记录。添加笔记，或让 AI 把资料引用写入文章后，这里会显示关联。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       ForEach(annotations) { annotation in
@@ -135,22 +135,22 @@ struct KnowledgeDocumentInsightsSection: View {
   private func annotationRow(_ annotation: KnowledgeAnnotation) -> some View {
     HStack(alignment: .top, spacing: 10) {
       Image(systemName: "highlighter")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 4) {
         if let locator = annotation.locator?.nilIfEmpty {
           Text(locator)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.weight(.semibold))
+            .foregroundStyle(.workbenchSecondary)
         }
         if !annotation.highlightedText.isEmpty {
           Text(annotation.highlightedText)
-            .font(.callout)
+            .font(.workbenchBody)
             .lineLimit(3)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
         Text(annotation.note)
-          .font(.body)
+          .font(.workbenchBody)
           .lineLimit(5)
       }
       .accessibilityElement(children: .combine)
@@ -185,16 +185,16 @@ struct KnowledgeDocumentInsightsSection: View {
         ForEach(group.backlinks) { backlink in
           HStack(alignment: .top, spacing: 8) {
             Image(systemName: "text.quote")
-              .font(.caption)
+              .font(.workbenchMetadata)
               .foregroundStyle(.tertiary)
               .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
               Text(backlink.chunkLocator?.nilIfEmpty ?? "正文片段")
-                .font(.caption.weight(.semibold))
+                .font(.workbenchMetadata.weight(.semibold))
               if let excerpt = backlink.chunkExcerpt?.nilIfEmpty {
                 Text(excerpt)
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchMetadata)
+                  .foregroundStyle(.workbenchSecondary)
                   .lineLimit(3)
               }
             }
@@ -214,19 +214,19 @@ struct KnowledgeDocumentInsightsSection: View {
           systemName: group.targetKind == .articleDraft
             ? "doc.text" : "bubble.left.and.text.bubble.right"
         )
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityHidden(true)
         VStack(alignment: .leading, spacing: 3) {
           Text(group.targetTitle)
-            .font(.callout.weight(.medium))
+            .font(.workbenchBody.weight(.medium))
           HStack(spacing: 6) {
             Text(targetKindTitle(group.targetKind))
             if let location = group.targetLocation?.nilIfEmpty { Text("· \(location)") }
             Text("· 引用 \(group.citedChunkIDs.count) 个片段")
             Text("· \(group.createdAt.formatted(date: .abbreviated, time: .shortened))")
           }
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         }
         Spacer()
       }

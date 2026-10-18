@@ -32,21 +32,21 @@ struct AIWritingStyleSection: View {
     Group {
       Section("行内 AI 续写") {
         Text("在编辑器正文中按 Option + 反斜杠主动请求续写；生成后按 Tab 采纳，按 Esc 丢弃。停顿、输入和移动光标都不会自动发送请求。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       Section("个人写作范例") {
         Text("已选择 \(exemplarArticleIDs.wrappedValue.count) / 最多 4 篇")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         Text("只可选择当前站点的公开文章。仅发送所选范例，提炼结果经你确认后保存。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
 
         if eligibleArticles.isEmpty {
           Text("当前站点没有可作为范例的公开正文文章。")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         } else {
           TextField("搜索公开文章", text: $articleQuery)
             .accessibilityLabel("搜索公开文章")
@@ -58,8 +58,8 @@ struct AIWritingStyleSection: View {
                     Text(
                       article.title.trimmedForPublishing.nilIfEmpty ?? String(localized: "未命名文章"))
                     Text("公开 · \(article.wordCount) 字")
-                      .font(.caption)
-                      .foregroundStyle(.secondary)
+                      .font(.workbenchMetadata)
+                      .foregroundStyle(.workbenchSecondary)
                   }
                 }
               }
@@ -79,8 +79,8 @@ struct AIWritingStyleSection: View {
         }
         if let styleMessage {
           Text(styleMessage)
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
             .textSelection(.enabled)
         }
       }
@@ -88,12 +88,12 @@ struct AIWritingStyleSection: View {
       if let preview {
         Section("提炼结果预览") {
           Text("检查并编辑后才会保存到当前站点。")
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
           if preview.sourceWasTruncated {
             Text("范例内容已按安全长度截取。")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
           styleEditors(for: previewStyleBinding)
           HStack {
@@ -120,7 +120,7 @@ struct AIWritingStyleSection: View {
         VStack(alignment: .leading, spacing: 6) {
           Text("场景模板：")
             .font(.workbenchMetadata)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
           ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
               ForEach(AIWritingStylePreset.allCases.filter { $0 != .custom }) { preset in
@@ -128,7 +128,11 @@ struct AIWritingStyleSection: View {
                   presetBinding.wrappedValue = preset
                 } label: {
                   Text(preset.localizedDisplayName)
-                    .font(.caption.weight(presetBinding.wrappedValue == preset ? .bold : .medium))
+                    .font(
+                      .workbenchMetadata.weight(
+                        presetBinding.wrappedValue == preset ? .bold : .medium
+                      )
+                    )
                     .padding(.horizontal, WorkbenchSpacing.control)
                     .padding(.vertical, WorkbenchSpacing.tight)
                     .background(
@@ -167,8 +171,8 @@ struct AIWritingStyleSection: View {
             avoidedExpressionsText: avoidedExpressionsText
           )
           Text("这些规则和术语只会随当前站点进入 AI 聊天、元数据建议、发布检查、选区编辑和图片文案建议。")
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
     }
@@ -226,7 +230,7 @@ struct AIWritingStyleSection: View {
     VStack(alignment: .leading, spacing: 6) {
       Text(String(localized: "常用语气预设："))
         .font(.workbenchMetadata)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       HStack(spacing: 6) {
         ForEach(
           [
@@ -241,7 +245,7 @@ struct AIWritingStyleSection: View {
       }
       Text(String(localized: "常用读者预设："))
         .font(.workbenchMetadata)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       HStack(spacing: 6) {
         ForEach(
           [

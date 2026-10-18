@@ -39,7 +39,7 @@ extension PublishingStore {
   var generalDraftPublishingIssue: PreflightIssue {
     PreflightIssue(
       severity: .error,
-      title: CoreL10n.text("通用草稿不能直接发布"),
+      title: CoreL10n.text("仅本地草稿不能直接发布"),
       message: CoreL10n.text("请先将它复制到目标站点，再执行写入、提交或线上发布。"),
       field: "scope"
     )

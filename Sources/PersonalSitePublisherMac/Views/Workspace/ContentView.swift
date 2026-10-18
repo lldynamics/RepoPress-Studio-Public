@@ -40,12 +40,9 @@ struct ContentView: View {
   @State private var firstRunHandoffProfile: SiteProfile?
   @State private var commandPaletteArticleRequest: DraftFullTextSearchRequest?
   @State private var deferredFullTextSearchRequest: DraftFullTextSearchRequest?
-  @State var publishRequestGeneration = 0
   @State var deferredPublishIssue = WorkspaceDeferredPublishIssueState()
   @StateObject private var healthInspectorActions = ContentHealthInspectorActions()
-  @State var publishDrawerInitialScope: PublishScope = .repository
-  @State var directPublishCompletedRecordID: UUID?
-  @StateObject private var articlePublishSession = WorkspaceArticlePublishSession()
+  @StateObject var publishSession = WorkspacePublishSession()
   @State private var publishReadinessNavigationRequest: PublishReadinessNavigationRequest?
   @State private var readinessInspectorSheet: PublishReadinessNavigationRequest?
   @State private var articlePublishRepairSession: ArticlePublishRepairSession?
@@ -68,7 +65,6 @@ struct ContentView: View {
   @State private var repositoryContextStage: RepositoryContextStage = .overview
   @State private var repositoryChangedFileSelection: RepositoryChangedFileSelection?
   @State private var knowledgeInspectorPresentation = KnowledgeLibraryInspectorPresentationState()
-  @StateObject private var repositorySourceSession: RepositoryHTMLSourceSession
   @State private var localSitePreviewState: WorkbenchLocalSitePreviewFeatureFacade
   @StateObject private var externalBrowserPreviewCoordinator: ExternalBrowserPreviewCoordinator
   @StateObject private var repositoryContentChangeMonitor: RepositoryContentChangeMonitorCoordinator
@@ -108,7 +104,6 @@ struct ContentView: View {
     self.store = store
     self.rssStore = rssStore
     _rootPresentation = ObservedObject(wrappedValue: store.rootPresentation)
-    _repositorySourceSession = StateObject(wrappedValue: RepositoryHTMLSourceSession())
     _localSitePreviewState = State(
       initialValue: WorkbenchLocalSitePreviewFeatureFacade(store: store)
     )
@@ -151,25 +146,22 @@ struct ContentView: View {
           isInspectorVisible: isInspectorVisible
         )
 
-        if articlePublishSession.isPreparing || articlePublishSession.isPublishing {
-          Label(
-            articlePublishSession.isPreparing ? "正在准备当前文章确认…" : "正在发布当前文章…",
-            systemImage: "paperplane"
-          )
-          .font(.callout.weight(.medium))
-          .padding(WorkbenchSpacing.card)
-          .background(
-            .regularMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel)
-          )
-          .padding(.bottom, WorkbenchSpacing.page)
-          .zIndex(3)
-          .accessibilityIdentifier("current-article-publish-progress")
+        if let progressTitle = publishSession.progressTitle, !publishSession.presentsSheet {
+          Label(progressTitle, systemImage: "paperplane")
+            .font(.workbenchBody.weight(.medium))
+            .padding(WorkbenchSpacing.card)
+            .background(
+              .regularMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.panel)
+            )
+            .padding(.bottom, WorkbenchSpacing.page)
+            .zIndex(3)
+            .accessibilityIdentifier("publish-progress")
         }
 
         if let repairSession = articlePublishRepairSession {
           ArticlePublishRepairBar(
             session: repairSession,
-            isReturningToPublishChecks: articlePublishSession.isRefreshingChecks,
+            isReturningToPublishChecks: publishSession.isRefreshingChecks,
             returnToPublishChecks: { returnToPublishChecks(from: repairSession) },
             endRepair: { endArticlePublishRepair(repairSession) }
           )
@@ -202,8 +194,8 @@ struct ContentView: View {
         }
       }
       .environment(
-        \.publishDrawerCommandAction,
-        publishDrawerCommandAction
+        \.publishCommandAction,
+        publishCommandAction
       )
       .environment(
         \.localSitePreviewCommandAction,
@@ -238,7 +230,6 @@ struct ContentView: View {
         externalBrowserPreviewCoordinator.cancelPendingOpen(ifDraftIsNoLongerCurrent: draftID)
       }
       .background(MainWindowInitialSizeBridge())
-      .background(WorkspaceArticlePublishWindowBridge(session: articlePublishSession))
   }
 
   private var workspaceLifecycleContent: some View {
@@ -270,8 +261,12 @@ struct ContentView: View {
 
   private var workspaceStateSynchronizationContent: some View {
     workspaceWindowLifecycleContent
-      .onChange(of: articlePublishSession.pendingReview?.id) { _, reviewID in
-        if reviewID == nil { modalPresentation.dismiss(.singleArticlePublishConfirmation) }
+      .onChange(of: publishSession.presentsSheet) { _, presentsSheet in
+        if presentsSheet {
+          modalPresentation.present(.publish)
+        } else {
+          modalPresentation.dismiss(.publish)
+        }
       }
       .onReceive(store.publishing.activeProfileChanges.removeDuplicates().dropFirst()) { _ in
         resetProfileScopedWindowState()
@@ -331,7 +326,7 @@ struct ContentView: View {
         restoreWindowSessionStorageIfNeeded()
         registerWindowTitle()
         synchronizeWindowSessionActivity()
-        articlePublishSession.observeWindow(
+        publishSession.observeWindow(
           windowSession, profileChanges: store.publishing.activeProfileChanges)
         configureRepositoryContentChangeMonitor()
         configureOperationalPolling()
@@ -383,7 +378,7 @@ struct ContentView: View {
     repositoryContentChangeMonitor.stop(clientID: repositoryContentMonitorClientID)
     store.stopOperationalPolling(clientID: operationalPollingClientID)
     externalBrowserPreviewCoordinator.cancelPendingOpen()
-    articlePublishSession.cancel()
+    publishSession.cancel()
     sceneCommandRouter.clearAll()
 
     let cancelChatReply: (UUID) -> Void = { ownerToken in
@@ -461,7 +456,6 @@ struct ContentView: View {
       repositoryContextStage: $repositoryContextStage,
       repositoryChangedFileSelection: $repositoryChangedFileSelection,
       knowledgeInspectorPresentation: $knowledgeInspectorPresentation,
-      repositorySourceSession: repositorySourceSession,
       rssStore: rssStore,
       rssPresentation: rssPresentation,
       onSelectSection: selectWorkspaceSection,
@@ -482,10 +476,6 @@ struct ContentView: View {
         windowSession: windowSession,
         selectedHealthIssue: windowSession.selectedContentHealthIssue,
         healthInspectorActions: healthInspectorActions,
-        publishScope: publishDrawerInitialScope,
-        publishRequestGeneration: publishRequestGeneration,
-        completedReleaseRecordID: directPublishCompletedRecordID,
-        isPresented: inspectorPresentation,
         onNavigatePublishIssue: navigateToPublishIssue,
         onRequestAIFix: requestPublishAIFix,
         repositoryChangedFileSelection: $repositoryChangedFileSelection,
@@ -554,14 +544,15 @@ struct ContentView: View {
       isSidebarPresented: isWorkspaceSidebarVisible,
       isInspectorPresented: inspectorPresentation.wrappedValue,
       canToggleInspector: supportsInspector && canRequestInspectorInCurrentLayout,
-      publishableArticleID: publishableArticleID
+      publishableArticleID: publishableArticleID,
+      isPublishBusy: publishSession.isBusy, isWindowKey: controlActiveState == .key
     )
   }
 
   private func updateSceneCommandRouterRootActions() {
     let commandRouter = sceneCommandRouter
     sceneCommandRouter.updateRoot(
-      publishDrawerCommandAction: publishDrawerCommandAction,
+      publishCommandAction: publishCommandAction,
       localSitePreviewCommandAction: LocalSitePreviewCommandAction {
         openLocalSitePreview()
       },
@@ -677,28 +668,8 @@ struct ContentView: View {
     switch presentation {
     case .compactPublishInspector:
       compactPublishSheetContent
-    case .singleArticlePublishConfirmation:
-      if let review = articlePublishSession.pendingReview {
-        let presentation = PublishDrawerSingleArticleActionPresentation.make(
-          isWebsiteDraft: review.draft.draft
-        )
-        RemotePublishConfirmationView(
-          targetLabel: review.draft.draft ? String(localized: "网站草稿") : String(localized: "文章"),
-          targetTitle: review.draft.title,
-          purpose: presentation.confirmationPurpose,
-          preview: review.preview,
-          reviewDraft: review.reviewDraft,
-          isPublishing: articlePublishSession.isPublishing || store.isRemoteRepositoryPublishing,
-          cancelAction: {
-            articlePublishSession.pendingReview = nil
-            modalPresentation.dismiss(.singleArticlePublishConfirmation)
-          },
-          confirmAction: {
-            publishDirectCurrentArticle(review)
-            modalPresentation.dismiss(.singleArticlePublishConfirmation)
-          }
-        )
-      }
+    case .publish:
+      publishSheetContent
     case .firstRunSetup:
       if let profile = firstRunHandoffProfile {
         FirstRunRepositoryHandoffView(
@@ -1014,7 +985,9 @@ struct ContentView: View {
         WorkspacePreparePublishToolbarButton(
           store: store,
           windowSession: windowSession,
-          action: togglePublishDrawer
+          commandAction: publishCommandAction,
+          showChecksAction: { openPublishChecks() },
+          action: publishFromToolbar
         )
       }
     }
@@ -1063,6 +1036,9 @@ struct ContentView: View {
   }
 
   private func handleWorkspaceSheetDismissal() {
+    if modalPresentation.presented != .publish {
+      publishSession.sheetDidDismiss(store: store)
+    }
     firstRunHandoffProfile = nil
     deferredPaletteAIRequest.sheetDidDismiss()
     deferredPublishIssue.sheetDidDismiss()
@@ -1156,7 +1132,7 @@ struct ContentView: View {
     selectWorkspaceSection(.contentHealth)
   }
 
-  private func openReleaseHistorySubpage() {
+  func openReleaseHistorySubpage() {
     repositoryContextStage = .history
     selectWorkspaceSection(.sync)
   }
@@ -1177,7 +1153,6 @@ struct ContentView: View {
       case .some(.syncAPIPublish):
         windowSession.inspectorTab = .publish
         windowSession.revealsInspectorInCompactWorkspace = true
-        publishDrawerInitialScope = .currentArticle
         store.setInspectorPresented(true)
       case .some(.writing):
         windowSession.revealsInspectorInCompactWorkspace = true
@@ -1224,7 +1199,7 @@ struct ContentView: View {
       guard store.draft(for: draftID) != nil else { return }
       focusWindowDraft(draftID, section: .writing)
     case .publishCurrentArticle:
-      guard publishDrawerCommandAction.canPrepareCurrentArticle else {
+      guard publishCommandAction.canPublishCurrentArticle else {
         let alert = NSAlert()
         alert.messageText = String(localized: "请先选择要发布的文章")
         alert.informativeText = String(localized: "在写作页选择文章后，再运行发布当前文章快捷指令。")
@@ -1232,7 +1207,7 @@ struct ContentView: View {
         alert.runModal()
         return
       }
-      publishDrawerCommandAction.openCurrentArticle()
+      publishCommandAction.publishCurrentArticle()
     }
   }
 
@@ -1277,91 +1252,58 @@ struct ContentView: View {
     }
   }
 
-  private func togglePublishDrawer() {
-    openPublishDrawer(
-      message: nil,
-      preferredScope: windowSession.selectedSection == .writing
-        && windowSession.selectedDraftID != nil ? .currentArticle : .repository
-    )
+  /// The primary action always retains article scope. Site-wide publication
+  /// is an explicit menu or site-workspace action.
+  private func publishFromToolbar() {
+    if let draftID = publishableArticleID {
+      publishArticle(draftID)
+    }
   }
 
   private var publishableArticleID: UUID? {
     guard windowSession.selectedSection == .writing,
-      !articlePublishSession.isPreparing, !articlePublishSession.isPublishing,
       let draftID = windowSession.selectedDraftID,
-      store.draft(for: draftID) != nil
+      let draft = store.draft(for: draftID),
+      !draft.isGeneralDraft,
+      draft.belongs(toSiteProfileID: store.activeProfileID)
     else { return nil }
     return draftID
   }
 
-  private var publishDrawerCommandAction: PublishDrawerCommandAction {
+  private var publishCommandAction: PublishCommandAction {
     let draftID = publishableArticleID
-    return PublishDrawerCommandAction(
-      currentArticleID: draftID,
-      prepareCurrentArticle: {
-        guard let draftID, publishableArticleID == draftID else { return }
-        prepareCurrentArticlePublishOrOpenDrawer()
-      },
-      open: { message in
-        openPublishDrawer(message: message, preferredScope: .repository)
-      }
-    )
-  }
-
-  private func prepareCurrentArticlePublishOrOpenDrawer() {
-    guard windowSession.selectedSection == .writing,
-      let draftID = windowSession.selectedDraftID,
-      store.draft(for: draftID) != nil
-    else {
-      openPublishDrawer(message: nil)
-      return
+    var publishCurrent: (@MainActor @Sendable () -> Void)?
+    if let draftID {
+      publishCurrent = { publishArticle(draftID) }
     }
-    guard !articlePublishSession.isPreparing, !articlePublishSession.isPublishing else { return }
+    return PublishCommandAction(
+      currentArticleID: draftID,
+      isBusy: publishSession.isBusy,
+      publishArticle: publishCurrent,
+      publishAll: { publishAllChanges() }
+    )
+  }
+
+  private func publishArticle(_ draftID: UUID) {
+    guard publishableArticleID == draftID, activateCurrentWindowSharedContext() else { return }
+    startPublish(.article(draftID))
+  }
+
+  private func publishAllChanges() {
     guard activateCurrentWindowSharedContext() else { return }
-    guard let context = currentArticlePublishContext else { return }
-    articlePublishSession.prepare(
-      context: context, store: store,
-      currentContext: { currentArticlePublishContext },
-      onResult: { result in
-        switch result {
-        case .confirmation:
-          modalPresentation.present(.singleArticlePublishConfirmation)
-        case .drawer:
-          openPublishDrawer(
-            message: nil, preferredScope: .currentArticle, preservingPublishFeedback: true
-          )
-        }
-      }
-    )
+    startPublish(.all)
   }
 
-  private var currentArticlePublishContext: WorkspaceArticlePublishSession.Context? {
-    articlePublishSession.context(window: windowSession, store: store, requiresWriting: true)
+  private func startPublish(_ target: WorkspacePublishSession.Target) {
+    clearArticlePublishRepair()
+    let currentContext: @MainActor () -> WorkspacePublishSession.Context? = {
+      publishSession.context(window: windowSession, store: store, target: target)
+    }
+    guard let context = currentContext() else { return }
+    publishSession.prepare(target, context: context, store: store, currentContext: currentContext)
   }
 
-  private var currentWindowPublishContext: WorkspaceArticlePublishSession.Context? {
-    articlePublishSession.context(window: windowSession, store: store, requiresWriting: false)
-  }
-
-  private func publishDirectCurrentArticle(_ review: SinglePublishReviewSnapshot) {
-    guard let context = currentArticlePublishContext else { return }
-    articlePublishSession.publish(
-      context: context, review: review, store: store,
-      currentContext: { currentArticlePublishContext },
-      onResult: { published in
-        openPublishDrawer(
-          message: nil, preferredScope: .currentArticle,
-          completedRecordID: published?.recordID, preservingPublishFeedback: true
-        )
-      }
-    )
-  }
-
-  func navigateToPublishIssue(
-    draftID: UUID,
-    target: PublishReadinessTarget,
-    publishScope: PublishScope
-  ) {
+  func navigateToPublishIssue(draftID: UUID, target: PublishReadinessTarget) {
     guard store.draft(for: draftID) != nil else { return }
     isFocusMode = false
     let route = ArticlePublishRepairRoutePolicy.route(for: target)
@@ -1374,11 +1316,7 @@ struct ContentView: View {
 
     case .article(let articleTarget):
       focusWindowDraft(draftID, section: route.workspaceSection)
-      let repairSession = ArticlePublishRepairSession(
-        draftID: draftID,
-        target: articleTarget,
-        publishScope: publishScope
-      )
+      let repairSession = ArticlePublishRepairSession(draftID: draftID, target: articleTarget)
       articlePublishRepairSession = repairSession
       let request = PublishReadinessNavigationRequest(draftID: draftID, target: articleTarget)
       publishReadinessNavigationRequest = request
@@ -1413,7 +1351,7 @@ struct ContentView: View {
 
   private func returnToPublishChecks(from repairSession: ArticlePublishRepairSession) {
     guard articlePublishRepairSession?.id == repairSession.id,
-      !articlePublishSession.isRefreshingChecks
+      !publishSession.isRefreshingChecks
     else {
       return
     }
@@ -1425,11 +1363,15 @@ struct ContentView: View {
       return
     }
 
-    guard let context = currentWindowPublishContext else { return }
-    articlePublishSession.refreshChecks(
+    let currentContext: @MainActor () -> WorkspacePublishSession.Context? = {
+      publishSession.context(
+        window: windowSession, store: store, target: .article(repairSession.draftID))
+    }
+    guard let context = currentContext() else { return }
+    publishSession.refreshChecks(
       context: context,
       repairID: repairSession.id,
-      currentContext: { currentWindowPublishContext },
+      currentContext: currentContext,
       currentRepairID: { articlePublishRepairSession?.id },
       operation: {
         store.runPreflight()
@@ -1438,10 +1380,7 @@ struct ContentView: View {
       onResult: {
         // The drawer clears repair state only after accepting this window's
         // context. The session rejects results after owner/context changes.
-        openPublishDrawer(
-          message: String(localized: "发布预览已刷新，请重新审阅后再发布。"),
-          preferredScope: repairSession.publishScope
-        )
+        openPublishChecks(message: String(localized: "发布检查已刷新。"))
       }
     )
   }
@@ -1459,7 +1398,7 @@ struct ContentView: View {
 
   func clearArticlePublishRepair() {
     articlePublishRepairSession = nil
-    articlePublishSession.cancelRepairRefresh()
+    publishSession.cancelRepairRefresh()
     publishReadinessNavigationRequest = nil
     readinessInspectorSheet = nil
   }

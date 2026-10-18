@@ -78,7 +78,7 @@ extension LocalPublishPreviewService {
   }
 
   /// rename with NOREPLACE semantics closes the existence-check/write gap.
-  private func moveRecoveryFileExclusively(from source: URL, to destination: URL) throws {
+  func moveRecoveryFileExclusively(from source: URL, to destination: URL) throws {
     #if canImport(Darwin)
       let result = source.path.withCString { sourcePath in
         destination.path.withCString { destinationPath in

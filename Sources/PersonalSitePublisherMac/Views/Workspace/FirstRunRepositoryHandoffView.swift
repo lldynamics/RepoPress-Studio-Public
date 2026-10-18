@@ -21,20 +21,20 @@ struct FirstRunRepositoryHandoffView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {
       Label("开始写作", systemImage: "square.and.pencil")
-        .font(.title2.weight(.semibold))
+        .font(.workbenchTitle2.weight(.semibold))
 
       switch state {
       case .preparing:
         ProgressView(String(localized: "正在读取站点并整理文章…"))
           .accessibilityIdentifier("first-run-writing-preparing")
         Text("设置已保存。整理完成后，你可以选择打开文章或新建文章。")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       case .ready(let insertedCount, let availableCount, let latestDraftID, let hasWarnings):
         Text("本次加入 \(insertedCount) 篇文章，当前站点共有 \(availableCount) 篇可用文章。")
           .accessibilityIdentifier("first-run-writing-summary")
         if hasWarnings {
           Text("部分文件未能导入，可在站点检查中查看详情；已加入的文章可以继续编辑。")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
         HStack {
           if let latestDraftID {

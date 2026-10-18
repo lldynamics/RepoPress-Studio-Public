@@ -87,13 +87,22 @@ public struct RepositoryWorktreePushRetryService: Sendable {
     guard pushOriginBeforePush == snapshot.pushOriginURL else {
       throw RepositoryWorktreePublishError.snapshotDrift
     }
+    // Uncommitted local edits may exist and are never pushed, but a hook must
+    // not change them while the reviewed commits are on their way out.
+    let worktreeBeforeHooks = try output(
+      ["status", "--porcelain=v1", "-z", "--untracked-files=all"], root: rootURL,
+      preserveWhitespace: true)
     do {
       try RepositoryWorktreeGitExecutionPolicyService(git: git).prePush(
         policy: confirmation.executionPolicy, branch: snapshot.branch, root: rootURL,
         commitSHA: snapshot.localHeadSHA, remoteSHA: snapshot.remoteBranchSHA,
         origin: pushOriginBeforePush
       ) {
-        guard try inspect(profile: profile) == snapshot else {
+        guard try inspect(profile: profile) == snapshot,
+          try output(
+            ["status", "--porcelain=v1", "-z", "--untracked-files=all"], root: rootURL,
+            preserveWhitespace: true) == worktreeBeforeHooks
+        else {
           throw RepositoryGitExecutionPolicyError.reviewedContentChanged
         }
       }
@@ -179,18 +188,10 @@ public struct RepositoryWorktreePushRetryService: Sendable {
       root: root,
       preserveWhitespace: true
     ).split(separator: "\0").map(String.init).sorted()
+    // Only reviewed commits are pushed. Unstaged edits and untracked files
+    // stay local, which a scoped single-article publish routinely leaves.
     guard stagedPaths.isEmpty else {
       throw RepositoryWorktreePublishError.dirtyIndex(stagedPaths)
-    }
-    let worktreeStatus = try output(
-      ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
-      root: root,
-      preserveWhitespace: true
-    )
-    guard worktreeStatus.isEmpty else {
-      throw RepositoryWorktreePublishError.invalidRepository(
-        "已有新的未提交文件变更；请先单独审阅，再重试推送已有提交。"
-      )
     }
 
     let localHeadSHA = try output(["rev-parse", "--verify", "HEAD"], root: root)
@@ -452,7 +453,7 @@ public struct RepositoryWorktreePushRetryService: Sendable {
     )
   }
 
-  private func requiredRemoteSHA(branch: String, root: URL) throws -> String {
+  func requiredRemoteSHA(branch: String, root: URL) throws -> String {
     let text = try output(
       ["ls-remote", "--heads", "origin", "refs/heads/\(branch)"],
       root: root
@@ -465,7 +466,7 @@ public struct RepositoryWorktreePushRetryService: Sendable {
     return sha
   }
 
-  private func validatedOrigin(
+  func validatedOrigin(
     _ rawOrigin: String,
     profile: SiteProfile,
     root: URL
@@ -502,7 +503,7 @@ public struct RepositoryWorktreePushRetryService: Sendable {
     return localURL.path
   }
 
-  private func validatedPushOrigin(profile: SiteProfile, root: URL) throws -> String {
+  func validatedPushOrigin(profile: SiteProfile, root: URL) throws -> String {
     let raw = try output(
       ["remote", "get-url", "--push", "--all", "origin"],
       root: root,
@@ -532,7 +533,7 @@ public struct RepositoryWorktreePushRetryService: Sendable {
     return URL(fileURLWithPath: value, relativeTo: root).standardizedFileURL
   }
 
-  private func validateRelativePath(_ path: String) throws {
+  func validateRelativePath(_ path: String) throws {
     guard !path.isEmpty,
       path == path.normalizedRelativePath(),
       !path.hasPrefix("/"),

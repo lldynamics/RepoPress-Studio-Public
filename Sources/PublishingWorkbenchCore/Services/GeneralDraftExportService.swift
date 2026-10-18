@@ -6,7 +6,7 @@ public enum GeneralDraftExportError: LocalizedError, Equatable {
   public var errorDescription: String? {
     switch self {
     case .requiresGeneralDraft:
-      return CoreL10n.text("只有通用草稿可以从软件资料库导出。")
+      return CoreL10n.text("只有仅本地草稿可以从软件资料库导出。")
     }
   }
 }

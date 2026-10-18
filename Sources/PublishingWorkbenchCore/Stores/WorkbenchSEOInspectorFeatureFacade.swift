@@ -11,8 +11,8 @@ public final class WorkbenchSEOInspectorFeatureFacade: ObservableObject {
 
   public init(store: WorkbenchStore) {
     self.store = store
-    observe(store.aiWorkspaceStore.$seoSocialPreviewSnapshots)
-    observe(store.aiWorkspaceStore.$seoSocialPreviewMessage)
+    observe(store.aiWorkspaceStore.publisher(for: \.seoSocialPreviewSnapshots))
+    observe(store.aiWorkspaceStore.publisher(for: \.seoSocialPreviewMessage))
     observe(store.siteMaintenanceStore.$snapshotVersion)
     observe(store.publishingStore.$profiles)
   }

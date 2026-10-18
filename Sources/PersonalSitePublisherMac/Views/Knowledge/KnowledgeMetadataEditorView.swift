@@ -31,7 +31,7 @@ struct KnowledgeMetadataEditorView: View {
     VStack(spacing: 0) {
       HStack {
         Label("编辑资料元数据", systemImage: "pencil.and.list.clipboard")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
       }
       .padding(WorkbenchSpacing.content)
@@ -55,7 +55,7 @@ struct KnowledgeMetadataEditorView: View {
         VStack(alignment: .leading, spacing: 6) {
           Text("摘要")
           TextEditor(text: $summary)
-            .font(.body)
+            .font(.workbenchBody)
             .accessibilityLabel("摘要")
             .frame(minHeight: 140)
             .overlay {

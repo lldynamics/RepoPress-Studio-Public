@@ -286,7 +286,7 @@ final class ContentHealthActionQueueTests: XCTestCase {
 
 final class ContentHealthIssueListTests: XCTestCase {
   func testCountCardsToggleAndReplaceEachOther() {
-    for card in [ContentHealthCountFilter.errors, .warnings, .maintenance] {
+    for card in [ContentHealthCountFilter.errors, .warnings, .optimizations, .maintenance] {
       let selected = card.toggled(severity: .all, source: .all)
       XCTAssertTrue(card.isSelected(severity: selected.severity, source: selected.source))
       let cancelled = card.toggled(severity: selected.severity, source: selected.source)

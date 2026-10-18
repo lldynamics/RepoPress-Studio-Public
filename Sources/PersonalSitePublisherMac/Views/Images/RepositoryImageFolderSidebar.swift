@@ -45,7 +45,7 @@ struct RepositoryImageFolderSidebar: View {
   private var searchField: some View {
     HStack(spacing: 7) {
       Image(systemName: "magnifyingglass")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityHidden(true)
       TextField(String(localized: "搜索文件夹"), text: $query)
         .textFieldStyle(.plain)
@@ -58,7 +58,7 @@ struct RepositoryImageFolderSidebar: View {
           Image(systemName: "xmark.circle.fill")
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityLabel(String(localized: "清除文件夹搜索"))
       }
     }
@@ -90,14 +90,14 @@ struct RepositoryImageFolderSidebar: View {
         }
       } else if let errorMessage {
         Label(errorMessage, systemImage: "exclamationmark.triangle")
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(WorkbenchTheme.warning)
           .padding(.vertical, WorkbenchSpacing.tight)
           .accessibilityLabel(errorMessage)
       } else {
         Text(String(localized: "暂无图片目录"))
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .padding(.vertical, WorkbenchSpacing.tight)
       }
     }
@@ -125,7 +125,7 @@ struct RepositoryImageFolderSidebar: View {
           toggleExpansion(for: node.repositoryPath)
         } label: {
           Image(systemName: isExpanded(node) ? "chevron.down" : "chevron.right")
-            .font(.caption.weight(.semibold))
+            .font(.workbenchMetadata.weight(.semibold))
             .frame(width: 18, height: 24)
             .contentShape(Rectangle())
         }
@@ -145,14 +145,14 @@ struct RepositoryImageFolderSidebar: View {
         } label: {
           HStack(spacing: 7) {
             Image(systemName: "folder")
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
               .accessibilityHidden(true)
             Text(node.name)
               .lineLimit(1)
             Spacer(minLength: 4)
             Text(countLabel(node.recursiveImageCount))
-              .font(.caption.monospacedDigit())
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata.monospacedDigit())
+              .foregroundStyle(.workbenchSecondary)
           }
           .frame(minHeight: 28, alignment: .leading)
           .contentShape(Rectangle())

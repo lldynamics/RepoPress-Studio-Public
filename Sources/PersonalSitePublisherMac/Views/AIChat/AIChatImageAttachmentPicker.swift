@@ -28,11 +28,11 @@ struct AIChatImageAttachmentPicker: View {
     .popover(isPresented: $isPresented, arrowEdge: .bottom) {
       VStack(alignment: .leading, spacing: 10) {
         Text("添加图片")
-          .font(.headline)
+          .font(.workbenchHeadline)
 
         if attachments.isEmpty {
           Text("当前文章没有可发送的图片")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         } else {
           ScrollView {
             VStack(alignment: .leading, spacing: 8) {
@@ -50,8 +50,8 @@ struct AIChatImageAttachmentPicker: View {
                     Text(attachment.originalFilename)
                     if let knownFailureReason {
                       Text(knownFailureReason)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.workbenchMetadata)
+                        .foregroundStyle(.workbenchSecondary)
                     }
                   }
                 }

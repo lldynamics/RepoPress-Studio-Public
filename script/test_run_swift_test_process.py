@@ -4,9 +4,24 @@
 from __future__ import annotations
 
 import re
+import json
+import os
+import sys
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
-from script.run_swift_test_process import build_shards, parse_inventory
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from script.run_swift_test_process import (
+    ProcessResult,
+    SwiftTestCachePolicyError,
+    build_shards,
+    ensure_swift_test_cache_workspace,
+    parse_inventory,
+    run_all,
+)
 
 
 class InventoryPatternTests(unittest.TestCase):
@@ -115,6 +130,154 @@ class RepositoryPartitionTests(unittest.TestCase):
             "CoreMemoryTests": 5,
         })
         self.assertEqual(build_shards(list(reversed(tests)), [self.target]), shards)
+
+
+class SwiftTestCacheWorkspaceTests(unittest.TestCase):
+    def make_cache(self, root: Path, recorded_root: str | None = None) -> Path:
+        cache = root / ".build" / "swift-test-shards"
+        cache.mkdir(parents=True)
+        if recorded_root is not None:
+            (cache / "workspace-provenance.json").write_text(
+                json.dumps({"schemaVersion": 1, "workspaceRoot": recorded_root}) + "\n",
+                encoding="utf-8",
+            )
+        (cache / "old.log").write_text("legacy", encoding="utf-8")
+        return cache
+
+    def test_same_workspace_retains_cache_and_refreshes_marker_atomically(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cache = self.make_cache(root, str(root.resolve()))
+            ensure_swift_test_cache_workspace(root, cache)
+            self.assertTrue((cache / "old.log").exists())
+            marker = (cache / "workspace-provenance.json").read_text(encoding="utf-8")
+            self.assertIn(str(root.resolve()), marker)
+
+    def test_changed_workspace_is_cleaned_by_allow_list_manager(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cache = self.make_cache(root, "/previous/checkout")
+            ensure_swift_test_cache_workspace(root, cache)
+            self.assertFalse((cache / "old.log").exists())
+            self.assertTrue((cache / "workspace-provenance.json").exists())
+
+    def test_legacy_cache_is_migrated_by_removing_before_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cache = self.make_cache(root)
+            (cache / "SwiftShims").mkdir()
+            (cache / "SwiftShims" / "absolute-path.txt").write_text(
+                "/old/checkout", encoding="utf-8"
+            )
+            ensure_swift_test_cache_workspace(root, cache)
+            self.assertFalse((cache / "SwiftShims").exists())
+            self.assertTrue((cache / "workspace-provenance.json").exists())
+
+    def test_symlink_cache_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            outside = root / "outside"
+            outside.mkdir()
+            cache = root / ".build" / "swift-test-shards"
+            cache.parent.mkdir()
+            cache.symlink_to(outside, target_is_directory=True)
+            with self.assertRaises(SwiftTestCachePolicyError):
+                ensure_swift_test_cache_workspace(root, cache)
+            self.assertFalse((outside / "workspace-provenance.json").exists())
+
+    def test_symlink_build_root_fails_closed_even_without_cache(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            outside = root / "outside"
+            outside.mkdir()
+            (root / ".build").symlink_to(outside, target_is_directory=True)
+            with self.assertRaises(SwiftTestCachePolicyError):
+                ensure_swift_test_cache_workspace(
+                    root, root / ".build" / "swift-test-shards"
+                )
+
+    def test_cleanup_failure_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cache = self.make_cache(root, "/previous/checkout")
+            failed = mock.Mock(returncode=1, stderr="refusing cleanup", stdout="")
+            with mock.patch("script.run_swift_test_process.subprocess.run", return_value=failed):
+                with self.assertRaisesRegex(SwiftTestCachePolicyError, "cleanup failed"):
+                    ensure_swift_test_cache_workspace(root, cache)
+            self.assertTrue((cache / "old.log").exists())
+            self.assertIn("/previous/checkout", (cache / "workspace-provenance.json").read_text(encoding="utf-8"))
+
+    def test_malformed_marker_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cache = self.make_cache(root)
+            (cache / "workspace-provenance.json").write_text("{}", encoding="utf-8")
+            with self.assertRaisesRegex(SwiftTestCachePolicyError, "provenance marker"):
+                ensure_swift_test_cache_workspace(root, cache)
+
+    def test_run_all_cleans_stale_cache_before_swift_environment_and_preserves_external_cache(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            package = root / "Package.swift"
+            package.write_text(
+                'let package = Package(name: "Fixture", targets: '
+                '[.testTarget(name: "PersonalSitePublisherMacTests")])\n',
+                encoding="utf-8",
+            )
+            (root / "script").mkdir()
+            (root / "script" / "quality_baselines.json").write_text(
+                '{"swiftTestMinimumCountsByTarget":{"PersonalSitePublisherMacTests":1}}',
+                encoding="utf-8",
+            )
+            cache = root / ".build" / "swift-test-shards"
+            cache.mkdir(parents=True)
+            (cache / "workspace-provenance.json").write_text(
+                json.dumps({"schemaVersion": 1, "workspaceRoot": "/old/checkout"}),
+                encoding="utf-8",
+            )
+            (cache / "stale.log").write_text("stale", encoding="utf-8")
+            external = root / "external-cache"
+            external.mkdir()
+            (external / "sentinel").write_text("keep", encoding="utf-8")
+            inventory = "PersonalSitePublisherMacTests.Suite/testCase\n"
+            calls: list[list[str]] = []
+            preflight_state: list[tuple[bool, bool]] = []
+
+            def fake_child(command: list[str], **_kwargs: object) -> ProcessResult:
+                calls.append(command)
+                preflight_state.append(
+                    ((cache / "stale.log").exists(), (cache / "workspace-provenance.json").exists())
+                )
+                log_path = _kwargs.get("log_path")
+                if isinstance(log_path, Path):
+                    log_path.parent.mkdir(parents=True, exist_ok=True)
+                    log_path.write_text(
+                        "Executed 1 test, with 0 failures (0 unexpected)\n",
+                        encoding="utf-8",
+                    )
+                if command[-1] == "list":
+                    return ProcessResult(0, False, 0.0, inventory)
+                return ProcessResult(
+                    0,
+                    False,
+                    0.0,
+                    "Executed 1 test, with 0 failures (0 unexpected)\n",
+                )
+
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "SWIFT_TEST_HOME": str(external),
+                    "SWIFT_BIN": "fixture-swift",
+                },
+                clear=False,
+            ), mock.patch("script.run_swift_test_process.run_child", side_effect=fake_child):
+                self.assertEqual(run_all(root), 0)
+            self.assertFalse((cache / "stale.log").exists())
+            self.assertTrue((external / "sentinel").exists())
+            self.assertTrue(calls)
+            self.assertTrue(preflight_state)
+            self.assertTrue(all(not stale and marker for stale, marker in preflight_state))
 
 
 if __name__ == "__main__":

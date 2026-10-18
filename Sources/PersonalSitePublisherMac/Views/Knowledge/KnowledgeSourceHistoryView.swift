@@ -30,7 +30,7 @@ struct KnowledgeSourceHistoryView: View {
     VStack(spacing: 0) {
       HStack {
         Label("来源更新与版本历史", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
         Button("检查来源更新") { checkSource() }
           .disabled(document?.sourceURL == nil || isCheckingSource || knowledge.isBusy)
@@ -102,16 +102,16 @@ struct KnowledgeSourceHistoryView: View {
   private var sourceSummary: some View {
     VStack(alignment: .leading, spacing: 8) {
       Text(document?.title ?? "资料")
-        .font(.title3.weight(.semibold))
+        .font(.workbenchTitle3.weight(.semibold))
       if let sourceURL = document?.sourceURL {
         Label(sourceURL.isFileURL ? sourceURL.path : sourceURL.absoluteString, systemImage: "link")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
           .textSelection(.enabled)
       } else {
         Label("此资料没有可重新读取的来源，但仍可恢复已有版本。", systemImage: "link.badge.plus")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       }
       if isCheckingSource {
         ProgressView("正在下载并净化来源内容…")
@@ -127,7 +127,7 @@ struct KnowledgeSourceHistoryView: View {
               ? "arrow.clockwise"
               : "doc.text.magnifyingglass"
           )
-          .font(.callout)
+          .font(.workbenchBody)
           .foregroundStyle(
             revision.parserVersion < KnowledgeLibraryService.parserVersion
               ? WorkbenchTheme.warning
@@ -150,14 +150,14 @@ struct KnowledgeSourceHistoryView: View {
       }
       if let refreshResultMessage {
         Label(refreshResultMessage, systemImage: "checkmark.circle")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
           .accessibilityLabel("来源检查结果：\(refreshResultMessage)")
       }
       if let refreshError {
         HStack(spacing: 8) {
           Label(refreshError, systemImage: "exclamationmark.triangle")
-            .font(.callout)
+            .font(.workbenchBody)
             .foregroundStyle(WorkbenchTheme.warning)
           Spacer()
           Button("重试") { checkSource() }
@@ -172,7 +172,7 @@ struct KnowledgeSourceHistoryView: View {
     VStack(alignment: .leading, spacing: 12) {
       HStack {
         Label("本机正文净化预览", systemImage: "doc.text.magnifyingglass")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
         Button("创建净化后的新版本") { applyLocalRepair(preview) }
           .workbenchProminentActionStyle()
@@ -190,8 +190,8 @@ struct KnowledgeSourceHistoryView: View {
           ? "将移除网页噪声并重建全文和本地语义索引；旧版本继续保留。"
           : "正文内容一致，但会升级解析器并重新生成全文和本地语义索引。"
       )
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
     }
     .padding(WorkbenchSpacing.content)
     .background(
@@ -207,7 +207,7 @@ struct KnowledgeSourceHistoryView: View {
           systemImage: preview.difference.hasChanges
             ? "arrow.triangle.2.circlepath" : "checkmark.circle"
         )
-        .font(.headline)
+        .font(.workbenchHeadline)
         Spacer()
         Button("保存为新版本") { applyRefresh(preview) }
           .workbenchProminentActionStyle()
@@ -221,8 +221,8 @@ struct KnowledgeSourceHistoryView: View {
         trailingText: preview.difference.currentExcerpt
       )
       Text("更新会创建新版本；原版本、标注和反向链接都会保留。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     }
     .padding(WorkbenchSpacing.content)
     .background(
@@ -233,7 +233,7 @@ struct KnowledgeSourceHistoryView: View {
   private var revisionHistory: some View {
     VStack(alignment: .leading, spacing: 10) {
       Label("版本历史", systemImage: "clock")
-        .font(.headline)
+        .font(.workbenchHeadline)
       switch history {
       case .loading:
         ProgressView("正在读取版本历史…")
@@ -246,7 +246,7 @@ struct KnowledgeSourceHistoryView: View {
         }
       case .loaded(let revisions) where revisions.isEmpty:
         Text("此资料暂无版本历史。")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       case .loaded(let revisions):
         ForEach(revisions) { revision in
           HStack(spacing: 10) {
@@ -260,15 +260,15 @@ struct KnowledgeSourceHistoryView: View {
             .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
               Text(revision.importedAt.formatted(date: .abbreviated, time: .standard))
-                .font(.callout.weight(.medium))
+                .font(.workbenchBody.weight(.medium))
               Text("解析器 v\(revision.parserVersion) · \(revision.normalizedContentHash.prefix(10))")
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
+                .font(.workbenchMetadata.monospaced())
+                .foregroundStyle(.workbenchSecondary)
             }
             Spacer()
             if revision.id == document?.currentRevisionID {
               Text("当前")
-                .font(.caption.weight(.semibold))
+                .font(.workbenchMetadata.weight(.semibold))
                 .foregroundStyle(.tint)
             } else {
               Button("比较") { compare(revision) }
@@ -294,7 +294,7 @@ struct KnowledgeSourceHistoryView: View {
   ) -> some View {
     VStack(alignment: .leading, spacing: 12) {
       Label("历史版本与当前版本比较", systemImage: "rectangle.split.2x1")
-        .font(.headline)
+        .font(.workbenchHeadline)
       differenceSummary(difference)
       comparisonColumns(
         leadingTitle: "所选历史版",
@@ -303,8 +303,8 @@ struct KnowledgeSourceHistoryView: View {
         trailingText: difference.currentExcerpt
       )
       Text("比较版本：\(revisionID.uuidString)")
-        .font(.caption.monospaced())
-        .foregroundStyle(.tertiary)
+        .font(.workbenchMetadata.monospaced())
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 
@@ -315,9 +315,9 @@ struct KnowledgeSourceHistoryView: View {
       Label("−\(difference.removedLineCount)", systemImage: "minus")
         .foregroundStyle(WorkbenchTheme.warning)
       Text("\(difference.previousLineCount) → \(difference.currentLineCount) 行")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
     }
-    .font(.caption.monospacedDigit())
+    .font(.workbenchMetadata.monospacedDigit())
     .accessibilityElement(children: .combine)
     .accessibilityLabel(
       "新增 \(difference.addedLineCount) 行，删除 \(difference.removedLineCount) 行，"
@@ -340,10 +340,10 @@ struct KnowledgeSourceHistoryView: View {
   private func comparisonColumn(title: String, text: String) -> some View {
     VStack(alignment: .leading, spacing: 6) {
       Text(title)
-        .font(.caption.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
       ScrollView(.horizontal) {
         Text(text.isEmpty ? "（此处没有内容）" : text)
-          .font(.system(.caption, design: .monospaced))
+          .font(.workbenchMetadata.monospaced())
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .topLeading)
           .padding(WorkbenchSpacing.control)

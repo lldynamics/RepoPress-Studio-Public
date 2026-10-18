@@ -87,7 +87,7 @@ struct RemoteConflictSemanticMergeWorkspace: View {
   private func semanticSummary(_ plan: MarkdownThreeWayMergePlan) -> some View {
     VStack(alignment: .leading, spacing: 5) {
       Label("安全三方合并", systemImage: "checkmark.shield")
-        .font(.callout.weight(.semibold))
+        .font(.workbenchBody.weight(.semibold))
       Text(
         String(
           format: String(localized: "已自动合并 %d 个元数据字段和 %d 个正文片段。"),
@@ -95,8 +95,8 @@ struct RemoteConflictSemanticMergeWorkspace: View {
           plan.autoMergedBodyHunkCount
         )
       )
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
       if state.unresolvedSemanticCount > 0 {
         Text(
           String(
@@ -104,7 +104,7 @@ struct RemoteConflictSemanticMergeWorkspace: View {
             state.unresolvedSemanticCount
           )
         )
-        .font(.caption.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
         .foregroundStyle(.orange)
       }
     }
@@ -123,9 +123,9 @@ struct RemoteConflictSemanticMergeWorkspace: View {
     VStack(alignment: .leading, spacing: 8) {
       HStack {
         Label("Front Matter 字段", systemImage: "list.bullet.rectangle")
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
         Text(verbatim: conflict.key)
-          .font(.caption.monospaced().weight(.semibold))
+          .font(.workbenchMetadata.monospaced().weight(.semibold))
         Spacer()
         selectionStatus(state.frontMatterChoices[conflict.id] != nil)
       }
@@ -176,7 +176,7 @@ struct RemoteConflictSemanticMergeWorkspace: View {
     VStack(alignment: .leading, spacing: 8) {
       HStack {
         Label(bodyConflictTitle(conflict), systemImage: "text.alignleft")
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
         Spacer()
         selectionStatus(state.bodyChoices[conflict.id] != nil)
       }
@@ -227,12 +227,12 @@ struct RemoteConflictSemanticMergeWorkspace: View {
     if let document = state.semanticResolvedDocument {
       VStack(alignment: .leading, spacing: 8) {
         Label("所有冲突块已协调，可以加入本次事务。", systemImage: "checkmark.circle.fill")
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
           .foregroundStyle(.green)
         DisclosureGroup("预览最终合并源码") {
           ScrollView {
             Text(verbatim: document)
-              .font(.system(.caption, design: .monospaced))
+              .font(.workbenchMetadata.monospaced())
               .textSelection(.enabled)
               .frame(maxWidth: .infinity, alignment: .topLeading)
               .padding(WorkbenchSpacing.control)
@@ -253,8 +253,8 @@ struct RemoteConflictSemanticMergeWorkspace: View {
       }
     } else if plan.frontMatterConflicts.isEmpty, plan.bodyConflicts.isEmpty {
       Label("正在生成安全合并结果。", systemImage: "hourglass")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 
@@ -264,11 +264,11 @@ struct RemoteConflictSemanticMergeWorkspace: View {
         unavailableBanner
       } else {
         Text("完整源码模式会保留你的手工稿；可随时返回逐块协调，已做出的选择不会丢失。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
       TextEditor(text: sourceBinding)
-        .font(.system(.body, design: .monospaced))
+        .font(.workbenchBody.monospaced())
         .scrollContentBackground(.hidden)
         .padding(WorkbenchSpacing.icon)
         .background(
@@ -282,11 +282,11 @@ struct RemoteConflictSemanticMergeWorkspace: View {
       HStack {
         if state.sourceReviewed {
           Label("完整源码已确认", systemImage: "checkmark.circle.fill")
-            .font(.caption.weight(.semibold))
+            .font(.workbenchMetadata.weight(.semibold))
             .foregroundStyle(.green)
         } else {
           Text("请检查并确认完整源码；确认前不会加入发布事务。")
-            .font(.caption)
+            .font(.workbenchMetadata)
             .foregroundStyle(.orange)
         }
         Spacer()
@@ -300,7 +300,7 @@ struct RemoteConflictSemanticMergeWorkspace: View {
 
   private var unavailableBanner: some View {
     Label(semanticUnavailableMessage, systemImage: "exclamationmark.triangle")
-      .font(.caption)
+      .font(.workbenchMetadata)
       .foregroundStyle(.orange)
       .padding(WorkbenchSpacing.card)
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -355,11 +355,11 @@ struct RemoteConflictSemanticMergeWorkspace: View {
   private func sourceBlock(title: LocalizedStringKey, text: String?, tint: Color) -> some View {
     VStack(alignment: .leading, spacing: 3) {
       Text(title)
-        .font(.caption.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
         .foregroundStyle(tint)
       ScrollView(.vertical) {
         Text(verbatim: text ?? String(localized: "（此版本没有该内容）"))
-          .font(.system(.caption, design: .monospaced))
+          .font(.workbenchMetadata.monospaced())
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .topLeading)
           .padding(WorkbenchSpacing.control)
@@ -377,7 +377,7 @@ struct RemoteConflictSemanticMergeWorkspace: View {
       isResolved ? "已选择" : "待选择",
       systemImage: isResolved ? "checkmark.circle.fill" : "circle.dashed"
     )
-    .font(.caption.weight(.semibold))
+    .font(.workbenchMetadata.weight(.semibold))
     .foregroundStyle(isResolved ? Color.green : Color.orange)
   }
 

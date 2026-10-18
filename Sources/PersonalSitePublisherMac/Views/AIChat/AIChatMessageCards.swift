@@ -27,13 +27,13 @@ struct AIChatMessageSurface<Content: View>: View {
           Spacer(minLength: 0)
         }
         Image(systemName: isUser ? "person.crop.circle" : "sparkles")
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
         Text(verbatim: role.localizedDisplayName)
           .font(.workbenchSupporting.weight(.semibold))
         if let timestamp {
           Text(timestamp.formatted(date: .omitted, time: .shortened))
             .font(.workbenchMetadata.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
         if !isUser {
           Spacer(minLength: 0)
@@ -145,7 +145,7 @@ private struct AIChatCodeBlockReadOnlyCard: View {
     VStack(alignment: .leading, spacing: 8) {
       HStack {
         Text(block.language?.uppercased() ?? String(localized: "MARKDOWN"))
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
         Spacer(minLength: 8)
         Button(action: copy) {
           Label(String(localized: "复制"), systemImage: "doc.on.doc")
@@ -157,7 +157,7 @@ private struct AIChatCodeBlockReadOnlyCard: View {
       }
       ScrollView(.horizontal, showsIndicators: true) {
         Text(verbatim: block.content.isEmpty ? String(localized: "（空代码块）") : block.content)
-          .font(.caption.monospaced())
+          .font(.workbenchMetadata.monospaced())
           .lineSpacing(2)
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -187,8 +187,8 @@ struct AIChatCodeBlockActionCard: View {
           block.language?.uppercased() ?? String(localized: "MARKDOWN"),
           systemImage: "chevron.left.forwardslash.chevron.right"
         )
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.weight(.semibold))
+        .foregroundStyle(.workbenchSecondary)
 
         Spacer(minLength: 8)
 
@@ -222,7 +222,7 @@ struct AIChatCodeBlockActionCard: View {
 
       ScrollView(.horizontal, showsIndicators: true) {
         Text(verbatim: block.content.isEmpty ? String(localized: "（空代码块）") : block.content)
-          .font(.caption.monospaced())
+          .font(.workbenchMetadata.monospaced())
           .lineSpacing(2)
           .foregroundStyle(.primary)
           .textSelection(.enabled)

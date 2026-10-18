@@ -72,7 +72,7 @@ extension PublishingStore {
       }
       let source = drafts[sourceIndex]
       let sourceProfileName = source.isGeneralDraft
-        ? CoreL10n.text("通用草稿")
+        ? CoreL10n.text("仅本地草稿")
         : profiles.first(where: { $0.id == source.siteProfileID })?.name
           ?? CoreL10n.text("原站点")
 
@@ -284,7 +284,7 @@ extension PublishingStore {
     case .copyToSite:
       return CoreL10n.format("已将 %d 篇文章复制到 %@，可撤销。", count, targetProfileName ?? "")
     case .moveToGeneral:
-      return CoreL10n.format("已将 %d 篇文章转为通用草稿，可撤销。", count)
+      return CoreL10n.format("已将 %d 篇文章转为仅本地草稿，可撤销。", count)
     }
   }
 }

@@ -2,15 +2,27 @@ import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
 
-/// Final user-visible boundary for the default repository-wide publish.
-/// Nothing is staged until the user confirms this exact frozen snapshot.
+/// The single confirmation of both publish actions. Nothing is staged until
+/// the user confirms this exact frozen snapshot; the summary leads with what
+/// will happen, and repository internals stay folded away.
 struct RepositoryWorktreePublishConfirmationView: View {
   let confirmation: RepositoryWorktreePublishConfirmation
+  /// The article title, or the site name when publishing everything.
+  var subject: String = ""
+  /// The site name is supplied by the workspace route for an article publish.
+  var siteName: String = ""
+  /// Published articles are written with update semantics; drafts remain publishes.
+  var isUpdate: Bool = false
+  var note: String? = nil
   let isPublishing: Bool
   let cancelAction: () -> Void
   let confirmAction: () -> Void
-  var feedback: PublishActionFeedback? = nil
-  var reviewAgainAction: () -> Void = {}
+
+  private var actionTitle: String {
+    confirmation.isScoped
+      ? (isUpdate ? String(localized: "更新文章") : String(localized: "发布这篇文章"))
+      : String(localized: "发布全部变更")
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -18,130 +30,198 @@ struct RepositoryWorktreePublishConfirmationView: View {
       Divider()
       ScrollView {
         VStack(alignment: .leading, spacing: 14) {
-          targetCard
-          preflightCard
-          safetyReportCard
-          fileList
-          safetyNote
+          if confirmation.isScoped {
+            articleSummaryCard
+          }
+          summaryCard
+          if !attentionItems.isEmpty {
+            attentionCard
+          }
+          if confirmation.isScoped {
+            DisclosureGroup {
+              fileList
+                .workbenchAccessibilityContainer(identifier: "publish-worktree-file-list-content")
+            } label: {
+              Text(String(localized: "查看 Git 文件差异"))
+                .accessibilityIdentifier("publish-worktree-file-list-details")
+            }
+          } else {
+            fileList
+          }
+          technicalDetails
         }
         .padding(WorkbenchSpacing.spacious)
       }
       Divider()
-      RepositoryPublishConfirmationFeedback(
-        feedback: feedback,
-        isPublishing: isPublishing,
-        isReviewComplete: isReviewComplete,
-        reviewAgainAction: reviewAgainAction
-      )
       footer
     }
-    .frame(minWidth: 620, idealWidth: 700, minHeight: 520, idealHeight: 650)
+    .frame(minWidth: 560, idealWidth: 640, minHeight: 460, idealHeight: 600)
+    // A container keeps the sheet's identifier from replacing its children's,
+    // such as the confirm button's.
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("publish-worktree-confirmation")
   }
 
   private var header: some View {
     HStack(spacing: 12) {
-      Image(systemName: "shippingbox.and.arrow.backward.fill")
-        .font(.title2)
-        .foregroundStyle(.secondary)
+      Image(systemName: confirmation.isScoped ? "doc.badge.arrow.up" : "paperplane.fill")
+        .font(.workbenchTitle2)
+        .foregroundStyle(.workbenchSecondary)
       VStack(alignment: .leading, spacing: 3) {
-        Text("确认发布仓库全部文件")
-          .font(.headline)
-        Text("确认前会自动核对变更清单；确认后将安全提交并推送。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+        Text(actionTitle)
+          .font(.workbenchHeadline)
+          .accessibilityElement(children: .ignore)
+          .accessibilityLabel(actionTitle)
+        if !subject.isEmpty {
+          Text(subject)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+        }
       }
       Spacer()
     }
     .padding(WorkbenchSpacing.spacious)
   }
 
-  private var targetCard: some View {
-    VStack(alignment: .leading, spacing: 9) {
-      Label("发布目标", systemImage: "arrow.triangle.branch")
-        .font(.headline)
-      LabeledContent("分支", value: "origin/\(confirmation.snapshot.branch)")
-      LabeledContent(
-        "本地版本",
-        value: RepositoryWorktreePublishPresentation.shortSHA(confirmation.snapshot.headSHA)
+  private var summaryCard: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Label(
+        String(
+          format: String(localized: "%d 个文件将提交并推送到 origin/%@"),
+          confirmation.snapshot.paths.count, confirmation.snapshot.branch),
+        systemImage: "arrow.up.circle"
       )
-      LabeledContent(
-        "远端版本",
-        value: RepositoryWorktreePublishPresentation.shortSHA(confirmation.snapshot.remoteBranchSHA)
+      .font(.workbenchBody.weight(.medium))
+      Text(
+        confirmation.isScoped
+          ? "只提交这篇文章和它的图片；仓库里的其他改动不受影响。"
+          : "包含仓库里所有未提交的改动：文章、图片、配置和主题，以及删除和重命名。"
       )
-      LabeledContent("origin", value: confirmation.snapshot.pushOriginURL)
-        .textSelection(.enabled)
-      LabeledContent("提交说明", value: confirmation.commitMessage)
-      LabeledContent(
-        "完整清单",
-        value: String(
-          format: String(localized: "%d 个文件路径"),
-          confirmation.snapshot.paths.count
-        )
-      )
-    }
-    .padding(WorkbenchSpacing.content)
-    .background(
-      WorkbenchBackgroundStyle.card,
-      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-    )
-  }
-
-  private var preflightCard: some View {
-    VStack(alignment: .leading, spacing: 9) {
-      Label("站点发布前检查", systemImage: preflightIcon)
-        .font(.headline)
-        .foregroundStyle(preflightColor)
-      Text(confirmation.sitePreflightResult?.message ?? "尚未生成站点检查证据。")
-        .font(.callout)
-        .fixedSize(horizontal: false, vertical: true)
-      ForEach(confirmation.sitePreflightResult?.diagnostics ?? [], id: \.self) { diagnostic in
-        Text(diagnostic)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
-          .textSelection(.enabled)
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+      if let note {
+        Label(note, systemImage: "info.circle")
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
+          .fixedSize(horizontal: false, vertical: true)
       }
     }
     .padding(WorkbenchSpacing.content)
+    .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
     )
-    .accessibilityIdentifier("publish-worktree-preflight")
+    .workbenchAccessibilityContainer(identifier: "publish-worktree-summary")
   }
 
-  private var safetyReportCard: some View {
-    VStack(alignment: .leading, spacing: 10) {
+  private var articleSummaryCard: some View {
+    let target = confirmation.articleVerificationTarget
+    let changes = RepositoryWorktreePublishPresentation.contentChangeSummary(
+      entries: confirmation.snapshot.entries,
+      articlePath: target?.markdownPath
+    )
+    let targetURL = target?.publicURLText?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let urlText = targetURL?.isEmpty == false ? targetURL! : String(localized: "待配置，无法确定")
+
+    return VStack(alignment: .leading, spacing: 10) {
       Label(
-        confirmation.safetyReport.warnings.isEmpty ? "安全检查" : "需要重点复核",
-        systemImage: confirmation.safetyReport.warnings.isEmpty
-          ? "checkmark.shield.fill" : "exclamationmark.triangle.fill"
+        isUpdate ? String(localized: "更新文章") : String(localized: "发布这篇"),
+        systemImage: "doc.badge.arrow.up"
       )
-      .font(.headline)
-      .foregroundStyle(
-        confirmation.safetyReport.warnings.isEmpty ? WorkbenchTheme.success : WorkbenchTheme.warning
-      )
-      if confirmation.safetyReport.warnings.isEmpty {
-        Text("未检测到需要额外复核的发布风险。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      } else {
-        ForEach(confirmation.safetyReport.warnings) { warning in
-          VStack(alignment: .leading, spacing: 3) {
-            Text(warning.title)
-              .font(.callout.weight(.semibold))
-            Text(warning.message)
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
+      .font(.workbenchHeadline)
+      LabeledContent(String(localized: "文章"), value: target?.title ?? subject)
+      if !siteName.isEmpty {
+        LabeledContent(String(localized: "站点"), value: siteName)
+      }
+      LabeledContent(String(localized: "预计网址"), value: urlText)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(String(localized: "预计网址") + ": " + urlText)
+        .accessibilityIdentifier("publish-worktree-target-url")
+      VStack(alignment: .leading, spacing: 5) {
+        Text(String(localized: "内容变更"))
+          .font(.workbenchBody.weight(.medium))
+        Text(changes.summaryText)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityElement(children: .ignore)
+          .accessibilityLabel(changes.summaryText)
+          .accessibilityIdentifier("publish-worktree-content-summary")
+      }
+      if !changes.riskPaths.isEmpty {
+        Label(
+          String(localized: "包含删除或重命名：\(changes.riskPaths.joined(separator: "、"))"),
+          systemImage: "exclamationmark.triangle.fill"
+        )
+        .font(.workbenchMetadata.weight(.semibold))
+        .foregroundStyle(WorkbenchTheme.warning)
+        .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .padding(WorkbenchSpacing.content)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .workbenchAccessibilityContainer(identifier: "publish-worktree-article-summary")
+  }
+
+  private struct AttentionItem: Identifiable {
+    let id: String
+    let title: String
+    let message: String
+  }
+
+  /// Only what deserves a second look before publishing is shown up front.
+  private var attentionItems: [AttentionItem] {
+    var items: [AttentionItem] = []
+    if let preflight = confirmation.sitePreflightResult, preflight.outcome != .passed {
+      items.append(
+        AttentionItem(
+          id: "site-preflight", title: String(localized: "站点构建检查"),
+          message: preflight.message))
+    }
+    items += confirmation.safetyReport.warnings.map {
+      AttentionItem(id: $0.id, title: $0.title, message: $0.message)
+    }
+    if !isReviewComplete {
+      items.append(
+        AttentionItem(
+          id: "incomplete-review", title: String(localized: "文件差异未能完整读取"),
+          message: String(localized: "请取消后重新发布。")))
+    }
+    return items
+  }
+
+  private var attentionCard: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Label("发布前请留意", systemImage: "exclamationmark.triangle.fill")
+        .font(.workbenchHeadline)
+        .foregroundStyle(WorkbenchTheme.warning)
+      ForEach(attentionItems) { item in
+        VStack(alignment: .leading, spacing: 3) {
+          Text(item.title)
+            .font(.workbenchBody.weight(.semibold))
+          Text(item.message)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .textSelection(.enabled)
         }
       }
     }
     .padding(WorkbenchSpacing.content)
+    .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       WorkbenchTheme.warning.opacity(0.08),
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
     )
+    .accessibilityIdentifier("publish-worktree-attention")
   }
 
   private var fileList: some View {
@@ -149,17 +229,43 @@ struct RepositoryWorktreePublishConfirmationView: View {
       entries: confirmation.snapshot.entries,
       reviews: confirmation.fileReviews
     )
-    .accessibilityIdentifier("publish-worktree-file-list")
+    .workbenchAccessibilityContainer(identifier: "publish-worktree-file-list")
   }
 
-  private var safetyNote: some View {
-    Label(
-      "发布前将自动核对本地与远端代码，确保内容安全同步；若检测到远端冲突将自动停止。",
-      systemImage: "lock.shield"
-    )
-    .font(.caption)
-    .foregroundStyle(.secondary)
-    .fixedSize(horizontal: false, vertical: true)
+  private var technicalDetails: some View {
+    DisclosureGroup(String(localized: "技术细节")) {
+      VStack(alignment: .leading, spacing: 6) {
+        LabeledContent("提交说明", value: confirmation.commitMessage)
+        LabeledContent(
+          "本地版本",
+          value: RepositoryWorktreePublishPresentation.shortSHA(confirmation.snapshot.headSHA))
+        LabeledContent(
+          "远端版本",
+          value: RepositoryWorktreePublishPresentation.shortSHA(
+            confirmation.snapshot.remoteBranchSHA))
+        LabeledContent("origin", value: confirmation.snapshot.pushOriginURL)
+          .textSelection(.enabled)
+        if let preflight = confirmation.sitePreflightResult {
+          Text(preflight.message)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+          ForEach(preflight.diagnostics, id: \.self) { diagnostic in
+            Text(diagnostic)
+              .font(.workbenchMetadata.monospaced())
+              .foregroundStyle(.workbenchSecondary)
+              .textSelection(.enabled)
+          }
+        }
+        Text("确认时会再次核对文件和远端分支；如有变化会停止，不会强制推送。")
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .font(.workbenchMetadata)
+      .padding(.top, WorkbenchSpacing.tight)
+    }
+    .accessibilityIdentifier("publish-worktree-technical-details")
   }
 
   private var footer: some View {
@@ -173,43 +279,22 @@ struct RepositoryWorktreePublishConfirmationView: View {
       if isPublishing {
         ProgressView()
           .controlSize(.small)
-          .accessibilityLabel("正在提交并推送全部文件")
+        Text("正在提交并推送…")
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
 
-      Button("确认并发布全部文件", action: confirmAction)
-        .workbenchProminentActionStyle()
-        .keyboardShortcut(.defaultAction)
-        .disabled(
-          isPublishing
-            || !isReviewComplete
-            || RepositoryPublishConfirmationFeedback.needsReview(feedback)
-        )
-        .accessibilityIdentifier("publish-worktree-confirm")
-        .accessibilityHint("重新核对变更清单，创建提交并推送到远端")
+      Button(
+        actionTitle,
+        action: confirmAction
+      )
+      .workbenchProminentActionStyle()
+      .keyboardShortcut(.defaultAction)
+      .disabled(isPublishing || !isReviewComplete)
+      .accessibilityIdentifier("publish-worktree-confirm")
+      .accessibilityHint("再次核对文件后创建提交并推送到远端")
     }
     .padding(WorkbenchSpacing.spacious)
-  }
-
-  private var preflightIcon: String {
-    switch confirmation.sitePreflightResult?.outcome {
-    case .passed:
-      "checkmark.shield.fill"
-    case .skipped:
-      "minus.circle"
-    case .failed, nil:
-      "xmark.shield.fill"
-    }
-  }
-
-  private var preflightColor: Color {
-    switch confirmation.sitePreflightResult?.outcome {
-    case .passed:
-      WorkbenchTheme.success
-    case .skipped:
-      .secondary
-    case .failed, nil:
-      WorkbenchTheme.risk
-    }
   }
 
   private var isReviewComplete: Bool {
@@ -218,10 +303,75 @@ struct RepositoryWorktreePublishConfirmationView: View {
       reviews: confirmation.fileReviews
     )
   }
-
 }
 
 enum RepositoryWorktreePublishPresentation {
+  struct ContentChangeSummary: Equatable {
+    let bodyOperations: [String]
+    let imageOperations: [String]
+    let otherOperations: [String]
+    let riskPaths: [String]
+
+    var summaryText: String {
+      var parts: [String] = []
+      if !bodyOperations.isEmpty {
+        parts.append(String(localized: "正文：\(bodyOperations.joined(separator: "、"))"))
+      }
+      if !imageOperations.isEmpty {
+        parts.append(String(localized: "图片：\(imageOperations.joined(separator: "、"))"))
+      }
+      if !otherOperations.isEmpty {
+        parts.append(String(localized: "其他：\(otherOperations.joined(separator: "、"))"))
+      }
+      return parts.isEmpty
+        ? String(localized: "没有可识别的正文或图片变更。")
+        : parts.joined(separator: "；")
+    }
+  }
+
+  static func operationLabel(for entry: RepositoryWorktreePublishEntry) -> String {
+    switch entry.kind {
+    case .added: return String(localized: "新增")
+    case .modified: return String(localized: "修改")
+    case .deleted: return String(localized: "删除")
+    case .renamed: return String(localized: "重命名")
+    case .copied: return String(localized: "复制")
+    case .typeChanged: return String(localized: "类型变化")
+    }
+  }
+
+  static func contentChangeSummary(
+    entries: [RepositoryWorktreePublishEntry], articlePath: String?
+  ) -> ContentChangeSummary {
+    let normalizedArticlePath = articlePath?.trimmingCharacters(in: .whitespacesAndNewlines)
+    var body: [String] = []
+    var images: [String] = []
+    var other: [String] = []
+    var risks: [String] = []
+    for entry in entries {
+      let paths = [entry.path, entry.sourcePath].compactMap { $0 }
+      let isBody = normalizedArticlePath.map { paths.contains($0) } ?? false
+      let isImage = paths.contains { path in
+        ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif"].contains(
+          path.split(separator: ".").last?.lowercased() ?? ""
+        )
+      }
+      let label = operationLabel(for: entry)
+      if isBody {
+        body.append(label)
+      } else if isImage {
+        images.append(label)
+      } else {
+        other.append(label)
+      }
+      if entry.kind == .deleted || entry.kind == .renamed {
+        risks.append(pathDescription(for: entry))
+      }
+    }
+    return ContentChangeSummary(
+      bodyOperations: body, imageOperations: images, otherOperations: other, riskPaths: risks)
+  }
+
   static func shortSHA(_ sha: String) -> String {
     String(sha.prefix(12))
   }

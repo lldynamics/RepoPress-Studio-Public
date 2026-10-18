@@ -199,15 +199,6 @@ struct FirstRunSetupProfileStaging {
     profile.markdownPathPattern = markdownPathPattern.trimmedForPublishing
   }
 
-  mutating func selectAIConnection(_ connection: AIConnectionProfile) {
-    profile.aiConnectionProfileID = connection.id
-    profile.aiProviderConfig = connection.config
-  }
-
-  mutating func restoreAIConnection(from persistedProfile: SiteProfile) {
-    profile.aiConnectionProfileID = persistedProfile.aiConnectionProfileID
-    profile.aiProviderConfig = persistedProfile.aiProviderConfig
-  }
 }
 private struct FirstRunSetupPathCard: View {
   @Environment(\.workbenchAccentColor) private var workbenchAccentColor
@@ -218,7 +209,7 @@ private struct FirstRunSetupPathCard: View {
     VStack(alignment: .leading, spacing: 10) {
       HStack(alignment: .top, spacing: 8) {
         Image(systemName: path.systemImage)
-          .font(.title3)
+          .font(.workbenchTitle3)
           .foregroundStyle(isSelected ? workbenchAccentColor : Color.secondary)
 
         Spacer(minLength: 0)
@@ -231,13 +222,13 @@ private struct FirstRunSetupPathCard: View {
       }
 
       Text(path.title)
-        .font(.callout.weight(.semibold))
+        .font(.workbenchBody.weight(.semibold))
         .foregroundStyle(.primary)
         .multilineTextAlignment(.leading)
 
       Text(path.detail)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .multilineTextAlignment(.leading)
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -274,7 +265,6 @@ struct FirstRunSetupView: View {
   @State private var step: Step = .repository
   @State private var stagedProfile: FirstRunSetupProfileStaging?
   @State private var autoConfigurationProposal: RepositoryAutoConfigurationProposal?
-  @State private var selectedAIConnectionID: UUID?
   @State private var repositoryDetectionID: UUID?
   @State private var isPreparingRepository = false
   @State private var repositoryMessage: String?
@@ -286,6 +276,7 @@ struct FirstRunSetupView: View {
   @State private var requiresSamePathRetry = false
   @State private var isCommitConfirmationPresented = false
   @State private var showsAdvancedPublishingRules = false
+  @State private var showsContentRules = false
 
   var body: some View {
     VStack(spacing: 0) {
@@ -303,8 +294,6 @@ struct FirstRunSetupView: View {
               repositoryStep
             case .rules:
               publishingRulesStep
-            case .ai:
-              aiAssistanceStep
             }
           }
         }
@@ -336,7 +325,7 @@ struct FirstRunSetupView: View {
       }
       Button(String(localized: "返回修改"), role: .cancel) {}
     } message: {
-      Text("这会应用上方预览的站点、发布和可选 AI 关联规则，并保存你选择的本地仓库。返回或取消不会保存这些改动。")
+      Text("这会应用上方预览的站点与发布规则，并保存你选择的本地仓库。返回或取消不会保存这些改动。")
     }
     .onDisappear { cloneTask?.cancel() }
   }
@@ -345,8 +334,8 @@ struct FirstRunSetupView: View {
     VStack(alignment: .leading, spacing: 14) {
       HStack(spacing: 10) {
         Image(systemName: "leaf.fill")
-          .font(.title2)
-          .foregroundStyle(.secondary)
+          .font(.workbenchTitle2)
+          .foregroundStyle(.workbenchSecondary)
 
         VStack(alignment: .leading, spacing: 2) {
           Text(
@@ -354,14 +343,14 @@ struct FirstRunSetupView: View {
               ? String(localized: "开始使用")
               : String(localized: "设置个人网站发布流程")
           )
-          .font(.title3.weight(.semibold))
+          .font(.workbenchTitle3.weight(.semibold))
           Text(
             !isRepositorySetupActive
               ? String(localized: "先选择你现在要做的事，站点配置可以稍后补充。")
               : String(localized: "只配置当前路径需要的信息，之后可以随时在设置中修改。")
           )
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
         }
       }
 
@@ -373,9 +362,9 @@ struct FirstRunSetupView: View {
                 systemName: candidate.rawValue < step.rawValue
                   ? "checkmark.circle.fill" : "\(candidate.rawValue + 1).circle.fill")
               Text(candidate.titleKey)
-                .workbenchTruncatedIdentity(candidate.accessibilityTitle)
+                .workbenchTruncatedTitle(candidate.accessibilityTitle)
             }
-            .font(.caption.weight(candidate == step ? .semibold : .regular))
+            .font(.workbenchMetadata.weight(candidate == step ? .semibold : .regular))
             .foregroundStyle(
               candidate.rawValue <= step.rawValue ? WorkbenchTheme.progress : Color.secondary)
 
@@ -463,8 +452,8 @@ struct FirstRunSetupView: View {
 
       if hasRepository {
         Text("仓库路径和检测结果仅暂存，完成前不会写入工作台配置。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       if selectedPath == .cloneRemoteRepository {
@@ -512,8 +501,8 @@ struct FirstRunSetupView: View {
         .disabled(isCloningRepository || isPreparingRepository)
         if let cloneParentURL {
           Text(cloneParentURL.path)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .lineLimit(1)
             .truncationMode(.middle)
         }
@@ -530,17 +519,24 @@ struct FirstRunSetupView: View {
       .accessibilityIdentifier("first-run-clone-repository")
 
       Text("克隆仅写入你选择位置中的新文件夹；完成前不会保存站点配置。私有仓库需由系统 Git 凭据支持。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 
   private var publishingRulesStep: some View {
     VStack(alignment: .leading, spacing: 14) {
-      stepTitle(
-        String(localized: "确认自动探测的发布规则"),
-        detail: String(localized: "检查网站生成器、文章头信息和保存路径；远端发布方式可在进阶设置中调整。")
-      )
+      if isRuleDetectionComplete {
+        stepTitle(
+          String(localized: "确认发布规则"),
+          detail: String(localized: "已识别网站生成器、文章头信息和保存路径；确认无误即可完成，需要时再展开调整。")
+        )
+      } else {
+        stepTitle(
+          String(localized: "确认自动探测的发布规则"),
+          detail: String(localized: "检查网站生成器、文章头信息和保存路径；远端发布方式可在进阶设置中调整。")
+        )
+      }
 
       if let autoConfigurationProposal {
         setupSummary(
@@ -559,41 +555,50 @@ struct FirstRunSetupView: View {
         }
       }
 
-      GroupBox("内容规则") {
-        VStack(alignment: .leading, spacing: 12) {
-          Picker("网站生成器", selection: siteKindBinding) {
-            ForEach(SiteKind.allCases) { kind in
-              Text(kind.localizedDisplayName).tag(kind)
+      DisclosureGroup(
+        String(localized: "调整内容规则"),
+        isExpanded: Binding(
+          get: { !isRuleDetectionComplete || showsContentRules },
+          set: { showsContentRules = $0 }
+        )
+      ) {
+        GroupBox("内容规则") {
+          VStack(alignment: .leading, spacing: 12) {
+            Picker("网站生成器", selection: siteKindBinding) {
+              ForEach(SiteKind.allCases) { kind in
+                Text(kind.localizedDisplayName).tag(kind)
+              }
+            }
+            .accessibilityHint("选择当前网站使用的静态站点生成器")
+
+            Picker("文章头信息格式", selection: frontMatterStyleBinding) {
+              ForEach(FrontMatterStyle.allCases) { style in
+                Text(style == .toml ? "TOML" : "YAML").tag(style)
+              }
+            }
+
+            TextField("内容目录", text: contentRootBinding)
+              .accessibilityLabel("内容目录")
+            TextField("文章路径", text: markdownPathPatternBinding)
+              .accessibilityLabel("文章路径")
+
+            if let path = FirstRunRulePreviewPresentation.markdownPath(profile: setupProfile) {
+              VStack(alignment: .leading, spacing: 4) {
+                Text("示例文件：\(path)")
+                  .font(.workbenchMetadata.monospaced())
+                  .textSelection(.enabled)
+                  .accessibilityIdentifier("first-run-article-path-example")
+                Text("以今天的日期和 my-first-post 为示例，仅预览路径，不创建文件。")
+                  .font(.workbenchMetadata)
+                  .foregroundStyle(.workbenchSecondary)
+              }
             }
           }
-          .accessibilityHint("选择当前网站使用的静态站点生成器")
-
-          Picker("文章头信息格式", selection: frontMatterStyleBinding) {
-            ForEach(FrontMatterStyle.allCases) { style in
-              Text(style == .toml ? "TOML" : "YAML").tag(style)
-            }
-          }
-
-          TextField("内容目录", text: contentRootBinding)
-            .accessibilityLabel("内容目录")
-          TextField("文章路径", text: markdownPathPatternBinding)
-            .accessibilityLabel("文章路径")
-
-          if let path = FirstRunRulePreviewPresentation.markdownPath(profile: setupProfile) {
-            VStack(alignment: .leading, spacing: 4) {
-              Text("示例文件：\(path)")
-                .font(.caption.monospaced())
-                .textSelection(.enabled)
-                .accessibilityIdentifier("first-run-article-path-example")
-              Text("以今天的日期和 my-first-post 为示例，仅预览路径，不创建文件。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.top, WorkbenchSpacing.tight)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, WorkbenchSpacing.tight)
       }
+      .accessibilityIdentifier("first-run-content-rules")
 
       DisclosureGroup(String(localized: "进阶：远端发布方式"), isExpanded: $showsAdvancedPublishingRules) {
         VStack(alignment: .leading, spacing: 12) {
@@ -627,53 +632,6 @@ struct FirstRunSetupView: View {
     }
   }
 
-  private var aiAssistanceStep: some View {
-    VStack(alignment: .leading, spacing: 18) {
-      stepTitle(
-        String(localized: "启用 AI 助手（可选）"),
-        detail: String(localized: "可以直接开始写作；只有选择已有连接时，才会把它关联到这个站点。")
-      )
-
-      if store.aiConnectionProfiles.isEmpty {
-        setupSummary(
-          systemImage: "sparkles",
-          title: String(localized: "稍后配置 AI"),
-          detail: String(localized: "当前没有可复用的 AI 连接。完成后可在设置中添加；这里不会创建或保存 API Key。")
-        )
-      } else {
-        Picker("AI 连接", selection: aiConnectionBinding) {
-          Text("跳过此步骤（不更改）").tag(UUID?.none)
-          ForEach(store.aiConnectionProfiles) { connection in
-            Text(connection.name).tag(Optional(connection.id))
-          }
-        }
-        .pickerStyle(.radioGroup)
-
-        if let connection = selectedAIConnection {
-          setupSummary(
-            systemImage: "sparkles",
-            title: connection.name,
-            detail: connection.summary.isEmpty
-              ? String(localized: "将仅关联现有连接；凭据仍由它原有的安全存储管理。")
-              : connection.summary
-          )
-        } else {
-          setupSummary(
-            systemImage: "clock",
-            title: String(localized: "跳过 AI 设置"),
-            detail: String(localized: "本步骤不会修改已有连接或凭据，之后仍可在设置中调整。")
-          )
-        }
-      }
-
-      setupSummary(
-        systemImage: "checkmark.seal",
-        title: String(localized: "准备开始写作"),
-        detail: String(localized: "完成后会整理仓库中的文章，你可以打开最近文章或新建文章；发布前仍会要求检查和差异确认。")
-      )
-    }
-  }
-
   private var footer: some View {
     HStack {
       VStack(alignment: .leading, spacing: 3) {
@@ -683,7 +641,7 @@ struct FirstRunSetupView: View {
         }
         .buttonStyle(.plain)
         .keyboardShortcut(.cancelAction)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .disabled(requiresSamePathRetry)
 
         Text(
@@ -692,7 +650,7 @@ struct FirstRunSetupView: View {
             : String(localized: "退出后，本次向导中未完成的设置不会保存；已有工作台配置保持不变。之后可重新设置。")
         )
         .font(.workbenchSupporting)
-        .foregroundStyle(.tertiary)
+        .foregroundStyle(.workbenchSecondary)
         .frame(maxWidth: 300, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
       }
@@ -714,7 +672,6 @@ struct FirstRunSetupView: View {
             isRepositorySetupActive = false
             stagedProfile = nil
             autoConfigurationProposal = nil
-            selectedAIConnectionID = nil
             repositoryDetectionID = nil
             isPreparingRepository = false
             isCloningRepository = false
@@ -727,14 +684,14 @@ struct FirstRunSetupView: View {
         }
 
         Button(
-          step == .ai
+          step == .rules
             ? String(localized: "完成并开始写作")
             : String(localized: "下一步")
         ) {
-          if step == .ai {
+          if step == .rules {
             isCommitConfirmationPresented = true
           } else {
-            step = Step(rawValue: step.rawValue + 1) ?? .ai
+            step = Step(rawValue: step.rawValue + 1) ?? .rules
           }
         }
         .workbenchProminentActionStyle()
@@ -754,7 +711,6 @@ struct FirstRunSetupView: View {
     case .repositoryWizard:
       stagedProfile = FirstRunSetupProfileStaging(profile: store.activeProfile)
       autoConfigurationProposal = nil
-      selectedAIConnectionID = nil
       repositoryDetectionID = nil
       repositoryMessage = nil
       isCloningRepository = false
@@ -768,25 +724,25 @@ struct FirstRunSetupView: View {
   private func stepTitle(_ title: String, detail: String) -> some View {
     VStack(alignment: .leading, spacing: 5) {
       Text(title)
-        .font(.headline)
+        .font(.workbenchHeadline)
       Text(detail)
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 
   private func setupSummary(systemImage: String, title: String, detail: String) -> some View {
     HStack(alignment: .top, spacing: 12) {
       Image(systemName: systemImage)
-        .font(.title3)
-        .foregroundStyle(.secondary)
+        .font(.workbenchTitle3)
+        .foregroundStyle(.workbenchSecondary)
         .frame(width: 26)
       VStack(alignment: .leading, spacing: 4) {
         Text(title)
-          .font(.callout.weight(.semibold))
+          .font(.workbenchBody.weight(.semibold))
         Text(detail)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .textSelection(.enabled)
       }
     }
@@ -814,6 +770,13 @@ struct FirstRunSetupView: View {
 
   private var hasRepository: Bool {
     !setupProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty
+  }
+
+  /// Detected rules need only a glance; the fields stay one click away.
+  private var isRuleDetectionComplete: Bool {
+    autoConfigurationProposal?.detectedKind != nil
+      && autoConfigurationProposal?.isGitRepository == true
+      && hasValidPublishingRules
   }
 
   private var hasValidPublishingRules: Bool {
@@ -893,30 +856,6 @@ struct FirstRunSetupView: View {
     )
   }
 
-  private var selectedAIConnection: AIConnectionProfile? {
-    guard let connectionID = selectedAIConnectionID else { return nil }
-    return store.aiConnectionProfiles.first { $0.id == connectionID }
-  }
-
-  private var aiConnectionBinding: Binding<UUID?> {
-    Binding(
-      get: { selectedAIConnectionID },
-      set: { connectionID in
-        selectedAIConnectionID = connectionID
-        var staging = stagedProfile ?? FirstRunSetupProfileStaging(profile: store.activeProfile)
-        guard let connectionID,
-          let connection = store.aiConnectionProfiles.first(where: { $0.id == connectionID })
-        else {
-          staging.restoreAIConnection(from: store.activeProfile)
-          stagedProfile = staging
-          return
-        }
-        staging.selectAIConnection(connection)
-        stagedProfile = staging
-      }
-    )
-  }
-
   private func chooseRepository() {
     Task { @MainActor in
       guard let url = await RepositorySelectionPanel.chooseDirectory() else { return }
@@ -965,6 +904,7 @@ struct FirstRunSetupView: View {
     let detectionID = UUID()
     let fallbackProfile = setupProfile
     repositoryDetectionID = detectionID
+    showsContentRules = false
     isPreparingRepository = true
     repositoryMessage = nil
     Task { @MainActor in
@@ -1018,7 +958,6 @@ struct FirstRunSetupView: View {
   private enum Step: Int, CaseIterable, Identifiable {
     case repository
     case rules
-    case ai
 
     var id: Int { rawValue }
 
@@ -1026,7 +965,6 @@ struct FirstRunSetupView: View {
       switch self {
       case .repository: "仓库"
       case .rules: "规则"
-      case .ai: "AI"
       }
     }
 
@@ -1034,7 +972,6 @@ struct FirstRunSetupView: View {
       switch self {
       case .repository: String(localized: "仓库")
       case .rules: String(localized: "发布规则")
-      case .ai: String(localized: "AI 助手")
       }
     }
   }

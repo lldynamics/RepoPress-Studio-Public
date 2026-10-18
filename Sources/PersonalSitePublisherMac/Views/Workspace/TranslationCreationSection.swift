@@ -71,9 +71,9 @@ private struct TranslationCreationSheet: View {
   var body: some View {
     VStack(alignment: .leading, spacing: WorkbenchSpacing.content) {
       Text("创建译文版本")
-        .font(.title2.weight(.semibold))
+        .font(.workbenchTitle2.weight(.semibold))
       Text("选择目标语言，生成后审阅标题、摘要与全文，再确认创建新草稿。")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
 
       Picker("目标语言", selection: $languageCode) {
@@ -94,21 +94,21 @@ private struct TranslationCreationSheet: View {
       if let source, let displayedPlan {
         VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
           Text("目标路径")
-            .font(.headline)
+            .font(.workbenchHeadline)
           Text(store.profile(for: source).markdownPath(for: displayedPlan.translatedDraft))
-            .font(.system(.caption, design: .monospaced))
+            .font(.workbenchMetadata.monospaced())
             .textSelection(.enabled)
             .accessibilityLabel("译文目标路径")
             .accessibilityIdentifier("translation-destination-path")
           if plan == nil {
             Text("生成后会再次显示最终路径；译文默认保持草稿状态。")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
           if store.profile(for: source).siteKind == .hugo, source.translationKey == nil {
             Text("确认创建时会为原稿和译文保存相同的 Hugo 翻译关联键。")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
         }
       }
@@ -121,8 +121,8 @@ private struct TranslationCreationSheet: View {
       }
       if let message {
         Text(message)
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
       if let plan {
@@ -132,8 +132,8 @@ private struct TranslationCreationSheet: View {
           .accessibilityLabel("正在生成译文计划")
       } else {
         Text("全文会按当前 AI 配置发送，沿用已有的数据发送授权。取消不会创建文章。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       HStack(spacing: WorkbenchSpacing.control) {
@@ -196,11 +196,11 @@ private struct TranslationCreationSheet: View {
     ScrollView {
       VStack(alignment: .leading, spacing: WorkbenchSpacing.card) {
         Text(translated.title)
-          .font(.headline)
+          .font(.workbenchHeadline)
           .accessibilityLabel("译文标题")
         if !translated.summary.isEmpty {
           Text(translated.summary)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
             .accessibilityLabel("译文摘要")
         }
         Text(translated.bodyMarkdown)

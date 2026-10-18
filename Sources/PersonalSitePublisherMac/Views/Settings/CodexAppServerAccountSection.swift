@@ -196,7 +196,7 @@ struct CodexAppServerAccountSection: View {
           Text("RepoPress 不读取或保存登录令牌。AI 内容仍会发送到 OpenAI，并在首次发送前征求你的确认。")
         }
         .font(.workbenchMetadata)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       }
       if let accountStatus, accountStatus.isAuthenticated {
         CodexAppServerModelSelectionSection(

@@ -50,7 +50,7 @@ struct TokenDeploymentTokenSection: View {
           )
         } else if !deploymentTokenInput.wrappedValue.trimmedForPublishing.isEmpty {
           Text("待保存修改")
-            .font(.caption.weight(.medium))
+            .font(.workbenchMetadata.weight(.medium))
             .foregroundStyle(WorkbenchTheme.warning)
         }
       }
@@ -92,7 +92,7 @@ struct TokenDeploymentTokenSection: View {
 
       if let accessFailureMessage = tokenAvailability.accessFailureMessage {
         Text(accessFailureMessage)
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(WorkbenchTheme.warning)
           .textSelection(.enabled)
       }
@@ -102,8 +102,8 @@ struct TokenDeploymentTokenSection: View {
       }
 
       Text("部署访问令牌与仓库访问令牌使用独立的钥匙串项；切换部署平台后需要保存该平台自己的令牌。旧共用令牌不会自动作为部署访问令牌使用，需要重新保存。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     }
     .confirmationDialog(
       "删除\(deploymentProvider.localizedDisplayName)部署访问令牌？",

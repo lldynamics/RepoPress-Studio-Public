@@ -8,22 +8,20 @@ final class WorkspaceDeferredPublishIssueStateTests: XCTestCase {
     let draftID = UUID()
     var state = WorkspaceDeferredPublishIssueState()
     state.enqueue(
-      profileID: profileID, draftID: draftID, target: .metadata(field: "slug"),
-      scope: .currentArticle)
+      profileID: profileID, draftID: draftID, target: .metadata(field: "slug"))
     XCTAssertNil(state.consume(isKeyWindow: true, currentProfileID: profileID))
     state.sheetDidDismiss()
     XCTAssertNil(state.consume(isKeyWindow: false, currentProfileID: profileID))
     let request = state.consume(isKeyWindow: true, currentProfileID: profileID)
     XCTAssertEqual(request?.draftID, draftID)
     XCTAssertEqual(request?.target, .metadata(field: "slug"))
-    XCTAssertEqual(request?.scope, .currentArticle)
     XCTAssertNil(state.consume(isKeyWindow: true, currentProfileID: profileID))
   }
 
   func testDestinationCannotNavigateAfterTheSiteChanges() {
     let profileID = UUID()
     var state = WorkspaceDeferredPublishIssueState()
-    state.enqueue(profileID: profileID, draftID: UUID(), target: .repository, scope: .repository)
+    state.enqueue(profileID: profileID, draftID: UUID(), target: .repository)
     state.sheetDidDismiss()
     XCTAssertNil(state.consume(isKeyWindow: true, currentProfileID: UUID()))
     XCTAssertNil(state.consume(isKeyWindow: true, currentProfileID: profileID))
@@ -34,11 +32,10 @@ final class WorkspaceDeferredPublishIssueStateTests: XCTestCase {
     let replacementID = UUID()
     var state = WorkspaceDeferredPublishIssueState()
     state.enqueue(
-      profileID: profileID, draftID: UUID(), target: .metadata(field: "slug"),
-      scope: .currentArticle)
+      profileID: profileID, draftID: UUID(), target: .metadata(field: "slug"))
     state.sheetDidDismiss()
     state.enqueue(
-      profileID: profileID, draftID: replacementID, target: .repository, scope: .repository)
+      profileID: profileID, draftID: replacementID, target: .repository)
     XCTAssertNil(state.consume(isKeyWindow: true, currentProfileID: profileID))
     state.sheetDidDismiss()
     XCTAssertEqual(
@@ -49,8 +46,7 @@ final class WorkspaceDeferredPublishIssueStateTests: XCTestCase {
     let profileID = UUID()
     var state = WorkspaceDeferredPublishIssueState()
     state.enqueue(
-      profileID: profileID, draftID: UUID(), target: .metadata(field: "slug"),
-      scope: .currentArticle)
+      profileID: profileID, draftID: UUID(), target: .metadata(field: "slug"))
     state.cancel()
     state.sheetDidDismiss()
     XCTAssertNil(state.consume(isKeyWindow: true, currentProfileID: profileID))

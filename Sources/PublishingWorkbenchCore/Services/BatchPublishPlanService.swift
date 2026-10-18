@@ -177,6 +177,11 @@ public struct BatchPublishPlan: Codable, Hashable, Sendable {
     items.filter(\.isWritable)
   }
 
+  /// Without website drafts, these are the finished articles 发布全部 writes.
+  public func writableItems(includingSiteDrafts: Bool) -> [BatchPublishPlanItem] {
+    writableItems.filter { includingSiteDrafts || !$0.isSiteDraft }
+  }
+
   public var remotePublishableItems: [BatchPublishPlanItem] {
     items.filter { item in
       item.readiness != .blocked && item.changedFileCount > 0 && !item.isSiteDraft

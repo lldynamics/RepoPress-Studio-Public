@@ -409,6 +409,7 @@ public final class WorkbenchReleaseHistoryObservationFacade: ObservableObject {
     observe(store.repositoryStore.$isRemoteRepositoryPublishing)
     observe(store.repositoryStore.$localRepositoryReleaseHistory)
     observe(store.deploymentStore.$deploymentStatusSnapshots)
+    observe(store.deploymentStore.$articleTrackingClock)
     observe(store.deploymentStore.$deploymentStatusHistory)
     observe(store.deploymentStore.$isDeploymentStatusChecking)
     observe(store.deploymentStore.$deploymentStatusMessage)
@@ -449,7 +450,7 @@ public final class WorkbenchPublishDrawerObservationFacade: ObservableObject {
     observe(store.repositoryStore.$isRemoteRepositoryChecking)
     observe(store.repositoryStore.$isRemoteRepositoryPublishing)
     observe(store.repositoryStore.$remoteRepositoryPublishProgress)
-    observe(store.aiWorkspaceStore.$seoSocialPreviewSnapshots)
+    observe(store.aiWorkspaceStore.publisher(for: \.seoSocialPreviewSnapshots))
 
     store.imageStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }

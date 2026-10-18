@@ -2,7 +2,7 @@ import PublishingAICore
 import PublishingWorkbenchCore
 import SwiftUI
 
-struct AISettingsView: View {
+struct AISettingsView<SiteSections: View>: View {
   let activeProfileBinding: Binding<SiteProfile>
   let connectionProfiles: [AIConnectionProfile]
   let referencingSiteProfiles: [SiteProfile]
@@ -37,7 +37,7 @@ struct AISettingsView: View {
   let revokeDataSharingConsent: () -> Void
   let isCodexDataSharingConsentGranted: (CodexAppServerAccountStatus?) -> Bool
   let grantCodexDataSharingConsent: (CodexAppServerAccountStatus) -> Void
-  let openSiteAISettings: () -> Void
+  let siteSections: SiteSections
 
   @State private var isAdvancedExpanded = false
   @State private var aiAPIKeyInput = ""
@@ -72,16 +72,8 @@ struct AISettingsView: View {
           deletableProfiles: deletableConnectionProfiles,
           presentation: .sharedEditor,
           currentSiteName: activeProfile.name,
-          editSharedConnection: nil,
           subsectionAnchor: .aiConnection
         )
-
-        Section {
-          Button("选择当前站点的连接", action: openSiteAISettings)
-            .accessibilityIdentifier("settings-ai-open-site-connection")
-        } footer: {
-          Text("在此管理全部连接，不会切换站点正在使用的连接。站点的连接选择和写作规则在站点设置中维护。")
-        }
 
         AIConnectionSetupSection(
           config: activeConnection.config,
@@ -223,6 +215,7 @@ struct AISettingsView: View {
           isExpanded: $isAdvancedExpanded
         )
         AIProviderCapabilitiesSection(config: activeConnection.config)
+        siteSections
       }
       .formStyle(.grouped)
       .padding(WorkbenchSpacing.content)

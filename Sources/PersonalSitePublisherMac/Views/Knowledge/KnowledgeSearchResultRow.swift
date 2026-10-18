@@ -15,12 +15,12 @@ struct KnowledgeSearchResultRow: View {
       if showsDocumentTitle {
         HStack(spacing: 7) {
           Image(systemName: result.document.kind.systemImage)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
             .frame(width: 14)
             .accessibilityHidden(true)
           KnowledgeHighlightedText(text: result.document.title, terms: hit.highlightTerms)
             .font(.workbenchItemTitle)
-            .workbenchTruncatedIdentity(result.document.title)
+            .workbenchTruncatedTitle(result.document.title)
           Spacer(minLength: 0)
         }
       }
@@ -28,13 +28,13 @@ struct KnowledgeSearchResultRow: View {
       if let location = hit.locationLabel {
         Label(location, systemImage: "mappin.and.ellipse")
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .workbenchTruncatedIdentity(location)
       }
 
       KnowledgeHighlightedText(text: hit.snippet, terms: hit.highlightTerms)
         .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .lineLimit(3)
 
       HStack(spacing: 5) {

@@ -8,12 +8,64 @@ import os
 @testable import PublishingWorkbenchCore
 
 final class RepositoryWorktreePublishServiceTests: XCTestCase {
-  private struct Fixture {
+  private struct Fixture: Sendable {
     let base: URL
     let worktree: URL
     let remote: URL
     let profile: SiteProfile
     let initialSHA: String
+  }
+
+  func testRecordedPushCanBeReconciledAfterRestartWithoutTouchingNewLocalEdits() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try Data("reviewed\n".utf8).write(to: fixture.worktree.appendingPathComponent("tracked.md"))
+    let service = RepositoryWorktreePublishService()
+    let confirmation = try service.prepare(profile: fixture.profile, commitMessage: "Recorded push")
+    let storageURL = fixture.base.appendingPathComponent("workbench.json")
+    let journal = RepositoryWorktreePushRecoveryStore(workbenchFileURL: storageURL)
+    let result = try service.publish(profile: fixture.profile, confirmation: confirmation) { sha in
+      // The receipt is already durable before HEAD moves or a push starts.
+      let head = GitCommandRunner().run(["rev-parse", "HEAD"], rootURL: fixture.worktree)
+      XCTAssertEqual(head.standardOutput.trimmedForPublishing, fixture.initialSHA)
+      try journal.save(.init(profile: fixture.profile, confirmation: confirmation, commitSHA: sha))
+    }
+    // Simulate losing the application acknowledgement, then editing again.
+    let newDocument = "new local edits after upload\n"
+    try Data(newDocument.utf8).write(to: fixture.worktree.appendingPathComponent("tracked.md"))
+    let reopened = RepositoryWorktreePushRecoveryStore(workbenchFileURL: storageURL)
+    let receipt = try XCTUnwrap(reopened.records(profileID: fixture.profile.id).first)
+    let retry = RepositoryWorktreePushRetryService()
+    XCTAssertEqual(try retry.confirmedRecordedPush(receipt, profile: fixture.profile), result)
+    XCTAssertEqual(try retry.confirmedRecordedPush(receipt, profile: fixture.profile), result)
+    XCTAssertEqual(
+      try String(
+        contentsOf: fixture.worktree.appendingPathComponent("tracked.md"), encoding: .utf8),
+      newDocument)
+    XCTAssertEqual(
+      try git(["rev-parse", "HEAD"], at: fixture.worktree).trimmedForPublishing, result.commitSHA)
+    var otherProfile = fixture.profile
+    otherProfile.repoName = "another-repository"
+    XCTAssertThrowsError(try retry.confirmedRecordedPush(receipt, profile: otherProfile))
+    try reopened.remove(receipt)
+    XCTAssertTrue(try reopened.records(profileID: fixture.profile.id).isEmpty)
+  }
+
+  func testRecoveryReceiptFailurePreventsHeadChangeAndPush() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try Data("reviewed\n".utf8).write(to: fixture.worktree.appendingPathComponent("tracked.md"))
+    let service = RepositoryWorktreePublishService()
+    let confirmation = try service.prepare(profile: fixture.profile, commitMessage: "Receipt fails")
+    XCTAssertThrowsError(
+      try service.publish(profile: fixture.profile, confirmation: confirmation) { _ in
+        throw CocoaError(.fileWriteOutOfSpace)
+      })
+    XCTAssertEqual(
+      try git(["rev-parse", "HEAD"], at: fixture.worktree).trimmedForPublishing, fixture.initialSHA)
+    XCTAssertEqual(
+      try git(["rev-parse", "main"], at: fixture.remote).trimmedForPublishing, fixture.initialSHA)
+    XCTAssertTrue(try git(["diff", "--cached", "--name-only"], at: fixture.worktree).isEmpty)
   }
 
   func testPublishesAllModifiedDeletedUntrackedBinaryAndExecutableFiles() throws {
@@ -87,6 +139,90 @@ final class RepositoryWorktreePublishServiceTests: XCTestCase {
       Set(remotePaths),
       ["deploy script.sh", "tracked.md", "素材.bin"]
     )
+  }
+
+  func testScopedPublishCommitsOnlyScopedPathsAndKeepsOtherEditsLocal() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    let postsURL = fixture.worktree.appendingPathComponent("content/posts", isDirectory: true)
+    try FileManager.default.createDirectory(at: postsURL, withIntermediateDirectories: true)
+    try Data("article\n".utf8).write(to: postsURL.appendingPathComponent("hello*world.md"))
+    try Data([0x01, 0x02]).write(to: postsURL.appendingPathComponent("cover.png"))
+    try Data("unrelated edit\n".utf8).write(
+      to: fixture.worktree.appendingPathComponent("tracked.md"))
+    try Data("theme\n".utf8).write(to: fixture.worktree.appendingPathComponent("theme.css"))
+    // A glob-looking sibling must not be swept in by the literal pathspec.
+    try Data("sibling\n".utf8).write(to: postsURL.appendingPathComponent("hello-world.md"))
+
+    let service = RepositoryWorktreePublishService()
+    let scope = [
+      "content/posts/hello*world.md", "content/posts/cover.png", "content/posts/missing.png",
+    ]
+    let confirmation = try service.prepare(
+      profile: fixture.profile, commitMessage: "Publish one article", pathScope: scope)
+
+    XCTAssertEqual(confirmation.pathScope, scope.sorted())
+    XCTAssertEqual(
+      Set(confirmation.snapshot.paths), ["content/posts/cover.png", "content/posts/hello*world.md"])
+
+    // Unrelated edits after the review neither drift the scope nor get committed.
+    try Data("another unrelated edit\n".utf8).write(
+      to: fixture.worktree.appendingPathComponent("tracked.md"))
+    let result = try service.publish(profile: fixture.profile, confirmation: confirmation)
+
+    XCTAssertTrue(result.pushed)
+    XCTAssertEqual(Set(result.committedPaths), Set(confirmation.snapshot.paths))
+    let remotePaths = try git(
+      ["ls-tree", "-r", "-z", "--name-only", "refs/heads/main"], at: fixture.remote
+    ).split(separator: "\0").map(String.init)
+    XCTAssertEqual(
+      Set(remotePaths),
+      ["content/posts/cover.png", "content/posts/hello*world.md", "remove-me.txt", "tracked.md"])
+    XCTAssertEqual(
+      try git(["show", "refs/heads/main:tracked.md"], at: fixture.remote), "base\n")
+    let status = try git(
+      ["status", "--porcelain=v1", "--untracked-files=all"], at: fixture.worktree)
+    XCTAssertEqual(
+      Set(status.split(separator: "\n").map(String.init)),
+      [" M tracked.md", "?? content/posts/hello-world.md", "?? theme.css"])
+    XCTAssertTrue(try git(["diff", "--cached", "--name-only"], at: fixture.worktree).isEmpty)
+  }
+
+  func testScopedPublishRejectsScopeDriftAndStagedPathsOutsideTheScope() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try Data("article\n".utf8).write(to: fixture.worktree.appendingPathComponent("article.md"))
+    let service = RepositoryWorktreePublishService()
+
+    XCTAssertThrowsError(
+      try service.prepare(
+        profile: fixture.profile, commitMessage: "Nothing", pathScope: ["none.md"])
+    ) { XCTAssertEqual($0 as? RepositoryWorktreePublishError, .noChanges) }
+    XCTAssertThrowsError(
+      try service.prepare(profile: fixture.profile, commitMessage: "Escape", pathScope: ["../x.md"])
+    ) { XCTAssertEqual($0 as? RepositoryWorktreePublishError, .unsupportedPaths(["../x.md"])) }
+
+    let confirmation = try service.prepare(
+      profile: fixture.profile, commitMessage: "Article", pathScope: ["article.md"])
+    try Data("edited after review\n".utf8).write(
+      to: fixture.worktree.appendingPathComponent("article.md"))
+    XCTAssertThrowsError(try service.publish(profile: fixture.profile, confirmation: confirmation))
+    {
+      XCTAssertEqual($0 as? RepositoryWorktreePublishError, .snapshotDrift)
+    }
+
+    // The committed tree replaces the real index, so a staged path anywhere
+    // in the repository must block the scoped publish without touching it.
+    try Data("staged\n".utf8).write(to: fixture.worktree.appendingPathComponent("tracked.md"))
+    _ = try git(["add", "--", "tracked.md"], at: fixture.worktree)
+    XCTAssertThrowsError(
+      try service.prepare(
+        profile: fixture.profile, commitMessage: "Article", pathScope: ["article.md"])
+    ) { XCTAssertEqual($0 as? RepositoryWorktreePublishError, .dirtyIndex(["tracked.md"])) }
+    XCTAssertEqual(
+      try git(["diff", "--cached", "--name-only"], at: fixture.worktree), "tracked.md\n")
+    XCTAssertEqual(
+      try git(["rev-parse", "HEAD"], at: fixture.worktree).trimmedForPublishing, fixture.initialSHA)
   }
 
   func testRejectsDirtyIndexWithoutChangingIt() throws {
@@ -589,6 +725,25 @@ final class RepositoryWorktreePublishServiceTests: XCTestCase {
     }
   }
 
+  func testScopedPublishHooksCannotTouchFilesOutsideTheScope() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try Data("article\n".utf8).write(to: fixture.worktree.appendingPathComponent("article.md"))
+    try writePolicyHook(
+      "#!/bin/sh\nprintf 'hook\\n' >> tracked.md\n", name: "pre-commit", root: fixture.worktree)
+    var profile = fixture.profile
+    profile.gitExecutionPolicy = try RepositoryGitExecutionPolicyService().trustingHooks(
+      at: fixture.worktree)
+    let service = RepositoryWorktreePublishService()
+    let confirmation = try service.prepare(
+      profile: profile, commitMessage: "Article", pathScope: ["article.md"])
+    XCTAssertThrowsError(try service.publish(profile: profile, confirmation: confirmation)) {
+      XCTAssertEqual($0 as? RepositoryGitExecutionPolicyError, .reviewedContentChanged)
+    }
+    XCTAssertEqual(
+      try git(["rev-parse", "HEAD"], at: fixture.worktree).trimmedForPublishing, fixture.initialSHA)
+  }
+
   func testPostCommitFailureReportsCommittedFactAndDoesNotPush() throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture.base) }
@@ -620,6 +775,48 @@ final class RepositoryWorktreePublishServiceTests: XCTestCase {
     XCTAssertEqual(
       try git(["rev-parse", "main"], at: fixture.remote).trimmedForPublishing, fixture.initialSHA)
     XCTAssertTrue(try git(["status", "--porcelain"], at: fixture.worktree).isEmpty)
+  }
+
+  func testScopedPublishRejectsHooksRewritingAlreadyDirtyOutOfScopeFiles() throws {
+    let beforeCommitHooks = ["pre-commit", "prepare-commit-msg", "commit-msg"]
+    for hook in beforeCommitHooks + ["post-commit", "pre-push"] {
+      for path in ["tracked.md", "later.txt"] {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.base) }
+        let dirtyURL = fixture.worktree.appendingPathComponent(path)
+        try Data("pending\n".utf8).write(to: dirtyURL)
+        try Data("article\n".utf8).write(to: fixture.worktree.appendingPathComponent("article.md"))
+        try writePolicyHook(
+          "#!/bin/sh\nprintf 'hook\\n' >> \(path)\n", name: hook, root: fixture.worktree)
+        var profile = fixture.profile
+        profile.gitExecutionPolicy = try RepositoryGitExecutionPolicyService().trustingHooks(
+          at: fixture.worktree)
+        let service = RepositoryWorktreePublishService()
+        let confirmation = try service.prepare(
+          profile: profile, commitMessage: "Article", pathScope: ["article.md"])
+        XCTAssertThrowsError(try service.publish(profile: profile, confirmation: confirmation)) {
+          error in
+          if beforeCommitHooks.contains(hook) {
+            XCTAssertEqual(error as? RepositoryGitExecutionPolicyError, .reviewedContentChanged)
+          } else {
+            guard case .commitSucceededButPushFailed = error as? RepositoryWorktreePublishError
+            else {
+              return XCTFail("Expected retained local commit, got \(error)")
+            }
+          }
+        }
+        XCTAssertEqual(try String(contentsOf: dirtyURL, encoding: .utf8), "pending\nhook\n")
+        XCTAssertEqual(
+          try git(["rev-parse", "refs/heads/main"], at: fixture.remote).trimmedForPublishing,
+          fixture.initialSHA)
+        let head = try git(["rev-parse", "HEAD"], at: fixture.worktree).trimmedForPublishing
+        if beforeCommitHooks.contains(hook) {
+          XCTAssertEqual(head, fixture.initialSHA)
+        } else {
+          XCTAssertNotEqual(head, fixture.initialSHA)
+        }
+      }
+    }
   }
 
   func testTrustedPrePushHookChangingHeadStopsFrozenCommitPush() throws {

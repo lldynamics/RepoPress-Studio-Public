@@ -23,6 +23,10 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
     let isInspectorPresented: Bool
     let canToggleInspector: Bool
     var publishableArticleID: UUID? = nil
+    var isPublishBusy = false
+    /// Root actions capture the window's key state when they are built; a
+    /// sheet closing must rebuild them, or they keep refusing to run.
+    var isWindowKey = false
   }
 
   struct MarkdownPresentation: Equatable {
@@ -43,7 +47,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
   /// Kept separate from this router's presentation publisher so typing only
   /// invalidates the small toolbar statistic observer.
 
-  private(set) var publishDrawerCommandAction: PublishDrawerCommandAction?
+  private(set) var publishCommandAction: PublishCommandAction?
   private(set) var localSitePreviewCommandAction: LocalSitePreviewCommandAction?
   private(set) var workspaceCommandPaletteAction: WorkspaceCommandPaletteAction?
   private(set) var workspaceFirstRunSetupCommandAction: WorkspaceFirstRunSetupCommandAction?
@@ -67,7 +71,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
   private var isChangeNotificationScheduled = false
 
   func updateRoot(
-    publishDrawerCommandAction: PublishDrawerCommandAction,
+    publishCommandAction: PublishCommandAction,
     localSitePreviewCommandAction: LocalSitePreviewCommandAction,
     workspaceCommandPaletteAction: WorkspaceCommandPaletteAction,
     workspaceFirstRunSetupCommandAction: WorkspaceFirstRunSetupCommandAction,
@@ -80,7 +84,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
     showTaskCenter: (() -> Void)? = nil,
   ) {
     mutatePresentation {
-      self.publishDrawerCommandAction = publishDrawerCommandAction
+      self.publishCommandAction = publishCommandAction
       self.localSitePreviewCommandAction = localSitePreviewCommandAction
       self.workspaceCommandPaletteAction = workspaceCommandPaletteAction
       self.workspaceFirstRunSetupCommandAction = workspaceFirstRunSetupCommandAction
@@ -96,7 +100,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
 
   func clearAll() {
     mutatePresentation {
-      publishDrawerCommandAction = nil
+      publishCommandAction = nil
       localSitePreviewCommandAction = nil
       workspaceCommandPaletteAction = nil
       workspaceFirstRunSetupCommandAction = nil
@@ -188,9 +192,10 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
 
   private var presentationSnapshot: PresentationSnapshot {
     PresentationSnapshot(
-      hasRootActions: publishDrawerCommandAction != nil,
-      publishableArticleID: publishDrawerCommandAction?.currentArticleID,
-      canPrepareCurrentArticle: publishDrawerCommandAction?.canPrepareCurrentArticle == true,
+      hasRootActions: publishCommandAction != nil,
+      publishableArticleID: publishCommandAction?.currentArticleID,
+      canPublishCurrentArticle: publishCommandAction?.canPublishCurrentArticle == true,
+      isPublishBusy: publishCommandAction?.isBusy == true,
       focusModeIsActive: workspaceFocusModeCommandAction?.isActive,
       focusModeCanToggle: workspaceFocusModeCommandAction?.canToggle,
       sidebarIsPresented: workspaceSidebarCommandAction?.isPresented,
@@ -237,7 +242,8 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
   private struct PresentationSnapshot: Equatable {
     let hasRootActions: Bool
     let publishableArticleID: UUID?
-    let canPrepareCurrentArticle: Bool
+    let canPublishCurrentArticle: Bool
+    let isPublishBusy: Bool
     let focusModeIsActive: Bool?
     let focusModeCanToggle: Bool?
     let sidebarIsPresented: Bool?

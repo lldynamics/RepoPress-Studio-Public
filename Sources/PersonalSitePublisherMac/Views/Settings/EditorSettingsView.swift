@@ -170,7 +170,7 @@ struct EditorSettingsView: View {
           } label: {
             Image(systemName: "arrow.counterclockwise")
               .font(.workbenchMetadata)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
           }
           .buttonStyle(.plain)
           .help("恢复默认值 \(Int(defaultValue)) pt")
@@ -187,7 +187,7 @@ struct EditorSettingsView: View {
         Spacer()
 
         Text(formattedValue)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .monospacedDigit()
       }
 
@@ -225,7 +225,7 @@ struct EditorSettingsView: View {
         .font(previewBodyFont)
         .fontDesign(previewBodyFontDesign)
         .lineSpacing(CGFloat(lineSpacing))
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
     }
     .padding(WorkbenchSpacing.content)
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -246,6 +246,8 @@ struct EditorSettingsView: View {
     return min(max(fontSize, range.lowerBound), range.upperBound)
   }
 
+  // The preview mirrors the editor's own font-size preference, so it keeps raw
+  // text styles instead of following the interface text scale.
   private var previewTitleFont: Font {
     switch boundedPreviewFontSize {
     case ..<14:
@@ -279,7 +281,7 @@ struct EditorSettingsView: View {
   private func previewTag(title: String, icon: String) -> some View {
     Label(title, systemImage: icon)
       .font(.workbenchMetadata.weight(.medium))
-      .foregroundStyle(.secondary)
+      .foregroundStyle(.workbenchSecondary)
       .padding(.horizontal, WorkbenchSpacing.icon)
       .padding(.vertical, 2)
       .background(Color.primary.opacity(0.06), in: Capsule())
@@ -298,7 +300,7 @@ struct EditorSettingsView: View {
 
       Text(detail)
         .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityHidden(true)
     }

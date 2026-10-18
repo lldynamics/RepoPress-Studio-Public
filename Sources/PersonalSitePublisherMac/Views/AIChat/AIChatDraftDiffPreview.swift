@@ -95,11 +95,11 @@ struct AIChatDraftDiffPreviewSheet: View {
     VStack(spacing: 0) {
       HStack {
         Label("AI 修改预览", systemImage: "rectangle.split.2x1")
-          .font(.headline)
+          .font(.workbenchHeadline)
         if preview.citationCount > 0 {
           Label("附带 \(preview.citationCount) 条资料引用", systemImage: "books.vertical")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
         Spacer()
       }
@@ -109,14 +109,14 @@ struct AIChatDraftDiffPreviewSheet: View {
       VStack(alignment: .leading, spacing: 10) {
         if !metadataChanges.isEmpty {
           Label("元数据变化", systemImage: "tag")
-            .font(.callout.weight(.semibold))
+            .font(.workbenchBody.weight(.semibold))
 
           VStack(spacing: 0) {
             ForEach(metadataChanges) { change in
               VStack(alignment: .leading, spacing: 6) {
                 Text(change.title)
-                  .font(.caption.weight(.semibold))
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchMetadata.weight(.semibold))
+                  .foregroundStyle(.workbenchSecondary)
                 AIChangeComparisonView(before: change.before, after: change.after)
               }
               .padding(WorkbenchSpacing.control)
@@ -135,7 +135,7 @@ struct AIChatDraftDiffPreviewSheet: View {
 
         HStack {
           Label("行级差异", systemImage: "list.number")
-            .font(.callout.weight(.semibold))
+            .font(.workbenchBody.weight(.semibold))
           Spacer()
           Button {
             wrapLines.toggle()
@@ -144,15 +144,15 @@ struct AIChatDraftDiffPreviewSheet: View {
               wrapLines ? "已开启自动换行" : "单行横向微滚动",
               systemImage: wrapLines ? "text.word.spacing" : "arrow.left.and.right"
             )
-            .font(.caption)
+            .font(.workbenchMetadata)
           }
           .buttonStyle(.borderless)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .help(wrapLines ? "点击切换为单行横向微滚动模式" : "点击切换为长行自动换行模式")
 
           Text("−\(comparison.removedLineCount) 行 · +\(comparison.addedLineCount) 行")
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.monospacedDigit())
+            .foregroundStyle(.workbenchSecondary)
         }
 
         if comparison.bodyLineDiffs.isEmpty {
@@ -260,11 +260,11 @@ struct AIChatDraftDiffPreviewSheet: View {
   private var footerSummary: some View {
     VStack(alignment: .leading, spacing: 2) {
       Text(changeSummary)
-        .font(.caption.monospacedDigit())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospacedDigit())
+        .foregroundStyle(.workbenchSecondary)
       Text("应用前不会改动文章，可随时取消。")
-        .font(.caption)
-        .foregroundStyle(.tertiary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 
@@ -301,8 +301,8 @@ private struct AIChatLineDiffRow: View {
   var body: some View {
     if line.kind == .skipped {
       Text("省略 \(line.skippedLineCount) 行未变化内容")
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospaced())
+        .foregroundStyle(.workbenchSecondary)
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, WorkbenchSpacing.tight)
         .background(.quaternary.opacity(0.35))
@@ -314,7 +314,7 @@ private struct AIChatLineDiffRow: View {
           .foregroundStyle(foregroundColor)
           .frame(width: 22, alignment: .center)
         Text(verbatim: line.text.isEmpty ? " " : line.text)
-          .font(.callout.monospaced())
+          .font(.workbenchBody.monospaced())
           .foregroundStyle(foregroundColor)
           .lineLimit(wrapLines ? nil : 1)
           .fixedSize(horizontal: !wrapLines, vertical: wrapLines)
@@ -331,8 +331,8 @@ private struct AIChatLineDiffRow: View {
 
   private func lineNumber(_ number: Int?) -> some View {
     Text(number.map(String.init) ?? "")
-      .font(.caption.monospacedDigit())
-      .foregroundStyle(.tertiary)
+      .font(.workbenchMetadata.monospacedDigit())
+      .foregroundStyle(.workbenchSecondary)
       .frame(width: 42, alignment: .trailing)
       .padding(.trailing, WorkbenchSpacing.control)
   }

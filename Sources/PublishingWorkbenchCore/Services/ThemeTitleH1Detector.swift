@@ -42,13 +42,14 @@ struct ThemeTitleH1Detector: Sendable {
     case unavailable
   }
 
-  /// Reading this value is safe from SwiftUI body and binding getters. A miss
-  /// keeps the historical enabled default until a background audit fills it.
-  static func cachedRendersTitleAsH1(profile: SiteProfile) -> Bool? {
-    cache.withLock { state in
-      guard let entry = state.entries[CacheKey(profile: profile)], entry.isResolved else {
-        return nil
-      }
+  /// Returns only a completed result for this exact repository revision.
+  /// This synchronous path never reads repository files or starts detection.
+  func cachedResult(profile: SiteProfile, repositoryRevision: UUID) -> Bool? {
+    Self.cache.withLock { state in
+      guard let entry = state.entries[CacheKey(profile: profile)],
+        entry.repositoryRevision == repositoryRevision,
+        entry.isResolved
+      else { return nil }
       return entry.rendersTitleAsH1
     }
   }

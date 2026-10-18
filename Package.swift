@@ -165,6 +165,7 @@ let package = Package(
     .target(
       name: "PublishingWorkbenchCore",
       dependencies: [
+        .product(name: "RepoPressCore", package: "RepoPressShared"),
         "PublishingCoreSupport",
         "PublishingDomainContracts",
         "PublishingMarkdownCore",

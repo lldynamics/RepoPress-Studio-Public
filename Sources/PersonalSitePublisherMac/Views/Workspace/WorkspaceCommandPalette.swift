@@ -79,13 +79,13 @@ struct WorkspaceCommandPalette: View {
     VStack(spacing: 0) {
       HStack(spacing: 10) {
         Image(systemName: "command")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
         TextField(
           String(localized: "搜索内容、AI 功能、工作区或命令…"),
           text: $query
         )
         .textFieldStyle(.plain)
-        .font(.title3)
+        .font(.workbenchTitle3)
         .focused($isSearchFocused)
         .accessibilityLabel(
           String(localized: "搜索内容、AI 功能、工作区或命令…")
@@ -93,8 +93,8 @@ struct WorkspaceCommandPalette: View {
         .accessibilityIdentifier("workspace-command-palette-query")
         .onSubmit(performSelectedResult)
         Text("⇧⌘K")
-          .font(.caption.monospaced())
-          .foregroundStyle(.tertiary)
+          .font(.workbenchMetadata.monospaced())
+          .foregroundStyle(.workbenchSecondary)
         Button {
           dismiss()
         } label: {
@@ -335,9 +335,9 @@ struct WorkspaceCommandPalette: View {
       moveSelection(by: -1)
       return .handled
     }
-    .onExitCommand {
-      dismiss()
-    }
+    // Click-away dismissal pauses while batch replacement owns a nested sheet.
+    // The modifier shares the palette's existing Esc dismissal action.
+    .modifier(WorkspaceCommandPaletteDismissal(isEnabled: !isBatchReplacePresented))
     .accessibilityElement(children: .contain)
     .accessibilityLabel("命令面板")
     .accessibilityIdentifier("workspace-command-palette")
@@ -700,8 +700,8 @@ struct WorkspaceCommandPalette: View {
   ) -> some View {
     VStack(alignment: .leading, spacing: 7) {
       Text(title)
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.weight(.semibold))
+        .foregroundStyle(.workbenchSecondary)
       content()
     }
   }
@@ -739,8 +739,8 @@ struct WorkspaceCommandPalette: View {
             Text(
               String(localized: "最多显示 \(WorkspaceCommandPaletteContentSearch.resultLimit) 个资料片段。")
             )
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
           }
         }
       }
@@ -765,8 +765,8 @@ struct WorkspaceCommandPalette: View {
               String(
                 localized: "最多显示 \(WorkspaceCommandPaletteContentSearch.resultLimit) 篇 RSS 文章。")
             )
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
           }
         }
       }
@@ -780,8 +780,8 @@ struct WorkspaceCommandPalette: View {
       HStack(spacing: 8) {
         ProgressView().controlSize(.small)
         Text(String(localized: "正在搜索已保存的内容…"))
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
       .accessibilityIdentifier("workspace-command-palette-content-searching")
     case .failed(let message):
@@ -789,13 +789,13 @@ struct WorkspaceCommandPalette: View {
         String(localized: "本地检索失败：\(message)"),
         systemImage: "exclamationmark.triangle"
       )
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
       .accessibilityIdentifier("workspace-command-palette-content-search-failed")
     case .ready where !hasResults:
       Text(emptyMessage)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityIdentifier("workspace-command-palette-content-search-empty")
     case .idle, .ready:
       EmptyView()
@@ -827,14 +827,14 @@ struct WorkspaceCommandPalette: View {
       HStack(spacing: 8) {
         ProgressView().controlSize(.small)
         Text("正在搜索…")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
       .accessibilityIdentifier("workspace-command-palette-article-searching")
     } else if !normalizedQuery.isEmpty && snapshot.articleHits.isEmpty {
       Text("标题、正文和元数据中没有匹配的文章。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityIdentifier("workspace-command-palette-article-search-empty")
     }
 
@@ -860,16 +860,16 @@ struct WorkspaceCommandPalette: View {
       {
         let resultCount = WorkspaceCommandPaletteArticleSearch.resultLimit
         Text("最多显示 \(resultCount) 个文章匹配，请缩小搜索范围。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
       if articleSearch.protectedPrivateDraftCount > 0 {
         Label(
           "\(articleSearch.protectedPrivateDraftCount) 篇私密文章仅搜索标题",
           systemImage: "lock.shield"
         )
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
       }
     }
   }
@@ -895,11 +895,11 @@ struct WorkspaceCommandPalette: View {
         VStack(alignment: .leading, spacing: 2) {
           Text(title)
             .foregroundStyle(.primary)
-            .workbenchTruncatedIdentity(title)
+            .workbenchTruncatedTitle(title)
           if !detail.isEmpty {
             Text(detail)
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
               .lineLimit(detailLineLimit)
               .multilineTextAlignment(.leading)
           }
@@ -907,8 +907,8 @@ struct WorkspaceCommandPalette: View {
         Spacer()
         if let shortcut {
           Text(shortcut)
-            .font(.caption.monospaced())
-            .foregroundStyle(.tertiary)
+            .font(.workbenchMetadata.monospaced())
+            .foregroundStyle(.workbenchSecondary)
         }
       }
       .padding(.horizontal, WorkbenchSpacing.control)

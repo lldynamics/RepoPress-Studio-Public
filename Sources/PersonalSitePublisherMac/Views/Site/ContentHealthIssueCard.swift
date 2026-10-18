@@ -17,7 +17,7 @@ struct ContentHealthIssueCard: View {
         .font(.workbenchItemTitle)
       Text(issue.message)
         .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
 
       if let onFocus {

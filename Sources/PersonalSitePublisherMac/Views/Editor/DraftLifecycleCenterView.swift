@@ -22,9 +22,6 @@ struct DraftLifecycleCenterView: View {
   @State private var remoteCleanupReviewClosurePending: DraftRepositoryCleanupRequest?
   @State private var versionPendingComparison: DraftVersionSnapshot?
   @State private var versionPendingRestore: DraftVersionSnapshot?
-  @State private var ownershipTransferPlan: DraftOwnershipTransferPlan?
-  @State private var ownershipOperation: DraftOwnershipTransferOperation = .moveToGeneral
-  @State private var ownershipTargetProfileID: UUID?
 
   init(
     store: WorkbenchStore,
@@ -159,11 +156,6 @@ struct DraftLifecycleCenterView: View {
       .sheet(item: $versionPendingComparison) { version in
         DraftVersionComparisonView(store: store, sourceVersion: version)
       }
-      .sheet(item: $ownershipTransferPlan) { plan in
-        DraftOwnershipTransferConfirmationView(plan: plan) { confirmedPlan in
-          store.applyDraftOwnershipTransfer(confirmedPlan) != nil
-        }
-      }
   }
 
   @ViewBuilder
@@ -172,7 +164,7 @@ struct DraftLifecycleCenterView: View {
       VStack(spacing: 0) {
         HStack {
           Text("历史版本")
-            .font(.headline)
+            .font(.workbenchHeadline)
           Spacer()
         }
         .padding(WorkbenchSpacing.content)
@@ -205,7 +197,6 @@ struct DraftLifecycleCenterView: View {
     List {
       versionHistorySection
       if !isArticleHistory {
-        ownershipTransferSection
         recycleBinSection
         repositoryCleanupSection
       }
@@ -226,10 +217,10 @@ struct DraftLifecycleCenterView: View {
         HStack {
           VStack(alignment: .leading, spacing: 3) {
             Text(draft.title.nilIfEmpty ?? "未命名文章")
-              .font(.headline)
+              .font(.workbenchHeadline)
             Text("最多保留 30 个去重版本；连续编辑每 5 分钟最多记录一次。")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
           Spacer()
           Button {
@@ -249,17 +240,17 @@ struct DraftLifecycleCenterView: View {
           ForEach(selectedDraftVersions) { version in
             HStack(alignment: .top, spacing: 12) {
               Image(systemName: version.reason == .manual ? "camera.fill" : "clock.fill")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.workbenchSecondary)
                 .frame(width: 20)
               VStack(alignment: .leading, spacing: 4) {
                 Text(version.reason.localizedDisplayNameKey)
-                  .font(.subheadline.weight(.semibold))
+                  .font(.workbenchMetadata.weight(.semibold))
                 Text(version.capturedAt.formatted(date: .abbreviated, time: .shortened))
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchMetadata)
+                  .foregroundStyle(.workbenchSecondary)
                 Text(version.draft.bodyMarkdown.trimmedForPublishing.nilIfEmpty ?? "空白正文")
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchMetadata)
+                  .foregroundStyle(.workbenchSecondary)
                   .lineLimit(2)
               }
               Spacer()
@@ -283,76 +274,21 @@ struct DraftLifecycleCenterView: View {
     }
   }
 
-  private var ownershipTransferSection: some View {
-    Section {
-      if let draft = selectedDraft {
-        VStack(alignment: .leading, spacing: 10) {
-          Text(draft.title.nilIfEmpty ?? "未命名文章")
-            .font(.headline)
-
-          Picker("变更方式", selection: $ownershipOperation) {
-            Text("移动到站点").tag(DraftOwnershipTransferOperation.moveToSite)
-            Text("复制到站点").tag(DraftOwnershipTransferOperation.copyToSite)
-            Text("转为通用草稿").tag(DraftOwnershipTransferOperation.moveToGeneral)
-          }
-
-          if ownershipOperation != .moveToGeneral {
-            Picker("目标站点", selection: ownershipTargetProfileBinding) {
-              Text("选择站点").tag(UUID?.none)
-              ForEach(ownershipTargetProfiles) { profile in
-                Text(profile.name).tag(Optional(profile.id))
-              }
-            }
-          }
-
-          HStack {
-            Text("只更新工作台中的草稿归属，不会改写原仓库文件。")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .fixedSize(horizontal: false, vertical: true)
-            Spacer()
-            Button("生成归属变更预览", systemImage: "arrow.right.doc.on.clipboard") {
-              ownershipTransferPlan = store.draftOwnershipTransferPlan(
-                draftIDs: [draft.id],
-                operation: ownershipOperation,
-                targetProfileID: ownershipOperation == .moveToGeneral
-                  ? nil
-                  : ownershipTargetProfileID
-              )
-            }
-            .disabled(!canPreviewOwnershipTransfer)
-          }
-        }
-        .padding(.vertical, WorkbenchSpacing.tight)
-        .onAppear {
-          ownershipTargetProfileID = ownershipTargetProfileID ?? ownershipTargetProfiles.first?.id
-        }
-      } else {
-        Text("请先在文章列表中选择一篇文章，再管理它的归属。")
-          .foregroundStyle(.secondary)
-      }
-    } header: {
-      Label("草稿归属", systemImage: "person.2.arrow.trianglehead.counterclockwise")
-    } footer: {
-      Text("批量归属变更仍可在文章列表的批量操作中使用。")
-    }
-  }
-
   private var recycleBinSection: some View {
     Section {
       if store.recycledDrafts.isEmpty {
         Text("回收站为空")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       } else {
         ForEach(store.recycledDrafts.sorted { $0.deletedAt > $1.deletedAt }) { recycled in
           VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
               VStack(alignment: .leading, spacing: 3) {
                 Text(recycled.draft.title.nilIfEmpty ?? "未命名文章")
-                  .font(.headline)
+                  .font(.workbenchHeadline)
                 Text("删除于 \(recycled.deletedAt.formatted(date: .abbreviated, time: .shortened))")
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchMetadata)
+                  .foregroundStyle(.workbenchSecondary)
               }
               Spacer()
               Button {
@@ -375,7 +311,7 @@ struct DraftLifecycleCenterView: View {
 
             if let repositoryPath = recycled.draft.repositoryPath?.nilIfEmpty {
               Label(repositoryPath, systemImage: "externaldrive.badge.exclamationmark")
-                .font(.caption.monospaced())
+                .font(.workbenchMetadata.monospaced())
                 .foregroundStyle(WorkbenchTheme.warning)
             }
           }
@@ -393,32 +329,32 @@ struct DraftLifecycleCenterView: View {
     Section {
       if store.pendingRepositoryCleanupRequests.isEmpty {
         Text("没有待处理的仓库文件")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       } else {
         ForEach(store.pendingRepositoryCleanupRequests) { request in
           VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
               VStack(alignment: .leading, spacing: 4) {
                 Text(request.draftTitle.nilIfEmpty ?? "未命名文章")
-                  .font(.headline)
+                  .font(.workbenchHeadline)
                 Text(request.repositoryPath)
-                  .font(.caption.monospaced())
+                  .font(.workbenchMetadata.monospaced())
                   .textSelection(.enabled)
                 if let profile = store.profiles.first(where: { $0.id == request.siteProfileID }) {
                   Label(profile.name, systemImage: "square.stack.3d.up")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.workbenchMetadata)
+                    .foregroundStyle(.workbenchSecondary)
                 }
                 cleanupPreviewSummary(request)
                 Label(
                   request.remoteStatus.localizedDisplayName,
                   systemImage: remoteCleanupStatusImage(request.remoteStatus)
                 )
-                .font(.caption)
+                .font(.workbenchMetadata)
                 .foregroundStyle(remoteCleanupStatusColor(request.remoteStatus))
                 if let errorMessage = request.lastRemoteErrorMessage?.nilIfEmpty {
                   Text(errorMessage)
-                    .font(.caption)
+                    .font(.workbenchMetadata)
                     .foregroundStyle(WorkbenchTheme.warning)
                     .lineLimit(2)
                 }
@@ -426,7 +362,7 @@ struct DraftLifecycleCenterView: View {
                   let url = URL(string: reviewURL)
                 {
                   Link("打开下线 PR/MR", destination: url)
-                    .font(.caption)
+                    .font(.workbenchMetadata)
                 }
               }
               Spacer()
@@ -472,12 +408,12 @@ struct DraftLifecycleCenterView: View {
         diff.status == .deleted ? "本地文件存在，等待清理" : "本地文件已不存在",
         systemImage: diff.status == .deleted ? "exclamationmark.triangle" : "checkmark.circle"
       )
-      .font(.caption)
+      .font(.workbenchMetadata)
       .foregroundStyle(diff.status == .deleted ? WorkbenchTheme.warning : WorkbenchTheme.success)
     } else {
       Label("尚未配置可访问的本地仓库", systemImage: "questionmark.folder")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 
@@ -538,27 +474,5 @@ struct DraftLifecycleCenterView: View {
       get: { versionPendingRestore != nil },
       set: { if !$0 { versionPendingRestore = nil } }
     )
-  }
-
-  private var ownershipTargetProfiles: [SiteProfile] {
-    guard let draft = selectedDraft else { return [] }
-    return store.publishingProfiles.filter { profile in
-      draft.isGeneralDraft || draft.siteProfileID != profile.id
-    }
-  }
-
-  private var ownershipTargetProfileBinding: Binding<UUID?> {
-    Binding(
-      get: { ownershipTargetProfileID },
-      set: { ownershipTargetProfileID = $0 }
-    )
-  }
-
-  private var canPreviewOwnershipTransfer: Bool {
-    guard selectedDraft != nil else { return false }
-    if ownershipOperation == .moveToGeneral {
-      return true
-    }
-    return ownershipTargetProfileID != nil && !ownershipTargetProfiles.isEmpty
   }
 }

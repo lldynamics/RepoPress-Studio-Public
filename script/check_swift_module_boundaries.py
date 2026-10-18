@@ -134,7 +134,7 @@ EXPECTED_EXTERNAL_PRODUCTS: dict[str, dict[str, str]] = {
     "PublishingPreviewCore": {},
     "PublishingBackupCore": {},
     "PublishingSyncCore": {},
-    "PublishingWorkbenchCore": {},
+    "PublishingWorkbenchCore": {"RepoPressCore": "RepoPressShared"},
     "PersonalSitePublisherMac": {"Sparkle": "Sparkle"},
 }
 EXPECTED_EXTERNAL_PRODUCTS.update(

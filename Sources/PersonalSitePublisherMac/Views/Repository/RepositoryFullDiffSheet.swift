@@ -13,23 +13,23 @@ struct RepositoryFullDiffSheet: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       Text("完整差异")
-        .font(.headline)
+        .font(.workbenchHeadline)
       Text(file.path)
-        .font(.caption.monospaced())
+        .font(.workbenchMetadata.monospaced())
         .textSelection(.enabled)
         .fixedSize(horizontal: false, vertical: true)
       if let errorMessage {
         Text(errorMessage)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .textSelection(.enabled)
       } else if let diff {
         if diff.isEmpty {
           Text("没有可显示的文本差异。")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         } else {
           ScrollView([.horizontal, .vertical]) {
             Text(diff)
-              .font(.callout.monospaced())
+              .font(.workbenchBody.monospaced())
               .textSelection(.enabled)
               .fixedSize(horizontal: true, vertical: true)
               .frame(maxWidth: .infinity, alignment: .leading)

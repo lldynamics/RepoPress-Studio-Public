@@ -140,7 +140,7 @@ struct ImageWorkbenchView: View {
         .font(.workbenchPageTitle)
       Text(stageDescription)
         .font(.workbenchPageSubtitle)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 
@@ -204,7 +204,7 @@ struct ImageWorkbenchView: View {
     if let message = imageWorkbench.actionMessage {
       Label(message, systemImage: "info.circle")
         .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .textSelection(.enabled)
     }
 
@@ -214,8 +214,8 @@ struct ImageWorkbenchView: View {
           .frame(maxWidth: 260)
         Text(progress.operation.progressTitle)
         Text("\(progress.completedDraftCount)/\(progress.totalDraftCount)")
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospacedDigit())
+          .foregroundStyle(.workbenchSecondary)
         Spacer()
         Button("取消") {
           imageWorkbench.cancelBatchProcessing()
@@ -233,15 +233,15 @@ struct ImageWorkbenchView: View {
       HStack(alignment: .firstTextBaseline) {
         VStack(alignment: .leading, spacing: 3) {
           Text("当前站点")
-            .font(.headline)
+            .font(.workbenchHeadline)
           Text(store.activeProfile.name)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
         Spacer()
         Text(ByteCountFormatter.string(fromByteCount: summary.totalByteSize, countStyle: .file))
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospacedDigit())
+          .foregroundStyle(.workbenchSecondary)
       }
 
       LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
@@ -283,7 +283,7 @@ struct ImageWorkbenchView: View {
           .font(.workbenchSectionTitle)
         Text("这些操作只处理图片资源；点击后会先预览影响的文章和图片，不会直接改动文件。")
           .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], spacing: 10) {
@@ -312,7 +312,7 @@ struct ImageWorkbenchView: View {
     } label: {
       HStack(alignment: .top, spacing: 10) {
         Image(systemName: action.systemImage)
-          .font(.title3)
+          .font(.workbenchTitle3)
           .frame(width: 24)
         VStack(alignment: .leading, spacing: 3) {
           Text(action.title)
@@ -328,7 +328,7 @@ struct ImageWorkbenchView: View {
         }
         Spacer(minLength: 6)
         Text("\(count)")
-          .font(.callout.monospacedDigit().weight(.semibold))
+          .font(.workbenchBody.monospacedDigit().weight(.semibold))
       }
       .frame(maxWidth: .infinity, minHeight: 66, alignment: .leading)
     }

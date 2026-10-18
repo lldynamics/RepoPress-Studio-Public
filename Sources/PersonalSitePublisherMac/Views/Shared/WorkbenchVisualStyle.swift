@@ -492,8 +492,8 @@ struct WorkbenchListDisclosureFooter: View {
     if totalCount > visibleCount || showsAll {
       HStack(spacing: WorkbenchSpacing.control) {
         Text(String(localized: "已显示 \(visibleCount)/\(totalCount)"))
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospacedDigit())
+          .foregroundStyle(.workbenchSecondary)
         Spacer(minLength: WorkbenchSpacing.control)
         Button(
           showsAll ? String(localized: "收起") : String(localized: "显示全部")
@@ -534,21 +534,6 @@ struct WorkbenchFocusRingButtonStyle: ButtonStyle {
       }
       .opacity(!isEnabled ? 0.4 : configuration.isPressed ? 0.82 : 1)
   }
-}
-
-extension Font {
-  /// 稳定的语义角色保持页面层级一致，同时保留用户的 macOS 字体大小和辅助功能设置。
-  static let workbenchPageTitle: Font = .title2.weight(.semibold)
-  static let workbenchPageSubtitle: Font = .callout
-  static let workbenchSectionTitle: Font = .headline
-  static let workbenchItemTitle: Font = .callout.weight(.medium)
-  static let workbenchBody: Font = .body
-  static let workbenchSupporting: Font = .callout
-  static let workbenchMetadata: Font = .caption
-  static let workbenchButtonLabel: Font = .callout.weight(.medium)
-
-  static let workbenchCardTitle: Font = .callout.weight(.semibold)
-  static let workbenchMetricValue: Font = .title3.weight(.semibold)
 }
 
 extension View {

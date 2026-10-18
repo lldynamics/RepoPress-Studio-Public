@@ -3,6 +3,7 @@
   import PublishingCoreSupport
   import PublishingKnowledgeCore
   import PublishingDomainContracts
+  import RepoPressCore
 
   public struct ScreenshotDemoDataService {
     public static let environmentKey = "PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO"
@@ -213,6 +214,15 @@
         )
         article.updatedAt = now
       }
+      let articlePath = profile.markdownPath(for: article)
+      let articleDocument = FrontMatterRenderer().renderDocument(draft: article, profile: profile)
+      if let source = ImportedFrontMatter.split(articleDocument).frontMatter {
+        article.importedFrontMatter = ArticleFrontMatterPreservation.capturing(
+          source, draft: article, profile: profile)
+        article.recordProjectFile(
+          profile: profile, repositoryPath: articlePath,
+          renderedContentDigest: ArticleDraft.repositoryDocumentDigest(articleDocument))
+      }
       let privateArticle = ArticleDraft(
         id: privateArticleID,
         siteProfileID: profileID,
@@ -259,9 +269,9 @@
         draftID: articleID,
         draftTitle: article.title,
         sourceDocumentDigest: articleSourceDigest,
-        markdownPath: "content/posts/2026/repopress-studio-publishing-flow.md",
+        markdownPath: articlePath,
         changedPaths: [
-          "content/posts/2026/repopress-studio-publishing-flow.md",
+          articlePath,
           "static/images/2026/social-preview.png",
         ],
         repositoryProvider: .github,
@@ -368,7 +378,7 @@
       let seoSnapshot = SEOSocialPreviewSnapshot(
         draftID: articleID,
         signature: "screenshot-demo",
-        markdownPath: "content/posts/2026/repopress-studio-publishing-flow.md",
+        markdownPath: articlePath,
         canonicalURLText: "https://demo.example.com/repopress-studio-publishing-flow",
         titleCharacterCount: article.title.count,
         descriptionCharacterCount: article.summary.count,
@@ -622,18 +632,18 @@
         return WorkbenchPersistence()
       }
       let persistence = WorkbenchPersistence(fileURL: defaultPersistenceURL)
+      let isUITest = ProcessInfo.processInfo.environment[uiTestEnvironmentKey] == "1"
       try? preparePersistence(
-        persistence,
-        resetsDraftRecovery: ProcessInfo.processInfo.environment[uiTestEnvironmentKey] == "1"
-      )
+        persistence, resetsDraftRecovery: isUITest, discardsUnreadableFixture: isUITest)
       return persistence
     }
 
     static func preparePersistence(
       _ persistence: WorkbenchPersistence,
-      resetsDraftRecovery: Bool
+      resetsDraftRecovery: Bool,
+      discardsUnreadableFixture: Bool = false
     ) throws {
-      _ = try persistence.loadWithRecovery()
+      try loadFixture(persistence, discardingUnreadable: discardsUnreadableFixture)
       _ = try persistence.save(ScreenshotDemoDataService().makeSnapshot())
       let ledgerPersistence = WorkbenchOperationLedgerPersistence(
         fileURL: persistence.operationLedgerURL
@@ -706,47 +716,6 @@
     }
 
     @MainActor
-    private static func prepareRepositoryFixture(in store: WorkbenchStore, isUITest: Bool) {
-      let configuredPath =
-        isUITest
-        ? ProcessInfo.processInfo.environment[uiTestRepositoryRootEnvironmentKey]?
-          .trimmingCharacters(in: .whitespacesAndNewlines)
-        : nil
-      let rootURL =
-        configuredPath.flatMap { path in
-          path.isEmpty ? nil : URL(fileURLWithPath: path, isDirectory: true)
-        }
-        ?? (isUITest
-          ? FileManager.default.temporaryDirectory
-            .appendingPathComponent(
-              "PersonalSitePublisherMac-AccessibilityUITestRepository", isDirectory: true)
-          : defaultRepositoryRootURL)
-
-      let contentURL = rootURL.appendingPathComponent("content/posts/2026", isDirectory: true)
-      let imageURL = rootURL.appendingPathComponent("static/images", isDirectory: true)
-      do {
-        try FileManager.default.createDirectory(at: contentURL, withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: imageURL, withIntermediateDirectories: true)
-        try writeFixtureFileIfMissing(
-          at: rootURL.appendingPathComponent("config.toml"),
-          contents: "base_url = \"https://demo.example.com\"\ntitle = \"截图演示站点\"\n"
-        )
-        try writeFixtureFileIfMissing(
-          at: contentURL.appendingPathComponent("repopress-studio-publishing-flow.md"),
-          contents:
-            "+++\ntitle = \"RepoPress Studio 发布流程\"\ndraft = false\n+++\n\n# RepoPress Studio 发布流程\n"
-        )
-      } catch {
-        store.setPublishActionMessage(String(localized: "无法准备运行时辅助功能测试仓库。"), status: .failure)
-        return
-      }
-
-      var profile = store.activeProfile
-      profile.localRepositoryRootPath = rootURL.standardizedFileURL.path
-      store.updateActiveProfile(profile)
-    }
-
-    @MainActor
     private static func seedSyncAPIPublishPreview(in store: WorkbenchStore) {
       guard let draft = store.selectedDraft else { return }
 
@@ -777,7 +746,7 @@
         tokenScopeSummary: "Repository contents: write",
         message: "截图演示：Token 权限检查已通过。"
       )
-      let conflictPath = "content/posts/2026/repopress-studio-publishing-flow.md"
+      let conflictPath = profile.markdownPath(for: draft)
       let conflictWarning = PreflightIssue(
         severity: .warning,
         title: "远端同路径变更",
@@ -843,11 +812,6 @@
         )
       }
       store.selectSection(.sync)
-    }
-
-    private static func writeFixtureFileIfMissing(at url: URL, contents: String) throws {
-      guard !FileManager.default.fileExists(atPath: url.path) else { return }
-      try Data(contents.utf8).write(to: url, options: .atomic)
     }
 
     @MainActor

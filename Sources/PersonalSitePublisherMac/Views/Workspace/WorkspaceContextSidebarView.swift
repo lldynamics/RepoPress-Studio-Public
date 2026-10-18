@@ -26,7 +26,7 @@ struct WorkspaceContextListHeader<Subtitle: View, Actions: View>: View {
           .minimumScaleFactor(0.85)
         subtitle()
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .lineLimit(2)
       }
       .layoutPriority(1)
@@ -107,6 +107,14 @@ struct WorkspacePrimarySidebar: View {
   }
 
   var body: some View {
+    // Each section's root (knowledge-source-list, rss-reader-sidebar,
+    // workspace-quick-search) must stay a separate container inside the sidebar.
+    sidebarContent
+      .background(WorkbenchSurface.sidebar)
+      .workbenchAccessibilityContainer(identifier: "workspace-sidebar", label: Text("侧栏"))
+  }
+
+  private var sidebarContent: some View {
     VStack(spacing: 0) {
       if showsContextList {
         contextList
@@ -137,10 +145,6 @@ struct WorkspacePrimarySidebar: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(WorkbenchSurface.sidebar)
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("侧栏")
-    .accessibilityIdentifier("workspace-sidebar")
   }
 
   private var showsContextList: Bool {

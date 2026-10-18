@@ -17,7 +17,7 @@ struct KnowledgeLibraryHealthView: View {
     VStack(spacing: 0) {
       HStack(spacing: 10) {
         Label("资料库健康", systemImage: "checkmark.shield")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
         Button("重新检查") { Task { await refresh() } }
           .disabled(state.isLoading || state.isBusy)
@@ -80,12 +80,12 @@ struct KnowledgeLibraryHealthView: View {
           health.needsAttention ? "发现可修复项目" : "资料库状态良好",
           systemImage: health.needsAttention ? "wrench.and.screwdriver" : "checkmark.circle.fill"
         )
-        .font(.title3.weight(.semibold))
+        .font(.workbenchTitle3.weight(.semibold))
         .foregroundStyle(health.needsAttention ? WorkbenchTheme.warning : WorkbenchTheme.success)
         Spacer()
         Text("当前解析器 v\(health.currentParserVersion)")
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospaced())
+          .foregroundStyle(.workbenchSecondary)
       }
 
       HStack(spacing: 10) {
@@ -109,10 +109,10 @@ struct KnowledgeLibraryHealthView: View {
   private func metric(_ title: String, value: Int, systemImage: String) -> some View {
     VStack(alignment: .leading, spacing: 4) {
       Label(title, systemImage: systemImage)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
       Text(value.formatted())
-        .font(.title3.weight(.semibold).monospacedDigit())
+        .font(.workbenchTitle3.weight(.semibold).monospacedDigit())
     }
     .frame(maxWidth: .infinity, alignment: .leading)
   }
@@ -121,7 +121,7 @@ struct KnowledgeLibraryHealthView: View {
     VStack(alignment: .leading, spacing: 12) {
       HStack {
         Label("网页正文净化", systemImage: "doc.text.magnifyingglass")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
         Button(didAnalyzeRepairs ? "重新分析" : "分析并预览") {
           Task { await analyzeRepairs() }
@@ -129,22 +129,22 @@ struct KnowledgeLibraryHealthView: View {
         .disabled(health.locallyRepairableDocumentCount == 0 || state.isBusy)
       }
       Text("使用资料库内保存的原始网页归档重新提取正文，不联网、不覆盖旧版本；完成后同时重建全文和本地语义索引。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
 
       if health.outdatedParserDocumentCount > health.locallyRepairableDocumentCount {
         Label(
           "有 \(health.outdatedParserDocumentCount - health.locallyRepairableDocumentCount) 条旧版资料缺少可用网页归档，需要重新导入。",
           systemImage: "exclamationmark.triangle"
         )
-        .font(.caption)
+        .font(.workbenchMetadata)
         .foregroundStyle(WorkbenchTheme.warning)
       }
 
       if didAnalyzeRepairs && repairPreviews.isEmpty {
         Label("没有可在本机重新净化的网页资料。", systemImage: "checkmark.circle")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       ForEach(repairPreviews, id: \.documentID) { preview in
@@ -154,8 +154,8 @@ struct KnowledgeLibraryHealthView: View {
       if !repairPreviews.isEmpty {
         HStack {
           Text("修复会为每条资料创建新版本，旧版本仍可恢复。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
           Spacer()
           Button("修复 \(repairPreviews.count) 条资料") {
             Task { await applyRepairs() }
@@ -172,14 +172,14 @@ struct KnowledgeLibraryHealthView: View {
     return VStack(alignment: .leading, spacing: 7) {
       HStack {
         Text(documentTitle)
-          .font(.callout.weight(.semibold))
-          .workbenchTruncatedIdentity(documentTitle)
+          .font(.workbenchBody.weight(.semibold))
+          .workbenchTruncatedTitle(documentTitle)
         Spacer()
         Text(
           "v\(preview.currentRevision.parserVersion) → v\(KnowledgeLibraryService.parserVersion)"
         )
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospaced())
+        .foregroundStyle(.workbenchSecondary)
       }
       if preview.difference.hasChanges {
         HStack(spacing: 6) {
@@ -200,18 +200,18 @@ struct KnowledgeLibraryHealthView: View {
               .background(WorkbenchTheme.risk.opacity(0.12), in: Capsule())
           }
           Text(String(localized: "行变化"))
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
       } else {
         Text(String(localized: "正文内容一致；仍会升级解析器版本并重新生成索引。"))
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
       if let warning = preview.importPreview.candidates.first?.warnings.last {
         Text(warning)
-          .font(.caption)
-          .foregroundStyle(.tertiary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
     }
     .padding(WorkbenchSpacing.card)
@@ -225,7 +225,7 @@ struct KnowledgeLibraryHealthView: View {
     VStack(alignment: .leading, spacing: 10) {
       HStack {
         Label("本地语义索引", systemImage: "point.3.connected.trianglepath.dotted")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
         Button("重建全部语义索引") {
           Task { await state.rebuildAllSemanticIndex() }
@@ -248,8 +248,8 @@ struct KnowledgeLibraryHealthView: View {
             ? "当前片段均有可用的本地语义向量。"
             : "有 \(health.semanticRepairChunkCount) 个片段的向量缺失、维度不匹配或指向旧版本。"
         )
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
       }
     }
   }

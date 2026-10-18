@@ -49,6 +49,46 @@ final class CoreL10nTests: XCTestCase {
     )
   }
 
+  func testLocalizationIsFoundInFlatAndStandardBundleLayouts() throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("core-l10n-layouts-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    // The native SwiftPM driver writes a flat bundle with lowercased folder
+    // names; Swift Build and packaged apps write Contents/Resources.
+    let layouts = [
+      ("Flat.bundle", "", "zh-hans.lproj"),
+      ("Standard.bundle", "Contents/Resources", "zh-Hans.lproj"),
+    ]
+    for (name, resources, chineseFolder) in layouts {
+      let bundleURL = root.appendingPathComponent(name, isDirectory: true)
+      let resourceURL =
+        resources.isEmpty
+        ? bundleURL : bundleURL.appendingPathComponent(resources, isDirectory: true)
+      if !resources.isEmpty {
+        try FileManager.default.createDirectory(
+          at: bundleURL.appendingPathComponent("Contents"), withIntermediateDirectories: true)
+        try Data(
+          #"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>test.layout</string></dict></plist>"#
+            .utf8
+        ).write(to: bundleURL.appendingPathComponent("Contents/Info.plist"))
+      }
+      for (folder, value) in [("en.lproj", "Missing title"), (chineseFolder, "标题为空")] {
+        let folderURL = resourceURL.appendingPathComponent(folder, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        try Data("\"标题为空\" = \"\(value)\";\n".utf8)
+          .write(to: folderURL.appendingPathComponent("Localizable.strings"))
+      }
+      let bundle = try XCTUnwrap(Bundle(url: bundleURL), name)
+      for (language, expected) in [("en", "Missing title"), ("zh-Hans", "标题为空")] {
+        let localization = try XCTUnwrap(
+          CoreL10n.localization(language, in: bundle), "\(name) \(language)")
+        XCTAssertEqual(
+          localization.localizedString(forKey: "标题为空", value: nil, table: nil), expected,
+          "\(name) \(language)")
+      }
+    }
+  }
+
   func testUnknownKeyFallsBackToSourceKey() {
     let key = "__publishing_core_support_missing_key__"
     XCTAssertEqual(CoreL10n.text(key, locale: Locale(identifier: "en")), key)

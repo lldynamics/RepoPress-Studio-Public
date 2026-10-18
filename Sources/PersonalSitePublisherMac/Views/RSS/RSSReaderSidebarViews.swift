@@ -101,7 +101,7 @@ struct RSSFeedSidebar: View {
           WorkspaceSidebarHeaderIcon("plus")
         }
         .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .controlSize(.small)
         .help("添加 RSS 或 Atom 订阅")
         .accessibilityLabel("添加 RSS 或 Atom 订阅")
@@ -190,7 +190,7 @@ struct RSSFeedSidebar: View {
                 .foregroundStyle(WorkbenchTheme.risk)
               Spacer(minLength: 4)
               Text(feedGroups.needsAttention.count.formatted())
-                .font(.caption.monospacedDigit())
+                .font(.workbenchMetadata.monospacedDigit())
                 .foregroundStyle(WorkbenchTheme.risk)
                 .accessibilityHidden(true)
             }
@@ -207,7 +207,7 @@ struct RSSFeedSidebar: View {
         Section("我的订阅") {
           if store.feeds.isEmpty {
             Text("还没有订阅")
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
               .fixedSize(horizontal: false, vertical: true)
           } else {
             ForEach(feedGroups.regular) { feed in
@@ -231,8 +231,8 @@ struct RSSFeedSidebar: View {
   private var rssSearchToolbar: some View {
     HStack(spacing: 8) {
       Image(systemName: "magnifyingglass")
-        .foregroundStyle(.secondary)
-        .font(.footnote)
+        .foregroundStyle(.workbenchSecondary)
+        .font(.workbenchMetadata)
 
       TextField(String(localized: "搜索文章标题或正文"), text: $searchDraft.text)
         .textFieldStyle(.plain)
@@ -247,7 +247,7 @@ struct RSSFeedSidebar: View {
           Image(systemName: "xmark.circle.fill")
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .help("清除搜索")
         .accessibilityLabel("清除 RSS 文章搜索")
       }
@@ -287,8 +287,8 @@ struct RSSFeedSidebar: View {
           Spacer(minLength: 4)
           if unreadCount > 0 {
             Text(unreadCount.formatted())
-              .font(.caption.monospacedDigit())
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata.monospacedDigit())
+              .foregroundStyle(.workbenchSecondary)
               .accessibilityHidden(true)
           }
         }
@@ -384,8 +384,8 @@ struct RSSFeedSidebar: View {
         .fixedSize(horizontal: false, vertical: true)
       Spacer(minLength: 4)
       Text(count.formatted())
-        .font(.caption.monospacedDigit())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospacedDigit())
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityLabel("\(count) 篇")
     }
     .tag(scope)

@@ -16,7 +16,7 @@ extension MacMarkdownComposerView {
   var emptyBodyPlaceholder: some View {
     if editorBody.isEmpty, isArticleInformationFolded, frontMatterIssue == nil {
       Text("从这里开始写作。")
-        .font(.body)
+        .font(.workbenchBody)
         .foregroundStyle(.tertiary)
         .padding(.horizontal, WorkbenchSpacing.page)
         .padding(.top, WorkbenchSpacing.content)
@@ -56,28 +56,50 @@ extension MacMarkdownComposerView {
     {
       let requestedDraftID = draft.id
       let requestedTitle = draft.title
-      HStack(spacing: WorkbenchSpacing.control) {
-        Label("正文首行与文章标题重复。", systemImage: "info.circle")
-          .foregroundStyle(.secondary)
-        Spacer(minLength: WorkbenchSpacing.control)
-        Button("删除正文标题") {
-          removeDuplicateBodyTitle(for: requestedDraftID, title: requestedTitle)
-        }
-        .buttonStyle(.borderless)
-        .disabled(editorEditRequest != nil)
-        .help("仅删除正文开头重复的标题，可撤销恢复。")
-        .accessibilityIdentifier("markdown-remove-duplicate-body-title")
-        Button("保留，不再提示") {
-          guard draft.id == requestedDraftID,
-            draft.belongs(toSiteProfileID: activeProfile.id)
-          else { return }
-          store.setH1DuplicateWarning(false, forProfileID: activeProfile.id)
-        }
-        .buttonStyle(.borderless)
-        .help("保留正文标题，并关闭此站点的重复标题提示。")
-        .accessibilityIdentifier("markdown-keep-duplicate-body-title")
+      let noticeLabel = Label("正文首行与文章标题重复。", systemImage: "info.circle")
+        .foregroundStyle(.workbenchSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+      let removeButton = Button("删除正文标题") {
+        removeDuplicateBodyTitle(for: requestedDraftID, title: requestedTitle)
       }
-      .font(.caption)
+      .buttonStyle(.bordered)
+      .controlSize(.small)
+      .disabled(editorEditRequest != nil)
+      .help("仅删除正文开头重复的标题，可撤销恢复。")
+      .accessibilityIdentifier("markdown-remove-duplicate-body-title")
+      let keepButton = Button("保留，不再提示") {
+        guard draft.id == requestedDraftID,
+          draft.belongs(toSiteProfileID: activeProfile.id)
+        else { return }
+        store.setH1DuplicateWarning(false, forProfileID: activeProfile.id)
+      }
+      .buttonStyle(.bordered)
+      .controlSize(.small)
+      .help("保留正文标题，并关闭此站点的重复标题提示。")
+      .accessibilityIdentifier("markdown-keep-duplicate-body-title")
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: WorkbenchSpacing.control) {
+          noticeLabel
+          removeButton
+          keepButton
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
+          noticeLabel
+          HStack(spacing: WorkbenchSpacing.control) {
+            removeButton
+            keepButton
+          }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
+          noticeLabel
+          removeButton
+          keepButton
+        }
+      }
+      .font(.workbenchMetadata)
+      .frame(maxWidth: .infinity, alignment: .leading)
       .padding(.horizontal, WorkbenchSpacing.content)
       .padding(.vertical, WorkbenchSpacing.icon)
       .background(.quaternary.opacity(0.3))
@@ -178,7 +200,7 @@ enum MarkdownDuplicateTitleNoticePolicy {
     hasFrontMatterIssue: Bool, resolvedWarning: Bool?
   ) -> Bool {
     guard !hasFrontMatterIssue, draft.belongs(toSiteProfileID: profile.id),
-      (profile.warnsWhenBodyH1DuplicatesTitle ?? resolvedWarning) == true
+      profile.warnsWhenBodyH1DuplicatesTitle != false, resolvedWarning == true
     else { return false }
     return MarkdownDuplicateTitleService.duplicateTitleRange(in: body, title: draft.title) != nil
   }
@@ -196,8 +218,8 @@ struct MacMarkdownArticleInformationToggle: View {
         .labelStyle(.titleAndIcon)
     }
     .buttonStyle(.plain)
-    .font(.caption)
-    .foregroundStyle(.secondary)
+    .font(.workbenchMetadata)
+    .foregroundStyle(.workbenchSecondary)
     .disabled(!isEnabled)
     .help(
       isExpanded

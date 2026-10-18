@@ -36,8 +36,8 @@ struct WorkspaceCommandPaletteArticleControls: View {
         .disabled(scope == .generalDrafts)
         .help(
           scope == .generalDrafts
-            ? String(localized: "批量替换暂不支持通用草稿范围，以免扩大到全部站点。")
-            : String(localized: "在独立面板预览并替换站点文章正文；不包含通用草稿。")
+            ? String(localized: "批量替换暂不支持仅本地草稿范围，以免扩大到全部站点。")
+            : String(localized: "在独立面板预览并替换站点文章正文；不包含仅本地草稿。")
         )
         .accessibilityLabel("跨文章批量查找替换")
         .accessibilityIdentifier("workspace-command-palette-batch-replace")
@@ -45,14 +45,14 @@ struct WorkspaceCommandPaletteArticleControls: View {
 
       if parsedQuery.invalidFilters.isEmpty {
         Text("支持 title:、tag:、status:、before:、after:、is:private；日期按文章日期。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       } else {
         Label(
           "无法识别的搜索条件：\(parsedQuery.invalidFilters.joined(separator: "、"))",
           systemImage: "exclamationmark.triangle"
         )
-        .font(.caption)
+        .font(.workbenchMetadata)
         .foregroundStyle(WorkbenchTheme.warning)
       }
     }

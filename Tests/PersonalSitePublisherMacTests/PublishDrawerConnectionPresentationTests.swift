@@ -4,63 +4,6 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class PublishDrawerConnectionPresentationTests: XCTestCase {
-  private func preview(hasToken: Bool = true, issues: [PreflightIssue] = [])
-    -> RemoteRepositoryPublishPreview
-  {
-    RemoteRepositoryPublishPreview(
-      provider: .github, repositoryName: "example/site", mode: .directCommit,
-      branchName: "main", targetBranch: "main", changedPaths: ["post.md"], hasToken: hasToken,
-      blockingIssues: issues, warningIssues: [])
-  }
-
-  func testUnavailableConnectionAlwaysHasAnExplanationAndRelevantRemedy() {
-    let missing = PublishDrawerConnectionPresentation.make(preview: nil)
-    XCTAssertFalse(missing.canStart)
-    XCTAssertFalse(missing.message.isEmpty)
-    XCTAssertEqual(missing.remedy, .refresh)
-    let noToken = PublishDrawerConnectionPresentation.make(preview: preview(hasToken: false))
-    XCTAssertFalse(noToken.canStart)
-    XCTAssertEqual(noToken.remedy, .account)
-    XCTAssertFalse(
-      PublishDrawerConnectionPresentation.make(preview: preview(), isChecking: true).canStart)
-    XCTAssertFalse(
-      PublishDrawerConnectionPresentation.make(preview: preview(), isPublishing: true).canStart)
-  }
-
-  func testRealBlockerRemainsBlockedButDeferredRemoteCheckCanReachConfirmation() {
-    let issue = PreflightIssue(severity: .error, title: "缺少标题", message: "填写标题", field: "title")
-    let blocked = PublishDrawerConnectionPresentation.make(preview: preview(issues: [issue]))
-    XCTAssertFalse(blocked.canStart)
-    XCTAssertEqual(blocked.remedy, .issue(issue))
-    let remoteIssue = PreflightIssue(
-      severity: .error, title: "待检查", message: "确认前检查", field: "remoteBaseline")
-    XCTAssertTrue(
-      PublishDrawerConnectionPresentation.make(preview: preview(issues: [remoteIssue])).canStart)
-  }
-
-  func testRemoteIssuesUseStableCodesAcrossDifferentDisplayTranslations() {
-    let remoteIssues: [PreflightIssue] = [
-      .init(
-        severity: .warning, title: "Remote Same-Path Changes", message: "Review remote diff",
-        field: "repository", code: .remoteSamePathChanges),
-      .init(
-        severity: .warning, title: "Remote Status Unconfirmed", message: "Check at confirmation",
-        field: "repository", code: .remoteStatusUnconfirmed),
-    ]
-    for issue in remoteIssues {
-      XCTAssertTrue(
-        PublishDrawerConnectionPresentation.make(preview: preview(issues: [issue])).canStart)
-    }
-
-    let unrelated = PreflightIssue(
-      severity: .error, title: "Remote Same-Path Changes", message: "Different cause",
-      field: "repository")
-    XCTAssertFalse(
-      PublishDrawerConnectionPresentation.make(
-        preview: preview(issues: remoteIssues + [unrelated])
-      ).canStart)
-  }
-
   func testGroupingPreservesAllDetailsStrongestSeverityAndDifferentPaths() {
     let issues: [PreflightIssue] = [
       .init(severity: .warning, title: "未选择仓库", message: "选择根目录", field: "repository"),
@@ -198,33 +141,6 @@ final class PublishDrawerConnectionPresentationTests: XCTestCase {
     XCTAssertEqual(batch.ignoredCount, 0)
   }
 
-  func testWorkflowRetainsFourStepsAndDoesNotClaimDeploymentSucceededAfterCommit() {
-    let readiness = PublishDrawerReadinessPresentation(sections: [
-      .init(id: "content", title: "内容", systemImage: "doc", issues: [], isLoading: false)
-    ])
-    let steps = PublishDrawerWorkflowStep.make(
-      readiness: readiness,
-      accountDetail: "未连接", accountStatus: .blocked, changedFileCount: nil,
-      isPublishing: false, deploymentDetail: "等待检查线上版本", isReviewRequest: false)
-    XCTAssertEqual(steps.map(\.title), ["内容检查", "发布账户", "变更内容", "提交并核验部署"])
-    XCTAssertEqual(steps[1].status, .blocked)
-    XCTAssertEqual(steps[2].status, .pending)
-    XCTAssertEqual(steps[3].status, .pending)
-    XCTAssertEqual(steps[3].detail, "等待检查线上版本")
-    let running = PublishDrawerWorkflowStep.make(
-      readiness: readiness,
-      accountDetail: "连接正常", accountStatus: .passed, changedFileCount: 2,
-      isPublishing: true, deploymentDetail: nil, isReviewRequest: true)
-    XCTAssertEqual(running[3].status, .running)
-    XCTAssertEqual(running[3].detail, "正在提交并推送")
-    let verified = PublishDrawerWorkflowStep.make(
-      readiness: readiness,
-      accountDetail: "连接正常", accountStatus: .passed, changedFileCount: 2,
-      isPublishing: false, deploymentDetail: "线上版本已核验", isReviewRequest: false,
-      deploymentLevel: .success)
-    XCTAssertEqual(verified[3].status, .passed)
-  }
-
   func testBatchReadinessRejectsPlanFromAnotherSite() {
     let stalePlan = BatchPublishPlan(profileID: UUID(), siteName: "Other site", items: [])
     let presentation = PublishDrawerReadinessPresentation.batch(
@@ -235,32 +151,22 @@ final class PublishDrawerConnectionPresentationTests: XCTestCase {
     XCTAssertTrue(presentation.issues.isEmpty)
   }
 
-  func testBatchRestoreCanCheckAccountWithoutAnArticleAndStillRequiresWritablePermission() {
-    var state = PublishDrawerBatchActionPresentation.State(
-      repositoryConfigured: true,
-      hasToken: true, permission: .unchecked, publishableArticleCount: 1, changedFileCount: 1)
-    XCTAssertFalse(PublishDrawerBatchActionPresentation.isEnabled(state))
-    // Account verification has no draft identity requirement, so a failed
-    // batch with no record.draftID still has a route to unlock confirmation.
-    XCTAssertTrue(
-      PublishDrawerAccountCheckPresentation.canCheck(
-        scope: .managedArticles,
-        hasToken: true, isBusy: false))
-    XCTAssertFalse(
-      PublishDrawerAccountCheckPresentation.canCheck(
-        scope: .managedArticles,
-        hasToken: false, isBusy: false))
-    XCTAssertFalse(
-      PublishDrawerAccountCheckPresentation.canCheck(
-        scope: .managedArticles,
-        hasToken: true, isBusy: true))
-    XCTAssertFalse(
-      PublishDrawerAccountCheckPresentation.canCheck(
-        scope: .repository,
-        hasToken: false, isBusy: false))
-    state.permission = .readOnly
-    XCTAssertFalse(PublishDrawerBatchActionPresentation.isEnabled(state))
-    state.permission = .writable
-    XCTAssertTrue(PublishDrawerBatchActionPresentation.isEnabled(state))
+  func testOptionalOnlySiteFindingIsAvailableThroughOptimizationFilter() {
+    let issue = PreflightIssue(
+      severity: .warning, title: "正文偏短", message: "建议补充内容", field: "body",
+      ruleID: ContentHealthRuleID.shortBody.rawValue)
+    let snapshot = ContentHealthSnapshot(
+      id: UUID(), generatedAt: Date(), profileID: UUID(), profileName: "Site",
+      publicRiskDraftSummaries: [], aiFixQueueItems: [], sitePreflightIssues: [issue],
+      contentHealthSummaries: [], slugChangeImpacts: [:], errorCount: 0, warningCount: 0,
+      optimizationCount: 1, passingDraftCount: 0)
+    let presentation = ContentHealthArticlePresentation(
+      snapshot: snapshot, filter: .overview, severityFilter: .all)
+    XCTAssertTrue(presentation.rows.isEmpty)
+    XCTAssertEqual(presentation.siteIssues.count, 1)
+    let optimizationPresentation = ContentHealthArticlePresentation(
+      snapshot: snapshot, filter: .overview, severityFilter: .optimizations)
+    XCTAssertEqual(optimizationPresentation.siteIssues.count, 1)
+    XCTAssertEqual(snapshot.optimizationCount, 1)
   }
 }

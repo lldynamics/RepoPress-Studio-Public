@@ -44,6 +44,13 @@ public final class DeploymentStore: ObservableObject {
     [UUID: DeploymentPollingState]
   @Published public internal(set) var deploymentTokenAvailability: KeychainTokenAvailability
   private var boundAutomationProfileID: UUID?
+  var activeArticleTrackingRecordIDs: Set<UUID> = []
+  var articleTrackingLastAttemptAt: [UUID: Date] = [:]
+  @Published var articleTrackingClock = Date()
+
+  func isCheckingDeploymentRecord(_ id: UUID) -> Bool {
+    latestDeploymentStatusRequestIDByRecord[id] != nil
+  }
 
   init(
     deploymentStatusSnapshots: [UUID: DeploymentStatusSnapshot] = [:],
@@ -100,41 +107,6 @@ public final class DeploymentStore: ObservableObject {
   }
 
   public func deploymentStatusReadiness(
-    for profile: SiteProfile,
-    tokenAvailability: KeychainTokenAvailability
-  ) -> DeploymentStatusProviderReadiness {
-    var readiness = deploymentStatusReadiness(
-      for: profile,
-      hasToken: tokenAvailability.hasToken
-    )
-    guard let accessFailureMessage = tokenAvailability.accessFailureMessage else {
-      return readiness
-    }
-
-    let accessFailureRequirement = CoreL10n.format(
-      "部署 Token 状态读取失败：%@",
-      accessFailureMessage
-    )
-    readiness.missingRequirements.removeAll {
-      $0 == CoreL10n.text("部署 Token")
-    }
-    readiness.missingRequirements.insert(accessFailureRequirement, at: 0)
-    if readiness.canCheckAnyStatus {
-      readiness.nextStep = accessFailureRequirement
-    } else {
-      readiness.nextStep = CoreL10n.format(
-        "先补齐 %@。",
-        readiness.missingRequirements.joined(separator: CoreL10n.text("、"))
-      )
-      readiness.fallbackMessage = [
-        readiness.fallbackMessage,
-        accessFailureRequirement,
-      ].joined(separator: " ")
-    }
-    return readiness
-  }
-
-  public func deploymentStatusReadiness(
     for record: ReleaseRecord,
     store: WorkbenchStore
   ) -> DeploymentStatusProviderReadiness {
@@ -145,7 +117,6 @@ public final class DeploymentStore: ObservableObject {
       )
     )
   }
-
   public func activeDeploymentStatusReadiness(store: WorkbenchStore)
     -> DeploymentStatusProviderReadiness
   {
@@ -159,7 +130,8 @@ public final class DeploymentStore: ObservableObject {
     _ record: ReleaseRecord,
     store: WorkbenchStore
   ) -> Bool {
-    guard releaseCanHaveDeployment(record) else { return false }
+    guard releaseCanHaveDeployment(record), deploymentProfile(for: record, store: store) != nil
+    else { return false }
     return deploymentStatusReadiness(for: record, store: store).canCheckAnyStatus
   }
 
@@ -760,6 +732,11 @@ public final class DeploymentStore: ObservableObject {
     var deploymentCheckedCount = 0
     var checkedRecords: [DeploymentPollingRecordSummary] = []
     for record in deploymentRecords {
+      // The short-lived article task owns its own cadence. Do not duplicate
+      // it through the optional site-wide polling schedule.
+      guard articlePublishProgress(for: record, store: store, now: now)?.isPending != true,
+        !isCheckingDeploymentRecord(record.id)
+      else { continue }
       if let snapshot = await refreshDeploymentStatus(
         for: record, store: store, updatesMessage: false)
       {
@@ -915,30 +892,12 @@ public final class DeploymentStore: ObservableObject {
     for record: ReleaseRecord,
     store: WorkbenchStore
   ) -> Bool {
-    guard releaseCanHaveDeployment(record) else { return false }
-    return deploymentStatusReadiness(for: record, store: store).canCheckAnyStatus
-  }
-
-  private func releaseCanHaveDeployment(_ record: ReleaseRecord) -> Bool {
-    switch record.kind {
-    case .remoteDirectCommit, .remoteRollback:
-      return true
-    case .remoteReviewRequest:
-      return record.reviewStatus?.state == .merged
-        && record.deploymentCommitSHA != nil
-    case .remotePublishFailure:
-      guard record.commitSHA?.trimmedForPublishing.nilIfEmpty != nil else { return false }
-      let branch = record.branchName?.trimmedForPublishing.nilIfEmpty
-      let targetBranch = record.targetBranch?.trimmedForPublishing.nilIfEmpty
-      return targetBranch == nil || branch == nil || branch == targetBranch
-    case .localWrite,
-      .batchLocalWrite,
-      .directCommit,
-      .reviewBranch,
-      .remotePreviewBranch,
-      .remoteReviewWithdrawal:
-      return false
-    }
+    guard releaseCanHaveDeployment(record),
+      let profile = deploymentProfile(for: record, store: store)
+    else { return false }
+    return deploymentStatusReadiness(
+      for: profile, tokenAvailability: resolvedDeploymentTokenAvailability(for: profile)
+    ).canCheckAnyStatus
   }
 
   @discardableResult
@@ -948,7 +907,7 @@ public final class DeploymentStore: ObservableObject {
     updatesMessage: Bool = true,
     articleDraftID: UUID? = nil
   ) async -> DeploymentStatusSnapshot? {
-    let profile = store.profile(for: record)
+    guard let profile = deploymentProfile(for: record, store: store) else { return nil }
     let updatesProfileUI = updatesMessage
     guard canCheckDeploymentStatus(for: record, store: store) else {
       if updatesProfileUI {
@@ -1028,6 +987,7 @@ public final class DeploymentStore: ObservableObject {
     recordDeploymentStatusSnapshot(snapshot, for: record)
     if storedRecord != nil {
       store.markVerifiedArticlesAsPublished(record: record, snapshot: snapshot, profile: profile)
+      completeArticlePublishTracking(record: record, snapshot: snapshot, store: store)
     }
     if updatesProfileUI {
       let statusMessage = CoreL10n.format(
@@ -1118,7 +1078,7 @@ public final class DeploymentStore: ObservableObject {
     }
   }
 
-  private func resolvedDeploymentTokenAvailability(
+  func resolvedDeploymentTokenAvailability(
     for profile: SiteProfile
   ) -> KeychainTokenAvailability {
     do {

@@ -36,7 +36,6 @@ struct WorkspaceShellSplitLayout: View {
   @Binding var repositoryContextStage: RepositoryContextStage
   @Binding var repositoryChangedFileSelection: RepositoryChangedFileSelection?
   @Binding var knowledgeInspectorPresentation: KnowledgeLibraryInspectorPresentationState
-  let repositorySourceSession: RepositoryHTMLSourceSession
   let rssStore: RSSReaderStore
   let rssPresentation: RSSReaderPresentationState
   let onSelectSection: (WorkspaceSection) -> Void
@@ -65,7 +64,6 @@ struct WorkspaceShellSplitLayout: View {
     repositoryContextStage: Binding<RepositoryContextStage>,
     repositoryChangedFileSelection: Binding<RepositoryChangedFileSelection?>,
     knowledgeInspectorPresentation: Binding<KnowledgeLibraryInspectorPresentationState>,
-    repositorySourceSession: RepositoryHTMLSourceSession,
     rssStore: RSSReaderStore,
     rssPresentation: RSSReaderPresentationState,
     onSelectSection: @escaping (WorkspaceSection) -> Void,
@@ -90,7 +88,6 @@ struct WorkspaceShellSplitLayout: View {
     _repositoryContextStage = repositoryContextStage
     _repositoryChangedFileSelection = repositoryChangedFileSelection
     _knowledgeInspectorPresentation = knowledgeInspectorPresentation
-    self.repositorySourceSession = repositorySourceSession
     self.rssStore = rssStore
     self.rssPresentation = rssPresentation
     self.onSelectSection = onSelectSection
@@ -160,7 +157,6 @@ struct WorkspaceShellSplitLayout: View {
         repositoryContextStage: $repositoryContextStage,
         repositoryChangedFileSelection: $repositoryChangedFileSelection,
         contentHealthSidebarProjection: contentHealthSidebarProjection,
-        repositorySourceSession: repositorySourceSession,
         rssStore: rssStore,
         rssPresentation: rssPresentation,
         knowledgeInspectorPresentation: $knowledgeInspectorPresentation

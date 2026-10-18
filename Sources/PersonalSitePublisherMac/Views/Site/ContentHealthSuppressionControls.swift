@@ -45,11 +45,11 @@ struct ContentHealthSuppressionControls: View {
       }
       Text("仅可选内容警告和提示可忽略。公开风险、仓库与路径检查、错误仍需处理。")
         .font(.workbenchMetadata)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       if matchedCount > 0 {
         Text("本次检查已忽略 \(matchedCount) 项。")
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
     }
     .padding(WorkbenchSpacing.card)
@@ -93,7 +93,7 @@ struct ContentHealthSuppressionSheet: View {
         .font(.workbenchPageTitle)
       Text("规则忽略适用于后续检查；问题基线只匹配保存时的问题内容。恢复后会重新检查。")
         .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       if let errorMessage {
         AccessibleStatusMessage(message: errorMessage, severity: .error)
       }
@@ -102,7 +102,7 @@ struct ContentHealthSuppressionSheet: View {
           if store.contentHealthSuppressions.isEmpty {
             Text("此站点没有已忽略的检查。")
               .font(.workbenchSupporting)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
           }
           ForEach(store.contentHealthSuppressions) { suppression in
             row(suppression)
@@ -136,11 +136,11 @@ struct ContentHealthSuppressionSheet: View {
           .font(.workbenchItemTitle)
         Text(scopeTitle(suppression))
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
         if suppression.mode == .baseline {
           Text("问题变化后自动重新显示")
             .font(.workbenchMetadata)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
       Spacer(minLength: 0)

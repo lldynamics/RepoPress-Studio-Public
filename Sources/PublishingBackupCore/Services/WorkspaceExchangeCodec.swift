@@ -132,7 +132,7 @@ public enum WorkspaceExchangeCodec {
           throw WorkspaceExchangeError.invalidReference("站点草稿缺少 sourceProfileID")
         }
       } else if draft.sourceProfileID != nil {
-        throw WorkspaceExchangeError.invalidReference("通用草稿不得包含 sourceProfileID")
+        throw WorkspaceExchangeError.invalidReference("仅本地草稿不得包含 sourceProfileID")
       }
       let attachments = draft.attachments
       let ids = attachments.map(\.id)

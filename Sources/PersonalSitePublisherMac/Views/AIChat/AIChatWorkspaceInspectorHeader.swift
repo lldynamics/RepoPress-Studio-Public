@@ -78,7 +78,7 @@ extension AIChatContextInspectorView {
       } label: {
         HStack(spacing: 6) {
           Text(conversationNavigationTitle)
-            .font(.subheadline.weight(.semibold))
+            .font(.workbenchMetadata.weight(.semibold))
             .foregroundStyle(.primary)
             .lineLimit(1)
 
@@ -133,8 +133,8 @@ extension AIChatContextInspectorView {
       .popover(isPresented: $isConnectionPopoverPresented, arrowEdge: .top) {
         VStack(spacing: 8) {
           Text(connectionModelSummary)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, WorkbenchSpacing.card)

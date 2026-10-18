@@ -2,6 +2,65 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class ReleaseLedgerServiceTests: XCTestCase {
+  func testSuccessfulDeploymentSnapshotRequiresMatchingReleaseIdentity() throws {
+    let profileID = UUID()
+    let record = ReleaseRecord(
+      id: UUID(),
+      kind: .remoteDirectCommit,
+      title: "线上提交",
+      summary: "GitHub · main · 1 个文件",
+      siteProfileID: profileID,
+      changedPaths: ["content/posts/online.md"],
+      branchName: "main",
+      commitSHA: "release-sha"
+    )
+    let mismatches: [(String, (inout DeploymentStatusSnapshot) -> Void)] = [
+      ("record ID", { $0.releaseRecordID = UUID() }),
+      ("profile ID", { $0.profileID = UUID() }),
+      (
+        "commit",
+        {
+          $0.expectedCommitSHA = "other-sha"
+          $0.observedCommitSHA = "other-sha"
+        }
+      ),
+      (
+        "branch",
+        {
+          $0.expectedBranch = "release"
+          $0.observedBranch = "release"
+        }
+      ),
+    ]
+
+    for (label, mutate) in mismatches {
+      var snapshot = DeploymentStatusSnapshot(
+        profileID: profileID,
+        releaseRecordID: record.id,
+        provider: .githubPages,
+        level: .success,
+        title: "GitHub Pages · 正常",
+        message: "站点可访问。",
+        siteURLText: "https://example.com",
+        signals: [],
+        expectedBranch: "main",
+        expectedCommitSHA: "release-sha",
+        observedBranch: "main",
+        observedCommitSHA: "release-sha",
+        attributionVerified: true
+      )
+      mutate(&snapshot)
+
+      let entry = try XCTUnwrap(
+        ReleaseLedgerService().ledger(
+          releaseRecords: [record], deploymentStatusSnapshots: [record.id: snapshot]
+        ).entries.first
+      )
+      XCTAssertNotEqual(entry.status, .succeeded, "Mismatched \(label) was accepted")
+      XCTAssertNil(entry.deploymentStatus, "Mismatched \(label) retained deployment evidence")
+    }
+  }
+
   func testActionKindsExposeDeploymentRecheckCapabilityForActionQueue() {
     XCTAssertTrue(ReleaseLedgerActionKind.failedRelease.supportsDeploymentRecheck)
     XCTAssertTrue(ReleaseLedgerActionKind.retryDeploymentCheck.supportsDeploymentRecheck)

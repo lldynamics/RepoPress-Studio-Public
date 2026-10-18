@@ -32,7 +32,7 @@ struct RepositoryImageGalleryTile: View {
           Label("\(asset.references.count)", systemImage: "doc.text")
         }
       }
-      .font(.workbenchSupporting).foregroundStyle(.secondary)
+      .font(.workbenchSupporting).foregroundStyle(.workbenchSecondary)
     }
     .padding(WorkbenchSpacing.tight)
     .background(
@@ -56,13 +56,13 @@ struct RepositoryImageGalleryRow: View {
       VStack(alignment: .leading, spacing: 3) {
         Text(asset.filename).font(.workbenchCardTitle).lineLimit(1)
         Text(asset.repositoryPath).font(.workbenchSupporting)
-          .foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+          .foregroundStyle(.workbenchSecondary).lineLimit(1).truncationMode(.middle)
       }
       Spacer(minLength: 6)
       Text(ByteCountFormatter.string(fromByteCount: asset.byteSize, countStyle: .file))
-        .font(.workbenchSupporting).foregroundStyle(.secondary)
+        .font(.workbenchSupporting).foregroundStyle(.workbenchSecondary)
       Label("\(asset.references.count)", systemImage: "doc.text")
-        .font(.workbenchSupporting).foregroundStyle(.secondary)
+        .font(.workbenchSupporting).foregroundStyle(.workbenchSecondary)
     }
     .padding(.vertical, WorkbenchSpacing.tight)
     .accessibilityElement(children: .combine)

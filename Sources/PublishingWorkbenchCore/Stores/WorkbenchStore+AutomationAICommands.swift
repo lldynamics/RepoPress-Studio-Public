@@ -38,29 +38,6 @@ extension WorkbenchStore {
     )
   }
 
-  // Kept as fail-closed compatibility commands for previously rendered/history callers.
-  @discardableResult
-  public func acceptAutomationStep(
-    conversationID: UUID,
-    messageID: AIPublishingChatMessage.ID,
-    stepID: UUID,
-    previewBaselineFingerprint: String
-  ) async -> WorkbenchAutomationExecutionResult? {
-    setAIChatMessage(AIAgentRetirement.message)
-    return nil
-  }
-
-  @discardableResult
-  public func rejectAutomationStep(
-    conversationID: UUID,
-    messageID: AIPublishingChatMessage.ID,
-    stepID: UUID,
-    previewBaselineFingerprint: String? = nil
-  ) async -> Bool {
-    setAIChatMessage(AIAgentRetirement.message)
-    return false
-  }
-
   private func executeBoundAutomationPlan(
     _ binding: AutomationMessageBinding,
     messageID: AIPublishingChatMessage.ID,
@@ -93,17 +70,8 @@ extension WorkbenchStore {
     )
 
     let didUpdate = updateAutomationMessage(binding, messageID: messageID) { message in
-      guard var currentPlan = message.automationPlan,
-        currentPlan.id == binding.plan.id
-      else { return false }
-      currentPlan = result.plan
-      message.automationPlan = currentPlan
-      synchronizeAutomationToolRuns(
-        in: &message,
-        plan: result.plan,
-        record: result.record,
-        onlyStepID: onlyStepID
-      )
+      guard message.automationPlan?.id == binding.plan.id else { return false }
+      message.automationPlan = result.plan
       return true
     }
     guard didUpdate else {
@@ -174,15 +142,6 @@ extension WorkbenchStore {
         plan.steps[index].resultMessage = CoreL10n.text("已取消，未执行。")
       }
       message.automationPlan = plan
-      message.agentContinuation = nil
-      for index in message.toolRuns.indices
-      where message.toolRuns[index].status == .awaitingConfirmation {
-        message.toolRuns[index].status = .cancelled
-        message.toolRuns[index].completedAt = Date()
-        message.toolRuns[index].summary = boundedAutomationReviewSummary(
-          CoreL10n.text("自动化计划已取消，工具未执行。")
-        )
-      }
       return true
     }
     guard didUpdate else { return }
@@ -204,16 +163,6 @@ extension WorkbenchStore {
       let message = conversation.messages.first(where: { $0.id == messageID }),
       let plan = message.automationPlan
     else { return nil }
-    guard
-      message.agentContinuation.map({ continuation in
-        continuation.ownerConversationID == conversationID
-          && continuation.ownerScope == conversation.scope
-          && continuation.ownerMessageID == messageID
-          && continuation.planID == plan.id
-      }) ?? true
-    else {
-      return nil
-    }
     return AutomationMessageBinding(
       identity: AIChatConversationIdentity(
         draftID: draftID,
@@ -242,62 +191,6 @@ extension WorkbenchStore {
       didUpdate = update(&messages[index])
     }
     return didUpdate
-  }
-
-  private func synchronizeAutomationToolRuns(
-    in message: inout AIPublishingChatMessage,
-    plan: WorkbenchAutomationPlan,
-    record: WorkbenchAutomationRunRecord,
-    onlyStepID: UUID?
-  ) {
-    var consumedToolCallIDs = Set<String>()
-    for stepRecord in record.steps {
-      guard
-        let toolRunIndex = message.toolRuns.indices.first(where: { index in
-          let run = message.toolRuns[index]
-          guard !consumedToolCallIDs.contains(run.toolCallID),
-            run.toolID
-              == WorkbenchAutomationAgentToolRegistry.toolID(for: stepRecord.command),
-            let automationStepID = run.automationStepID,
-            plan.steps.contains(where: {
-              $0.id == automationStepID && $0.command == stepRecord.command
-            })
-          else { return false }
-          return onlyStepID == nil || automationStepID == onlyStepID
-        })
-      else { continue }
-
-      consumedToolCallIDs.insert(message.toolRuns[toolRunIndex].toolCallID)
-      message.toolRuns[toolRunIndex].status = toolRunStatus(for: stepRecord.status)
-      message.toolRuns[toolRunIndex].summary = boundedAutomationReviewSummary(stepRecord.message)
-      message.toolRuns[toolRunIndex].targetDraftID =
-        stepRecord.targetDraftID ?? message.toolRuns[toolRunIndex].targetDraftID
-      message.toolRuns[toolRunIndex].completedAt =
-        stepRecord.status.isTerminal ? stepRecord.completedAt : nil
-    }
-  }
-
-  private func toolRunStatus(
-    for status: WorkbenchAutomationStepStatus
-  ) -> WorkbenchAIAgentToolRunStatus {
-    switch status {
-    case .succeeded:
-      return .succeeded
-    case .failed:
-      return .failed
-    case .cancelled:
-      return .cancelled
-    case .proposed, .running, .awaitingConfirmation:
-      return .awaitingConfirmation
-    }
-  }
-
-  private func boundedAutomationReviewSummary(_ summary: String) -> String {
-    let normalized = summary.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard normalized.count > WorkbenchAIAgentToolRunRecord.maximumSummaryLength else {
-      return normalized
-    }
-    return String(normalized.prefix(WorkbenchAIAgentToolRunRecord.maximumSummaryLength - 3)) + "..."
   }
 
   @discardableResult

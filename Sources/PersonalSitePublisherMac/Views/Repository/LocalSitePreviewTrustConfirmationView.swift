@@ -74,24 +74,24 @@ struct LocalSitePreviewTrustConfirmationView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {
       Label(presentation.title, systemImage: "terminal.fill")
-        .font(.title2.weight(.semibold))
+        .font(.workbenchTitle2.weight(.semibold))
 
       VStack(alignment: .leading, spacing: 7) {
         Text(presentation.repositoryLabel)
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.weight(.semibold))
+          .foregroundStyle(.workbenchSecondary)
         Text(presentation.repositoryPath)
-          .font(.caption.monospaced())
+          .font(.workbenchMetadata.monospaced())
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .leading)
       }
 
       VStack(alignment: .leading, spacing: 7) {
         Text(presentation.commandLabel)
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.weight(.semibold))
+          .foregroundStyle(.workbenchSecondary)
         Text(presentation.command)
-          .font(.caption.monospaced())
+          .font(.workbenchMetadata.monospaced())
           .textSelection(.enabled)
           .padding(WorkbenchSpacing.card)
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -101,7 +101,7 @@ struct LocalSitePreviewTrustConfirmationView: View {
       }
 
       Label(presentation.riskMessage, systemImage: "exclamationmark.shield.fill")
-        .font(.callout)
+        .font(.workbenchBody)
         .foregroundStyle(WorkbenchTheme.warning)
 
       HStack {

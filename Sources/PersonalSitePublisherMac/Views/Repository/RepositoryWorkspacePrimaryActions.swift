@@ -7,13 +7,36 @@ extension RepositoryWorkspaceView {
     !store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty
   }
 
+  /// The overview dashboard needs a readable Git work tree; otherwise only the
+  /// workflow banner explains what to do next.
+  var showsRepositoryDashboard: Bool {
+    store.repositoryReport?.hasGitDirectory != false
+      && store.repositoryOperationLifecycle?.readFailure == nil
+  }
+
+  /// Mirrors the conditional sections of the overview's primary column.
+  var hasRepositoryOverviewPrimaryContent: Bool {
+    store.repository.scanState.isScanning || showsRepositoryMergeConflictContent
+      || showsRepositoryDashboard
+  }
+
+  /// Mirrors what `repositoryMergeConflictSection` renders. A session can exist
+  /// with nothing to show, for example while the repository cannot be read.
+  var showsRepositoryMergeConflictContent: Bool {
+    guard let session = store.repositoryMergeConflictSession else { return false }
+    if !session.conflicts.isEmpty { return true }
+    guard let lifecycle = session.operationLifecycle else { return false }
+    return (lifecycle.isOperationInProgress && lifecycle.readFailure == nil)
+      || store.repositoryRebaseRecoveryContext != nil
+      || store.repositoryRebaseRecoveryDiagnostic != nil
+  }
+
   var repositoryPrimaryActions: some View {
     // The page subtitle already explains where writes are confirmed.
     WorkbenchSectionGroup("常用操作") {
-      LazyVGrid(
-        columns: [GridItem(.adaptive(minimum: 150, maximum: 230), spacing: 10)],
-        alignment: .leading,
-        spacing: 10
+      WorkbenchFlowLayout(
+        horizontalSpacing: WorkbenchSpacing.control,
+        verticalSpacing: WorkbenchSpacing.control
       ) {
         Button {
           chooseRepository()
@@ -22,7 +45,6 @@ extension RepositoryWorkspaceView {
             hasSelectedRepository ? String(localized: "重新选择仓库") : String(localized: "选择站点文件夹"),
             systemImage: "folder"
           )
-          .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.bordered)
         .disabled(
@@ -36,7 +58,6 @@ extension RepositoryWorkspaceView {
             store.repository.cancelScan()
           } label: {
             Label("取消扫描", systemImage: "xmark.circle")
-              .frame(maxWidth: .infinity, alignment: .leading)
           }
           .buttonStyle(.bordered)
           .accessibilityIdentifier("repository-action-scan")
@@ -48,7 +69,6 @@ extension RepositoryWorkspaceView {
               hasSelectedRepository ? String(localized: "重新扫描") : String(localized: "扫描仓库"),
               systemImage: "arrow.clockwise"
             )
-            .frame(maxWidth: .infinity, alignment: .leading)
           }
           .buttonStyle(.bordered)
           .disabled(
@@ -71,7 +91,6 @@ extension RepositoryWorkspaceView {
           }
         } label: {
           Label("导入文章", systemImage: "tray.and.arrow.down")
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.bordered)
         .disabled(
@@ -90,7 +109,6 @@ extension RepositoryWorkspaceView {
           openDataManagement(.migration)
         } label: {
           Label("数据管理", systemImage: "externaldrive")
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.bordered)
         .accessibilityIdentifier("repository-action-data-management")
@@ -100,7 +118,6 @@ extension RepositoryWorkspaceView {
             store.selectSection(.images)
           } label: {
             Label("图片资源", systemImage: "photo.on.rectangle")
-              .frame(maxWidth: .infinity, alignment: .leading)
           }
           .buttonStyle(.bordered)
           .help("管理站点图片、问题引用与批量优化")

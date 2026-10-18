@@ -133,8 +133,8 @@ extension RSSArticleList {
 
       if activeFilterCount > 0 {
         Text("已启用 \(activeFilterCount)")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize()
       }
 
@@ -262,8 +262,8 @@ extension RSSArticleList {
   func batchSelectionControls(visibleArticles: [RSSArticleHeader]) -> some View {
     HStack(spacing: 8) {
       Text(String(format: String(localized: "已选择 %lld 篇"), selectedBatchArticleIDs.count))
-        .font(.callout.weight(.semibold))
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody.weight(.semibold))
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityLabel("已选择 \(selectedBatchArticleIDs.count) 篇文章")
 
       Button("全选当前显示文章", systemImage: "checklist.checked") {

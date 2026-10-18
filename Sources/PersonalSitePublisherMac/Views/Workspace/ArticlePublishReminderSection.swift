@@ -24,10 +24,10 @@ struct ArticlePublishReminderSection: View {
           .accessibilityLabel("设置文章发布提醒")
       }
       Text("到期时发送本机通知；打开通知后可检查并发布文章。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
       if let message {
-        Text(message).font(.caption).foregroundStyle(.secondary)
+        Text(message).font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
       }
     }
     .onChange(of: draftID) { _, _ in message = nil }

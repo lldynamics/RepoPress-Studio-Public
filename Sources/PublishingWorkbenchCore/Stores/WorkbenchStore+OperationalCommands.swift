@@ -28,7 +28,13 @@ extension WorkbenchStore {
   public func startOperationalPolling(clientID: UUID) {
     guard !isSafeMode else { return }
     operationalPollingClientIDs.insert(clientID)
-    guard operationalPollingTask == nil else { return }
+    ensureOperationalPolling()
+  }
+
+  func ensureOperationalPolling() {
+    guard !isSafeMode, operationalPollingTask == nil,
+      !operationalPollingClientIDs.isEmpty || hasPendingArticlePublishTracking
+    else { return }
 
     operationalPollingGeneration &+= 1
     let generation = operationalPollingGeneration
@@ -36,11 +42,14 @@ extension WorkbenchStore {
       guard let self else { return }
       while !Task.isCancelled,
         operationalPollingGeneration == generation,
-        !operationalPollingClientIDs.isEmpty
+        !operationalPollingClientIDs.isEmpty || hasPendingArticlePublishTracking
       {
         _ = await tickRepositoryAndDeploymentPolling(now: Date())
         do {
-          try await Task.sleep(for: .seconds(60))
+          let interval =
+            hasPendingArticlePublishTracking
+            ? ArticlePublishTrackingRequest.checkInterval : 60
+          try await Task.sleep(for: .seconds(interval))
         } catch {
           break
         }
@@ -53,7 +62,7 @@ extension WorkbenchStore {
 
   public func stopOperationalPolling(clientID: UUID) {
     operationalPollingClientIDs.remove(clientID)
-    guard operationalPollingClientIDs.isEmpty else { return }
+    guard operationalPollingClientIDs.isEmpty, !hasPendingArticlePublishTracking else { return }
     operationalPollingGeneration &+= 1
     operationalPollingTask?.cancel()
     operationalPollingTask = nil
@@ -73,8 +82,6 @@ extension WorkbenchStore {
       _ = await self.tickRepositoryAndDeploymentPolling(now: Date())
     }
   }
-
-
 
   public var activeDeploymentStatusReadiness: DeploymentStatusProviderReadiness {
     deploymentStore.activeDeploymentStatusReadiness(store: self)

@@ -58,7 +58,7 @@ struct CodexAccountOfflineFixture: View {
       VStack(alignment: .leading, spacing: 8) {
         HStack(spacing: 16) {
           Text(verbatim: "Offline Codex account fixture")
-            .font(.headline)
+            .font(.workbenchHeadline)
           Text(verbatim: context.mode.rawValue)
           Spacer()
           Text(verbatim: "Models:")

@@ -60,10 +60,10 @@ struct ContentMigrationAssistantView: View {
   private var header: some View {
     VStack(alignment: .leading, spacing: 3) {
       Text("内容迁移助手")
-        .font(.title2.weight(.semibold))
+        .font(.workbenchTitle2.weight(.semibold))
       Text("导入 WordPress、RSS、Markdown 和通用博客导出包，先生成可审阅的转换计划。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -90,7 +90,7 @@ struct ContentMigrationAssistantView: View {
           message: migrationNoticeMessage(notice),
           severity: notice.isError ? .error : .info
         )
-        .font(.caption)
+        .font(.workbenchMetadata)
         .padding(.top, WorkbenchSpacing.icon)
       }
     }
@@ -99,11 +99,11 @@ struct ContentMigrationAssistantView: View {
   private var sourceDescription: some View {
     VStack(alignment: .leading, spacing: 4) {
       Text("支持 WXR、RSS/Atom、JSON 导出、单篇 Markdown 与 Markdown 文件夹。")
-        .font(.callout)
+        .font(.workbenchBody)
         .fixedSize(horizontal: false, vertical: true)
       Text("预览会转换文章头信息（Front Matter）、Slug、图片目标路径和重定向候选，但不会复制文件或访问网络。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
     }
   }
@@ -136,7 +136,7 @@ struct ContentMigrationAssistantView: View {
     let conflictCount = plan.reviewItems.count { $0.disposition == .conflict }
     return VStack(alignment: .leading, spacing: 10) {
       Text("2. 转换概览")
-        .font(.headline)
+        .font(.workbenchHeadline)
       ViewThatFits(in: .horizontal) {
         HStack(spacing: 12) {
           migrationMetric("新增", value: "\(insertCount)", image: "doc.badge.plus")
@@ -168,8 +168,8 @@ struct ContentMigrationAssistantView: View {
       Text(
         "来源：\(plan.sourceName)（\(plan.sourceKind.localizedDisplayName)） · 将导入到「\(dataManagement.activeProfileName)」 · \(plan.imageMappings.count) 条图片路径 · \(plan.redirects.count) 条重定向"
       )
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
       .fixedSize(horizontal: false, vertical: true)
     }
   }
@@ -177,14 +177,14 @@ struct ContentMigrationAssistantView: View {
   private func migrationMetric(_ title: String, value: String, image: String) -> some View {
     HStack(spacing: 8) {
       Image(systemName: image)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       VStack(alignment: .leading, spacing: 1) {
         Text(value)
-          .font(.headline)
+          .font(.workbenchHeadline)
           .lineLimit(1)
         Text(title)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
       Spacer(minLength: 0)
@@ -200,21 +200,21 @@ struct ContentMigrationAssistantView: View {
       ViewThatFits(in: .horizontal) {
         HStack {
           Text("3. 逐篇审阅")
-            .font(.headline)
+            .font(.workbenchHeadline)
           Spacer(minLength: 0)
           draftPreviewActions(for: plan)
         }
 
         VStack(alignment: .leading, spacing: 8) {
           Text("3. 逐篇审阅")
-            .font(.headline)
+            .font(.workbenchHeadline)
           draftPreviewActions(for: plan)
         }
       }
 
       Text("只有勾选的「新增」和「更新」项会被应用；相同文章和冲突项不会改写本地草稿。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
 
       LazyVStack(alignment: .leading, spacing: 8) {
@@ -261,31 +261,31 @@ struct ContentMigrationAssistantView: View {
 
       let destination = "/\(item.importedDraft.slug)  →  \(item.repositoryPath)"
       Text(destination)
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospaced())
+        .foregroundStyle(.workbenchSecondary)
         .workbenchTruncatedIdentity(destination)
       if !item.importedDraft.summary.isEmpty {
         Text(item.importedDraft.summary)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .lineLimit(2)
           .fixedSize(horizontal: false, vertical: true)
       }
 
       if item.disposition == .conflict {
         Text("目标路径重复、无效，或本地草稿在生成预览后已变化。请检查源文件并重新生成预览。")
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(WorkbenchTheme.risk)
       } else if item.disposition == .unchanged {
         Text("与当前本地草稿相同，将自动跳过。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       } else if item.disposition == .update, let comparison = item.comparison {
         DisclosureGroup("查看更新差异") {
           migrationComparison(comparison)
             .padding(.top, WorkbenchSpacing.icon)
         }
-        .font(.caption)
+        .font(.workbenchMetadata)
       }
     }
     .padding(WorkbenchSpacing.card)
@@ -327,8 +327,8 @@ struct ContentMigrationAssistantView: View {
   private func migrationDraftIdentity(for item: ContentMigrationDraftReviewItem) -> some View {
     HStack(alignment: .top, spacing: 8) {
       Text(item.importedDraft.title)
-        .font(.callout.weight(.medium))
-        .workbenchTruncatedIdentity(item.importedDraft.title, lineLimit: 2)
+        .font(.workbenchBody.weight(.medium))
+        .workbenchTruncatedTitle(item.importedDraft.title, lineLimit: 2)
       migrationDispositionBadge(item.disposition)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -336,8 +336,8 @@ struct ContentMigrationAssistantView: View {
 
   private func migrationDraftState(for item: ContentMigrationDraftReviewItem) -> some View {
     Text(item.importedDraft.draft ? "草稿" : "已发布")
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
       .fixedSize(horizontal: false, vertical: true)
   }
 
@@ -345,7 +345,7 @@ struct ContentMigrationAssistantView: View {
     -> some View
   {
     Text(migrationDispositionTitle(disposition))
-      .font(.caption.weight(.semibold))
+      .font(.workbenchMetadata.weight(.semibold))
       .foregroundStyle(migrationDispositionColor(disposition))
       .padding(.horizontal, WorkbenchSpacing.control)
       .padding(.vertical, 2)
@@ -361,7 +361,7 @@ struct ContentMigrationAssistantView: View {
         Text("−\(comparison.removedLineCount) 行")
           .foregroundStyle(WorkbenchTheme.risk)
       }
-      .font(.caption.monospacedDigit())
+      .font(.workbenchMetadata.monospacedDigit())
 
       ForEach(comparison.fieldChanges, id: \.field) { change in
         ViewThatFits(in: .horizontal) {
@@ -371,7 +371,7 @@ struct ContentMigrationAssistantView: View {
               .frame(width: 72, alignment: .leading)
             migrationComparisonValue(change.previousValue, color: WorkbenchTheme.risk)
             Image(systemName: "arrow.right")
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
               .accessibilityHidden(true)
             migrationComparisonValue(change.currentValue, color: WorkbenchTheme.success)
           }
@@ -381,7 +381,7 @@ struct ContentMigrationAssistantView: View {
               .fontWeight(.semibold)
             comparisonValueLabel("原值", value: change.previousValue, color: WorkbenchTheme.risk)
             Image(systemName: "arrow.down")
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
               .accessibilityHidden(true)
             comparisonValueLabel("新值", value: change.currentValue, color: WorkbenchTheme.success)
           }
@@ -392,7 +392,7 @@ struct ContentMigrationAssistantView: View {
         VStack(alignment: .leading, spacing: 1) {
           ForEach(Array(comparison.bodyLineDiffs.prefix(80))) { line in
             Text(migrationDiffText(line))
-              .font(.caption.monospaced())
+              .font(.workbenchMetadata.monospaced())
               .foregroundStyle(migrationDiffColor(line.kind))
               .frame(maxWidth: .infinity, alignment: .leading)
               .padding(.horizontal, WorkbenchSpacing.icon)
@@ -405,7 +405,7 @@ struct ContentMigrationAssistantView: View {
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
         if comparison.bodyLineDiffs.count > 80 {
           Text("差异较大，此处显示前 80 行；已完整统计新增和删除行数。")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
     }
@@ -423,7 +423,7 @@ struct ContentMigrationAssistantView: View {
     VStack(alignment: .leading, spacing: 2) {
       Text(label)
         .font(.workbenchMetadata)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       migrationComparisonValue(value, color: color)
     }
   }
@@ -433,20 +433,20 @@ struct ContentMigrationAssistantView: View {
     if !plan.imageMappings.isEmpty {
       VStack(alignment: .leading, spacing: 8) {
         Text("图片路径映射")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Text("迁移计划只改写文章中的引用；图片本体仍需复制或下载到目标目录。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         ForEach(Array(plan.imageMappings.prefix(5))) { mapping in
           let pathMapping = "\(mapping.sourcePath)  →  \(mapping.targetPath)"
           Text(pathMapping)
-            .font(.caption.monospaced())
+            .font(.workbenchMetadata.monospaced())
             .workbenchTruncatedIdentity(pathMapping)
         }
         if plan.imageMappings.count > 5 {
           Text("另有 \(plan.imageMappings.count - 5) 条图片路径映射。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
     }
@@ -459,27 +459,27 @@ struct ContentMigrationAssistantView: View {
         ViewThatFits(in: .horizontal) {
           HStack {
             Text("重定向候选")
-              .font(.headline)
+              .font(.workbenchHeadline)
             Spacer(minLength: 0)
             redirectActions(for: plan)
           }
 
           VStack(alignment: .leading, spacing: 8) {
             Text("重定向候选")
-              .font(.headline)
+              .font(.workbenchHeadline)
             redirectActions(for: plan)
           }
         }
         ForEach(Array(plan.redirects.prefix(5))) { redirect in
           let redirectMapping = "\(redirect.sourcePath)  →  \(redirect.targetPath)"
           Text(redirectMapping)
-            .font(.caption.monospaced())
+            .font(.workbenchMetadata.monospaced())
             .workbenchTruncatedIdentity(redirectMapping)
         }
         if plan.redirects.count > 5 {
           Text("另有 \(plan.redirects.count - 5) 条重定向候选。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
     }
@@ -508,10 +508,10 @@ struct ContentMigrationAssistantView: View {
     if !plan.warnings.isEmpty {
       VStack(alignment: .leading, spacing: 6) {
         Text("注意")
-          .font(.headline)
+          .font(.workbenchHeadline)
         ForEach(plan.warnings, id: \.self) { warning in
           Label(warning, systemImage: "exclamationmark.triangle")
-            .font(.caption)
+            .font(.workbenchMetadata)
             .foregroundStyle(WorkbenchTheme.warning)
             .fixedSize(horizontal: false, vertical: true)
         }
@@ -568,8 +568,8 @@ struct ContentMigrationAssistantView: View {
 
   private var footerMessage: some View {
     Text("应用前会再次校验本地草稿；如已变化将停止改写，也不会自动写入仓库。")
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
       .fixedSize(horizontal: false, vertical: true)
       .frame(maxWidth: .infinity, alignment: .leading)
   }

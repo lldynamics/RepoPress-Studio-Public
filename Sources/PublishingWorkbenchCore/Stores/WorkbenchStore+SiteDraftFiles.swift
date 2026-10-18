@@ -248,6 +248,9 @@ extension WorkbenchStore {
         pendingIDs = []
       }
     } else {
+      // Cancellation cannot stop the detached writer. Let its completion
+      // publish the new baseline before a synchronous caller retries.
+      guard siteDraftFileWritesInProgress.isEmpty else { return false }
       siteDraftFileFlushFailureIDs.removeAll()
       cancelSiteDraftFileReconciliation()
       pendingIDs = Set(siteDraftFileAutosaveTasks.keys)
@@ -350,7 +353,7 @@ extension WorkbenchStore {
     }
     guard !draft.isGeneralDraft else {
       setPublishActionMessage(
-        CoreL10n.text("通用草稿只保存在软件中；请使用导出功能选择保存位置。"),
+        CoreL10n.text("仅本地草稿只保存在软件中；请使用导出功能选择保存位置。"),
         status: .warning
       )
       return false
@@ -458,13 +461,14 @@ extension WorkbenchStore {
     }
   }
 
-  func waitForPendingSiteDraftFileWrites() async {
-    while true {
+  func waitForPendingSiteDraftFileWrites(draftIDs: Set<UUID>? = nil) async {
+    while !Task.isCancelled {
       if let reconciliationTask = siteDraftFileReconciliationTask {
         await reconciliationTask.value
         continue
       }
-      guard !siteDraftFileAutosaveTasks.isEmpty || !siteDraftFileWritesInProgress.isEmpty else {
+      let pendingIDs = Set(siteDraftFileAutosaveTasks.keys).union(siteDraftFileWritesInProgress)
+      guard draftIDs.map({ !pendingIDs.isDisjoint(with: $0) }) ?? !pendingIDs.isEmpty else {
         return
       }
       await Task.yield()

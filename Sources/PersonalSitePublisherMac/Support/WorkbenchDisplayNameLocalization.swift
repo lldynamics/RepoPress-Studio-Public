@@ -37,6 +37,17 @@ func workbenchLocalizedDisplayNameString<Value: WorkbenchDisplayNameLocalizable>
   )
 }
 
+// These SEO presentation names are already localized through CoreL10n.
+extension SEOSharingImageSource {
+  var workbenchLocalizedDisplayName: String { displayName }
+}
+extension ThemeTitleH1Resolution {
+  var workbenchLocalizedDisplayName: String { displayName }
+}
+extension ThemeTitleH1ResolutionSource {
+  var workbenchLocalizedDisplayName: String { displayName }
+}
+
 extension ArticleState {
   /// Article state labels are already localized by CoreL10n.
   var workbenchLocalizedDisplayName: String { displayName }

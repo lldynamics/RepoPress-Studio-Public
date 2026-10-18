@@ -51,15 +51,15 @@ struct LocalSitePreviewPanelView: View {
     HStack(spacing: 12) {
       VStack(alignment: .leading, spacing: 3) {
         Text("本地站点预览")
-          .font(.title2.weight(.semibold))
+          .font(.workbenchTitle2.weight(.semibold))
         if let plan = state.plan {
           Text("\(plan.siteKind.localizedDisplayName) · 127.0.0.1:\(plan.port ?? 0)")
-            .font(.caption.monospaced())
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.monospaced())
+            .foregroundStyle(.workbenchSecondary)
         } else {
           Text("尚未识别可启动的本地站点")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
 
@@ -120,7 +120,7 @@ struct LocalSitePreviewPanelView: View {
       VStack(spacing: 16) {
         ProgressView()
         Text("正在构建 Quartz 4 静态预览…")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
         statusBar
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -160,19 +160,19 @@ struct LocalSitePreviewPanelView: View {
         .foregroundStyle(
           state.runtimeStatus.isReachable ? WorkbenchTheme.success : WorkbenchTheme.progress)
       Text(state.runtimeStatus.message)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
       if let navigationError {
         Text("· " + navigationError)
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(WorkbenchTheme.warning)
           .lineLimit(1)
       }
       Spacer()
       if let pid = state.runtimeStatus.processIdentifier {
         Text("PID \(pid)")
-          .font(.caption.monospaced())
-          .foregroundStyle(.tertiary)
+          .font(.workbenchMetadata.monospaced())
+          .foregroundStyle(.workbenchSecondary)
       }
     }
     .padding(.horizontal, WorkbenchSpacing.card)
@@ -188,19 +188,19 @@ struct LocalSitePreviewPanelView: View {
           systemImage: plan.diagnostics.isReadyToStart
             ? "checkmark.seal" : "exclamationmark.triangle"
         )
-        .font(.headline)
+        .font(.workbenchHeadline)
         .foregroundStyle(
           plan.diagnostics.isReadyToStart ? WorkbenchTheme.success : WorkbenchTheme.warning)
         Text(state.runtimeStatus.message)
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       VStack(alignment: .leading, spacing: 8) {
         Text("启动命令")
-          .font(.callout.weight(.semibold))
+          .font(.workbenchBody.weight(.semibold))
         Text(plan.command)
-          .font(.caption.monospaced())
+          .font(.workbenchMetadata.monospaced())
           .textSelection(.enabled)
           .padding(WorkbenchSpacing.card)
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -212,20 +212,20 @@ struct LocalSitePreviewPanelView: View {
       if !plan.diagnostics.dependencies.isEmpty {
         VStack(alignment: .leading, spacing: 8) {
           Text("依赖与脚本")
-            .font(.callout.weight(.semibold))
+            .font(.workbenchBody.weight(.semibold))
           ForEach(plan.diagnostics.dependencies) { dependency in
             HStack(alignment: .top, spacing: 8) {
               Image(systemName: dependencyIcon(dependency.status))
                 .foregroundStyle(dependencyColor(dependency.status))
               VStack(alignment: .leading, spacing: 2) {
                 Text(dependency.name)
-                  .font(.callout.weight(.medium))
+                  .font(.workbenchBody.weight(.medium))
                 Text(dependency.detail)
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchMetadata)
+                  .foregroundStyle(.workbenchSecondary)
                 if let suggestedAction = dependency.suggestedAction {
                   Text(suggestedAction)
-                    .font(.caption)
+                    .font(.workbenchMetadata)
                     .foregroundStyle(WorkbenchTheme.warning)
                 }
               }
@@ -237,13 +237,13 @@ struct LocalSitePreviewPanelView: View {
       if !plan.diagnostics.issues.isEmpty {
         VStack(alignment: .leading, spacing: 8) {
           Text("仓库提示")
-            .font(.callout.weight(.semibold))
+            .font(.workbenchBody.weight(.semibold))
           ForEach(plan.diagnostics.issues) { issue in
             Label(
               issue.message,
               systemImage: issue.severity.isBlocking ? "xmark.octagon" : "info.circle"
             )
-            .font(.caption)
+            .font(.workbenchMetadata)
             .foregroundStyle(issue.severity.isBlocking ? WorkbenchTheme.risk : .secondary)
           }
         }
@@ -254,14 +254,14 @@ struct LocalSitePreviewPanelView: View {
       {
         VStack(alignment: .leading, spacing: 8) {
           Text("SSG / 构建失败详情")
-            .font(.callout.weight(.semibold))
+            .font(.workbenchBody.weight(.semibold))
           ForEach(state.runtimeStatus.diagnostics) { diagnostic in
             Text(verbatim: "\(diagnostic.relativePath):\(diagnostic.line): \(diagnostic.message)")
-              .font(.caption.monospaced())
+              .font(.workbenchMetadata.monospaced())
               .textSelection(.enabled)
           }
           Text(verbatim: state.runtimeStatus.recentLogLines.suffix(20).joined(separator: "\n"))
-            .font(.caption.monospaced())
+            .font(.workbenchMetadata.monospaced())
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -269,8 +269,8 @@ struct LocalSitePreviewPanelView: View {
 
       ForEach(plan.notes, id: \.self) { note in
         Label(note, systemImage: "lightbulb")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
     }
     .padding(WorkbenchSpacing.content)

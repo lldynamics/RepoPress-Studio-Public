@@ -9,8 +9,8 @@ struct AppearanceSettingsView: View {
   private var appearanceModeRawValue = WorkbenchAppearanceMode.system.rawValue
   @AppStorage(WorkbenchInterfaceDensity.storageKey)
   private var interfaceDensityRawValue = WorkbenchInterfaceDensity.comfortable.rawValue
-  @AppStorage("menuBarQuickCaptureVisibleV1")
-  private var isMenuBarQuickCaptureVisible = true
+  @AppStorage(WorkbenchTextScalePreference.storageKey)
+  private var textScaleRawValue = WorkbenchTextScalePreference.standard.rawValue
   @WorkspaceModuleVisibilityStorage
   private var moduleVisibility
 
@@ -24,6 +24,10 @@ struct AppearanceSettingsView: View {
 
   private var selectedInterfaceDensity: WorkbenchInterfaceDensity {
     WorkbenchInterfaceDensity.resolved(rawValue: interfaceDensityRawValue)
+  }
+
+  private var selectedTextScale: WorkbenchTextScalePreference {
+    WorkbenchTextScalePreference.resolved(rawValue: textScaleRawValue)
   }
 
   var body: some View {
@@ -54,6 +58,9 @@ struct AppearanceSettingsView: View {
       if interfaceDensityRawValue != selectedInterfaceDensity.rawValue {
         interfaceDensityRawValue = selectedInterfaceDensity.rawValue
       }
+      if textScaleRawValue != selectedTextScale.rawValue {
+        textScaleRawValue = selectedTextScale.rawValue
+      }
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("appearance-settings")
@@ -65,16 +72,7 @@ struct AppearanceSettingsView: View {
         title: "外观模式",
         subtitle: "选择应用的主题模式。"
       ) {
-        Picker("外观模式", selection: $appearanceModeRawValue) {
-          ForEach(WorkbenchAppearanceMode.allCases) { mode in
-            Text(mode.title).tag(mode.rawValue)
-          }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .controlSize(.regular)
-        .frame(width: 300)
-        .accessibilityIdentifier("settings-appearance-mode-picker")
+        appearanceModePicker()
       }
 
       Divider()
@@ -96,30 +94,98 @@ struct AppearanceSettingsView: View {
       Divider()
 
       appearancePreferenceRow(
-        title: "界面密度",
-        subtitle: "调整界面控件的紧凑程度。"
+        title: "界面字号",
+        subtitle: "调整工作台界面文字；编辑器正文请在编辑设置中单独调整。"
       ) {
-        Picker("界面密度", selection: $interfaceDensityRawValue) {
-          ForEach(WorkbenchInterfaceDensity.allCases) { density in
-            Text(density.title).tag(density.rawValue)
-          }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .controlSize(.regular)
-        .frame(width: 240)
-        .accessibilityIdentifier("settings-interface-density-picker")
+        textScalePicker()
       }
 
       Divider()
 
       appearancePreferenceRow(
-        title: "菜单栏速记",
-        subtitle: "在菜单栏显示速记入口；关闭后仍可在工作台中写笔记。"
+        title: "界面密度",
+        subtitle: "调整界面控件的紧凑程度。"
       ) {
-        Toggle("显示菜单栏图标", isOn: $isMenuBarQuickCaptureVisible)
-          .accessibilityIdentifier("settings-menu-bar-quick-capture-toggle")
+        interfaceDensityPicker()
       }
+    }
+  }
+
+  @ViewBuilder
+  private func appearanceModePicker() -> some View {
+    if selectedTextScale == .standard {
+      Picker("外观模式", selection: $appearanceModeRawValue) {
+        appearanceModeOptions()
+      }
+      .pickerStyle(.segmented)
+      .labelsHidden()
+      .controlSize(.regular)
+      .frame(width: 300)
+      .accessibilityLabel("外观模式")
+      .accessibilityValue(selectedAppearanceMode.title)
+      .accessibilityIdentifier("settings-appearance-mode-picker")
+    } else {
+      WorkbenchScaledMenuPicker(
+        title: String(localized: "外观模式"),
+        selection: $appearanceModeRawValue,
+        options: WorkbenchAppearanceMode.allCases.map {
+          .init(value: $0.rawValue, title: $0.title)
+        },
+        accessibilityIdentifier: "settings-appearance-mode-picker"
+      )
+      .frame(minWidth: 170, alignment: .leading)
+    }
+  }
+
+  @ViewBuilder
+  private func appearanceModeOptions() -> some View {
+    ForEach(WorkbenchAppearanceMode.allCases) { mode in
+      Text(mode.title).tag(mode.rawValue)
+    }
+  }
+
+  private func textScalePicker() -> some View {
+    WorkbenchScaledMenuPicker(
+      title: String(localized: "界面字号"),
+      selection: $textScaleRawValue,
+      options: WorkbenchTextScalePreference.allCases.map {
+        .init(value: $0.rawValue, title: $0.title)
+      },
+      accessibilityIdentifier: "settings-interface-text-scale-picker"
+    )
+    .frame(minWidth: 170, alignment: .leading)
+  }
+
+  @ViewBuilder
+  private func interfaceDensityPicker() -> some View {
+    if selectedTextScale == .standard {
+      Picker("界面密度", selection: $interfaceDensityRawValue) {
+        interfaceDensityOptions()
+      }
+      .pickerStyle(.segmented)
+      .labelsHidden()
+      .controlSize(.regular)
+      .frame(width: 240)
+      .accessibilityLabel("界面密度")
+      .accessibilityValue(selectedInterfaceDensity.title)
+      .accessibilityIdentifier("settings-interface-density-picker")
+    } else {
+      WorkbenchScaledMenuPicker(
+        title: String(localized: "界面密度"),
+        selection: $interfaceDensityRawValue,
+        options: WorkbenchInterfaceDensity.allCases.map {
+          .init(value: $0.rawValue, title: $0.title)
+        },
+        accessibilityIdentifier: "settings-interface-density-picker"
+      )
+      .frame(minWidth: 170, alignment: .leading)
+    }
+  }
+
+  @ViewBuilder
+  private func interfaceDensityOptions() -> some View {
+    ForEach(WorkbenchInterfaceDensity.allCases) { density in
+      Text(density.title).tag(density.rawValue)
     }
   }
 
@@ -152,10 +218,10 @@ struct AppearanceSettingsView: View {
   ) -> some View {
     VStack(alignment: .leading, spacing: 4) {
       Text(title)
-        .font(.body.weight(.semibold))
+        .font(.workbenchBody.weight(.semibold))
       Text(subtitle)
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
     }
   }

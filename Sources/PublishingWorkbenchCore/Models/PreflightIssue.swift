@@ -220,7 +220,15 @@ public struct DraftPreflightSummary: Identifiable, Codable, Hashable, Sendable {
   }
 
   public var blockingIssues: [PreflightIssue] {
-    issues.filter { $0.severity != .info }
+    issues.filter { $0.severity != .info && !$0.isOptionalOptimization }
+  }
+
+  public var optionalOptimizationIssues: [PreflightIssue] {
+    issues.filter(\.isOptionalOptimization)
+  }
+
+  public var optimizationCount: Int {
+    optionalOptimizationIssues.count
   }
 
   public var publicRiskSummary: PublicRiskSummary {
@@ -240,11 +248,11 @@ public struct DraftPreflightSummary: Identifiable, Codable, Hashable, Sendable {
   }
 
   public var errorCount: Int {
-    issues.filter { $0.severity == .error }.count
+    blockingIssues.filter { $0.severity == .error }.count
   }
 
   public var warningCount: Int {
-    issues.filter { $0.severity == .warning }.count
+    blockingIssues.filter { $0.severity == .warning }.count
   }
 
   public var isPassing: Bool {

@@ -19,10 +19,10 @@ struct AIChatAutomationPlanCard: View {
     if message.isRetiredAgentRecord {
       VStack(alignment: .leading, spacing: 10) {
         Label("历史操作记录", systemImage: "clock.arrow.circlepath")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Text(AIAgentRetirement.message)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         Text(plan.goal)
         ForEach(plan.steps) { step in
           VStack(alignment: .leading, spacing: 4) {
@@ -30,7 +30,7 @@ struct AIChatAutomationPlanCard: View {
               WorkbenchAutomationRegistry.descriptor(for: step.command)?.title
                 ?? step.command.rawValue)
             if let result = step.resultMessage, !result.isEmpty {
-              Text(result).font(.caption).foregroundStyle(.secondary)
+              Text(result).font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
             }
           }
         }
@@ -47,14 +47,14 @@ struct AIChatAutomationPlanCard: View {
     VStack(alignment: .leading, spacing: 10) {
       HStack(alignment: .firstTextBaseline, spacing: 8) {
         Label("应用内操作计划", systemImage: "checklist.checked")
-          .font(.callout.weight(.semibold))
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody.weight(.semibold))
+          .foregroundStyle(.workbenchSecondary)
         Spacer(minLength: 8)
         statusLabel
       }
 
       Text(plan.goal)
-        .font(.callout.weight(.medium))
+        .font(.workbenchBody.weight(.medium))
         .fixedSize(horizontal: false, vertical: true)
 
       VStack(spacing: 0) {
@@ -164,7 +164,7 @@ struct AIChatAutomationPlanCard: View {
 
   private var statusLabel: some View {
     Label(statusTitle, systemImage: statusSystemImage)
-      .font(.caption.weight(.semibold))
+      .font(.workbenchMetadata.weight(.semibold))
       .foregroundStyle(statusColor)
   }
 
@@ -178,7 +178,7 @@ struct AIChatAutomationPlanCard: View {
       VStack(alignment: .leading, spacing: 3) {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
           Text("\(index + 1). \(descriptor?.title ?? step.command.rawValue)")
-            .font(.callout.weight(.medium))
+            .font(.workbenchBody.weight(.medium))
           if let descriptor {
             Text(descriptor.risk.localizedDisplayName)
               .font(.workbenchMetadata)
@@ -190,8 +190,8 @@ struct AIChatAutomationPlanCard: View {
         }
 
         Text(step.resultMessage?.nilIfEmpty ?? descriptor?.detail ?? "")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
 
         if let authorization = step.publishAuthorization {
@@ -422,7 +422,7 @@ struct AIChatAutomationPlanCard: View {
         verbatim: "授权有效至：\(authorization.expiresAt.formatted(date: .abbreviated, time: .standard))")
     }
     .font(.workbenchMetadata)
-    .foregroundStyle(.secondary)
+    .foregroundStyle(.workbenchSecondary)
     .fixedSize(horizontal: false, vertical: true)
     .padding(.top, WorkbenchSpacing.tight)
   }
@@ -443,7 +443,7 @@ private struct AutomationStepStatusIndicator: View {
         .fill(stepStatusColor.opacity(status == .running ? 0.22 : 0.14))
 
       Image(systemName: stepStatusSystemImage)
-        .font(.caption.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
         .foregroundStyle(stepStatusColor)
     }
     .frame(width: 25, height: 25)

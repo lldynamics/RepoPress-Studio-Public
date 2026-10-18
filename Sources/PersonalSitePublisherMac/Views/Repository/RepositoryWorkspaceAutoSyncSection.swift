@@ -147,19 +147,19 @@ extension RepositoryWorkspaceView {
         .disabled(store.repositoryAutoSyncState.importableRemoteArticleCount == 0)
         .accessibilityIdentifier("repository-auto-sync-import-articles")
       }
-      .font(.callout)
-      .foregroundStyle(.secondary)
+      .font(.workbenchBody)
+      .foregroundStyle(.workbenchSecondary)
 
       if !store.repositoryAutoSyncState.remoteChangedPaths.isEmpty {
         VStack(alignment: .leading, spacing: 8) {
           HStack {
             Label("最近远端变更（候选路径）", systemImage: "arrow.down.doc")
-              .font(.caption.weight(.semibold))
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata.weight(.semibold))
+              .foregroundStyle(.workbenchSecondary)
             Spacer()
             Text("仅按路径初筛；导入时仍会校验内容和 slug")
-              .font(.callout)
-              .foregroundStyle(.secondary)
+              .font(.workbenchBody)
+              .foregroundStyle(.workbenchSecondary)
           }
 
           Divider()
@@ -203,8 +203,8 @@ extension RepositoryWorkspaceView {
         .font(.workbenchSectionTitle)
         .accessibilityAddTraits(.isHeader)
       Text(store.repositoryAutoSyncState.message.nilIfEmpty ?? repositoryAutoSyncDescription)
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 
@@ -295,18 +295,18 @@ extension RepositoryWorkspaceView {
 
   private var repositoryAutoImportExplanation: some View {
     Text("新文章自动导入；本地已修改、远端删除或重命名仍保留手动审阅。")
-      .font(.callout)
-      .foregroundStyle(.secondary)
+      .font(.workbenchBody)
+      .foregroundStyle(.workbenchSecondary)
   }
 
   private func repositoryAutoSyncPathIdentity(_ path: String) -> some View {
     let identifierToken = RepositoryAccessibilityIdentifier.token(for: path)
     return HStack(spacing: 8) {
       Image(systemName: "doc.text.magnifyingglass")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .frame(width: 16)
       Text(path)
-        .font(.caption.monospaced())
+        .font(.workbenchMetadata.monospaced())
         .workbenchTruncatedIdentity(path)
     }
     .frame(maxWidth: .infinity, alignment: .leading)

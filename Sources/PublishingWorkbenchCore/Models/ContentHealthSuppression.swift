@@ -2,6 +2,25 @@ import CryptoKit
 import Foundation
 import PublishingDomainContracts
 
+/// A missing entry means the article has not expressed an image preference.
+/// This explicit value is kept per site and draft so an absent cover is never
+/// silently interpreted as an editorial decision.
+public enum SEOArticleSocialImageIntent: String, Codable, Hashable, Sendable {
+  case noIndividualImage
+}
+
+public struct SEOArticleSocialImagePreference: Codable, Hashable, Identifiable, Sendable {
+  public let draftID: UUID
+  public var intent: SEOArticleSocialImageIntent
+
+  public var id: UUID { draftID }
+
+  public init(draftID: UUID, intent: SEOArticleSocialImageIntent) {
+    self.draftID = draftID
+    self.intent = intent
+  }
+}
+
 /// Only optional editorial findings enter this allowlist. Unknown rules fail closed.
 public enum ContentHealthRuleID: String, Codable, CaseIterable, Sendable {
   case shortBody = "content.body.short"

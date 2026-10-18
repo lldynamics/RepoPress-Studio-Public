@@ -32,8 +32,8 @@ struct ReaderTypographyMenu: View {
           Text("大")
         }
         Text("当前 \(Int(fontSize)) pt")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       Section("行距") {
@@ -49,8 +49,8 @@ struct ReaderTypographyMenu: View {
           Text("松")
         }
         Text("当前 \(lineSpacing, specifier: "%.2f")")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       Section("段间距") {
@@ -66,8 +66,8 @@ struct ReaderTypographyMenu: View {
           Text("松")
         }
         Text("当前 \(paragraphSpacing, specifier: "%.2f") em")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       Picker("段落对齐", selection: $textAlignment) {

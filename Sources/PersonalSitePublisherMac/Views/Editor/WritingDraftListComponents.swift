@@ -159,14 +159,8 @@ private func writingDraftRowHelp(
   display: PrivateContentDisplay
 ) -> String {
   if display.isMasked { return display.summary }
-  if let source = draft.externalDraftSource {
-    if source.isDetached {
-      return String(localized: "已断开的外部文件：\(source.relativePath)")
-    }
-    return String(localized: "外部文件：\(source.relativePath)")
-  }
   return draft.isGeneralDraft
-    ? String(localized: "通用草稿，不绑定站点")
+    ? String(localized: "仅本地草稿，不绑定站点")
     : profile.markdownPath(for: draft)
 }
 
@@ -198,13 +192,7 @@ struct WritingDraftRowPresentation {
     // status, privacy and the facts that differ per row are repeated here.
     // Keep variable status facts separate from the date. A narrow sidebar can
     // truncate the former without ever clipping a year in the latter.
-    var parts: [String] = []
-    if let source = draft.externalDraftSource {
-      parts.append(
-        source.isDetached
-          ? String(localized: "外部文件（已断开）") : String(localized: "外部文件"))
-    }
-    metadataDetails = parts.joined(separator: " · ")
+    metadataDetails = ""
     issueSummary =
       attention.articleIssueCount > 0
       ? String(localized: "\(attention.articleIssueCount) 项问题") : nil
@@ -380,7 +368,7 @@ extension WritingDraftRow {
     HStack(alignment: .firstTextBaseline, spacing: WorkbenchSpacing.icon) {
       if let privacySystemImage = presentation.privacySystemImage {
         Image(systemName: privacySystemImage)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .accessibilityHidden(true)
       }
       Text(presentation.statusSummary)
@@ -407,7 +395,7 @@ extension WritingDraftRow {
   private var dateText: some View {
     Text(presentation.metadataDate)
       .font(.workbenchMetadata.monospacedDigit())
-      .foregroundStyle(.secondary)
+      .foregroundStyle(.workbenchSecondary)
       .fixedSize(horizontal: true, vertical: false)
   }
 }

@@ -22,7 +22,7 @@ struct ReaderContextualSelectionBar: View {
             value: feedbackText
           )
       }
-      .font(.caption.weight(.medium))
+      .font(.workbenchMetadata.weight(.medium))
       .buttonStyle(.plain)
       .padding(.horizontal, WorkbenchSpacing.control)
       .padding(.vertical, WorkbenchSpacing.icon)
@@ -95,7 +95,7 @@ struct ReaderContextualSelectionBar: View {
   private var feedbackOverlay: some View {
     if let feedbackText {
       Label(feedbackText, systemImage: "checkmark.circle.fill")
-        .font(.caption.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
         .foregroundStyle(WorkbenchTheme.success)
         .padding(.horizontal, WorkbenchSpacing.tight)
         .transition(

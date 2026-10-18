@@ -1,5 +1,33 @@
 import SwiftUI
 
+enum WorkbenchTextScalePreference: String, CaseIterable, Identifiable {
+  static let storageKey = "workbenchTextScaleV1"
+
+  case standard
+  case large
+  case extraLarge
+  case largest
+
+  var id: String { rawValue }
+
+  var scale: CGFloat {
+    switch self {
+    case .standard: return 1
+    case .large: return 1.15
+    case .extraLarge: return 1.3
+    case .largest: return 1.5
+    }
+  }
+
+  var title: String {
+    (Double(scale)).formatted(.percent.precision(.fractionLength(0)))
+  }
+
+  static func resolved(rawValue: String?) -> Self {
+    rawValue.flatMap(Self.init(rawValue:)) ?? .standard
+  }
+}
+
 enum WorkbenchAppearanceMode: String, CaseIterable, Identifiable {
   static let storageKey = "workbenchAppearanceModeV1"
 

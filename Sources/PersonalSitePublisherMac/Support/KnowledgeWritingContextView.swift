@@ -96,14 +96,14 @@ struct KnowledgeWritingContextView: View {
       if let draft = currentDraft {
         Text("正在为《\(safeTitle(for: draft))》收集资料")
           .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .lineLimit(2)
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityLabel("正在为《\(safeTitle(for: draft))》收集资料")
       } else {
         Text("尚未选择文章，请先选择一个写作目标。")
           .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
 
@@ -273,8 +273,8 @@ struct KnowledgeWritingTargetPickerPresentation: Identifiable, Hashable {
         : rawTitle
       if isGeneral {
         detail =
-          path.map { "\(String(localized: "通用草稿")) · \($0)" }
-          ?? String(localized: "通用草稿，不绑定站点")
+          path.map { "\(String(localized: "仅本地草稿")) · \($0)" }
+          ?? String(localized: "仅本地草稿，不绑定站点")
       } else {
         let resolvedSiteName = siteName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let resolvedPath = path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -334,7 +334,7 @@ struct KnowledgeWritingTargetPicker: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       Text("选择资料写作目标")
-        .font(.headline)
+        .font(.workbenchHeadline)
 
       TextField("搜索文章、站点或路径", text: $searchText)
         .textFieldStyle(.roundedBorder)
@@ -405,7 +405,7 @@ struct KnowledgeWritingTargetPicker: View {
           .lineLimit(1)
         Text(target.detail)
           .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .lineLimit(1)
       }
 

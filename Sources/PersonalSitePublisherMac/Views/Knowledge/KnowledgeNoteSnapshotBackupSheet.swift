@@ -31,9 +31,9 @@ struct KnowledgeNoteSnapshotBackupSheet: View {
         HStack {
           VStack(alignment: .leading, spacing: 4) {
             Text("笔记版本备份")
-              .font(.title2.weight(.semibold))
+              .font(.workbenchTitle2.weight(.semibold))
             Text("保存可用于恢复历史版本的独立笔记快照。")
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
           }
           Spacer()
           Button("完成") { dismiss() }
@@ -45,11 +45,11 @@ struct KnowledgeNoteSnapshotBackupSheet: View {
           VStack(alignment: .leading, spacing: 8) {
             Toggle("启用自动 iCloud 版本备份", isOn: $automaticICloudBackupEnabled)
             Text("笔记有变化时每天最多创建一份快照；内容未变会跳过。旧版本不会自动清理。")
-              .font(.footnote)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
             Text("自动备份用于恢复历史版本，不会替换本机当前笔记。")
-              .font(.footnote)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
           .padding(WorkbenchSpacing.control)
         }
@@ -71,7 +71,7 @@ struct KnowledgeNoteSnapshotBackupSheet: View {
         GroupBox("恢复历史版本") {
           VStack(alignment: .leading, spacing: 8) {
             Text("选择快照后先预览新增、相同和冲突笔记，再恢复历史版本。原笔记会保留。")
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
             HStack {
               Button("选择快照…") { restoreSnapshot() }
                 .disabled(isWorking)
@@ -101,14 +101,14 @@ struct KnowledgeNoteSnapshotBackupSheet: View {
             "最近写入 iCloud 容器：\(Date(timeIntervalSince1970: automaticSnapshotSuccessAt), style: .date) \(Date(timeIntervalSince1970: automaticSnapshotSuccessAt), style: .time)",
             systemImage: "checkmark.icloud"
           )
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           Text(automaticUploadStatusDescription)
-            .font(.footnote)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
         if !automaticSnapshotError.isEmpty {
           Label("自动备份失败：\(automaticSnapshotError)", systemImage: "exclamationmark.icloud.fill")
-            .font(.footnote)
+            .font(.workbenchMetadata)
             .foregroundStyle(.red)
         }
         if lastSnapshotSuccessAt > 0 {
@@ -119,15 +119,15 @@ struct KnowledgeNoteSnapshotBackupSheet: View {
           } icon: {
             Image(systemName: "checkmark.circle.fill")
           }
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
         } else {
           Text("尚未创建快照。选择 iCloud Drive 文件夹即可保存到 iCloud Drive；也可选择本地文件夹。")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
         if !lastSnapshotError.isEmpty {
           Label("上次备份失败：\(lastSnapshotError)", systemImage: "exclamationmark.icloud.fill")
-            .font(.footnote)
+            .font(.workbenchMetadata)
             .foregroundStyle(.red)
         }
         if isWorking { ProgressView("正在处理笔记快照…") }
@@ -187,8 +187,8 @@ struct KnowledgeNoteSnapshotBackupSheet: View {
               Text(snapshot.url.deletingPathExtension().lastPathComponent)
                 .lineLimit(1)
               Text(snapshot.createdAt, style: .date)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.workbenchMetadata)
+                .foregroundStyle(.workbenchSecondary)
             }
           }
           .buttonStyle(.plain)

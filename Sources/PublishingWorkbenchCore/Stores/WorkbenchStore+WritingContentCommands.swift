@@ -583,11 +583,6 @@ extension WorkbenchStore {
     }
     var contentUpdate = draft
     contentUpdate.preserveRepositoryState(from: current)
-    if current.externalDraftSource != nil {
-      // External scans may refresh the body after this editor captured its
-      // metadata value. Body edits travel through the revisioned buffer.
-      contentUpdate.bodyMarkdown = current.bodyMarkdown
-    }
     updateDraft(contentUpdate)
     return true
   }
@@ -595,7 +590,6 @@ extension WorkbenchStore {
   public func deleteSelectedDraft() {
     if let selectedDraftID {
       flushDraftBodyEditorBuffer(for: selectedDraftID)
-      cancelExternalDraftWrite(for: selectedDraftID)
     }
     publishingStore.deleteSelectedDraft(store: self)
     invalidateDraftDerivedCaches()
@@ -603,7 +597,6 @@ extension WorkbenchStore {
 
   public func deleteDraft(id draftID: UUID) {
     flushDraftBodyEditorBuffer(for: draftID)
-    cancelExternalDraftWrite(for: draftID)
     cancelSiteDraftFileAutosave(for: draftID)
     publishingStore.deleteDraft(id: draftID, store: self)
     invalidateDraftDerivedCaches()

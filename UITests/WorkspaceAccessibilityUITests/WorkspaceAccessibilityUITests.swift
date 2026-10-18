@@ -127,6 +127,8 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     for route in routes {
       select(route.section, revealing: route.destination, in: window)
     }
+    // Images is its own page; return to the article before capturing its body.
+    select("workspace-sidebar-writing", revealing: "writing-draft-list", in: window)
 
     // At 1080pt the Inspector can be revealed on demand. The context sidebar
     // yields, while the same five-route rail keeps routing in this window.
@@ -150,23 +152,32 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       .matching(identifier: "workspace-primary-navigation-rail")
       .firstMatch
     XCTAssertTrue(primaryRail.waitForExistence(timeout: 10))
+    // Like select(_:revealing:), bring the app forward before hit-testing: a
+    // window from another app covering this one makes the rail unhittable and
+    // turns the next click into window activation only.
+    application.activate()
     for section in ["rss", "library", "sync", "writing", "images"] {
       let button = compactWindow.buttons
         .matching(identifier: "workspace-sidebar-\(section)")
         .firstMatch
       XCTAssertTrue(button.waitForExistence(timeout: 5))
-      XCTAssertTrue(button.isHittable, "Primary \(section) route must be directly hittable.")
+      XCTAssertTrue(
+        button.isHittable,
+        "Primary \(section) route must be directly hittable. Button \(button.frame), window \(compactWindow.frame)."
+      )
     }
 
     let rssButton = compactWindow.buttons
       .matching(identifier: "workspace-sidebar-rss")
       .firstMatch
+    application.activate()
     rssButton.click()
     XCTAssertTrue(
       compactWindow.descendants(matching: .any)
         .matching(identifier: "rss-reader-workspace")
         .firstMatch
-        .waitForExistence(timeout: 10)
+        .waitForExistence(timeout: 10),
+      "The RSS rail route must open RSS. Rail RSS value \(String(describing: rssButton.value)); window \(compactWindow.debugDescription)"
     )
     XCTAssertEqual(application.windows.count, 1)
     XCTAssertEqual(application.windows.firstMatch.identifier, compactWindowIdentifier)
@@ -174,6 +185,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     let writingButton = compactWindow.buttons
       .matching(identifier: "workspace-sidebar-writing")
       .firstMatch
+    application.activate()
     writingButton.click()
     XCTAssertTrue(editor.waitForExistence(timeout: 10))
     XCTAssertEqual(editor.value as? String, draftBody)
@@ -561,6 +573,363 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertTrue(editor.exists, "Escape must not remove the editor from the workspace.")
   }
 
+  func testLargestInterfaceTextScaleKeepsLongTitleToolbarAccessibleInLightAppearance() throws {
+    try assertLargestInterfaceTextScaleLayout(appearance: "light", screenshotName: "light")
+  }
+
+  func testLargestInterfaceTextScaleKeepsLongTitleToolbarAccessibleInDarkAppearance() throws {
+    try assertLargestInterfaceTextScaleLayout(appearance: "dark", screenshotName: "dark")
+  }
+
+  func testInterfaceTextScaleCanChangeLiveFromSettingsWithoutReplacingEditorContent() throws {
+    try prepareTextScaleRepository()
+    launchApplication(
+      surface: "writing",
+      additionalLaunchArguments: [
+        "-workbenchAppearanceModeV1", "light",
+      ],
+      screenshotContentSize: CGSize(width: 900, height: 620)
+    )
+
+    showSettingsWindow()
+    let initialSettings = currentSettingsWindow()
+    select("settings-tab-appearance", revealing: "appearance-settings", in: initialSettings)
+    revealSettingsElement(
+      "settings-interface-text-scale-picker", scrollContainerIdentifier: "appearance-settings"
+    )
+    let initialPicker = element(identifier: "settings-interface-text-scale-picker")
+    initialPicker.click()
+    application.menuItems["100%"].click()
+    initialSettings.buttons[XCUIIdentifierCloseWindow].click()
+    assertIdentifierDisappears("settings-content")
+
+    let editor = element(identifier: "markdown-document-editor")
+    XCTAssertTrue(editor.waitForExistence(timeout: 10))
+    editor.click()
+    application.typeKey(.downArrow, modifierFlags: [.command])
+    let originalBody = try XCTUnwrap(editor.value as? String)
+    let marker = "LiveScale-\(UUID().uuidString)"
+    let restorePasteboard = try preservePasteboard(with: marker)
+    defer { restorePasteboard() }
+    application.typeKey(.return, modifierFlags: [])
+    application.typeKey("v", modifierFlags: [.command])
+    XCTAssertEqual(
+      XCTWaiter.wait(
+        for: [
+          XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value CONTAINS %@", marker),
+            object: editor
+          )
+        ],
+        timeout: 10
+      ),
+      .completed,
+      "The live scale case must append and read back its body marker before opening Settings."
+    )
+    let bodyBeforeScale = try XCTUnwrap(editor.value as? String)
+    XCTAssertTrue(
+      bodyBeforeScale.contains(originalBody),
+      "The live scale case must preserve the original body while appending its marker."
+    )
+    let title = element(identifier: "markdown-article-title")
+    XCTAssertTrue(title.waitForExistence(timeout: 10))
+    let originalTitleHeight = title.frame.height
+    XCTAssertGreaterThan(originalTitleHeight, 0)
+
+    showSettingsWindow()
+    let settings = currentSettingsWindow()
+    select("settings-tab-appearance", revealing: "appearance-settings", in: settings)
+    let scalePicker = settings.descendants(matching: .any)
+      .matching(identifier: "settings-interface-text-scale-picker")
+      .firstMatch
+    XCTAssertTrue(scalePicker.waitForExistence(timeout: 10))
+    revealSettingsElement(
+      "settings-interface-text-scale-picker", scrollContainerIdentifier: "appearance-settings"
+    )
+    XCTAssertTrue(scalePicker.isHittable)
+    scalePicker.click()
+    let largest = application.menuItems["150%"]
+    XCTAssertTrue(largest.waitForExistence(timeout: 5))
+    largest.click()
+    XCTAssertEqual(
+      XCTWaiter.wait(
+        for: [
+          XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "150%", "150%"),
+            object: scalePicker
+          )
+        ],
+        timeout: 10
+      ),
+      .completed,
+      "Settings must commit the largest interface text scale selection."
+    )
+
+    settings.buttons[XCUIIdentifierCloseWindow].click()
+    assertIdentifierDisappears("settings-content")
+    XCTAssertEqual(
+      XCTWaiter.wait(
+        for: [
+          XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in title.frame.height > originalTitleHeight + 1 },
+            object: title
+          )
+        ],
+        timeout: 10
+      ),
+      .completed,
+      "The workbench title must reflect the live 150% interface text scale."
+    )
+    XCTAssertEqual(
+      editor.value as? String,
+      bodyBeforeScale,
+      "Changing interface text scale must preserve the complete editor content, including its body marker."
+    )
+    let liveScreenshot = XCTAttachment(screenshot: application.windows.firstMatch.screenshot())
+    liveScreenshot.name = "live-interface-text-scale-preserved-editor"
+    liveScreenshot.lifetime = .keepAlways
+    add(liveScreenshot)
+
+    // Reuse the isolated preferences without a launch-argument override.
+    launchApplication(surface: "writing", screenshotContentSize: CGSize(width: 900, height: 620))
+    let restoredTitle = element(identifier: "markdown-article-title")
+    XCTAssertTrue(restoredTitle.waitForExistence(timeout: 10))
+    XCTAssertGreaterThan(restoredTitle.frame.height, originalTitleHeight + 1)
+    showSettingsWindow()
+    let restoredSettings = currentSettingsWindow()
+    select("settings-tab-appearance", revealing: "appearance-settings", in: restoredSettings)
+    let restoredPicker = restoredSettings.descendants(matching: .any)
+      .matching(identifier: "settings-interface-text-scale-picker").firstMatch
+    XCTAssertTrue(restoredPicker.waitForExistence(timeout: 10))
+    XCTAssertEqual(restoredPicker.value as? String, "150%")
+    let settingsScreenshot = XCTAttachment(screenshot: restoredSettings.screenshot())
+    settingsScreenshot.name = "persisted-interface-text-scale-settings"
+    settingsScreenshot.lifetime = .keepAlways
+    add(settingsScreenshot)
+  }
+
+  private func preservePasteboard(with value: String) throws -> () -> Void {
+    let pasteboard = NSPasteboard.general
+    let originalItems = (pasteboard.pasteboardItems ?? []).map { item in
+      item.types.compactMap { type in
+        item.data(forType: type).map { (type, $0) }
+      }
+    }
+    pasteboard.clearContents()
+    guard pasteboard.setString(value, forType: .string) else {
+      throw NSError(
+        domain: "WorkspaceAccessibilityUITests",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "Could not prepare the test pasteboard."]
+      )
+    }
+    let fixtureChangeCount = pasteboard.changeCount
+    return {
+      guard pasteboard.changeCount == fixtureChangeCount else { return }
+      pasteboard.clearContents()
+      let restored = originalItems.map { values in
+        let item = NSPasteboardItem()
+        for (type, data) in values {
+          item.setData(data, forType: type)
+        }
+        return item
+      }
+      if !restored.isEmpty {
+        pasteboard.writeObjects(restored)
+      }
+    }
+  }
+
+  @discardableResult
+  private func acceptanceGit(_ arguments: [String], at root: URL) throws -> String {
+    guard root.path.hasPrefix(knowledgeLibraryRootURL.path + "/") else {
+      throw NSError(domain: "RepoPressAcceptanceGit", code: 1)
+    }
+    let gitPath = try XCTUnwrap(
+      Bundle(for: Self.self).object(forInfoDictionaryKey: "WorkbenchXCUIGitPath") as? String)
+    let git = Process()
+    git.executableURL = URL(fileURLWithPath: gitPath)
+    git.currentDirectoryURL = root
+    git.arguments = [
+      "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false",
+      "-c", "user.name=RepoPress Acceptance", "-c", "user.email=acceptance@example.invalid",
+    ] + arguments
+    var environment = ProcessInfo.processInfo.environment
+    for key in ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_CONFIG_COUNT"] {
+      environment.removeValue(forKey: key)
+    }
+    environment.merge([
+      "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
+      "GIT_CONFIG_SYSTEM": "/dev/null", "GIT_TERMINAL_PROMPT": "0",
+    ]) { _, fixtureValue in fixtureValue }
+    git.environment = environment
+    let output = Pipe()
+    git.standardOutput = output
+    git.standardError = output
+    try git.run()
+    let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    git.waitUntilExit()
+    XCTAssertEqual(git.terminationStatus, 0, "Fixture Git \(arguments): \(text)")
+    guard git.terminationStatus == 0 else {
+      throw NSError(domain: "RepoPressAcceptanceGit", code: Int(git.terminationStatus))
+    }
+    return text.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private func initializeAcceptanceRepository(at root: URL) throws {
+    try acceptanceGit(["init", "--quiet", "--initial-branch=main"], at: root)
+    XCTAssertEqual(try acceptanceGit(["rev-parse", "--show-toplevel"], at: root), root.path)
+    XCTAssertTrue(try acceptanceGit(["remote"], at: root).isEmpty)
+    try acceptanceGit(["add", "--all"], at: root)
+    try acceptanceGit(["commit", "--quiet", "-m", "Acceptance baseline"], at: root)
+    XCTAssertTrue(try acceptanceGit(["status", "--porcelain"], at: root).isEmpty)
+  }
+
+  private func commitAcceptanceRepository(at root: URL, evidenceName: String) throws {
+    let beforeHead = try acceptanceGit(["rev-parse", "HEAD"], at: root)
+    let beforeStatus = try acceptanceGit(["status", "--porcelain"], at: root)
+    XCTAssertFalse(beforeStatus.isEmpty)
+    XCTAssertTrue(try acceptanceGit(["remote"], at: root).isEmpty)
+    try acceptanceGit(["add", "--all"], at: root)
+    try acceptanceGit(["commit", "--quiet", "-m", "Acceptance saved article"], at: root)
+    let afterHead = try acceptanceGit(["rev-parse", "HEAD"], at: root)
+    let afterStatus = try acceptanceGit(["status", "--porcelain"], at: root)
+    XCTAssertNotEqual(beforeHead, afterHead)
+    XCTAssertTrue(afterStatus.isEmpty)
+    let evidence = XCTAttachment(string: """
+      Test-owned repository: \(root.path)
+      Remotes: none
+      Baseline HEAD: \(beforeHead)
+      Saved file status before fixture commit: \(beforeStatus)
+      HEAD after explicit fixture CLI commit: \(afterHead)
+      Status after fixture commit: \(afterStatus)
+      This verifies local saved-file and Git state, not the product's remote publish action.
+      """)
+    evidence.name = evidenceName
+    evidence.lifetime = .keepAlways
+    add(evidence)
+  }
+
+  private func prepareTextScaleRepository() throws {
+    let root = knowledgeLibraryRootURL.appendingPathComponent("repository-fixture", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let gitPath = try XCTUnwrap(
+      Bundle(for: Self.self).object(forInfoDictionaryKey: "WorkbenchXCUIGitPath") as? String)
+    let git = Process()
+    git.executableURL = URL(fileURLWithPath: gitPath)
+    git.arguments = ["init", "--quiet", root.path]
+    git.environment = ProcessInfo.processInfo.environment.merging([
+      "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
+    ]) { _, fixtureValue in fixtureValue }
+    try git.run()
+    git.waitUntilExit()
+    XCTAssertEqual(git.terminationStatus, 0)
+  }
+
+  private func assertLargestInterfaceTextScaleLayout(
+    appearance: String,
+    screenshotName: String,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) throws {
+    try prepareTextScaleRepository()
+    launchApplication(
+      surface: "writing",
+      additionalLaunchArguments: [
+        "-workbenchTextScaleV1", "largest",
+        "-workbenchAppearanceModeV1", appearance,
+      ],
+      screenshotContentSize: CGSize(width: 900, height: 620)
+    )
+
+    let window = application.windows.firstMatch
+    XCTAssertTrue(window.waitForExistence(timeout: 10), file: file, line: line)
+    let titleText = "窄窗口与大字号验收：很长的文章标题需要完整保留，同时检查深浅色与 VoiceOver 的标题导航和工具栏操作"
+    let title = element(identifier: "markdown-article-title")
+    XCTAssertTrue(title.waitForExistence(timeout: 10), file: file, line: line)
+    // Paste through the real field, independent of the current input method.
+    // Restore the clipboard only if this test still owns its contents.
+    let pasteboard = NSPasteboard.general
+    let originalItems = (pasteboard.pasteboardItems ?? []).map { item in
+      item.types.compactMap { type in item.data(forType: type).map { (type, $0) } }
+    }
+    pasteboard.clearContents()
+    XCTAssertTrue(pasteboard.setString(titleText, forType: .string))
+    let fixtureChangeCount = pasteboard.changeCount
+    defer {
+      if pasteboard.changeCount == fixtureChangeCount {
+        pasteboard.clearContents()
+        let restored = originalItems.map { values in
+          let item = NSPasteboardItem()
+          for (type, data) in values { item.setData(data, forType: type) }
+          return item
+        }
+        if !restored.isEmpty { pasteboard.writeObjects(restored) }
+      }
+    }
+    // A newly activated macOS window can move during the initial layout pass.
+    // Retry only the idempotent replacement if the first click lost focus.
+    for _ in 0..<3 {
+      application.activate()
+      title.doubleClick()
+      application.typeKey("a", modifierFlags: [.command])
+      application.typeKey("v", modifierFlags: [.command])
+      let updated = XCTNSPredicateExpectation(
+        predicate: NSPredicate(format: "value == %@", titleText), object: title
+      )
+      if XCTWaiter.wait(for: [updated], timeout: 2) == .completed { break }
+    }
+    XCTAssertEqual(
+      title.value as? String,
+      titleText,
+      "The complete long article title must remain accessible.",
+      file: file,
+      line: line
+    )
+
+    let toolbarIdentifiers = [
+      "markdown-editor-toolbar",
+      "markdown-formatting-toolbar",
+      "markdown-editor-floating-toolbar",
+      "markdown-editor-status-bar",
+    ]
+    let toolbarElements = toolbarIdentifiers.map { identifier -> XCUIElement in
+      let control = element(identifier: identifier)
+      XCTAssertTrue(control.waitForExistence(timeout: 10), identifier, file: file, line: line)
+      XCTAssertFalse(
+        control.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        identifier,
+        file: file,
+        line: line
+      )
+      XCTAssertFalse(control.frame.isEmpty, identifier, file: file, line: line)
+      XCTAssertTrue(
+        window.frame.contains(control.frame),
+        "\(identifier) must stay inside the workbench window.",
+        file: file,
+        line: line
+      )
+      return control
+    }
+    XCTAssertEqual(toolbarElements.count, toolbarIdentifiers.count, file: file, line: line)
+    let path = element(identifier: "markdown-article-path-menu")
+    XCTAssertTrue(path.waitForExistence(timeout: 10), file: file, line: line)
+    let floatingToolbar = element(identifier: "markdown-editor-floating-toolbar")
+    XCTAssertLessThanOrEqual(floatingToolbar.frame.maxY, title.frame.minY, file: file, line: line)
+    XCTAssertLessThanOrEqual(title.frame.maxY, path.frame.minY, file: file, line: line)
+    XCTAssertTrue(
+      window.frame.contains(title.frame),
+      "The long title field must remain inside the workbench window.",
+      file: file,
+      line: line
+    )
+
+    let screenshot = XCTAttachment(screenshot: window.screenshot())
+    screenshot.name = "largest-interface-text-scale-\(screenshotName)-900x620"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+  }
+
   func testWritingSecondaryControlsKeepKeyboardAccessAndAdvancedMetadataCollapsed() throws {
     launchApplication(surface: "writing", screenshotContentSize: CGSize(width: 1440, height: 900))
 
@@ -570,7 +939,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     // opening may be needed to install either keyboard command.
     editor.click()
     assertDisappears(element(identifier: "markdown-cursor-position-button"))
-    assertDisappears(element(identifier: "markdown-editor-branch"))
     XCTAssertFalse(element(identifier: "markdown-version-history-button").exists)
 
     application.typeKey("l", modifierFlags: [.command])
@@ -716,7 +1084,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     let advancedLabel = advanced.disclosureTriangles["高级"].firstMatch
     XCTAssertTrue(advancedLabel.waitForExistence(timeout: 5))
     let inspectorScroll = inspector
-    clickScrollableControl(advancedLabel, in: inspectorScroll)
+    clickScrollableControl(advancedLabel, in: inspectorScroll, disclosureLeadingInset: 26)
     XCTAssertTrue(slug.waitForExistence(timeout: 5))
     XCTAssertTrue(element(identifier: "article-publish-reminder").waitForExistence(timeout: 5))
     XCTAssertTrue(slug.isEnabled)
@@ -738,13 +1106,13 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertEqual(XCTWaiter.wait(for: [slugEditAppeared], timeout: 5), .completed)
     // Fold directly without Return or an intermediate focus change: removing
     // the focused field must commit its pending edit before it disappears.
-    clickScrollableControl(advancedLabel, in: inspectorScroll)
+    clickScrollableControl(advancedLabel, in: inspectorScroll, disclosureLeadingInset: 26)
     assertDisappears(slug)
     assertDisappears(element(identifier: "article-publish-reminder"))
-    clickScrollableControl(advancedLabel, in: inspectorScroll)
+    clickScrollableControl(advancedLabel, in: inspectorScroll, disclosureLeadingInset: 26)
     XCTAssertTrue(slug.waitForExistence(timeout: 5))
     XCTAssertEqual(slug.value as? String, editedSlug)
-    clickScrollableControl(advancedLabel, in: inspectorScroll)
+    clickScrollableControl(advancedLabel, in: inspectorScroll, disclosureLeadingInset: 26)
     assertDisappears(slug)
 
     let saveStatus = element(identifier: "markdown-editor-save-status")
@@ -969,7 +1337,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     )
     articleRow
       .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-      .tap()
+      .click()
     assertUniqueIdentifier("rss-reader-detail")
 
     XCTAssertEqual(
@@ -980,12 +1348,21 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
   }
 
   func testSavedLongArticleReopensAndAcceptsFirstWheelScroll() throws {
+    let repositoryRoot = knowledgeLibraryRootURL.appendingPathComponent(
+      "long-article-zola", isDirectory: true)
+    try FileManager.default.createDirectory(
+      at: repositoryRoot.appendingPathComponent("content/posts"), withIntermediateDirectories: true)
+    try "base_url = \"https://example.invalid\"\ntitle = \"Long article acceptance\"\n".write(
+      to: repositoryRoot.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8)
+    try initializeAcceptanceRepository(at: repositoryRoot)
     launchApplication(surface: nil)
-    let recommendedRoot = element(identifier: "workbench-data-root-use-recommended")
-    if recommendedRoot.waitForExistence(timeout: 5) { recommendedRoot.click() }
-    XCTAssertTrue(element(identifier: "workspace-sidebar").waitForExistence(timeout: 20))
-    select("workspace-sidebar-writing", revealing: "writing-draft-list")
-    element(identifier: "writing-create-article").click()
+    completeDataRootSetupIfNeeded()
+    openFirstRunSetupWizard()
+    completeFirstRunRepositorySetup(at: repositoryRoot, replacingExistingRepository: false)
+    XCTAssertTrue(element(identifier: "first-run-writing-summary").waitForExistence(timeout: 45))
+    let createArticle = element(identifier: "first-run-create-article")
+    XCTAssertTrue(createArticle.waitForExistence(timeout: 5))
+    createArticle.click()
     let editor = element(identifier: "markdown-document-editor")
     XCTAssertTrue(editor.waitForExistence(timeout: 10))
     let marker = "ColdReopen-\(UUID().uuidString)"
@@ -1014,16 +1391,80 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
         if !restored.isEmpty { pasteboard.writeObjects(restored) }
       }
     }
-    editor.click()
+    application.activate()
+    let editorScroll = application.scrollViews.containing(
+      .textView, identifier: "markdown-document-editor").firstMatch
+    XCTAssertTrue(editorScroll.waitForExistence(timeout: 5))
+    let window = application.windows.firstMatch
+    let visibleEditor = editor.frame.intersection(editorScroll.frame)
+      .intersection(window.frame).insetBy(dx: 20, dy: 20)
+    XCTAssertFalse(visibleEditor.isEmpty)
+    let origin = window.coordinate(withNormalizedOffset: .zero)
+    let screenOrigin = origin.screenPoint
+    origin.withOffset(
+      CGVector(dx: visibleEditor.midX - screenOrigin.x, dy: visibleEditor.midY - screenOrigin.y)
+    ).click()
+    let expectedAppID = try XCTUnwrap(Bundle(url: try runtimeAppURL())?.bundleIdentifier)
+    let foreground = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        NSWorkspace.shared.frontmostApplication?.bundleIdentifier == expectedAppID
+      }, object: application)
+    let foregroundResult = XCTWaiter.wait(for: [foreground], timeout: 5)
+    let focusEvidence = XCTAttachment(string: """
+      Expected app: \(expectedAppID)
+      Frontmost app: \(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "nil")
+      XCTest app state: \(application.state.rawValue)
+      Window: \(window.frame)
+      Editor: \(editor.frame)
+      Scroll viewport: \(editorScroll.frame)
+      Visible input rectangle: \(visibleEditor)
+      """)
+    focusEvidence.name = "Long article input focus and geometry"
+    focusEvidence.lifetime = .keepAlways
+    add(focusEvidence)
+    XCTAssertEqual(foregroundResult, .completed, "The test app must receive the paste keystrokes.")
     application.typeKey("a", modifierFlags: [.command])
     application.typeKey("v", modifierFlags: [.command])
+    let pasted = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "value CONTAINS %@", "End-\(marker)"), object: editor)
+    let pasteResult = XCTWaiter.wait(for: [pasted], timeout: 5)
+    let pastedValue = editor.value as? String ?? ""
+    let pasteEvidence = XCTAttachment(string: """
+      Clipboard still owned by fixture: \(pasteboard.changeCount == fixtureChangeCount)
+      Clipboard matches intended body: \(pasteboard.string(forType: .string) == longBody)
+      Frontmost app: \(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "nil")
+      Actual editor UTF-16 length: \(pastedValue.utf16.count)
+      Expected body UTF-16 length: \(longBody.utf16.count)
+      End marker present: \(pastedValue.contains("End-\(marker)"))
+      Actual editor suffix: \(String(pastedValue.suffix(256)))
+      """)
+    pasteEvidence.name = "Long article actual paste result"
+    pasteEvidence.lifetime = .keepAlways
+    add(pasteEvidence)
+    XCTAssertEqual(pasteResult, .completed)
     XCTAssertTrue((editor.value as? String)?.contains("End-\(marker)") == true)
     application.typeKey(.upArrow, modifierFlags: [.command])
     application.typeKey("s", modifierFlags: [.command])
+    let inspector = element(identifier: "article-inspector")
+    if !inspector.exists { element(identifier: "workspace-inspector-toggle").click() }
+    XCTAssertTrue(inspector.waitForExistence(timeout: 10))
+    let joinProject = element(identifier: "metadata-add-draft-to-project")
+    XCTAssertTrue(joinProject.waitForExistence(timeout: 10))
+    clickScrollableControl(joinProject, in: inspector)
     let saved = XCTNSPredicateExpectation(
       predicate: NSPredicate(format: "value CONTAINS %@", "已保存"),
       object: element(identifier: "markdown-editor-save-status"))
     XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 15), .completed)
+    let projectDocuments =
+      (FileManager.default.enumerator(
+        at: repositoryRoot, includingPropertiesForKeys: nil)?.allObjects as? [URL] ?? [])
+      .filter { $0.pathExtension == "md" }
+    XCTAssertEqual(projectDocuments.count, 1)
+    let projectDocument = try XCTUnwrap(projectDocuments.first)
+    XCTAssertTrue(try String(contentsOf: projectDocument, encoding: .utf8).contains("End-\(marker)"))
+    let savedGitStatus = try acceptanceGit(["status", "--porcelain"], at: repositoryRoot)
+    XCTAssertFalse(savedGitStatus.isEmpty, "Saving the new article must leave a local Git change.")
+    let baselineCommit = try acceptanceGit(["rev-parse", "HEAD"], at: repositoryRoot)
     application.terminate()
 
     // Reuse the same isolated home, with demo mode disabled on both launches.
@@ -1057,6 +1498,155 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     after.name = "Saved long article after first wheel scroll"
     after.lifetime = .keepAlways
     add(after)
+    XCTAssertEqual(try acceptanceGit(["rev-parse", "HEAD"], at: repositoryRoot), baselineCommit)
+    try commitAcceptanceRepository(at: repositoryRoot, evidenceName: "Long article local Git state")
+    let relativePath = String(projectDocument.path.dropFirst(repositoryRoot.path.count + 1))
+    XCTAssertTrue(
+      try acceptanceGit(["show", "HEAD:\(relativePath)"], at: repositoryRoot)
+        .contains("End-\(marker)"))
+  }
+
+  func testNormalRepositoryMetadataPreviewAndSaveRecoverySurviveRelaunch() throws {
+    let root = knowledgeLibraryRootURL.appendingPathComponent("normal-zola", isDirectory: true)
+    let articleURL = root.appendingPathComponent("content/posts/2026/taxonomy-acceptance.md")
+    let gitMarker = root.appendingPathComponent(".git", isDirectory: true)
+    let parkedMarker = root.appendingPathComponent(".git-unavailable", isDirectory: true)
+    try FileManager.default.createDirectory(
+      at: articleURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try "base_url = \"https://example.invalid\"\ntitle = \"Isolated acceptance\"\n".write(
+      to: root.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8)
+    let original = """
+      +++
+      title = "Taxonomy acceptance"
+      date = "2026-10-13"
+      slug = "taxonomy-acceptance"
+      description = "Isolated metadata and recovery acceptance."
+      draft = true
+      [taxonomies]
+      tags = ["essay, long", "keep-tag"] # preserve taxonomy comment
+      categories = ["Notes"]
+      series = ["keep-series"]
+      [extra]
+      tags = ["must-stay-extra"]
+      custom = "keep-custom"
+      +++
+
+      Original acceptance body.
+
+      """
+    try original.write(to: articleURL, atomically: true, encoding: .utf8)
+    // Make this imported fixture newer than the first-launch unbound draft,
+    // so the real "open recent" handoff selects the intended article.
+    try FileManager.default.setAttributes(
+      [.modificationDate: Date(timeIntervalSince1970: 2_000_000_000)],
+      ofItemAtPath: articleURL.path)
+    try initializeAcceptanceRepository(at: root)
+    let baselineCommit = try acceptanceGit(["rev-parse", "HEAD"], at: root)
+    launchApplication(surface: nil)
+    completeDataRootSetupIfNeeded()
+    openFirstRunSetupWizard()
+    completeFirstRunRepositorySetup(at: root, replacingExistingRepository: false)
+    XCTAssertTrue(element(identifier: "first-run-writing-summary").waitForExistence(timeout: 45))
+    let openRecent = element(identifier: "first-run-open-recent-article")
+    XCTAssertTrue(openRecent.waitForExistence(timeout: 10))
+    openRecent.click()
+    let editor = element(identifier: "markdown-document-editor")
+    XCTAssertTrue(editor.waitForExistence(timeout: 15))
+    XCTAssertTrue((editor.value as? String)?.contains("Original acceptance body.") == true)
+    let inspector = element(identifier: "article-inspector")
+    if !inspector.exists { element(identifier: "workspace-inspector-toggle").click() }
+    XCTAssertTrue(inspector.waitForExistence(timeout: 10))
+    for (label, oldValue, addition) in [
+      ("标签", "essay, long", "taxonomy-ui-tag"),
+      ("分类", "Notes", "UITest"),
+    ] {
+      let field = inspector.textFields[label]
+      XCTAssertTrue(field.waitForExistence(timeout: 10))
+      XCTAssertTrue((field.value as? String)?.contains(oldValue) == true)
+      clickScrollableControl(field, in: inspector)
+      application.typeText(addition)
+      application.typeKey(.return, modifierFlags: [])
+      XCTAssertTrue((field.value as? String)?.contains(addition) == true)
+    }
+    editor.click()
+    application.typeKey("s", modifierFlags: [.command])
+    waitForSavedDraft()
+    let savedMetadata = try String(contentsOf: articleURL, encoding: .utf8)
+    XCTAssertTrue(savedMetadata.contains("taxonomy-ui-tag"))
+    XCTAssertTrue(savedMetadata.contains("categories = [\"Notes\", \"UITest\"]"))
+    for preserved in [
+      "\"essay, long\"", "# preserve taxonomy comment", "series = [\"keep-series\"]",
+      "[extra]\ntags = [\"must-stay-extra\"]\ncustom = \"keep-custom\"",
+    ] { XCTAssertTrue(savedMetadata.contains(preserved), preserved) }
+    XCTAssertTrue(
+      try acceptanceGit(["status", "--porcelain"], at: root)
+        .contains("content/posts/2026/taxonomy-acceptance.md"))
+    XCTAssertEqual(try acceptanceGit(["rev-parse", "HEAD"], at: root), baselineCommit)
+
+    // Check rendered Front Matter in the real inspector. This is distinct
+    // from browser/site HTML preview, which needs the site's build tool.
+    let seo = element(identifier: "article-inspector-group-seo")
+    let seoDisclosure = seo.disclosureTriangles.matching(
+      NSPredicate(format: "label BEGINSWITH %@", "SEO 与分享")
+    ).firstMatch
+    XCTAssertTrue(seoDisclosure.waitForExistence(timeout: 10))
+    clickScrollableControl(seoDisclosure, in: inspector)
+    let frontMatter = inspector.disclosureTriangles.matching(
+      NSPredicate(format: "label BEGINSWITH %@", "文章头信息")
+    ).firstMatch
+    XCTAssertTrue(frontMatter.waitForExistence(timeout: 10))
+    clickScrollableControl(frontMatter, in: inspector)
+    let preview = inspector.staticTexts.matching(
+      NSPredicate(
+        format:
+          "(label CONTAINS %@ AND label CONTAINS %@) OR (value CONTAINS %@ AND value CONTAINS %@)",
+        "taxonomy-ui-tag", "keep-custom", "taxonomy-ui-tag", "keep-custom")
+    ).firstMatch
+    XCTAssertTrue(preview.waitForExistence(timeout: 10))
+    let previewScreenshot = XCTAttachment(screenshot: application.screenshot())
+    previewScreenshot.name = "Normal article preserved Front Matter preview"
+    previewScreenshot.lifetime = .keepAlways
+    add(previewScreenshot)
+
+    // Temporarily make only this test's local repository invalid. Production
+    // validation must stop the write; restoring the marker must permit retry.
+    try FileManager.default.moveItem(at: gitMarker, to: parkedMarker)
+    defer {
+      if FileManager.default.fileExists(atPath: parkedMarker.path) {
+        try? FileManager.default.moveItem(at: parkedMarker, to: gitMarker)
+      }
+    }
+    let marker = "Recovered-\(UUID().uuidString)"
+    editor.click()
+    application.typeKey(.downArrow, modifierFlags: [.command])
+    application.typeKey(.return, modifierFlags: [])
+    application.typeText(marker)
+    application.typeKey("s", modifierFlags: [.command])
+    let failedSave = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "value CONTAINS %@", "保存失败"),
+      object: element(identifier: "markdown-editor-save-status"))
+    XCTAssertEqual(XCTWaiter.wait(for: [failedSave], timeout: 15), .completed)
+    XCTAssertEqual(try String(contentsOf: articleURL, encoding: .utf8), savedMetadata)
+    XCTAssertTrue((editor.value as? String)?.contains(marker) == true)
+    try FileManager.default.moveItem(at: parkedMarker, to: gitMarker)
+    application.typeKey("s", modifierFlags: [.command])
+    waitForSavedDraft()
+    XCTAssertTrue(try String(contentsOf: articleURL, encoding: .utf8).contains(marker))
+    application.terminate()
+    application.launch()
+    application.activate()
+    XCTAssertTrue(editor.waitForExistence(timeout: 20))
+    XCTAssertTrue((editor.value as? String)?.contains(marker) == true)
+    if !inspector.exists { element(identifier: "workspace-inspector-toggle").click() }
+    XCTAssertTrue(inspector.textFields["标签"].waitForExistence(timeout: 10))
+    XCTAssertTrue(
+      (inspector.textFields["标签"].value as? String)?.contains("taxonomy-ui-tag") == true)
+    XCTAssertTrue((inspector.textFields["分类"].value as? String)?.contains("UITest") == true)
+    XCTAssertFalse(element(identifier: "markdown-editor-save-failure").exists)
+    try commitAcceptanceRepository(at: root, evidenceName: "Metadata recovery local Git state")
+    XCTAssertTrue(
+      try acceptanceGit(["show", "HEAD:content/posts/2026/taxonomy-acceptance.md"], at: root)
+        .contains(marker))
   }
 
   func testReleaseBundleLaunchesWithoutScreenshotFixture() throws {
@@ -1159,29 +1749,10 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       .matching(identifier: "workspace-prepare-publish")
       .firstMatch
     XCTAssertTrue(preparePublish.waitForExistence(timeout: 10))
-    preparePublish.click()
-    let scopePicker = firstWindow.descendants(matching: .any)
-      .matching(identifier: "publish-drawer-scope")
-      .firstMatch
-    XCTAssertTrue(scopePicker.waitForExistence(timeout: 10))
-    selectPublishScope("当前文章", in: scopePicker)
-    let publishCurrent = firstWindow.descendants(matching: .any)
-      .matching(identifier: "publish-drawer-action-publish-current")
-      .firstMatch
-    XCTAssertTrue(publishCurrent.waitForExistence(timeout: 10))
-    XCTAssertTrue(
-      publishCurrent.isEnabled, "The fixture must reach a review-only publish confirmation.")
-    // The primary action sits in the drawer's fixed footer, outside the scroll view.
-    publishCurrent.click()
-
-    let confirmation = application.sheets.firstMatch
-    XCTAssertTrue(confirmation.waitForExistence(timeout: 10))
-    let cancel = confirmation.buttons["取消"]
-    XCTAssertTrue(cancel.waitForExistence(timeout: 5))
-    cancel.click()
-    assertDisappears(
-      confirmation,
-      "Cancelling the publish confirmation must close it before any publish is started.")
+    // The toolbar action is scoped to the current article. Repository pages
+    // have no current article, so it stays present but disabled.
+    XCTAssertFalse(preparePublish.isEnabled)
+    XCTAssertFalse(application.sheets.firstMatch.exists)
 
     let screenshot = XCTAttachment(screenshot: application.screenshot())
     screenshot.name = "pr-isolated-window-smoke"
@@ -1318,11 +1889,27 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     searchField.typeText("404")
     assertUniqueIdentifier("workspace-quick-search-clear")
 
-    element(identifier: "workspace-quick-search-clear").tap()
+    element(identifier: "workspace-quick-search-clear").click()
     assertUniqueIdentifier("workspace-quick-search-results")
   }
 
   func testRepositoryWorkspaceIdentifiersRemainUniqueAcrossAllStages() throws {
+    // This case inspects the readable-repository dashboard. The generic demo
+    // only creates a .git directory, which correctly shows a read-error state.
+    let root = knowledgeLibraryRootURL.appendingPathComponent("repository-fixture", isDirectory: true)
+    let remote = knowledgeLibraryRootURL.appendingPathComponent("demo-owner/demo-site.git")
+    for directory in [root, remote] {
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+    try acceptanceGit(["init", "--quiet", "--bare", "--initial-branch=main"], at: remote)
+    try acceptanceGit(["init", "--quiet", "--initial-branch=main"], at: root)
+    try acceptanceGit(["config", "user.name", "RepoPress UI Fixture"], at: root)
+    try acceptanceGit(["config", "user.email", "fixture@example.invalid"], at: root)
+    try Data("Repository dashboard fixture\n".utf8).write(to: root.appendingPathComponent("README.md"))
+    try acceptanceGit(["add", "README.md"], at: root)
+    try acceptanceGit(["commit", "--quiet", "-m", "Dashboard baseline"], at: root)
+    try acceptanceGit(["remote", "add", "origin", remote.path], at: root)
+    try acceptanceGit(["push", "--quiet", "origin", "main"], at: root)
     launchApplication(surface: "writing")
     select(
       "workspace-sidebar-sync",
@@ -1375,12 +1962,11 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     let historyIdentifiers = [
       "repository-section-release-history",
       "release-history-header",
-      "release-history-primary-metrics",
       "release-history-action-queue",
       "release-history-records",
-      "release-history-deployment-overview",
-      "release-history-deployment-polling",
-      "release-history-deployment-status",
+      "release-history-copy-ledger",
+      "release-history-polling-copy-checklist",
+      "release-history-polling-run-now",
     ]
     let releaseHistoryLayoutIdentifier = revealAnyByScrolling([
       "release-history-main-column",
@@ -1422,7 +2008,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     }
   }
 
-  func testArticleRepairReturnsToTheSameArticlePublishScope() throws {
+  func testArticleRepairReturnsToTheSameArticlePublishChecks() throws {
     launchApplication(surface: "writing")
     let windowID = application.windows.firstMatch.identifier
     let window = application.windows.matching(identifier: windowID).firstMatch
@@ -1431,12 +2017,9 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertTrue(editor.waitForExistence(timeout: 10))
     let originalBody = try XCTUnwrap(editor.value as? String)
 
-    let prepare = window.buttons.matching(identifier: "workspace-prepare-publish").firstMatch
-    XCTAssertTrue(prepare.isEnabled)
-    prepare.click()
-    let scope = element(identifier: "publish-drawer-scope")
-    XCTAssertTrue(scope.waitForExistence(timeout: 10))
-    XCTAssertEqual(String(describing: scope.radioButtons["当前文章"].value ?? ""), "1")
+    showPublishChecks()
+    let header = element(identifier: "publish-drawer-header")
+    XCTAssertTrue(header.waitForExistence(timeout: 10))
     let metadataIssue = window.descendants(matching: .any).matching(
       NSPredicate(
         format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
@@ -1450,14 +2033,13 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertFalse(application.sheets.firstMatch.exists)
 
     element(identifier: "article-publish-repair-return").click()
-    XCTAssertTrue(scope.waitForExistence(timeout: 10))
-    XCTAssertEqual(String(describing: scope.radioButtons["当前文章"].value ?? ""), "1")
+    XCTAssertTrue(header.waitForExistence(timeout: 10))
     assertIdentifierDisappears("article-publish-repair-bar")
     XCTAssertEqual(editor.value as? String, originalBody)
     XCTAssertFalse(application.sheets.firstMatch.exists, "Returning must never start a publish.")
   }
 
-  func testMinimumWindowCanOpenAndClosePublishChecksWithoutPublishing() throws {
+  func testMinimumWindowPublishActionsOpenOneSheetAndCloseWithoutPublishing() throws {
     launchApplication(surface: "writing", screenshotContentSize: CGSize(width: 900, height: 620))
     let editor = element(identifier: "markdown-document-editor")
     XCTAssertTrue(editor.waitForExistence(timeout: 10))
@@ -1466,19 +2048,16 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     let prepare = element(identifier: "workspace-prepare-publish")
     XCTAssertTrue(prepare.isEnabled)
     prepare.click()
-    let sheet = element(identifier: "workspace-compact-publish-sheet")
-    XCTAssertTrue(sheet.waitForExistence(timeout: 10))
-    let scope = element(identifier: "publish-drawer-scope")
-    XCTAssertTrue(scope.waitForExistence(timeout: 10))
-    selectPublishScope("全部变更", in: scope)
-    assertUniqueIdentifier("publish-drawer-action-publish-all")
-    element(identifier: "compact-publish-close").click()
-    assertIdentifierDisappears("workspace-compact-publish-sheet")
+    closePublishSheet()
     XCTAssertEqual(editor.value as? String, originalBody)
-    XCTAssertFalse(application.sheets.firstMatch.exists)
     application.typeKey("p", modifierFlags: [.option, .command])
-    XCTAssertTrue(sheet.waitForExistence(timeout: 10))
-    XCTAssertEqual(String(describing: scope.radioButtons["全部变更"].value ?? ""), "1")
+    closePublishSheet()
+    XCTAssertEqual(editor.value as? String, originalBody)
+    showPublishChecks()
+    XCTAssertTrue(
+      element(identifier: "workspace-compact-publish-sheet").waitForExistence(timeout: 10))
+    assertUniqueIdentifier("publish-drawer-action-publish-current")
+    assertUniqueIdentifier("publish-drawer-action-publish-all")
     element(identifier: "compact-publish-close").click()
     assertIdentifierDisappears("workspace-compact-publish-sheet")
     XCTAssertEqual(editor.value as? String, originalBody)
@@ -1490,7 +2069,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertTrue(editor.waitForExistence(timeout: 10))
     XCTAssertEqual(application.windows.firstMatch.frame.width, 900, accuracy: 1)
     let originalBody = try XCTUnwrap(editor.value as? String)
-    element(identifier: "workspace-prepare-publish").click()
+    showPublishChecks()
     XCTAssertTrue(
       element(identifier: "workspace-compact-publish-sheet").waitForExistence(timeout: 10))
     let metadataIssue = application.descendants(matching: .any).matching(
@@ -1509,14 +2088,12 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     element(identifier: "article-publish-repair-return").click()
     XCTAssertTrue(
       element(identifier: "workspace-compact-publish-sheet").waitForExistence(timeout: 10))
-    let scope = element(identifier: "publish-drawer-scope")
-    XCTAssertEqual(String(describing: scope.radioButtons["当前文章"].value ?? ""), "1")
     element(identifier: "compact-publish-close").click()
     assertIdentifierDisappears("workspace-compact-publish-sheet")
     XCTAssertEqual(editor.value as? String, originalBody)
   }
 
-  func testMinimumWindowPublishConfirmationCanBeCancelledInsideThePublishSheet() throws {
+  func testMinimumWindowPublishSheetClosesWithoutPublishing() throws {
     launchApplication(
       surface: "sync-api-publish", screenshotContentSize: CGSize(width: 900, height: 620))
     let window = application.windows.firstMatch
@@ -1528,104 +2105,379 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     article.click()
     let editor = element(identifier: "markdown-document-editor")
     let originalBody = try XCTUnwrap(editor.value as? String)
+    let articlePublish = element(identifier: "workspace-prepare-publish")
+    XCTAssertTrue(articlePublish.waitForExistence(timeout: 10))
+    XCTAssertTrue(articlePublish.isEnabled)
+    articlePublish.click()
+    closePublishSheet()
     select("workspace-sidebar-sync", revealing: "repository-workspace", in: window)
-    element(identifier: "workspace-prepare-publish").click()
-    XCTAssertTrue(
-      element(identifier: "workspace-compact-publish-sheet").waitForExistence(timeout: 10))
-    selectPublishScope("当前文章", in: element(identifier: "publish-drawer-scope"))
-    let publish = element(identifier: "publish-drawer-action-publish-current")
-    XCTAssertTrue(publish.isEnabled)
-    publish.click()
-    let cancel = application.sheets.descendants(matching: .button).matching(identifier: "取消")
-      .firstMatch
-    XCTAssertTrue(cancel.waitForExistence(timeout: 10))
-    cancel.click()
-    XCTAssertTrue(
-      element(identifier: "workspace-compact-publish-sheet").waitForExistence(timeout: 10))
-    element(identifier: "compact-publish-close").click()
-    assertIdentifierDisappears("workspace-compact-publish-sheet")
+    let repositoryPublish = element(identifier: "workspace-prepare-publish")
+    XCTAssertTrue(repositoryPublish.waitForExistence(timeout: 10))
+    XCTAssertFalse(repositoryPublish.isEnabled)
+    XCTAssertFalse(application.sheets.firstMatch.exists)
     select("workspace-sidebar-writing", revealing: "markdown-document-editor", in: window)
     XCTAssertEqual(editor.value as? String, originalBody)
   }
 
-  func testPublishDrawerKeepsDecisionChecksAndDiffOnly() throws {
-    launchApplication(surface: "sync-api-publish")
-    XCTAssertTrue(
-      element(identifier: "repository-workspace").waitForExistence(timeout: 10),
-      "The repository workspace did not appear for the publishing demo surface."
-    )
-    assertUniqueIdentifier("workspace-prepare-publish")
-
-    let preparePublish = element(identifier: "workspace-prepare-publish")
-    XCTAssertTrue(preparePublish.isEnabled)
-    preparePublish.click()
-    assertUniqueIdentifier("publish-drawer-header")
-    assertUniqueIdentifier("publish-drawer-action-publish-all")
-
-    let scope = element(identifier: "publish-drawer-scope")
-    selectPublishScope("全部变更", in: scope)
-    for step in 1...4 {
-      assertUniqueIdentifier("publish-inspector-step-\(step)")
+  /// Both publish actions run end to end against a real repository whose
+  /// origin is a bare repository inside this test's own data directory, so
+  /// nothing can reach a hosted site or the user's articles.
+  func testPublishThisAndPublishAllPushOnlyToTheTestOwnedRemote() throws {
+    let root = knowledgeLibraryRootURL.appendingPathComponent(
+      "repository-fixture", isDirectory: true)
+    // The bare remote's owner/name match the demo site's repository identity.
+    let remote = knowledgeLibraryRootURL.appendingPathComponent(
+      "demo-owner/demo-site.git", isDirectory: true)
+    for directory in [root, remote] {
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
-    let advanced = element(identifier: "publish-drawer-local-actions")
-    clickVisibleDrawerControl(advanced)
-    clickVisibleDrawerControl(element(identifier: "publish-inspector-managed-articles"))
-    assertUniqueIdentifier("publish-drawer-unified-summary")
-    clickVisibleDrawerControl(advanced)
-    selectPublishScope("当前文章", in: scope)
+    try acceptanceGit(["init", "--quiet", "--bare", "--initial-branch=main"], at: remote)
+    try acceptanceGit(["init", "--quiet", "--initial-branch=main"], at: root)
+    try acceptanceGit(["config", "user.name", "RepoPress Acceptance"], at: root)
+    try acceptanceGit(["config", "user.email", "acceptance@example.invalid"], at: root)
+    try Data("Publish acceptance fixture\n".utf8).write(
+      to: root.appendingPathComponent("README.md"))
+    try acceptanceGit(["add", "README.md"], at: root)
+    try acceptanceGit(["commit", "--quiet", "-m", "Acceptance baseline"], at: root)
+    try acceptanceGit(["remote", "add", "origin", remote.path], at: root)
+    try acceptanceGit(["push", "--quiet", "origin", "main"], at: root)
+    let origin = try acceptanceGit(["remote", "get-url", "--push", "origin"], at: root)
+    XCTAssertTrue(origin.hasPrefix(knowledgeLibraryRootURL.path + "/"), origin)
+    let baseline = try acceptanceGit(["rev-parse", "HEAD"], at: root)
+
+    application.launchEnvironment["PERSONAL_SITE_PUBLISHER_UI_TEST_NO_DEPLOYMENT"] = "1"
+    launchApplication(surface: "writing")
+    let window = application.windows.firstMatch
+    XCTAssertTrue(element(identifier: "markdown-document-editor").waitForExistence(timeout: 10))
+    // The demo fixture writes a Zola config, but this runner's PATH has no
+    // trusted Zola, so the site build gate would refuse every publish. That
+    // gate has its own unit tests; here it is skipped for want of a config.
+    try? FileManager.default.removeItem(at: root.appendingPathComponent("config.toml"))
+    // A file outside every article must stay local until 发布全部.
+    let theme = root.appendingPathComponent("static/acceptance-theme.css")
+    try FileManager.default.createDirectory(
+      at: theme.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data("body { color: #222; }\n".utf8).write(to: theme)
+
+    if !writingDraftRow(title: "RepoPress Studio 发布流程", in: window).waitForExistence(timeout: 5) {
+      application.typeKey("s", modifierFlags: [.control, .command])
+    }
+    // The list may re-render while the demo fixture settles; resolve the row
+    // again for each attempt instead of clicking a stale snapshot.
+    var selectedArticle = false
+    for _ in 0..<3 where !selectedArticle {
+      let article = writingDraftRow(title: "RepoPress Studio 发布流程", in: window)
+      guard article.waitForExistence(timeout: 10), article.isHittable else { continue }
+      article.click()
+      let path = element(identifier: "markdown-article-path-menu")
+      selectedArticle =
+        XCTWaiter.wait(
+          for: [
+            XCTNSPredicateExpectation(
+              predicate: NSPredicate(
+                format: "value CONTAINS %@", "repopress-studio-publishing-flow"),
+              object: path)
+          ], timeout: 5) == .completed
+    }
+    XCTAssertTrue(selectedArticle, "The demo article must open before publishing it.")
+
+    element(identifier: "workspace-prepare-publish").click()
+    let scopedConfirmation = element(identifier: "publish-worktree-confirmation")
+    XCTAssertTrue(scopedConfirmation.waitForExistence(timeout: 60))
+    XCTAssertTrue(element(identifier: "publish-worktree-article-summary").exists)
+    let targetURL = element(identifier: "publish-worktree-target-url")
+    XCTAssertTrue(targetURL.exists)
+    let targetURLText = (targetURL.value as? String).flatMap { $0.isEmpty ? nil : $0 } ?? targetURL.label
+    XCTAssertTrue(targetURLText.contains("待配置"), targetURL.debugDescription)
+    XCTAssertTrue(element(identifier: "publish-worktree-content-summary").exists)
+    let scopedSummary = element(identifier: "publish-worktree-summary")
+    let scopeDescription = scopedSummary.descendants(matching: .any).matching(
+      NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "只提交这篇文章", "只提交这篇文章")
+    ).firstMatch
+    XCTAssertTrue(scopeDescription.waitForExistence(timeout: 5), scopedSummary.debugDescription)
+    let scopedFiles = element(identifier: "publish-worktree-file-list-details")
+    XCTAssertTrue(scopedFiles.waitForExistence(timeout: 10))
+    clickScrollableControl(
+      scopedFiles, in: scopedConfirmation.descendants(matching: .scrollView).firstMatch,
+      disclosureLeadingInset: 26)
+    if String(describing: scopedFiles.value ?? "") != "1" {
+      let screenshot = XCTAttachment(screenshot: application.screenshot())
+      screenshot.name = "publish-files-disclosure-not-expanded"
+      screenshot.lifetime = .keepAlways
+      add(screenshot)
+      let hierarchy = XCTAttachment(string: application.debugDescription)
+      hierarchy.name = "publish-files-disclosure-hierarchy"
+      hierarchy.lifetime = .keepAlways
+      add(hierarchy)
+    }
+    XCTAssertEqual(String(describing: scopedFiles.value ?? ""), "1")
+    let fileReview = element(identifier: "publish-worktree-file-review")
+    XCTAssertTrue(fileReview.waitForExistence(timeout: 10))
+    let articlePath = fileReview.descendants(matching: .any).matching(
+      NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@",
+                  "repopress-studio-publishing-flow", "repopress-studio-publishing-flow")
+    ).firstMatch
+    XCTAssertNotNil(
+      scrollToReveal(
+        [articlePath], in: scopedConfirmation.descendants(matching: .scrollView).firstMatch,
+        window: window, maxSteps: 8), fileReview.debugDescription)
+    let cancel = scopedConfirmation.buttons["取消"]
+    XCTAssertTrue(cancel.waitForExistence(timeout: 5))
+    cancel.click()
+    assertIdentifierDisappears("publish-worktree-confirmation")
+    XCTAssertEqual(try acceptanceGit(["rev-parse", "HEAD"], at: root), baseline)
+    XCTAssertEqual(try acceptanceGit(["rev-parse", "refs/heads/main"], at: remote), baseline)
+    XCTAssertTrue(
+      try acceptanceGit(["status", "--porcelain", "--untracked-files=all"], at: root)
+        .contains("static/acceptance-theme.css"))
+
+    element(identifier: "workspace-prepare-publish").click()
+    let articleCommit = try confirmPublishAndAttachEvidence(
+      name: "publish-this", expectedTitle: "发布这篇文章", root: root, remote: remote)
+    XCTAssertNotEqual(articleCommit, baseline)
+    let articlePaths = try acceptanceGit(
+      ["diff", "--name-only", baseline, articleCommit], at: root)
+    XCTAssertTrue(
+      // The demo article's dated folder follows its publish date.
+      articlePaths.contains("/repopress-studio-publishing-flow.md"),
+      articlePaths)
+    XCTAssertFalse(articlePaths.contains("acceptance-theme.css"), articlePaths)
+    XCTAssertTrue(
+      try acceptanceGit(["status", "--porcelain", "--untracked-files=all"], at: root)
+        .contains("static/acceptance-theme.css"),
+      "Publishing one article must leave other changes uncommitted.")
+
+    application.typeKey("p", modifierFlags: [.option, .command])
+    let allCommit = try confirmPublishAndAttachEvidence(
+      name: "publish-all", expectedTitle: "发布全部变更", root: root, remote: remote)
+    XCTAssertTrue(
+      try acceptanceGit(["diff", "--name-only", articleCommit, allCommit], at: root)
+        .contains("static/acceptance-theme.css"))
+    XCTAssertTrue(
+      try acceptanceGit(["status", "--porcelain", "--untracked-files=all"], at: root).isEmpty)
+    let evidence = XCTAttachment(
+      string: """
+        Test-owned repository: \(root.path)
+        Test-owned bare origin: \(origin)
+        Baseline: \(baseline)
+        发布这篇 commit: \(articleCommit) (\(articlePaths.replacingOccurrences(of: "\n", with: ", ")))
+        发布全部 commit: \(allCommit)
+        Remote main after both: \(try acceptanceGit(["rev-parse", "refs/heads/main"], at: remote))
+        """)
+    evidence.name = "publish-actions-git-evidence"
+    evidence.lifetime = .keepAlways
+    add(evidence)
+  }
+
+  /// Confirms the open publish sheet, waits for its outcome, and returns the
+  /// pushed commit after checking the test-owned remote received exactly it.
+  private func confirmPublishAndAttachEvidence(
+    name: String, expectedTitle: String, root: URL, remote: URL
+  ) throws -> String {
+    let confirmation = element(identifier: "publish-worktree-confirmation")
+    XCTAssertTrue(
+      confirmation.waitForExistence(timeout: 60),
+      "\(name) must open its confirmation: \(application.debugDescription)")
+    // SwiftUI exposes Text content as the static text's value on macOS.
+    let title = confirmation.descendants(matching: .any).matching(
+      NSPredicate(format: "value == %@ OR label == %@", expectedTitle, expectedTitle)
+    ).firstMatch
+    XCTAssertTrue(title.waitForExistence(timeout: 5), expectedTitle)
+    attachWindowScreenshot(named: "\(name)-confirmation")
+    let confirm = element(identifier: "publish-worktree-confirm")
+    XCTAssertTrue(confirm.isEnabled)
+    confirm.click()
+    let outcome = element(identifier: "publish-outcome")
+    XCTAssertTrue(outcome.waitForExistence(timeout: 90), "\(name) must report its outcome.")
+    let message = element(identifier: "publish-outcome-message")
+    let messageText = (message.value as? String).flatMap { $0.isEmpty ? nil : $0 } ?? message.label
+    XCTAssertTrue(messageText.contains("Git 推送已确认"), messageText)
+    if name == "publish-this" {
+      let trackingStatus = element(identifier: "publish-outcome-tracking-status")
+      XCTAssertTrue(trackingStatus.waitForExistence(timeout: 10), name)
+      let trackingStatusText = (trackingStatus.value as? String).flatMap {
+        $0.isEmpty ? nil : $0
+      } ?? trackingStatus.label
+      XCTAssertEqual(trackingStatusText, "已推送，尚未确认上线", trackingStatus.debugDescription)
+      let trackingMessage = element(identifier: "publish-outcome-tracking-message")
+      XCTAssertTrue(trackingMessage.waitForExistence(timeout: 10), name)
+      let trackingMessageText = (trackingMessage.value as? String).flatMap {
+        $0.isEmpty ? nil : $0
+      } ?? trackingMessage.label
+      XCTAssertEqual(trackingMessageText, "先补齐 站点 URL 或状态端点 URL。")
+      assertUniqueIdentifier("publish-outcome-tracking-progress")
+    }
+    attachWindowScreenshot(named: "\(name)-outcome")
+    element(identifier: "publish-outcome-done").click()
+    assertIdentifierDisappears("publish-outcome")
+    let head = try acceptanceGit(["rev-parse", "HEAD"], at: root)
+    if name == "publish-this" {
+      let publishedPaths = try acceptanceGit(["show", "--format=", "--name-only", head], at: root)
+      let articlePath = try XCTUnwrap(
+        publishedPaths.split(separator: "\n").first {
+          $0.hasSuffix("/repopress-studio-publishing-flow.md")
+        }.map(String.init))
+      select("workspace-sidebar-sync", revealing: "repository-sidebar-stage-history")
+      select("repository-sidebar-stage-history", revealing: "repository-section-release-history")
+      let actionQueue = element(identifier: "release-history-action-queue")
+      XCTAssertTrue(actionQueue.waitForExistence(timeout: 10))
+      let staleLocalAction = actionQueue.descendants(matching: .any).matching(
+        NSPredicate(
+          format: "(label CONTAINS %@ OR value CONTAINS %@)",
+          "提交本地写入：RepoPress Studio 发布流程", "提交本地写入：RepoPress Studio 发布流程")
+      ).firstMatch
+      XCTAssertFalse(staleLocalAction.exists, "The confirmed article push must retire its local action.")
+      attachWindowScreenshot(named: "publish-this-action-queue")
+      XCTAssertTrue(
+        revealReleaseTracking(
+          commitSHA: head,
+          articlePath: articlePath),
+        "The release history must expose tracking for this article and commit \(head)."
+      )
+      select("workspace-sidebar-writing", revealing: "markdown-document-editor")
+    }
+    XCTAssertEqual(try acceptanceGit(["rev-parse", "refs/heads/main"], at: remote), head)
+    return head
+  }
+
+  private func attachWindowScreenshot(named name: String) {
+    let screenshot = XCTAttachment(screenshot: application.windows.firstMatch.screenshot())
+    screenshot.name = name
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+  }
+
+  /// Release history is date ordered and can lazy-load older cards. Find the
+  /// record by its own commit/article metadata before asserting its tracking view.
+  private func revealReleaseTracking(commitSHA: String, articlePath: String) -> Bool {
+    let window = application.windows.firstMatch
+    let scrollContainer = repositoryScrollContainer(in: window)
+    let commitPrefix = String(commitSHA.prefix(8))
+    for _ in 0..<32 {
+      let records = application.descendants(matching: .any).matching(
+        NSPredicate(
+          format: "identifier MATCHES %@",
+          "release-record-[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}")
+      ).allElementsBoundByIndex
+      for record in records {
+        // Debug descriptions may truncate long metadata values. Match the
+        // actual AX text inside this exact record, including its full path.
+        let metadata = record.descendants(matching: .any)
+        let commit = metadata.matching(
+          NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", commitPrefix, commitPrefix)
+        ).firstMatch
+        let article = metadata.matching(
+          NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", articlePath, articlePath)
+        ).firstMatch
+        guard commit.exists, article.exists else { continue }
+        let tracking = record.descendants(matching: .any)
+          .matching(identifier: "release-article-publish-tracking").firstMatch
+        guard tracking.exists else { continue }
+        let status = tracking.descendants(matching: .any)
+          .matching(identifier: "release-article-publish-tracking-status").firstMatch
+        let message = tracking.descendants(matching: .any)
+          .matching(identifier: "release-article-publish-tracking-message").firstMatch
+        XCTAssertTrue(status.waitForExistence(timeout: 5), record.debugDescription)
+        XCTAssertTrue(message.waitForExistence(timeout: 5), record.debugDescription)
+        XCTAssertEqual(axText(status), "已推送，尚未确认上线")
+        XCTAssertFalse(axText(message).isEmpty)
+        guard
+          scrollToReveal([status], in: scrollContainer, window: window, maxSteps: 12) != nil
+        else { continue }
+        let viewport = window.frame.intersection(scrollContainer.frame).insetBy(dx: 4, dy: 12)
+        for _ in 0..<4 {
+          let progressFrame = status.frame.union(message.frame)
+          if viewport.contains(progressFrame) { break }
+          let delta = progressFrame.maxY > viewport.maxY
+            ? -(progressFrame.maxY - viewport.maxY + 24)
+            : viewport.minY - progressFrame.minY + 24
+          scrollContainer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .scroll(byDeltaX: 0, deltaY: delta)
+        }
+        XCTAssertTrue(viewport.contains(status.frame.union(message.frame)))
+        attachWindowScreenshot(named: "publish-this-tracking-in-history")
+        return true
+      }
+      application.activate()
+      scrollContainer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        .scroll(byDeltaX: 0, deltaY: -280)
+    }
+    return false
+  }
+
+  private func axText(_ element: XCUIElement) -> String {
+    let value = (element.value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let value, !value.isEmpty { return value }
+    return element.label.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  func testPublishChecksShowTheArticleChecksAndBothPublishActions() throws {
+    launchApplication(surface: "sync-api-publish")
+    XCTAssertTrue(element(identifier: "repository-workspace").waitForExistence(timeout: 10))
+    select(
+      "workspace-sidebar-writing", revealing: "markdown-document-editor",
+      in: application.windows.firstMatch)
+    showPublishChecks()
+    assertUniqueIdentifier("publish-drawer-header")
     for identifier in [
       "publish-drawer-readiness-checklist",
       "publish-drawer-action-publish-current",
-      "publish-drawer-review-disclosure",
+      "publish-drawer-action-publish-all",
     ] {
       assertUniqueIdentifier(identifier)
     }
     let primaryAction = element(identifier: "publish-drawer-action-publish-current")
-    let scrollContent = element(identifier: "publish-drawer-scroll-content")
+    let checksScroll = element(identifier: "publish-drawer-scroll-content")
     XCTAssertGreaterThanOrEqual(
-      primaryAction.frame.minY, scrollContent.frame.maxY,
-      "The scope's primary action must stay in the fixed footer below the scrolling checks."
+      primaryAction.frame.minY, checksScroll.frame.maxY,
+      "Both publish actions stay in the fixed footer below the scrolling checks."
     )
-    let drawerShot = XCTAttachment(screenshot: application.windows.firstMatch.screenshot())
-    drawerShot.name = "publish-drawer-current-article"
-    drawerShot.lifetime = .keepAlways
-    add(drawerShot)
-    let localActions = application.disclosureTriangles["publish-drawer-local-actions"]
-    XCTAssertTrue(localActions.waitForExistence(timeout: 5))
-    clickVisibleDrawerControl(localActions)
-    XCTAssertEqual(String(describing: localActions.value ?? ""), "1")
-    assertUniqueIdentifier("publish-drawer-action-save-local")
-
-    XCTAssertFalse(
-      application.sheets.firstMatch.exists,
-      "The publish drawer should use the trailing workspace inspector, not a modal sheet."
-    )
-    let showAllChecks = element(identifier: "publish-drawer-review-disclosure")
-    XCTAssertTrue(
-      showAllChecks.waitForExistence(timeout: 10),
-      "The publish drawer did not expose the checks-and-diff disclosure button."
-    )
-    clickVisibleDrawerControl(showAllChecks)
-    assertUniqueIdentifier("publish-drawer-diff")
-    Thread.sleep(forTimeInterval: 0.3)
-
-    let screenshot = XCTAttachment(screenshot: application.screenshot())
-    screenshot.name = "publish-drawer-simplified"
+    XCTAssertFalse(application.sheets.firstMatch.exists, "Showing checks never starts a publish.")
+    let checks = element(identifier: "workspace-publish-inspector")
+    for removedTitle in ["发布账户", "变更内容", "高级发布方式", "保存到本地", "分支管理", "部署"] {
+      XCTAssertFalse(
+        checks.descendants(matching: .staticText)[removedTitle].exists,
+        "\(removedTitle) must stay out of the publish checks panel.")
+    }
+    let screenshot = XCTAttachment(screenshot: application.windows.firstMatch.screenshot())
+    screenshot.name = "publish-checks-panel"
     screenshot.lifetime = .keepAlways
     add(screenshot)
+  }
 
-    let drawer = element(identifier: "workspace-publish-inspector")
-    for removedSectionTitle in [
-      "分支管理",
-      "提交历史",
-      "线上发布预览",
-      "部署",
-    ] {
-      XCTAssertFalse(
-        drawer.descendants(matching: .staticText)[removedSectionTitle].exists,
-        "\(removedSectionTitle) must remain outside the publish drawer."
-      )
+  func testAdvancedMetadataCanBeReachedByVisibleInspectorControls() throws {
+    launchApplication(surface: "writing", screenshotContentSize: CGSize(width: 1440, height: 900))
+    XCTAssertTrue(element(identifier: "markdown-document-editor").waitForExistence(timeout: 10))
+    let tabs = element(identifier: "workspace-inspector-tabs")
+    if !tabs.exists {
+      element(identifier: "workspace-inspector-toggle").click()
     }
+    XCTAssertTrue(tabs.waitForExistence(timeout: 5))
+    tabs.radioButtons["信息"].click()
+    let inspector = element(identifier: "article-inspector")
+    XCTAssertTrue(inspector.waitForExistence(timeout: 5))
+    let advanced = element(identifier: "article-metadata-advanced")
+    XCTAssertTrue(advanced.waitForExistence(timeout: 5))
+    let slug = inspector.textFields["文章固定链接"]
+    XCTAssertFalse(slug.exists)
+    XCTAssertFalse(element(identifier: "article-publish-reminder").exists)
+    let disclosure = advanced.disclosureTriangles["高级"].firstMatch
+    XCTAssertTrue(disclosure.waitForExistence(timeout: 5))
+    clickScrollableControl(disclosure, in: inspector, disclosureLeadingInset: 26)
+    XCTAssertTrue(slug.waitForExistence(timeout: 5))
+    XCTAssertTrue(slug.isEnabled)
+    XCTAssertTrue(element(identifier: "article-publish-reminder").waitForExistence(timeout: 5))
+    let originalSlug = slug.value as? String
+    let screenshot = XCTAttachment(screenshot: application.windows.firstMatch.screenshot())
+    screenshot.name = "advanced-metadata-visible-click-route"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+    clickScrollableControl(disclosure, in: inspector, disclosureLeadingInset: 26)
+    assertDisappears(slug)
+    assertDisappears(element(identifier: "article-publish-reminder"))
+    clickScrollableControl(disclosure, in: inspector, disclosureLeadingInset: 26)
+    XCTAssertTrue(slug.waitForExistence(timeout: 5))
+    XCTAssertEqual(slug.value as? String, originalSlug)
   }
 
   func testMenuMutationsAndMainWindowRecoveryRemainStable() throws {
@@ -2126,7 +2978,20 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     assertUniqueIdentifier("content-health-selected-issue-heading")
     let issueHeading = element(identifier: "content-health-selected-issue-heading")
     let firstTitle = firstIssue.label.replacingOccurrences(of: "选择问题：", with: "")
-    XCTAssertTrue(issueHeading.label.contains(firstTitle))
+    XCTAssertTrue(
+      issueHeading.label.contains(firstTitle),
+      "Heading label \"\(issueHeading.label)\" (value \"\(String(describing: issueHeading.value))\", title \"\(issueHeading.title)\") must name the selected issue \"\(firstTitle)\".")
+    let headingDetails = issueHeading.label.replacingOccurrences(of: firstTitle + "，", with: "")
+    let metadata = headingDetails.components(separatedBy: "、")
+    XCTAssertGreaterThanOrEqual(
+      metadata.count, 2, "Heading metadata must include section and source: \(headingDetails)")
+    XCTAssertTrue(["错误", "警告", "优化建议", "维护"].contains(metadata.first ?? ""))
+    if metadata.count >= 2 {
+      XCTAssertTrue(["文章", "站点", "维护"].contains(metadata[1]))
+      if metadata[1] == "文章" {
+        XCTAssertTrue(headingDetails.contains("篇文章"))
+      }
+    }
     application.typeKey(.downArrow, modifierFlags: [])
     XCTAssertTrue(secondIssue.isSelected, "Down must move selection to the next issue.")
     XCTAssertFalse(firstIssue.isSelected)
@@ -2514,37 +3379,37 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "Settings opens from the app menu (⌘,), not a toolbar button."
     )
 
-    publishButton.click()
+    showPublishChecks()
     XCTAssertTrue(
       element(identifier: "workspace-publish-inspector").waitForExistence(timeout: 10),
-      "Prepare Publish must open the publish drawer."
+      "The publish menu must open the publish checks."
     )
 
     aiButton.click()
     assertIdentifierDisappears("workspace-publish-inspector")
     XCTAssertTrue(
       element(identifier: "ai-assistant-inspector").waitForExistence(timeout: 10),
-      "The AI toolbar action must replace, rather than sit behind, the publish drawer."
+      "The AI toolbar action must replace, rather than sit behind, the publish checks."
     )
 
-    publishButton.click()
+    showPublishChecks()
     XCTAssertTrue(
       element(identifier: "workspace-publish-inspector").waitForExistence(timeout: 10),
-      "Prepare Publish must remain available after leaving the AI Inspector."
+      "Publish checks must remain available after leaving the AI Inspector."
     )
 
     inspectorButton.click()
     assertIdentifierDisappears("workspace-inspector")
-    publishButton.click()
+    showPublishChecks()
     XCTAssertTrue(element(identifier: "workspace-inspector-tabs").waitForExistence(timeout: 10))
     let tabs = element(identifier: "workspace-inspector-tabs")
     tabs.radioButtons["信息"].click()
     XCTAssertTrue(element(identifier: "article-inspector").waitForExistence(timeout: 10))
 
-    publishButton.click()
+    showPublishChecks()
     XCTAssertTrue(
       element(identifier: "workspace-publish-inspector").waitForExistence(timeout: 10),
-      "Prepare Publish must remain available after leaving the article Inspector."
+      "Publish checks must remain available after leaving the article Inspector."
     )
 
     showSettingsWindow()
@@ -2566,7 +3431,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       ("workspace-command-search", ["全局搜索"]),
       ("workspace-preview", ["预览"]),
       ("workspace-task-center-toggle", ["任务", "任务中心"]),
-      ("workspace-prepare-publish", ["发布"]),
+      ("workspace-prepare-publish", ["发布这篇", "更新文章"]),
     ]
 
     for (identifier, labels) in expectedNames {
@@ -2640,7 +3505,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       (tab: "configurationStatus", content: "configuration-status-settings"),
       (tab: "defaultRules", content: "default-rule-settings"),
       (tab: "token", content: "token-settings"),
-      (tab: "siteAI", content: "site-ai-settings"),
     ]
 
     let settingsWindow = currentSettingsWindow()
@@ -2679,8 +3543,8 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       assertUniqueIdentifier(page.content)
       XCTAssertEqual(
         identifierExists("settings-profile-bar", in: settingsWindow),
-        ["configurationStatus", "defaultRules", "token", "siteAI"].contains(page.tab),
-        "Only site-scoped pages should expose a site switcher."
+        ["configurationStatus", "defaultRules", "token", "ai"].contains(page.tab),
+        "Only pages with current-site settings should expose a site switcher."
       )
       if page.tab == "editor" {
         XCTAssertTrue(
@@ -2702,26 +3566,24 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
   func testSettingsSharedConnectionAndMovedSearchKeepTheirScopes() throws {
     openSettings()
-    // Site selection and shared connection editing stay in the same window.
+    // Shared connection editing and the current site's connection choice share one page.
     let settingsWindow = currentSettingsWindow()
     let windowCount = application.windows.count
-    select("settings-tab-siteAI", revealing: "site-ai-settings")
-    let picker = element(identifier: "settings-site-ai-connection-picker")
-    XCTAssertTrue(picker.waitForExistence(timeout: 10))
-    let originalSelection = picker.value as? String
-    XCTAssertNotNil(originalSelection)
-
-    element(identifier: "settings-site-ai-edit-shared-connection").click()
-    assertIdentifierExists("ai-settings", in: settingsWindow)
-    XCTAssertFalse(identifierExists("settings-site-ai-connection-picker", in: settingsWindow))
-    element(identifier: "settings-ai-open-site-connection").click()
-    assertIdentifierExists("site-ai-settings")
-    XCTAssertEqual(picker.value as? String, originalSelection)
-
-    XCTAssertEqual(application.windows.count, windowCount)
+    select("settings-tab-ai", revealing: "ai-settings")
+    assertIdentifierExists("settings-ai-managed-connection-picker", in: settingsWindow)
 
     let search = element(identifier: "settings-search-field")
     search.click()
+    search.typeText("连接选择")
+    let siteConnection = element(identifier: "settings-search-result-ai.siteConnection")
+    XCTAssertTrue(siteConnection.waitForExistence(timeout: 10))
+    siteConnection.click()
+    assertIdentifierExists("ai-settings", in: settingsWindow)
+    assertIdentifierExists("settings-site-ai-connection-picker", in: settingsWindow)
+    XCTAssertEqual(application.windows.count, windowCount)
+
+    search.click()
+    application.typeKey("a", modifierFlags: .command)
     search.typeText("全局预设")
     let result = element(identifier: "settings-search-result-appearance.defaults")
     XCTAssertTrue(result.waitForExistence(timeout: 10))
@@ -3296,6 +4158,16 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_KNOWLEDGE_ROOT"] =
         knowledgeLibraryRootURL.path
       application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST"] = "1"
+      // Foundation keeps its system temporary directory despite the TMPDIR
+      // override below, so the default fixture root would be shared by every
+      // run. Keep each test's workbench fixture inside its own data folder.
+      let persistenceRootKey = "PERSONAL_SITE_PUBLISHER_SCREENSHOT_PERSISTENCE_ROOT"
+      if application.launchEnvironment[persistenceRootKey] == nil {
+        application.launchEnvironment[persistenceRootKey] =
+          knowledgeLibraryRootURL
+          .appendingPathComponent("screenshot-fixture", isDirectory: true)
+          .path
+      }
       application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST_REPOSITORY_ROOT"] =
         knowledgeLibraryRootURL
         .appendingPathComponent("repository-fixture", isDirectory: true)
@@ -3353,6 +4225,27 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     )
   }
 
+  private func completeDataRootSetupIfNeeded() {
+    let sidebar = element(identifier: "workspace-sidebar")
+    let setup = element(identifier: "workbench-data-root-setup")
+    let readyOrSetup = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in sidebar.exists || setup.exists }, object: application)
+    XCTAssertEqual(XCTWaiter.wait(for: [readyOrSetup], timeout: 20), .completed)
+    if setup.exists {
+      assertUniqueIdentifier("workbench-data-root-use-recommended")
+      element(identifier: "workbench-data-root-use-recommended").click()
+    }
+    XCTAssertTrue(sidebar.waitForExistence(timeout: 20), application.debugDescription)
+  }
+
+  private func waitForSavedDraft() {
+    let saved = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "value CONTAINS %@", "已保存"),
+      object: element(identifier: "markdown-editor-save-status"))
+    XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 15), .completed)
+    XCTAssertFalse(element(identifier: "markdown-editor-save-failure").exists)
+  }
+
   private func launchFirstRunApplication() {
     application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_PERSISTENCE_ROOT"] =
       knowledgeLibraryRootURL.appendingPathComponent("workbench", isDirectory: true).path
@@ -3370,7 +4263,9 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertTrue(application.buttons["连接已有仓库"].waitForExistence(timeout: 10))
   }
 
-  private func completeFirstRunRepositorySetup(at repositoryRoot: URL) {
+  private func completeFirstRunRepositorySetup(
+    at repositoryRoot: URL, replacingExistingRepository: Bool = true
+  ) {
     let connect = application.buttons["连接已有仓库"]
     XCTAssertTrue(connect.isHittable)
     connect.click()
@@ -3378,10 +4273,13 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertTrue(continueButton.waitForExistence(timeout: 5))
     continueButton.click()
 
-    let chooseRepository = application.buttons["更换本地仓库"]
+    let chooseRepository = application.buttons[
+      replacingExistingRepository ? "更换本地仓库" : "选择本地仓库"]
     XCTAssertTrue(chooseRepository.waitForExistence(timeout: 5))
     chooseRepository.click()
-    let panel = application.dialogs.firstMatch
+    // The native picker is a nested sheet on current macOS, with its own
+    // stable AppKit identifier; the setup wizard is the outer sheet.
+    let panel = application.sheets.matching(identifier: "open-panel").firstMatch
     XCTAssertTrue(panel.waitForExistence(timeout: 10))
     application.typeKey("g", modifierFlags: [.command, .shift])
     let locationField = panel.textFields.firstMatch
@@ -3411,7 +4309,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "Repository detection must enable the real rules step before continuing."
     )
     next.click()
-    XCTAssertTrue(application.staticTexts["启用 AI 助手（可选）"].waitForExistence(timeout: 10))
     let finish = application.buttons["完成并开始写作"]
     XCTAssertTrue(finish.waitForExistence(timeout: 10))
     finish.click()
@@ -3558,21 +4455,36 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     openAssistant.click()
   }
 
-  private func selectPublishScope(_ title: String, in picker: XCUIElement) {
-    let option = picker.radioButtons[title]
-    XCTAssertTrue(option.waitForExistence(timeout: 5))
-    // SwiftUI exposes the segmented picker inside the drawer's scroll view.
-    // Click its observed frame directly to avoid XCTest trying to scroll the
-    // already visible segment before sending the event.
-    clickVisibleDrawerControl(option)
-    XCTAssertEqual(String(describing: option.value ?? ""), "1")
+  /// Opens 发布检查 from the publish menu; narrow windows show it as a sheet.
+  private func showPublishChecks() {
+    let menu = element(identifier: "workspace-publish-menu")
+    XCTAssertTrue(menu.waitForExistence(timeout: 10))
+    menu.click()
+    let item = application.menuItems["查看发布检查"]
+    XCTAssertTrue(item.waitForExistence(timeout: 5))
+    item.click()
+  }
+
+  /// Both publish actions open one sheet: a confirmation, the blocking
+  /// checks, or an explanation. Closing it must never publish.
+  private func closePublishSheet() {
+    let sheet = application.sheets.firstMatch
+    XCTAssertTrue(sheet.waitForExistence(timeout: 20), "A publish action must open its sheet.")
+    let close = sheet.buttons.matching(
+      NSPredicate(format: "label IN %@", ["取消", "完成", "关闭"])
+    ).firstMatch
+    XCTAssertTrue(close.waitForExistence(timeout: 5))
+    close.click()
+    assertDisappears(sheet, "Closing the publish sheet must not start a publish.")
   }
 
   private func clickVisibleDrawerControl(_ control: XCUIElement) {
     clickScrollableControl(control, in: element(identifier: "publish-drawer-scroll-content"))
   }
 
-  private func clickScrollableControl(_ control: XCUIElement, in scrollView: XCUIElement) {
+  private func clickScrollableControl(
+    _ control: XCUIElement, in scrollView: XCUIElement, disclosureLeadingInset: CGFloat = 8
+  ) {
     application.activate()
     XCTAssertTrue(scrollView.waitForExistence(timeout: 5))
     XCTAssertFalse(control.frame.isEmpty)
@@ -3586,12 +4498,17 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
         .scroll(byDeltaX: 0, deltaY: direction)
     }
     XCTAssertTrue(viewport.contains(CGPoint(x: control.frame.midX, y: control.frame.midY)))
-    // The disclosure style makes the complete label row clickable. Use the
-    // visible point in window coordinates so XCTest does not attempt another
-    // automatic scroll using the disclosure's virtualized parent.
-    let center = CGPoint(x: control.frame.midX, y: control.frame.midY)
-    window.coordinate(withNormalizedOffset: .zero).withOffset(
-      CGVector(dx: center.x - window.frame.minX, dy: center.y - window.frame.minY)
+    // Native DisclosureGroup labels can extend beyond the chevron hit target.
+    // Click the chevron while retaining the visible-viewport requirement.
+    let point = CGPoint(
+      x: control.elementType == .disclosureTriangle
+        ? control.frame.minX + min(disclosureLeadingInset, control.frame.width / 2)
+        : control.frame.midX,
+      y: control.frame.midY)
+    let origin = window.coordinate(withNormalizedOffset: .zero)
+    let screenOrigin = origin.screenPoint
+    origin.withOffset(
+      CGVector(dx: point.x - screenOrigin.x, dy: point.y - screenOrigin.y)
     ).click()
   }
 
@@ -3698,9 +4615,10 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     ) != nil {
       return
     }
+    let targetFrame = destination.exists ? String(describing: destination.frame) : "not found"
     let diagnostic = XCTAttachment(
       string:
-        "Target: \(identifier) frame=\(destination.frame) exists=\(destination.exists)\nWindow: \(window.frame)\nViewport: \(scrollContainer.frame)\n\(application.debugDescription)"
+        "Target: \(identifier) frame=\(targetFrame) exists=\(destination.exists)\nWindow: \(window.frame)\nViewport: \(scrollContainer.frame)\n\(application.debugDescription)"
     )
     diagnostic.name = "Scroll lookup failure - \(identifier)"
     diagnostic.lifetime = .keepAlways

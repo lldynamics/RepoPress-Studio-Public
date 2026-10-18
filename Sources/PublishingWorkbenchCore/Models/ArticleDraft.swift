@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import PublishingDomainContracts
+import RepoPressCore
 
 public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   public var id: UUID
@@ -18,6 +19,10 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   public var slug: String
   public var tags: [String]
   public var categories: [String]
+  /// Imported source and the structured editing baseline. Unknown fields and
+  /// comments remain owned by the original document instead of being regenerated.
+  /// Optional storage keeps snapshots from before source preservation readable.
+  public var importedFrontMatter: ImportedFrontMatter?
   public var authors: [String]
   /// Optional storage keeps workbench snapshots written before digital-garden
   /// aliases backward compatible.
@@ -71,8 +76,6 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   /// Atomic repository ownership and sync state. The three legacy projections above remain
   /// encoded during migration, while repository-aware flows update this value as a unit.
   public private(set) var repositoryBinding: DraftRepositoryBinding?
-  /// A linked Markdown file outside the site repository.
-  public var externalDraftSource: ExternalDraftSource?
   public var reusedFromSourceSnapshot: GeneralDraftReuseSourceSnapshot?
   /// Present only on a translated article. Optional for older snapshots and
   /// independent of repository content fingerprints.
@@ -120,7 +123,6 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     repositorySHA: String? = nil,
     repositoryImportFingerprint: String? = nil,
     repositoryBinding: DraftRepositoryBinding? = nil,
-    externalDraftSource: ExternalDraftSource? = nil,
     reusedFromSourceSnapshot: GeneralDraftReuseSourceSnapshot? = nil,
     translationLink: AITranslationDraftLink? = nil,
     softwareGuideID: String? = nil,
@@ -137,6 +139,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     self.slug = slug
     self.tags = tags
     self.categories = categories
+    self.importedFrontMatter = nil
     self.authors = authors
     self.aliasesStorage = aliases.isEmpty ? nil : aliases
     self.pendingSlugRedirectPathsStorage =
@@ -168,7 +171,6 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
         path: repositoryPath,
         remoteRevision: repositorySHA
       )
-    self.externalDraftSource = externalDraftSource
     self.reusedFromSourceSnapshot = reusedFromSourceSnapshot
     self.translationLink = translationLink
     self.softwareGuideID = softwareGuideID
@@ -378,7 +380,6 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     siteProfileID = profileID
     scopeStorage = .site(profileID)
     generalDraftFolderNameStorage = nil
-    externalDraftSource = nil
   }
 
   public mutating func assignToGeneralDraft(editingProfileID: UUID? = nil) {
@@ -551,7 +552,6 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     repositorySHA = current.repositorySHA
     repositoryImportFingerprint = current.repositoryImportFingerprint
     repositoryBinding = current.repositoryBinding
-    externalDraftSource = current.externalDraftSource
   }
 
   mutating func replaceRepositoryPathForProjection(_ path: String?) {
@@ -604,6 +604,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       slug: slug,
       tags: tags,
       categories: categories,
+      importedFrontMatter: importedFrontMatter,
       authors: authors,
       aliases: aliases,
       permalink: permalink,
@@ -631,40 +632,5 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       return SHA256.hash(data: Data(fallback.utf8)).map { String(format: "%02x", $0) }.joined()
     }
     return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-  }
-}
-
-private struct RepositoryContentFingerprintSnapshot: Encodable {
-  var title: String
-  var date: Date
-  var slug: String
-  var tags: [String]
-  var categories: [String]
-  var authors: [String]
-  var aliases: [String]
-  var permalink: String?
-  var translationKey: String?
-  var draft: Bool
-  var visibility: ArticleVisibility
-  var summary: String
-  var coverRepositoryPath: String?
-  var bodyMarkdown: String
-  var attachments: [RepositoryAttachmentFingerprintSnapshot]
-  var status: DraftStatus
-}
-
-private struct RepositoryAttachmentFingerprintSnapshot: Encodable {
-  var originalFilename: String
-  var relativePublishPath: String
-  var repositoryPath: String
-  var altText: String
-  var caption: String
-
-  init(_ attachment: DraftAttachment) {
-    originalFilename = attachment.originalFilename
-    relativePublishPath = attachment.relativePublishPath.normalizedRelativePath()
-    repositoryPath = attachment.repositoryPath.normalizedRelativePath()
-    altText = attachment.altText
-    caption = attachment.caption
   }
 }

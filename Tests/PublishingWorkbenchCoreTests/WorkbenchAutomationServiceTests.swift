@@ -17,47 +17,7 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
     XCTAssertFalse(preflight.risk.requiresExplicitConfirmation)
   }
 
-  func testRegistryGeneratesClosedNativeToolSchemasFromTheCommandCatalog() throws {
-    let definitions = WorkbenchAutomationRegistry.agentToolDefinitions
-
-    XCTAssertEqual(
-      definitions.map(\.function.name),
-      WorkbenchAutomationRegistry.descriptors
-        .filter { $0.id != .webSearch }
-        .map { $0.id.rawValue }
-    )
-    XCTAssertTrue(definitions.allSatisfy { $0.type == "function" })
-    for definition in definitions {
-      guard case .object(let schema) = definition.function.parameters else {
-        return XCTFail("Expected object schema for \(definition.function.name)")
-      }
-      XCTAssertEqual(schema["type"], .string("object"))
-      XCTAssertEqual(schema["additionalProperties"], .bool(false))
-      XCTAssertNotNil(schema["properties"])
-      XCTAssertNotNil(schema["required"])
-    }
-
-    let openSection = try XCTUnwrap(
-      definitions.first { $0.function.name == WorkbenchAutomationCommandID.openSection.rawValue }
-    )
-    guard case .object(let openSchema) = openSection.function.parameters,
-      case .object(let properties)? = openSchema["properties"],
-      case .object(let section)? = properties["section"],
-      case .array(let sectionEnum)? = section["enum"]
-    else {
-      return XCTFail("Expected openSection section enum")
-    }
-    let advertisedSections = sectionEnum.compactMap { value -> String? in
-      guard case .string(let raw) = value else { return nil }
-      return raw
-    }
-    XCTAssertEqual(
-      advertisedSections,
-      WorkspaceVisibilityPolicy.commandPaletteSections.map(\.rawValue)
-    )
-  }
-
-  func testEveryRegistryCommandSchemaParsesAndPassesTheSharedValidator() throws {
+  func testEveryRegistryCommandParsesAndPassesTheSharedValidator() throws {
     let draftID = UUID()
     let now = Date()
     let draftVersions = [draftID: now]
@@ -93,76 +53,17 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
     ]
 
     XCTAssertEqual(Set(argumentsByCommand.keys), Set(WorkbenchAutomationCommandID.allCases))
-    for definition in WorkbenchAutomationRegistry.agentToolDefinitions {
-      let command = try XCTUnwrap(
-        WorkbenchAutomationCommandID(rawValue: definition.function.name)
-      )
+    for command in WorkbenchAutomationCommandID.allCases {
       let arguments = try XCTUnwrap(argumentsByCommand[command])
-      let invocation = try WorkbenchAutomationRegistry.agentInvocation(
-        for: AIToolCall(
-          id: "roundtrip-\(command.rawValue)",
-          function: AIToolFunctionCall(name: command.rawValue, arguments: arguments)
-        ),
+      let step = try parsedStep(
+        command: command,
+        arguments: arguments,
         draftVersions: draftVersions
       )
-      let step = try XCTUnwrap(invocation.automationStep)
 
       XCTAssertEqual(step.command, command)
       XCTAssertNoThrow(try WorkbenchAutomationPlanValidator.validateArguments(step))
     }
-  }
-
-  func testAgentPermissionPolicyProducesAClosedToolAllowlist() throws {
-    let legacyCommands = WorkbenchAutomationRegistry.agentCommands(
-      allowedBy: .legacySafeDefault,
-      masterEnabled: true
-    )
-
-    XCTAssertTrue(legacyCommands.contains(.draftRead))
-    XCTAssertTrue(legacyCommands.contains(.searchDrafts))
-    XCTAssertTrue(legacyCommands.contains(.knowledgeSearch))
-    XCTAssertTrue(legacyCommands.contains(.knowledgeRead))
-    XCTAssertTrue(legacyCommands.contains(.auditContent))
-    XCTAssertTrue(legacyCommands.contains(.createDraft))
-    XCTAssertFalse(legacyCommands.contains(.replaceBody))
-    XCTAssertFalse(legacyCommands.contains(.webFetch))
-    XCTAssertFalse(legacyCommands.contains(.siteDeployStatus))
-    XCTAssertFalse(legacyCommands.contains(.writeLocalRepository))
-    XCTAssertFalse(legacyCommands.contains(.publishOnline))
-    XCTAssertFalse(legacyCommands.contains(.webSearch))
-
-    XCTAssertTrue(
-      WorkbenchAutomationRegistry.agentCommands(
-        allowedBy: .all,
-        masterEnabled: false
-      ).isEmpty
-    )
-    let allExposed = WorkbenchAutomationRegistry.agentCommands(
-      allowedBy: .all,
-      masterEnabled: true
-    )
-    XCTAssertTrue(allExposed.contains(.siteDeployStatus))
-    XCTAssertFalse(allExposed.contains(.webSearch))
-  }
-
-  func testUnimplementedWebSearchIsNotDeclaredOrAcceptedAsAnAgentTool() {
-    XCTAssertFalse(
-      WorkbenchAutomationRegistry.agentToolDefinitions.contains {
-        $0.function.name == WorkbenchAutomationCommandID.webSearch.rawValue
-      }
-    )
-    XCTAssertThrowsError(
-      try WorkbenchAutomationRegistry.agentInvocation(
-        for: AIToolCall(
-          id: "hidden-search",
-          function: AIToolFunctionCall(
-            name: WorkbenchAutomationCommandID.webSearch.rawValue,
-            arguments: #"{"query":"swift"}"#
-          )
-        ),
-        draftVersions: [:]
-      )
-    )
   }
 
   func testMetadataConditionsUseTheSameParserAndValidatorRules() throws {
@@ -173,15 +74,12 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
       #"{"draftID":"\#(draftID.uuidString)","metadataField":"tags","values":["swift","macOS"]}"#,
     ]
 
-    for (index, arguments) in validArguments.enumerated() {
-      let invocation = try WorkbenchAutomationRegistry.agentInvocation(
-        for: AIToolCall(
-          id: "tags-\(index)",
-          function: AIToolFunctionCall(name: "updateMetadata", arguments: arguments)
-        ),
+    for arguments in validArguments {
+      let step = try parsedStep(
+        command: .updateMetadata,
+        arguments: arguments,
         draftVersions: draftVersions
       )
-      let step = try XCTUnwrap(invocation.automationStep)
       XCTAssertNoThrow(try WorkbenchAutomationPlanValidator.validateArguments(step))
     }
 
@@ -739,22 +637,40 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
     line: UInt = #line
   ) {
     XCTAssertThrowsError(
-      try WorkbenchAutomationRegistry.agentInvocation(
-        for: AIToolCall(
-          id: "rejected-\(command.rawValue)",
-          function: AIToolFunctionCall(name: command.rawValue, arguments: arguments)
-        ),
-        draftVersions: draftVersions
-      ),
+      try parsedStep(command: command, arguments: arguments, draftVersions: draftVersions),
       file: file,
       line: line
     ) { error in
       XCTAssertEqual(
-        error as? WorkbenchAutomationAgentToolError,
+        error as? WorkbenchAutomationArgumentError,
         .argumentMismatch,
         file: file,
         line: line
       )
+    }
+  }
+
+  /// Parses tool-call arguments through the same specification parser and
+  /// validator that the live plan parser uses.
+  private func parsedStep(
+    command: WorkbenchAutomationCommandID,
+    arguments: String,
+    draftVersions: [UUID: Date]
+  ) throws -> WorkbenchAutomationStep {
+    let specification = try XCTUnwrap(WorkbenchAutomationRegistry.specification(for: command))
+    do {
+      let json = try JSONDecoder().decode(
+        AIStructuredOutputJSONValue.self,
+        from: Data(arguments.utf8)
+      )
+      guard case .object(let object) = json else {
+        throw WorkbenchAutomationArgumentError.argumentMismatch
+      }
+      let parsed = try specification.arguments(from: object, draftVersions: draftVersions)
+      try specification.validate(parsed)
+      return WorkbenchAutomationStep(command: command, arguments: parsed)
+    } catch {
+      throw WorkbenchAutomationArgumentError.argumentMismatch
     }
   }
 }

@@ -8,12 +8,15 @@ private struct RepositoryWorktreeDraftFlushCandidate: Sendable {
 }
 
 extension RepositoryStore {
-  /// Builds a read-only, frozen review of every pending Git worktree change.
+  /// Builds a read-only, frozen review of every pending Git worktree change,
+  /// or of only `pathScope` when one article is published on its own.
   /// The service performs its own remote and repository identity checks; this
   /// store boundary only coordinates protected-workbench and operation state.
   public func prepareRepositoryWorktreePublish(
     store: WorkbenchStore,
-    commitMessage: String = "Publish all site changes"
+    commitMessage: String = "Publish all site changes",
+    pathScope: [String]? = nil,
+    articleDraftID: UUID? = nil
   ) async -> RepositoryWorktreePublishConfirmation? {
     guard !isRemoteRepositoryPublishing,
       !isRemoteRepositoryChecking,
@@ -28,7 +31,12 @@ extension RepositoryStore {
     }
 
     let profile = store.activeProfile
-    guard await prepareActiveDraftFilesForWorktreeReview(store: store, profile: profile) else {
+    let draftIDs = reviewDraftIDs(
+      store: store, profileID: profile.id, pathScope: pathScope, articleDraftID: articleDraftID)
+    guard
+      await prepareActiveDraftFilesForWorktreeReview(
+        store: store, profile: profile, draftIDs: draftIDs)
+    else {
       return nil
     }
     guard !Task.isCancelled, store.activeProfileID == profile.id else {
@@ -39,14 +47,18 @@ extension RepositoryStore {
       return nil
     }
     let service = RepositoryWorktreePublishService()
-    let articleDraft = store.selectedDraft
+    let articleDraft = articleDraftID.map { store.draft(for: $0) } ?? store.selectedDraft
     store.setGitActionMessage(
-      CoreL10n.text("正在核对仓库全部待提交文件与远端分支…"),
+      pathScope == nil
+        ? CoreL10n.text("正在核对仓库全部待提交文件与远端分支…")
+        : CoreL10n.text("正在核对这篇文章的文件与远端分支…"),
       status: .inProgress
     )
     do {
       let confirmation = try await Task.detached(priority: .userInitiated) {
-        try service.prepare(profile: profile, commitMessage: commitMessage, articleDraft: articleDraft)
+        try service.prepare(
+          profile: profile, commitMessage: commitMessage, articleDraft: articleDraft,
+          pathScope: pathScope)
       }.value
       guard store.activeProfileID == profile.id else {
         store.setGitActionMessage(
@@ -63,6 +75,12 @@ extension RepositoryStore {
         status: .information
       )
       return confirmation
+    } catch RepositoryWorktreePublishError.noChanges where pathScope != nil {
+      store.setGitActionMessage(
+        CoreL10n.text("这篇文章没有需要发布的新变化，线上仓库已是最新内容。"),
+        status: .information
+      )
+      return nil
     } catch {
       store.setGitActionMessage(error.localizedDescription, status: .failure)
       return nil
@@ -89,7 +107,10 @@ extension RepositoryStore {
     }
 
     let profile = store.activeProfile
-    guard activeDraftFilesAreStable(store: store, profileID: profile.id) else {
+    let draftIDs = reviewDraftIDs(
+      store: store, profileID: profile.id, pathScope: confirmation.pathScope,
+      articleDraftID: confirmation.articleVerificationTarget?.draftID)
+    guard activeDraftFilesAreStable(store: store, profileID: profile.id, draftIDs: draftIDs) else {
       store.setGitActionMessage(
         CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。"),
         status: .warning
@@ -98,6 +119,9 @@ extension RepositoryStore {
     }
     let service = RepositoryWorktreePublishService()
     isRemoteRepositoryPublishing = true
+    let recoveryStore = store.worktreePushRecoveryStore
+    let trackingRequest =
+      confirmation.isScoped ? ArticlePublishTrackingRequest(profile: profile) : nil
     store.setGitActionMessage(
       CoreL10n.format(
         "正在提交并推送 %@ 个已审阅文件…",
@@ -109,18 +133,36 @@ extension RepositoryStore {
 
     do {
       let result = try await Task.detached(priority: .userInitiated) {
-        try service.publish(profile: profile, confirmation: confirmation)
+        try service.publish(profile: profile, confirmation: confirmation) { commitSHA in
+          try recoveryStore.save(
+            RepositoryWorktreePushRecoveryRecord(
+              profile: profile, confirmation: confirmation, commitSHA: commitSHA,
+              trackingRequest: trackingRequest))
+        }
       }.value
-      store.recordConfirmedWorktreePush(result, profile: profile, article: confirmation.articleVerificationTarget)
+      store.recordConfirmedWorktreePush(
+        result, profile: profile, article: confirmation.articleVerificationTarget,
+        trackingRequest: trackingRequest)
+      let recoverySaved = store.finishWorktreePushRecovery(
+        RepositoryWorktreePushRecoveryRecord(
+          profile: profile, confirmation: confirmation, commitSHA: result.commitSHA))
+      let fileCount = String(confirmation.snapshot.entries.count)
+      let shortSHA = String(result.commitSHA.prefix(8))
       store.setGitActionMessage(
-        CoreL10n.format(
-          "Git 推送已确认：仓库全部 %@ 个文件变更已到达 %@（提交 %@）。本次只确认仓库推送，网站部署与线上页面仍需另行验证。",
-          String(confirmation.snapshot.entries.count),
-          result.branch,
-          String(result.commitSHA.prefix(8))
-        ),
+        confirmation.isScoped
+          ? CoreL10n.format(
+            "Git 推送已确认：这篇文章的 %@ 个文件已到达 %@（提交 %@）。其他未发布的变更仍留在本地。",
+            fileCount, result.branch, shortSHA)
+          : CoreL10n.format(
+            "Git 推送已确认：仓库全部 %@ 个文件变更已到达 %@（提交 %@）。本次只确认仓库推送，网站部署与线上页面仍需另行验证。",
+            fileCount, result.branch, shortSHA),
         status: .information
       )
+      if !recoverySaved {
+        store.setGitActionMessage(
+          CoreL10n.text("Git 推送已确认，但发布记录尚未保存。恢复证据已保留；修复保存问题后可重新核对，无需再次推送。"),
+          status: .warning)
+      }
       if store.activeProfileID == profile.id {
         await scanRepositoryAsync(store: store)
       }
@@ -149,14 +191,15 @@ extension RepositoryStore {
   /// them with a delayed editor autosave.
   private func prepareActiveDraftFilesForWorktreeReview(
     store: WorkbenchStore,
-    profile: SiteProfile
+    profile: SiteProfile,
+    draftIDs: Set<UUID>?
   ) async -> Bool {
-    await store.waitForPendingSiteDraftFileWrites()
+    await store.waitForPendingSiteDraftFileWrites(draftIDs: draftIDs)
     guard !Task.isCancelled, store.activeProfileID == profile.id else { return false }
 
     let dirtyDraftIDs = Set<UUID>(
       store.publishingStore.draftBodyEditorBuffers.values.compactMap { buffer in
-        guard buffer.isDirty,
+        guard buffer.isDirty, draftIDs?.contains(buffer.draftID) ?? true,
           let draft = store.drafts.first(where: { $0.id == buffer.draftID }),
           draft.belongs(toSiteProfileID: profile.id)
         else {
@@ -205,12 +248,12 @@ extension RepositoryStore {
       for draftID in dirtyDraftIDs {
         store.flushDraftBodyEditorBuffer(for: draftID)
       }
-      await store.waitForPendingSiteDraftFileWrites()
+      await store.waitForPendingSiteDraftFileWrites(draftIDs: draftIDs)
     }
 
     guard !Task.isCancelled,
       store.activeProfileID == profile.id,
-      activeDraftFilesAreStable(store: store, profileID: profile.id)
+      activeDraftFilesAreStable(store: store, profileID: profile.id, draftIDs: draftIDs)
     else {
       store.setGitActionMessage(
         CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。"),
@@ -240,14 +283,18 @@ extension RepositoryStore {
 
   private func activeDraftFilesAreStable(
     store: WorkbenchStore,
-    profileID: UUID
+    profileID: UUID,
+    draftIDs: Set<UUID>?
   ) -> Bool {
     let activeDraftIDs = Set(
-      store.drafts.filter { $0.belongs(toSiteProfileID: profileID) }.map(\.id)
+      store.drafts.filter {
+        $0.belongs(toSiteProfileID: profileID) && (draftIDs?.contains($0.id) ?? true)
+      }.map(\.id)
     )
-    guard !store.publishingStore.draftBodyEditorBuffers.values.contains(where: {
-      activeDraftIDs.contains($0.draftID) && $0.isDirty
-    }),
+    guard
+      !store.publishingStore.draftBodyEditorBuffers.values.contains(where: {
+        activeDraftIDs.contains($0.draftID) && $0.isDirty
+      }),
       store.siteDraftFileAutosaveTasks.keys.allSatisfy({ !activeDraftIDs.contains($0) }),
       store.siteDraftFileWritesInProgress.isDisjoint(with: activeDraftIDs)
     else {
@@ -262,5 +309,21 @@ extension RepositoryStore {
         return false
       }
     }
+  }
+
+  /// Article save readiness follows the reviewed paths, while repository-wide
+  /// branch, index and remote safety checks remain enforced by the Git service.
+  private func reviewDraftIDs(
+    store: WorkbenchStore, profileID: UUID, pathScope: [String]?, articleDraftID: UUID?
+  ) -> Set<UUID>? {
+    guard let pathScope else { return nil }
+    let paths = Set(pathScope.map { $0.normalizedRelativePath() })
+    var ids = Set(
+      store.drafts.filter { draft in
+        draft.belongs(toSiteProfileID: profileID)
+          && draft.repositoryPath.map { paths.contains($0.normalizedRelativePath()) } == true
+      }.map(\.id))
+    if let articleDraftID { ids.insert(articleDraftID) }
+    return ids
   }
 }

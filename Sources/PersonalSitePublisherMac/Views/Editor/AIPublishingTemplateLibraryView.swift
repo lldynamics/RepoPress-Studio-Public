@@ -75,7 +75,7 @@ struct AIPublishingTemplateLibraryView: View {
   private var searchField: some View {
     HStack(spacing: 8) {
       Image(systemName: "magnifyingglass")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityHidden(true)
       TextField("搜索动作、提示或工作流", text: $searchText)
         .textFieldStyle(.plain)
@@ -100,7 +100,7 @@ struct AIPublishingTemplateLibraryView: View {
   private var header: some View {
     HStack(alignment: .top, spacing: 14) {
       Image(systemName: "sparkles.rectangle.stack")
-        .font(.title2)
+        .font(.workbenchTitle2)
         .foregroundStyle(workbenchAccentColor)
         .frame(width: 34, height: 34)
         .background(
@@ -111,10 +111,10 @@ struct AIPublishingTemplateLibraryView: View {
 
       VStack(alignment: .leading, spacing: 4) {
         Text("AI 模板库")
-          .font(.title2.weight(.semibold))
+          .font(.workbenchTitle2.weight(.semibold))
         Text("默认入口只保留 8 个高频能力；其他动作、快捷提示和工作流可在这里搜索。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       Spacer(minLength: 16)
@@ -257,11 +257,11 @@ struct AIPublishingTemplateLibraryView: View {
 
       VStack(alignment: .leading, spacing: 2) {
         Text(title)
-          .font(.body.weight(.medium))
+          .font(.workbenchBody.weight(.medium))
           .foregroundStyle(.primary)
         Text(detail)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .lineLimit(2)
       }
 

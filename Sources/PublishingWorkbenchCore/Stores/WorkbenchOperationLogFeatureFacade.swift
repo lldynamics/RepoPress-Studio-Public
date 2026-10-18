@@ -16,8 +16,8 @@ public final class WorkbenchOperationLogFeatureFacade: ObservableObject {
     self.store = store
     observe(store.publishingStore.publishSession.$releaseRecords)
     observe(store.publishingStore.$maintenanceOperationRecords)
-    observe(store.aiWorkspaceStore.$automationRunRecords)
-    observe(store.aiWorkspaceStore.$aiMetadataApplicationRecords)
+    observe(store.aiWorkspaceStore.publisher(for: \.automationRunRecords))
+    observe(store.aiWorkspaceStore.publisher(for: \.aiMetadataApplicationRecords))
     observe(store.deploymentStore.$deploymentStatusSnapshots)
     observe(store.operationHistory.$document)
     observe(store.operationHistory.$lastErrorMessage)

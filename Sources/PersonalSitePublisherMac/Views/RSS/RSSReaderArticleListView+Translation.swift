@@ -97,7 +97,7 @@ extension RSSArticleList {
       if titleTranslator.isRunning {
         HStack(spacing: 6) {
           ProgressView().controlSize(.small)
-          Text("正在翻译列表标题…").font(.caption).foregroundStyle(.secondary)
+          Text("正在翻译列表标题…").font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
         }
         .accessibilityElement(children: .combine)
       } else if let issue = titleTranslator.issue {
@@ -105,8 +105,8 @@ extension RSSArticleList {
           Label("部分标题未翻译，已保留原文", systemImage: "info.circle")
             .help(issue)
             .accessibilityHint(issue)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
           Spacer(minLength: 0)
           Button("重试") { titleTranslationRetryRevision += 1 }
             .buttonStyle(.borderless)

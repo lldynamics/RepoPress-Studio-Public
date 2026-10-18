@@ -159,10 +159,10 @@ extension RSSArticleList {
   func listProgressState(title: String, message: String) -> some View {
     VStack(spacing: 12) {
       ProgressView()
-      Text(title).font(.headline)
+      Text(title).font(.workbenchHeadline)
       Text(message)
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
         .multilineTextAlignment(.center)
     }
     .padding(WorkbenchSpacing.spacious)
@@ -178,11 +178,11 @@ extension RSSArticleList {
         .foregroundStyle(WorkbenchTheme.risk)
         .accessibilityHidden(true)
       Text("“\(feedTitle)”读取失败")
-        .font(.headline)
+        .font(.workbenchHeadline)
         .multilineTextAlignment(.center)
       Text(message)
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
         .multilineTextAlignment(.center)
         .textSelection(.enabled)
       HStack(spacing: 10) {
@@ -251,8 +251,8 @@ extension RSSArticleList {
                 } header: {
                   if let title = section.title {
                     Text(title)
-                      .font(.caption.weight(.semibold))
-                      .foregroundStyle(.secondary)
+                      .font(.workbenchMetadata.weight(.semibold))
+                      .foregroundStyle(.workbenchSecondary)
                       .frame(maxWidth: .infinity, alignment: .leading)
                       .padding(.horizontal, WorkbenchSpacing.card)
                       .padding(.top, WorkbenchSpacing.card)

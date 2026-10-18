@@ -7,19 +7,19 @@ extension RepositoryWorkspaceView {
       VStack(alignment: .leading, spacing: 12) {
         VStack(alignment: .leading, spacing: 3) {
           Text("本地预览")
-            .font(.headline)
+            .font(.workbenchHeadline)
           Text("启动站点后检查端口，再打开当前文章或整个站点。")
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
           Text(plan.previewURL.absoluteString)
-            .font(.callout.monospaced())
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody.monospaced())
+            .foregroundStyle(.workbenchSecondary)
             .textSelection(.enabled)
           Label(
             plan.usesDynamicPort ? "已自动切换动态端口" : "使用默认端口",
             systemImage: plan.usesDynamicPort ? "arrow.triangle.2.circlepath" : "network"
           )
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(plan.usesDynamicPort ? WorkbenchTheme.warning : .secondary)
         }
 
@@ -103,7 +103,7 @@ extension RepositoryWorkspaceView {
             ? "checkmark.circle"
             : (store.localSitePreviewRuntimeStatus.isRunning ? "play.circle" : "stop.circle")
         )
-        .font(.caption)
+        .font(.workbenchMetadata)
         .foregroundStyle(
           store.localSitePreviewRuntimeStatus.isReachable ? WorkbenchTheme.success : Color.secondary
         )
@@ -114,22 +114,22 @@ extension RepositoryWorkspaceView {
           systemImage: plan.diagnostics.isReadyToStart
             ? "checkmark.seal" : "exclamationmark.triangle"
         )
-        .font(.caption)
+        .font(.workbenchMetadata)
         .foregroundStyle(
           plan.diagnostics.isReadyToStart ? WorkbenchTheme.success : WorkbenchTheme.warning)
 
         ForEach(plan.notes, id: \.self) { note in
           Label(note, systemImage: "info.circle")
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
         }
 
         VStack(alignment: .leading, spacing: 8) {
           Label("诊断信息", systemImage: "stethoscope")
-            .font(.callout.weight(.semibold))
+            .font(.workbenchBody.weight(.semibold))
 
           Text(plan.command)
-            .font(.callout.monospaced())
+            .font(.workbenchBody.monospaced())
             .textSelection(.enabled)
             .lineLimit(3)
 
@@ -143,19 +143,19 @@ extension RepositoryWorkspaceView {
 
           if let pid = store.localSitePreviewRuntimeStatus.processIdentifier {
             Text("PID \(pid)")
-              .font(.caption.monospaced())
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata.monospaced())
+              .foregroundStyle(.workbenchSecondary)
           }
 
           if !store.localSitePreviewRuntimeStatus.recentLogLines.isEmpty {
             Text("最近日志")
-              .font(.callout.weight(.semibold))
-              .foregroundStyle(.secondary)
+              .font(.workbenchBody.weight(.semibold))
+              .foregroundStyle(.workbenchSecondary)
             Text(
               store.localSitePreviewRuntimeStatus.recentLogLines.suffix(8).joined(separator: "\n")
             )
-            .font(.caption.monospaced())
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.monospaced())
+            .foregroundStyle(.workbenchSecondary)
             .textSelection(.enabled)
             .lineLimit(8)
           }

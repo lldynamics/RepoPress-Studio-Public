@@ -5,10 +5,15 @@ extension ReleaseRecord {
   static func confirmedWorktreePush(
     result: RepositoryWorktreePublishResult,
     profile: SiteProfile,
-    article: RepositoryWorktreeArticleVerificationTarget?
+    article: RepositoryWorktreeArticleVerificationTarget?,
+    trackingRequested: Bool = false,
+    trackingRequest: ArticlePublishTrackingRequest? = nil
   ) -> ReleaseRecord? {
     guard result.pushed, result.remoteCommitSHA == result.commitSHA else { return nil }
     let target = article.flatMap { result.committedPaths.contains($0.markdownPath) ? $0 : nil }
+    let request = target.flatMap { _ in
+      trackingRequest ?? (trackingRequested ? ArticlePublishTrackingRequest(profile: profile) : nil)
+    }
     return ReleaseRecord(
       kind: .remoteDirectCommit,
       title: CoreL10n.text("仓库推送已确认"),
@@ -30,7 +35,9 @@ extension ReleaseRecord {
       repoName: profile.repoName,
       branchName: result.branch,
       targetBranch: result.branch,
-      commitSHA: result.commitSHA
+      commitSHA: result.commitSHA,
+      articlePublishTrackingRequest: request,
+      localWriteResolutionCutoff: request?.startedAt
     )
   }
 }
@@ -39,13 +46,30 @@ extension WorkbenchStore {
   func recordConfirmedWorktreePush(
     _ result: RepositoryWorktreePublishResult,
     profile: SiteProfile,
-    article: RepositoryWorktreeArticleVerificationTarget?
+    article: RepositoryWorktreeArticleVerificationTarget?,
+    trackingRequested: Bool = false,
+    trackingRequest: ArticlePublishTrackingRequest? = nil
   ) {
     guard
       let record = ReleaseRecord.confirmedWorktreePush(
-        result: result, profile: profile, article: article)
+        result: result, profile: profile, article: article, trackingRequested: trackingRequested,
+        trackingRequest: trackingRequest)
     else {
       return
+    }
+    if let article, let blobOID = article.repositoryBlobOID,
+      let digest = article.sourceDocumentDigest,
+      result.committedPaths.contains(article.markdownPath),
+      let index = publishingStore.drafts.firstIndex(where: {
+        $0.id == article.draftID && $0.belongs(toSiteProfileID: profile.id)
+          && $0.repositoryPath?.normalizedRelativePath() == article.markdownPath
+          && ($0.repositoryBinding?.identity == nil
+            || $0.repositoryBinding?.identity == DraftRepositoryIdentity(profile: profile))
+      })
+    {
+      publishingStore.drafts[index].confirmRepositoryBinding(
+        profile: profile, repositoryPath: article.markdownPath,
+        remoteRevision: blobOID, renderedContentDigest: digest)
     }
     guard
       !releaseRecords.contains(where: {
@@ -55,6 +79,7 @@ extension WorkbenchStore {
     else { return }
     publishingStore.prependReleaseRecord(record)
     save()
+    resumeArticlePublishTracking()
   }
 }
 
@@ -84,7 +109,8 @@ extension RepositoryWorktreeArticleVerificationTarget {
       publicPath: publicPath,
       publicURLText: DeploymentStatusService().publicArticleURL(
         profile: profile, publicPath: publicPath),
-      sourceDocumentDigest: ArticleDraft.repositoryDocumentDigest(document)
+      sourceDocumentDigest: ArticleDraft.repositoryDocumentDigest(document),
+      repositoryBlobOID: entry.blobOID
     )
   }
 }

@@ -168,7 +168,7 @@ struct AssetResourceManagerView: View {
         .font(.workbenchPageTitle)
       Text("扫描全仓库 Markdown 引用，识别孤立图片/附件、失效本地相对路径和可瘦身图片。")
         .font(.workbenchPageSubtitle)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
     }
   }
@@ -224,16 +224,16 @@ struct AssetResourceManagerView: View {
       HStack(alignment: .firstTextBaseline) {
         VStack(alignment: .leading, spacing: 3) {
           Text("当前站点资源")
-            .font(.headline)
+            .font(.workbenchHeadline)
           Text(report.assetRootPath)
-            .font(.caption.monospaced())
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.monospaced())
+            .foregroundStyle(.workbenchSecondary)
             .workbenchTruncatedIdentity(report.assetRootPath, lineLimit: 2)
         }
         Spacer()
         Text(ByteCountFormatter.string(fromByteCount: report.totalByteSize, countStyle: .file))
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospacedDigit())
+          .foregroundStyle(.workbenchSecondary)
       }
 
       LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 10)], spacing: 10) {
@@ -250,7 +250,7 @@ struct AssetResourceManagerView: View {
 
       Text("已扫描 \(report.scannedMarkdownFileCount) 个 Markdown 文件；远程 URL、代码块和行内代码不会被当作本地资源。")
         .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
     }
     .padding(WorkbenchSpacing.content)
@@ -401,7 +401,7 @@ struct AssetResourceManagerView: View {
         }
         Text(detail)
           .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
 
@@ -448,7 +448,7 @@ struct AssetResourceManagerView: View {
           .font(.workbenchSectionTitle)
         Text("选择已导入文章中的断链来预览替换。其他文件可定位后编辑。")
           .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
 
@@ -468,16 +468,16 @@ struct AssetResourceManagerView: View {
                   .foregroundStyle(WorkbenchTheme.warning)
                   .accessibilityHidden(true)
                 Text(reference.rawPath)
-                  .font(.callout.weight(.medium))
+                  .font(.workbenchBody.weight(.medium))
                   .workbenchTruncatedIdentity(reference.rawPath, lineLimit: 2)
                 Spacer()
                 Text(reference.kind.workbenchLocalizedDisplayName)
-                  .font(.caption)
+                  .font(.workbenchMetadata)
                   .foregroundStyle(WorkbenchTheme.warning)
               }
               Text("\(reference.sourceMarkdownPath):\(reference.lineNumber) · \(reference.message)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.workbenchMetadata)
+                .foregroundStyle(.workbenchSecondary)
                 .workbenchTruncatedIdentity(
                   "\(reference.sourceMarkdownPath):\(reference.lineNumber) · \(reference.message)",
                   lineLimit: 2)
@@ -518,14 +518,14 @@ struct AssetResourceManagerView: View {
       if !repairPreviews.isEmpty {
         Divider()
         Text("替换预览")
-          .font(.headline)
+          .font(.workbenchHeadline)
         ForEach(repairPreviews) { preview in
           Toggle(isOn: repairPreviewBinding(for: preview.id)) {
             VStack(alignment: .leading, spacing: 2) {
               Text("\(preview.sourcePath):\(preview.lineNumber)")
               Text("\(preview.oldPath) → \(preview.newPath)")
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
+                .font(.workbenchMetadata.monospaced())
+                .foregroundStyle(.workbenchSecondary)
             }
           }
         }
@@ -538,7 +538,7 @@ struct AssetResourceManagerView: View {
       if let repairMessage {
         Text(repairMessage)
           .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
       if let repairRecoveryDraftID {
         Button("打开版本恢复") {
@@ -1085,7 +1085,7 @@ private struct ImageCompressionAchievementCard: View {
           .fill(WorkbenchTheme.success.opacity(0.18))
           .frame(width: 42, height: 42)
         Image(systemName: "sparkles")
-          .font(.title3)
+          .font(.workbenchTitle3)
           .foregroundStyle(WorkbenchTheme.success)
       }
 
@@ -1093,12 +1093,12 @@ private struct ImageCompressionAchievementCard: View {
         Text(
           "成功为 \(achievement.optimizedCount) 张图片瘦身，节省了 \(ByteCountFormatter.string(fromByteCount: achievement.savedBytes, countStyle: .file)) (\(Int(round(achievement.savedPercentage)))%) 存储空间"
         )
-        .font(.callout.weight(.semibold))
+        .font(.workbenchBody.weight(.semibold))
         .foregroundStyle(WorkbenchTheme.success)
 
         Text("已自动将更优体积的原位替换，优化后未发生体积下降的图片已原样保留。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       Spacer(minLength: 8)
@@ -1107,8 +1107,8 @@ private struct ImageCompressionAchievementCard: View {
         onDismiss()
       } label: {
         Image(systemName: "xmark")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.weight(.semibold))
+          .foregroundStyle(.workbenchSecondary)
           .padding(WorkbenchSpacing.icon)
       }
       .buttonStyle(.plain)
@@ -1143,7 +1143,7 @@ private struct AssetCleanupConfirmationSheet: View {
     VStack(alignment: .leading, spacing: 16) {
       HStack {
         Label("确认清理孤立资源？", systemImage: "trash")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
         Button("取消") {
           onCancel()
@@ -1157,7 +1157,7 @@ private struct AssetCleanupConfirmationSheet: View {
           Image(systemName: "arrow.uturn.backward.circle.fill")
             .foregroundStyle(WorkbenchTheme.success)
           Text("可随时在 macOS 废纸篓恢复")
-            .font(.subheadline.weight(.medium))
+            .font(.workbenchMetadata.weight(.medium))
             .foregroundStyle(WorkbenchTheme.success)
         }
         .padding(.horizontal, WorkbenchSpacing.control)
@@ -1168,29 +1168,29 @@ private struct AssetCleanupConfirmationSheet: View {
         )
 
         Text("以下选中的 \(items.count) 个资源未在任何 Markdown 文章中找到引用。执行后将移入系统废纸篓，不会被永久删除。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       VStack(alignment: .leading, spacing: 6) {
         Text("待清理代表性文件预览（前 \(representativeItems.count) 项）：")
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
 
         VStack(alignment: .leading, spacing: 6) {
           ForEach(representativeItems) { item in
             HStack(spacing: 8) {
               Image(systemName: item.kind.systemImage)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(.workbenchBody)
+                .foregroundStyle(.workbenchSecondary)
                 .frame(width: 20)
 
               VStack(alignment: .leading, spacing: 1) {
                 Text(item.filename)
-                  .font(.caption.weight(.medium))
+                  .font(.workbenchMetadata.weight(.medium))
                   .lineLimit(1)
                 Text(item.repositoryPath)
-                  .font(.caption.monospaced())
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchMetadata.monospaced())
+                  .foregroundStyle(.workbenchSecondary)
                   .lineLimit(1)
               }
 
@@ -1198,7 +1198,7 @@ private struct AssetCleanupConfirmationSheet: View {
 
               Text(ByteCountFormatter.string(fromByteCount: item.byteSize, countStyle: .file))
                 .font(.workbenchMetadata.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.workbenchSecondary)
             }
             .padding(WorkbenchSpacing.icon)
             .background(
@@ -1215,7 +1215,7 @@ private struct AssetCleanupConfirmationSheet: View {
               )
             )
             .font(.workbenchMetadata)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.workbenchSecondary)
             .padding(.leading, WorkbenchSpacing.tight)
           }
         }
@@ -1280,30 +1280,30 @@ private struct AssetResourceManagerRow: View {
   var body: some View {
     HStack(spacing: 10) {
       Image(systemName: item.kind.systemImage)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .frame(width: 22)
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 2) {
         Text(item.filename)
-          .font(.body.weight(.medium))
+          .font(.workbenchBody.weight(.medium))
           .workbenchTruncatedIdentity(item.filename)
         Text(item.repositoryPath)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospaced())
+          .foregroundStyle(.workbenchSecondary)
           .workbenchTruncatedIdentity(item.repositoryPath)
       }
       Spacer(minLength: 8)
       VStack(alignment: .trailing, spacing: 2) {
         Text(ByteCountFormatter.string(fromByteCount: item.byteSize, countStyle: .file))
-          .font(.caption.monospacedDigit())
+          .font(.workbenchMetadata.monospacedDigit())
         if let dimensions = item.dimensions {
           Text(dimensions.workbenchDimensionText)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         } else {
           Text(item.kind.workbenchLocalizedDisplayName)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
     }

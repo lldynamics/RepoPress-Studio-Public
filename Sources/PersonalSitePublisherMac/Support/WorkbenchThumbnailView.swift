@@ -433,7 +433,7 @@ struct WorkbenchThumbnailView: View {
           } else {
             Image(systemName: "photo")
               .font(.system(size: WorkbenchIconSize.section))
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
           }
         }
       }

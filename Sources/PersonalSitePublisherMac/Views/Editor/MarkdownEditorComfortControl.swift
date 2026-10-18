@@ -27,7 +27,7 @@ struct MarkdownEditorComfortControl: View {
           .frame(width: 28, height: 28)
       }
     }
-    .foregroundStyle(.secondary)
+    .foregroundStyle(.workbenchSecondary)
     .help("打开编辑器设置，调整字体、行距、正文宽度与编辑辅助。")
     .accessibilityLabel("编辑器设置")
     .accessibilityIdentifier("markdown-editor-settings")

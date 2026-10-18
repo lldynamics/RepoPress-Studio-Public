@@ -102,9 +102,9 @@ struct LocalContentImportIndexEntry: Codable, Equatable, Sendable {
 }
 
 struct LocalContentImportIndexSnapshot: Codable, Sendable {
-  // Version 5 retains Hugo translationKey in imported drafts. Older cache
-  // entries omitted this front matter field and must be parsed again.
-  static let currentSchemaVersion = 5
+  // Version 6 retains the source envelope and namespace-aware taxonomies.
+  // Older cached drafts must be parsed again before they can be safely saved.
+  static let currentSchemaVersion = 6
 
   var schemaVersion: Int
   var profileID: UUID

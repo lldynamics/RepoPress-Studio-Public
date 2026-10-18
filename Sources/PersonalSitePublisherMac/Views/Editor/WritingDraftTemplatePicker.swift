@@ -37,11 +37,11 @@ struct WritingDraftTemplatePicker: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       Text("从模板新建文章")
-        .font(.title2.weight(.semibold))
+        .font(.workbenchTitle2.weight(.semibold))
 
       Picker("草稿归属", selection: $destination) {
         Text("当前站点：\(initialSiteName)").tag(DraftListContentScope.currentSite)
-        Text("通用草稿").tag(DraftListContentScope.general)
+        Text("仅本地草稿").tag(DraftListContentScope.general)
       }
       .pickerStyle(.segmented)
 
@@ -53,10 +53,10 @@ struct WritingDraftTemplatePicker: View {
       List(templates, selection: $selectedTemplateID) { template in
         VStack(alignment: .leading, spacing: 4) {
           Label(template.title, systemImage: template.systemImage)
-            .font(.headline)
+            .font(.workbenchHeadline)
           Text(template.detail)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
         .padding(.vertical, WorkbenchSpacing.tight)
         .tag(Optional(template.id))
@@ -67,14 +67,14 @@ struct WritingDraftTemplatePicker: View {
       if let selectedTemplate {
         ScrollView {
           Text(selectedTemplate.markdown)
-            .font(.caption.monospaced())
+            .font(.workbenchMetadata.monospaced())
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(height: 110)
         .accessibilityLabel("模板正文预览")
       }
       if let creationError {
-        Text(creationError).font(.caption).foregroundStyle(WorkbenchTheme.warning)
+        Text(creationError).font(.workbenchMetadata).foregroundStyle(WorkbenchTheme.warning)
       }
 
       HStack {

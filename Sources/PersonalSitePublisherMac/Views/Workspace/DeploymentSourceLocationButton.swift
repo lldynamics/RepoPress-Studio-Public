@@ -76,7 +76,7 @@ private struct DeploymentSourcePreview: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       HStack {
-        Text("部署错误源码").font(.headline)
+        Text("部署错误源码").font(.workbenchHeadline)
         Spacer()
         Button("返回部署日志") { dismiss() }
           .keyboardShortcut(.cancelAction)
@@ -84,15 +84,15 @@ private struct DeploymentSourcePreview: View {
       }
       if let document {
         Text("\(document.repositoryPath) · 第 \(document.lineNumber) 行")
-          .font(.callout.monospaced())
+          .font(.workbenchBody.monospaced())
           .textSelection(.enabled)
         Text("显示当前本地文件，可能与日志对应的构建版本不同。此预览不会修改文件。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
         if document.didClampLine {
           Text("日志行号超出当前文件，已定位到最后一行。")
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
         }
         DeploymentSourceTextView(document: document)
           .frame(maxWidth: .infinity, maxHeight: .infinity)

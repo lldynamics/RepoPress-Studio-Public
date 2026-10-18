@@ -14,14 +14,14 @@ struct RepositoryWorktreePushRetryConfirmationView: View {
     VStack(spacing: 0) {
       HStack(spacing: 12) {
         Image(systemName: "arrow.up.circle.fill")
-          .font(.title2)
-          .foregroundStyle(.secondary)
+          .font(.workbenchTitle2)
+          .foregroundStyle(.workbenchSecondary)
         VStack(alignment: .leading, spacing: 3) {
           Text("重试推送本地提交")
-            .font(.headline)
+            .font(.workbenchHeadline)
           Text("不会再次提交文件；只会将下列已有提交以非强制方式推送到原分支。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
         Spacer()
       }
@@ -39,8 +39,8 @@ struct RepositoryWorktreePushRetryConfirmationView: View {
             "确认时会重新验证工作区为空、远端仍是已审阅基线，且远端是本地 HEAD 的祖先。远端分叉时会停止，绝不强制推送。",
             systemImage: "lock.shield"
           )
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
         }
         .padding(WorkbenchSpacing.spacious)
@@ -77,13 +77,14 @@ struct RepositoryWorktreePushRetryConfirmationView: View {
       .padding(WorkbenchSpacing.spacious)
     }
     .frame(minWidth: 620, idealWidth: 700, minHeight: 500, idealHeight: 620)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("publish-worktree-retry-confirmation")
   }
 
   private var targetCard: some View {
     VStack(alignment: .leading, spacing: 9) {
       Label("待推送提交", systemImage: "arrow.triangle.branch")
-        .font(.headline)
+        .font(.workbenchHeadline)
       LabeledContent("分支", value: "origin/\(confirmation.snapshot.branch)")
       LabeledContent(
         "本地版本",
@@ -118,16 +119,16 @@ struct RepositoryWorktreePushRetryConfirmationView: View {
         systemImage: confirmation.safetyReport.warnings.isEmpty
           ? "checkmark.shield.fill" : "exclamationmark.triangle.fill"
       )
-      .font(.headline)
+      .font(.workbenchHeadline)
       ForEach(confirmation.safetyReport.warnings) { warning in
         VStack(alignment: .leading, spacing: 2) {
-          Text(warning.title).font(.callout.weight(.semibold))
-          Text(warning.message).font(.caption).foregroundStyle(.secondary)
+          Text(warning.title).font(.workbenchBody.weight(.semibold))
+          Text(warning.message).font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
         }
       }
       Text(confirmation.sitePreflightResult?.message ?? "尚未生成站点检查证据。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     }
     .padding(WorkbenchSpacing.content)
     .background(
@@ -146,9 +147,9 @@ struct RepositoryWorktreePushRetryConfirmationView: View {
 
   private var historyReview: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Text("全部待推送历史").font(.headline)
+      Text("全部待推送历史").font(.workbenchHeadline)
       Text("推送包含这些提交中的历史内容，包括后来删除或改名的文件。请展开逐项审阅。")
-        .font(.caption).foregroundStyle(.secondary)
+        .font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
       ForEach(confirmation.snapshot.commitReviews) { commit in
         DisclosureGroup(RepositoryWorktreePublishPresentation.shortSHA(commit.commitSHA)) {
           RepositoryWorktreeReviewFileList(entries: commit.entries, reviews: commit.fileReviews)

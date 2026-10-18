@@ -62,7 +62,7 @@ public struct DraftOwnershipTransferService: Sendable {
         draftID: source.id,
         title: CoreL10n.text("文章已属于该位置"),
         message: operation == .moveToGeneral
-          ? CoreL10n.text("所选内容已经是通用草稿。")
+          ? CoreL10n.text("所选内容已经是仅本地草稿。")
           : CoreL10n.text("所选文章已经属于目标站点。")
       )
       items[index].conflicts.append(conflict)
@@ -157,11 +157,11 @@ public struct DraftOwnershipTransferService: Sendable {
     return DraftOwnershipTransferItem(
       draftID: source.id,
       title: source.title.trimmedForPublishing.nilIfEmpty ?? CoreL10n.text("未命名文章"),
-      sourceProfileName: sourceProfile?.name ?? CoreL10n.text("通用草稿"),
+      sourceProfileName: sourceProfile?.name ?? CoreL10n.text("仅本地草稿"),
       sourceMarkdownPath: sourceMarkdownPath,
       sourcePermalink: sourcePermalink,
       targetProfileName: operation == .moveToGeneral
-        ? CoreL10n.text("通用草稿")
+        ? CoreL10n.text("仅本地草稿")
         : (targetProfile?.name ?? CoreL10n.text("不可用站点")),
       targetMarkdownPath: operation == .moveToGeneral ? nil : targetMarkdownPath,
       targetPermalink: operation == .moveToGeneral ? nil : targetPermalink,

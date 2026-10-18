@@ -23,12 +23,12 @@ struct PrivacySettingsCurrentStatusSection: View {
 
       Text(status.detail)
         .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
 
       if !status.activeProtections.isEmpty {
         Text(status.activeProtections.joined(separator: " · "))
           .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
     } header: {
       Text(String(localized: "当前保护状态"))

@@ -61,22 +61,6 @@ extension AIChatContextInspectorView {
           )
         }
       },
-      acceptAutomationStep: { conversationID, messageID, stepID, baseline in
-        Task {
-          _ = await ai.acceptAutomationStep(
-            conversationID: conversationID, messageID: messageID, stepID: stepID,
-            previewBaselineFingerprint: baseline
-          )
-        }
-      },
-      rejectAutomationStep: { conversationID, messageID, stepID, baseline in
-        Task {
-          _ = await ai.rejectAutomationStep(
-            conversationID: conversationID, messageID: messageID, stepID: stepID,
-            previewBaselineFingerprint: baseline
-          )
-        }
-      },
       previewAutomationStep: { conversationID, messageID, stepID in
         ai.automationDraftPreview(
           conversationID: conversationID, messageID: messageID, stepID: stepID)
@@ -84,14 +68,7 @@ extension AIChatContextInspectorView {
       cancelAutomationPlan: { conversationID, messageID in
         ai.cancelAutomationPlan(conversationID: conversationID, messageID: messageID)
       },
-      rollbackAutomationRun: { recordID in _ = ai.rollbackAutomationRun(recordID) },
-      abandonAgentContinuation: {
-        conversationID, messageID, planID, continuationID, expectedRevision in
-        ai.abandonAgentContinuation(
-          conversationID: conversationID, messageID: messageID, planID: planID,
-          continuationID: continuationID, expectedRevision: expectedRevision
-        )
-      }
+      rollbackAutomationRun: { recordID in _ = ai.rollbackAutomationRun(recordID) }
     )
   }
 }

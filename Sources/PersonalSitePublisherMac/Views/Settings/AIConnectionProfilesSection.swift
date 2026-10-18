@@ -18,7 +18,6 @@ struct AIConnectionProfilesSection: View {
   let deletableProfiles: [AIConnectionProfile]
   let presentation: Presentation
   let currentSiteName: String
-  let editSharedConnection: (() -> Void)?
   var subsectionAnchor: SettingsSubsection? = nil
   @State private var profilePendingDeletion: AIConnectionProfile?
   @State private var isDeleteConfirmationPresented = false
@@ -93,8 +92,8 @@ struct AIConnectionProfilesSection: View {
 
     if let selectedProfile {
       Label(selectedProfile.summary, systemImage: "point.3.connected.trianglepath.dotted")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .lineLimit(2)
         .accessibilityIdentifier("settings-site-ai-connection-summary")
     }
@@ -130,11 +129,6 @@ struct AIConnectionProfilesSection: View {
       .accessibilityLabel("为当前站点复制 AI 连接配置")
     }
 
-    if let editSharedConnection {
-      Button("编辑共享连接", action: editSharedConnection)
-        .accessibilityIdentifier("settings-site-ai-edit-shared-connection")
-    }
-
     copyFeedback
   }
 
@@ -158,21 +152,21 @@ struct AIConnectionProfilesSection: View {
 
       VStack(alignment: .leading, spacing: 6) {
         Label("正在编辑“\(selectedProfile.name)”", systemImage: "rectangle.3.group")
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
 
         Label(selectedProfile.summary, systemImage: "point.3.connected.trianglepath.dotted")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .lineLimit(2)
 
         Text("修改服务地址、模型或 API Key 会影响所有引用此档案的站点。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
 
         if let selectedProfileUsage {
           Text(selectedProfileUsage.referencedSitesDescription)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .accessibilityIdentifier("settings-ai-connection-referencing-sites")
         }
       }
@@ -230,8 +224,8 @@ struct AIConnectionProfilesSection: View {
   private var copyFeedback: some View {
     if let copyFeedbackMessage {
       Text(copyFeedbackMessage)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .textSelection(.enabled)
         .accessibilityIdentifier("settings-ai-connection-copy-feedback")
     }

@@ -50,9 +50,7 @@ struct ReleaseHistoryDetailView: View {
             }
             releaseOperationalContent(
               ledger,
-              usesSplitLayout: WorkbenchPageMetrics.usesOperationalSplit(
-                for: geometry.size.width
-              )
+              availableWidth: geometry.size.width
             )
           }
         }
@@ -101,7 +99,7 @@ struct ReleaseHistoryDetailView: View {
   private func releaseHistoryActionMessage(_ feedback: PublishActionFeedback) -> some View {
     Label {
       Text(feedback.message)
-        .font(.callout)
+        .font(.workbenchBody)
         .fixedSize(horizontal: false, vertical: true)
         .textSelection(.enabled)
     } icon: {
@@ -138,11 +136,11 @@ struct ReleaseHistoryDetailView: View {
   private var releaseHistoryHeaderIntroduction: some View {
     VStack(alignment: .leading, spacing: 4) {
       Text("发布历史")
-        .font(.title2.weight(.semibold))
+        .font(.workbenchTitle2.weight(.semibold))
         .accessibilityAddTraits(.isHeader)
       Text("追踪本地写入、Review、线上提交、部署状态和回滚计划。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
     }
   }
@@ -178,13 +176,13 @@ struct ReleaseHistoryDetailView: View {
           } icon: {
             Image(systemName: "arrow.triangle.branch")
           }
-          .font(.callout)
+          .font(.workbenchBody)
           .foregroundStyle(WorkbenchTheme.risk)
           .accessibilityIdentifier("release-history-focused-record-site-changed")
         }
 
         Label(String(localized: "已定位到指定发布记录"), systemImage: "scope")
-          .font(.headline)
+          .font(.workbenchHeadline)
         releaseRecordCard(store.releaseLedgerEntry(for: record))
       }
       .accessibilityElement(children: .contain)
@@ -203,15 +201,15 @@ struct ReleaseHistoryDetailView: View {
   @ViewBuilder
   private func releaseOperationalContent(
     _ ledger: ReleaseLedger,
-    usesSplitLayout: Bool
+    availableWidth: CGFloat
   ) -> some View {
-    if usesSplitLayout {
-      HStack(alignment: .top, spacing: 16) {
+    if WorkbenchPageMetrics.usesOperationalSplit(for: availableWidth) {
+      HStack(alignment: .top, spacing: WorkbenchSpacing.content) {
         releaseMainColumn(ledger)
           .frame(maxWidth: .infinity, alignment: .topLeading)
         releaseDeploymentColumn(ledger)
           .frame(
-            width: WorkbenchPageMetrics.operationalContextWidth,
+            width: WorkbenchPageMetrics.operationalContextWidth(forAvailableWidth: availableWidth),
             alignment: .topLeading
           )
       }
@@ -254,8 +252,8 @@ struct ReleaseHistoryDetailView: View {
         Spacer()
         if !ledger.entries.isEmpty {
           Text("\(ledger.entries.count) 条")
-            .font(.callout.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody.monospacedDigit())
+            .foregroundStyle(.workbenchSecondary)
         }
       }
 
@@ -291,22 +289,22 @@ struct ReleaseHistoryDetailView: View {
       VStack(alignment: .leading, spacing: 6) {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           Label("重复失败", systemImage: "exclamationmark.triangle")
-            .font(.callout.weight(.semibold))
+            .font(.workbenchBody.weight(.semibold))
             .foregroundStyle(WorkbenchTheme.risk)
           Text("\(group.entries.count) 条")
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.monospacedDigit())
+            .foregroundStyle(.workbenchSecondary)
           Spacer(minLength: 8)
           Text("最近：\(group.latestDate.workbenchShortText)")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
         Text(group.cause)
-          .font(.callout.weight(.medium))
+          .font(.workbenchBody.weight(.medium))
           .lineLimit(2)
         Text("受影响：\(group.affectedObjectSummary)")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .lineLimit(1)
       }
 
@@ -369,29 +367,28 @@ struct ReleaseHistoryDetailView: View {
           .frame(width: 18)
 
         VStack(alignment: .leading, spacing: 5) {
-          HStack(alignment: .firstTextBaseline, spacing: 8) {
+          HStack(alignment: .firstTextBaseline, spacing: WorkbenchSpacing.control) {
+            releaseActionPriorityBadge(item.priority)
             Text(item.title)
-              .font(.callout.weight(.medium))
-              .workbenchTruncatedIdentity(item.title)
+              .font(.workbenchBody.weight(.medium))
+              .workbenchTruncatedTitle(item.title)
             Text(item.kind.localizedDisplayName)
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
               .padding(.horizontal, WorkbenchSpacing.icon)
               .padding(.vertical, 2)
               .background(WorkbenchBackgroundStyle.control, in: Capsule())
-            Spacer()
-            releaseActionPriorityBadge(item.priority)
           }
 
           Text(item.summary)
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
             .fixedSize(horizontal: false, vertical: true)
 
           if !item.detail.isEmpty {
             Text(item.detail)
-              .font(.caption.monospaced())
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata.monospaced())
+              .foregroundStyle(.workbenchSecondary)
               .workbenchTruncatedIdentity(item.detail)
           }
         }
@@ -403,7 +400,6 @@ struct ReleaseHistoryDetailView: View {
 
       let entry = store.activeProfileReleaseLedger.entries.first(where: { $0.id == item.recordID })
       releaseActionButtons(item, entry: entry)
-      .controlSize(.regular)
     }
     .padding(WorkbenchSpacing.card)
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
@@ -413,7 +409,7 @@ struct ReleaseHistoryDetailView: View {
 
   private func releaseActionPriorityBadge(_ priority: ReleaseLedgerActionPriority) -> some View {
     Text(priority.localizedDisplayName)
-      .font(.callout.weight(.bold))
+      .font(.workbenchBody.weight(.bold))
       .foregroundStyle(ReleaseHistoryStatusStyle.priorityForeground(priority))
       .padding(.horizontal, WorkbenchSpacing.control)
       .padding(.vertical, WorkbenchSpacing.tight)
@@ -437,7 +433,7 @@ struct ReleaseHistoryDetailView: View {
       VStack(alignment: .leading, spacing: 6) {
         ForEach(item.commandLines, id: \.self) { command in
           Text(command)
-            .font(.callout.monospaced())
+            .font(.workbenchBody.monospaced())
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
         }
@@ -445,33 +441,49 @@ struct ReleaseHistoryDetailView: View {
       .padding(.top, WorkbenchSpacing.icon)
     } label: {
       Label("高级：命令行（\(item.commandLines.count) 条）", systemImage: "terminal")
-        .font(.callout.weight(.medium))
+        .font(.workbenchBody.weight(.medium))
     }
     .accessibilityIdentifier("release-action-\(item.id)-advanced-commands")
     .accessibilityLabel("高级命令行，\(item.commandLines.count) 条")
   }
 
   @ViewBuilder
-  private func releaseActionButtons(_ item: ReleaseLedgerActionItem, entry: ReleaseLedgerEntry?) -> some View {
-    // Compact, content-sized buttons match the site maintenance actions.
-    WorkbenchFlowLayout(horizontalSpacing: 8, verticalSpacing: 8) {
+  private func releaseActionButtons(
+    _ item: ReleaseLedgerActionItem,
+    entry: ReleaseLedgerEntry?
+  ) -> some View {
+    let primary = ReleaseHistoryActionPresentation.primaryAction(
+      canResumeReview: item.kind == .recoverPartialRemotePublish
+        && (entry.map { canResumeRemoteReview($0.record) } ?? false),
+      canRecheckDeployment: entry != nil && item.kind.supportsDeploymentRecheck,
+      canOpenRemote: item.remoteURL.flatMap(URL.init(string:)) != nil,
+      canCopyCommand: !item.commandLines.isEmpty,
+      canCopyRecovery: entry != nil
+    )
+    WorkbenchFlowLayout(
+      horizontalSpacing: WorkbenchSpacing.control,
+      verticalSpacing: WorkbenchSpacing.control
+    ) {
       if !item.commandLines.isEmpty {
         Button {
           copy(item.commandLines.joined(separator: "\n"), message: String(localized: "已复制发布处理命令。"))
         } label: {
           releaseHistoryActionLabel("复制命令", systemImage: "doc.on.doc")
         }
+        .modifier(ReleaseHistoryActionButtonStyle(action: .copyCommand, primaryAction: primary))
         .accessibilityIdentifier("release-action-\(item.id)-copy-command")
       }
 
       if let entry {
         if item.kind == .recoverPartialRemotePublish,
-           canResumeRemoteReview(entry.record) {
+          canResumeRemoteReview(entry.record)
+        {
           Button {
             pendingDangerousReleaseAction = .resumeReview(entry.record)
           } label: {
             releaseHistoryActionLabel("继续创建 PR/MR", systemImage: "arrow.triangle.pull")
           }
+          .modifier(ReleaseHistoryActionButtonStyle(action: .resumeReview, primaryAction: primary))
           .disabled(store.isRemoteRepositoryPublishing)
           .accessibilityIdentifier("release-action-\(item.id)-resume-review")
         }
@@ -481,6 +493,9 @@ struct ReleaseHistoryDetailView: View {
             entry,
             accessibilityIdentifier: "release-action-\(item.id)-check-deployment"
           )
+          .modifier(
+            ReleaseHistoryActionButtonStyle(action: .recheckDeployment, primaryAction: primary)
+          )
         }
 
         Button {
@@ -488,6 +503,7 @@ struct ReleaseHistoryDetailView: View {
         } label: {
           releaseHistoryActionLabel("复制恢复包", systemImage: "shippingbox")
         }
+        .modifier(ReleaseHistoryActionButtonStyle(action: .copyRecovery, primaryAction: primary))
         .accessibilityIdentifier("release-action-\(item.id)-copy-recovery")
       }
 
@@ -497,36 +513,19 @@ struct ReleaseHistoryDetailView: View {
         } label: {
           releaseHistoryActionLabel("打开远端", systemImage: "arrow.up.right.square")
         }
+        .modifier(ReleaseHistoryActionButtonStyle(action: .openRemote, primaryAction: primary))
         .accessibilityIdentifier("release-action-\(item.id)-open-remote")
       }
     }
-    .buttonStyle(.bordered)
-    .controlSize(.small)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("release-action-\(item.id)-buttons")
   }
 
-  private func deploymentRecheckButton(
-    _ entry: ReleaseLedgerEntry,
-    accessibilityIdentifier: String
-  ) -> some View {
-    Button {
-      Task {
-        await store.refreshDeploymentStatus(for: entry.record)
-      }
-    } label: {
-      releaseHistoryActionLabel("重试检查", systemImage: "checkmark.icloud")
-    }
-    .disabled(store.isDeploymentStatusChecking || !store.canCheckDeploymentStatus(for: entry.record))
-    .accessibilityIdentifier(accessibilityIdentifier)
-  }
-
-
   func deploymentStatusHistoryTimeline(_ history: [DeploymentStatusSnapshot]) -> some View {
     VStack(alignment: .leading, spacing: 7) {
       Label("最近校验", systemImage: "clock.arrow.circlepath")
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.weight(.semibold))
+        .foregroundStyle(.workbenchSecondary)
 
       ForEach(history.prefix(4)) { snapshot in
         HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -534,15 +533,15 @@ struct ReleaseHistoryDetailView: View {
             .foregroundStyle(ReleaseHistoryStatusStyle.deploymentForeground(snapshot.level))
             .frame(width: 16)
           Text(snapshot.checkedAt.workbenchShortText)
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.secondary)
-            .frame(width: 74, alignment: .leading)
+            .font(.workbenchMetadata.monospacedDigit())
+            .foregroundStyle(.workbenchSecondary)
+            .fixedSize(horizontal: true, vertical: false)
           Text(snapshot.level.localizedDisplayName)
-            .font(.caption.weight(.medium))
+            .font(.workbenchMetadata.weight(.medium))
             .foregroundStyle(ReleaseHistoryStatusStyle.deploymentForeground(snapshot.level))
           Text(snapshot.message)
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
             .fixedSize(horizontal: false, vertical: true)
           Spacer(minLength: 0)
         }
@@ -555,8 +554,8 @@ struct ReleaseHistoryDetailView: View {
   func deploymentPostPublishChecklist(_ deploymentStatus: DeploymentStatusSnapshot) -> some View {
     VStack(alignment: .leading, spacing: 7) {
       Label("发布后校验清单", systemImage: "checklist.checked")
-        .font(.callout.weight(.semibold))
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody.weight(.semibold))
+        .foregroundStyle(.workbenchSecondary)
 
       ForEach(deploymentStatus.postPublishCheckItems) { item in
         HStack(alignment: .top, spacing: 8) {
@@ -565,15 +564,15 @@ struct ReleaseHistoryDetailView: View {
             .frame(width: 16)
           VStack(alignment: .leading, spacing: 2) {
             Text(item.title)
-              .font(.callout.weight(.medium))
+              .font(.workbenchBody.weight(.medium))
             Text(item.message)
-              .font(.callout)
-              .foregroundStyle(.secondary)
+              .font(.workbenchBody)
+              .foregroundStyle(.workbenchSecondary)
               .fixedSize(horizontal: false, vertical: true)
             if let urlText = item.urlText?.nilIfEmpty {
               Text(urlText)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
+                .font(.workbenchMetadata.monospaced())
+                .foregroundStyle(.workbenchSecondary)
                 .workbenchTruncatedIdentity(urlText)
             }
           }
@@ -592,8 +591,8 @@ struct ReleaseHistoryDetailView: View {
         .font(.workbenchSectionTitle)
         .accessibilityAddTraits(.isHeader)
       Text(store.deploymentPollingState.message)
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
 
       HStack(spacing: 8) {
         Button {
@@ -629,14 +628,14 @@ struct ReleaseHistoryDetailView: View {
           Label("上次检查：\(lastRunAt.workbenchShortText)", systemImage: "clock.arrow.circlepath")
         }
       }
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
 
       if !store.deploymentPollingState.checkedRecords.isEmpty {
         VStack(alignment: .leading, spacing: 8) {
           Label("最近检查记录", systemImage: "checkmark.icloud")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.weight(.semibold))
+            .foregroundStyle(.workbenchSecondary)
 
           ForEach(store.deploymentPollingState.checkedRecords.prefix(5)) { checkedRecord in
             HStack(alignment: .top, spacing: 8) {
@@ -647,24 +646,24 @@ struct ReleaseHistoryDetailView: View {
                 .frame(width: 16)
               VStack(alignment: .leading, spacing: 3) {
                 Text(checkedRecord.title)
-                  .font(.callout.weight(.semibold))
-                  .workbenchTruncatedIdentity(checkedRecord.title)
+                  .font(.workbenchBody.weight(.semibold))
+                  .workbenchTruncatedTitle(checkedRecord.title)
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                   Text(checkedRecord.provider.localizedDisplayName)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.workbenchMetadata)
+                    .foregroundStyle(.workbenchSecondary)
                   Text(checkedRecord.level.localizedDisplayName)
-                    .font(.caption.weight(.medium))
+                    .font(.workbenchMetadata.weight(.medium))
                     .foregroundStyle(
                       ReleaseHistoryStatusStyle.deploymentForeground(checkedRecord.level)
                     )
                   Text(checkedRecord.checkedAt.workbenchShortText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.workbenchMetadata)
+                    .foregroundStyle(.workbenchSecondary)
                 }
                 Text(checkedRecord.message)
-                  .font(.callout)
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchBody)
+                  .foregroundStyle(.workbenchSecondary)
                   .fixedSize(horizontal: false, vertical: true)
               }
               Spacer(minLength: 0)
@@ -685,9 +684,9 @@ struct ReleaseHistoryDetailView: View {
   func metadataRow(_ title: LocalizedStringKey, _ value: String) -> some View {
     GridRow {
       Text(title)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       Text(value)
-        .font(.callout.monospaced())
+        .font(.workbenchBody.monospaced())
         .workbenchTruncatedIdentity(value)
     }
   }
@@ -695,19 +694,12 @@ struct ReleaseHistoryDetailView: View {
   func metadataTextRow(_ title: LocalizedStringKey, _ value: String) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
       Text(title)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
       Text(value)
-        .font(.caption.monospaced())
+        .font(.workbenchMetadata.monospaced())
         .workbenchTruncatedIdentity(value)
     }
-  }
-
-  private func releaseHistoryActionLabel(
-    _ title: LocalizedStringKey,
-    systemImage: String
-  ) -> some View {
-    Label(title, systemImage: systemImage)
   }
 
   func copy(_ value: String, message: String) {

@@ -16,7 +16,7 @@ final class EditorAndRSSSettingsTests: XCTestCase {
     ]
 
     XCTAssertEqual(Set(keys).count, keys.count)
-    XCTAssertEqual(MarkdownEditorComfortConfiguration.defaultFontSize, 14)
+    XCTAssertEqual(MarkdownEditorComfortConfiguration.defaultFontSize, 16)
     XCTAssertEqual(MarkdownEditorComfortConfiguration.defaultLineSpacing, 4)
     XCTAssertEqual(MarkdownEditorComfortConfiguration.defaultBodyWidth, 720)
   }

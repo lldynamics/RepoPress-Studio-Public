@@ -38,54 +38,6 @@ final class WorkbenchAgentReviewDecisionTests: XCTestCase {
     XCTAssertTrue(legacyDecoded.reviewDecisions.isEmpty)
   }
 
-  func testAcceptIsRetiredAndLeavesReviewHistoryAndDraftUntouched() async throws {
-    let store = try TestWorkbenchFactory.makeStore(prefix: "AgentReviewAcceptRetired")
-    let draft = try XCTUnwrap(store.selectedDraft)
-    let fixture = try installPendingReview(in: store, draft: draft, replacementBody: "不得应用")
-    let beforeMessage = try message(
-      fixture.messageID, conversationID: fixture.conversationID, in: store)
-    let beforeDraft = try XCTUnwrap(store.drafts.first(where: { $0.id == draft.id }))
-    let beforeVersions = store.versions(for: draft.id).count
-    let beforeRuns = store.automationRunRecords
-
-    let result = await store.acceptAutomationStep(
-      conversationID: fixture.conversationID,
-      messageID: fixture.messageID,
-      stepID: fixture.stepID,
-      previewBaselineFingerprint: fixture.baseline
-    )
-
-    XCTAssertNil(result)
-    XCTAssertEqual(store.drafts.first(where: { $0.id == draft.id }), beforeDraft)
-    XCTAssertEqual(store.versions(for: draft.id).count, beforeVersions)
-    XCTAssertEqual(store.automationRunRecords, beforeRuns)
-    XCTAssertEqual(
-      try message(fixture.messageID, conversationID: fixture.conversationID, in: store),
-      beforeMessage)
-  }
-
-  func testRejectIsRetiredAndLeavesReviewHistoryAndDraftUntouched() async throws {
-    let store = try TestWorkbenchFactory.makeStore(prefix: "AgentReviewRejectRetired")
-    let draft = try XCTUnwrap(store.selectedDraft)
-    let fixture = try installPendingReview(in: store, draft: draft, replacementBody: "不得拒绝写回")
-    let beforeMessage = try message(
-      fixture.messageID, conversationID: fixture.conversationID, in: store)
-    let beforeRuns = store.automationRunRecords
-
-    let result = await store.rejectAutomationStep(
-      conversationID: fixture.conversationID,
-      messageID: fixture.messageID,
-      stepID: fixture.stepID,
-      previewBaselineFingerprint: fixture.baseline
-    )
-
-    XCTAssertFalse(result)
-    XCTAssertEqual(store.automationRunRecords, beforeRuns)
-    XCTAssertEqual(
-      try message(fixture.messageID, conversationID: fixture.conversationID, in: store),
-      beforeMessage)
-  }
-
   func testExecuteRejectsRetiredAgentRecordWithoutChangingHistory() async throws {
     let store = try TestWorkbenchFactory.makeStore(prefix: "AgentReviewExecuteRetired")
     let draft = try XCTUnwrap(store.selectedDraft)
@@ -133,7 +85,6 @@ final class WorkbenchAgentReviewDecisionTests: XCTestCase {
     XCTAssertNotEqual(branch.id, fixture.conversationID)
 
     let copiedMessage = try message(fixture.messageID, conversationID: branch.id, in: store)
-    XCTAssertNil(copiedMessage.agentContinuation)
     XCTAssertEqual(copiedMessage.automationPlan?.steps.first?.status, .cancelled)
     XCTAssertEqual(copiedMessage.toolRuns.first?.status, .cancelled)
 
@@ -173,10 +124,10 @@ final class WorkbenchAgentReviewDecisionTests: XCTestCase {
       toolRuns: [
         WorkbenchAIAgentToolRunRecord(
           toolCallID: "tool-\(step.id.uuidString)",
-          toolID: AIAgentToolID.replaceBody,
+          toolID: AIAgentToolID("workbench/replaceBody"),
           modelToolName: WorkbenchAutomationCommandID.replaceBody.rawValue,
           executionPolicy: .requiresConfirmation,
-          catalogRevision: WorkbenchAIAgentToolInvocation.legacyCatalogRevision,
+          catalogRevision: WorkbenchAIAgentToolRunRecord.legacyCatalogRevision,
           status: .awaitingConfirmation,
           summary: "等待用户确认",
           correlationID: step.id,

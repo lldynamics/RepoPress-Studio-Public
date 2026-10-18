@@ -98,7 +98,7 @@ struct RepositoryImageBrowserView: View {
     VStack(alignment: .leading, spacing: 3) {
       Text(session.title).font(.workbenchPageTitle).lineLimit(1)
       Text("\(session.visibleAssets.count) 张图片")
-        .font(.workbenchSupporting).foregroundStyle(.secondary)
+        .font(.workbenchSupporting).foregroundStyle(.workbenchSecondary)
     }
   }
 
@@ -121,7 +121,7 @@ struct RepositoryImageBrowserView: View {
           }
         }
       }
-      .font(.workbenchSupporting).foregroundStyle(.secondary)
+      .font(.workbenchSupporting).foregroundStyle(.workbenchSecondary)
     }
     .accessibilityLabel("图片目录路径")
   }
@@ -323,14 +323,14 @@ struct RepositoryImageBrowserView: View {
     HStack(spacing: 10) {
       if session.isLoading || session.isProjecting { ProgressView().controlSize(.small) }
       Text("\(session.visibleAssets.count) 张图片 · 已选择 \(session.selectedPaths.count) 张")
-        .font(.workbenchSupporting).foregroundStyle(.secondary)
+        .font(.workbenchSupporting).foregroundStyle(.workbenchSecondary)
         .accessibilityIdentifier("repository-image-selection-status")
       Spacer(minLength: 8)
       if session.displayMode == .grid {
-        Image(systemName: "square.grid.3x3").foregroundStyle(.secondary)
+        Image(systemName: "square.grid.3x3").foregroundStyle(.workbenchSecondary)
         Slider(value: $session.thumbnailSize, in: 140...300)
           .frame(width: 100).accessibilityLabel("缩略图大小")
-        Image(systemName: "square.grid.2x2").foregroundStyle(.secondary)
+        Image(systemName: "square.grid.2x2").foregroundStyle(.workbenchSecondary)
       }
     }
     .padding(.horizontal, WorkbenchSpacing.page).padding(.vertical, WorkbenchSpacing.control)

@@ -57,7 +57,7 @@ final class SEOAuditServiceTests: XCTestCase {
 
     XCTAssertTrue(report.findings.contains { $0.title == "标题偏短" && $0.severity == .warning })
     XCTAssertTrue(report.findings.contains { $0.title == "摘要为空" && $0.severity == .warning })
-    XCTAssertTrue(report.findings.contains { $0.title == "正文缺少 H1" && $0.severity == .warning })
+    XCTAssertTrue(report.findings.contains { $0.title == "无法确认页面 H1" && $0.severity == .warning })
     XCTAssertTrue(report.findings.contains { $0.title == "缺少预览图" && $0.severity == .warning })
     XCTAssertTrue(report.findings.contains { $0.title == "标签为空" && $0.severity == .warning })
   }
@@ -110,6 +110,26 @@ final class SEOAuditServiceTests: XCTestCase {
       })
   }
 
+  func testKnownThemeTitleH1AvoidsMissingBodyH1Warning() {
+    var profile = SiteProfile.defaultProfile
+    profile.themeProvidesTitleH1 = true
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "主题提供页面标题",
+      slug: "theme-title-h1",
+      tags: ["SEO"],
+      summary: "这是一段足够长的摘要，用于验证主题已知提供 H1 时正文无需重复添加一级标题。",
+      bodyMarkdown: "正文直接从导语开始。"
+    )
+
+    let report = SEOAuditService().report(draft: draft, profile: profile)
+
+    XCTAssertFalse(report.findings.contains { $0.title == "页面缺少 H1" })
+    XCTAssertFalse(report.findings.contains { $0.title == "无法确认页面 H1" })
+    XCTAssertTrue(
+      report.findings.contains { $0.title == "主题提供页面 H1" && $0.severity == .info })
+  }
+
   func testDuplicateH1AndTitleDoesNotProduceWarningWhenDisabled() {
     var profile = SiteProfile.defaultProfile
     profile.resolvedWarnsWhenBodyH1DuplicatesTitle = false
@@ -134,12 +154,19 @@ final class SEOAuditServiceTests: XCTestCase {
       JSONSerialization.jsonObject(with: encoded) as? [String: Any]
     )
     object.removeValue(forKey: "warnsWhenBodyH1DuplicatesTitle")
+    object.removeValue(forKey: "themeProvidesTitleH1")
+    object.removeValue(forKey: "defaultSocialImagePath")
+    object.removeValue(forKey: "defaultSocialImageAltText")
+    object.removeValue(forKey: "seoArticleSocialImagePreferences")
 
     let legacyData = try JSONSerialization.data(withJSONObject: object)
     let decoded = try JSONDecoder.workbench.decode(SiteProfile.self, from: legacyData)
 
     XCTAssertNil(decoded.warnsWhenBodyH1DuplicatesTitle)
     XCTAssertTrue(decoded.resolvedWarnsWhenBodyH1DuplicatesTitle)
+    XCTAssertNil(decoded.themeProvidesTitleH1)
+    XCTAssertNil(decoded.resolvedDefaultSocialImagePath)
+    XCTAssertNil(decoded.seoArticleSocialImagePreferences)
   }
 
   func testHugoThemeTitleHeadingControlsAutomaticDuplicateWarning() throws {
@@ -158,19 +185,25 @@ final class SEOAuditServiceTests: XCTestCase {
     try "<article><h1>{{ .Title }}</h1></article>".write(
       to: template, atomically: true, encoding: .utf8)
     let detector = ThemeTitleH1Detector()
-    XCTAssertTrue(detector.cachedOrDetect(profile: profile, repositoryRevision: UUID()) ?? false)
+    let providesH1 = detector.cachedOrDetect(profile: profile, repositoryRevision: UUID())
+    XCTAssertTrue(providesH1 ?? false)
     XCTAssertTrue(profile.resolvedWarnsWhenBodyH1DuplicatesTitle)
+    profile.themeProvidesTitleH1 = providesH1
     XCTAssertTrue(hasDuplicateTitleWarning(draft: draft, profile: profile))
 
     try "<article><h2>{{ .Title }}</h2></article>".write(
       to: template, atomically: true, encoding: .utf8)
-    // The view-facing getter keeps the last value until background refresh.
     XCTAssertTrue(profile.resolvedWarnsWhenBodyH1DuplicatesTitle)
-    XCTAssertFalse(detector.cachedOrDetect(profile: profile, repositoryRevision: UUID()) ?? true)
-    XCTAssertFalse(profile.resolvedWarnsWhenBodyH1DuplicatesTitle)
+    profile.themeProvidesTitleH1 = nil
+    let doesNotProvideH1 = detector.cachedOrDetect(profile: profile, repositoryRevision: UUID())
+    XCTAssertFalse(doesNotProvideH1 ?? true)
+    XCTAssertTrue(profile.resolvedWarnsWhenBodyH1DuplicatesTitle)
+    profile.themeProvidesTitleH1 = doesNotProvideH1
     XCTAssertFalse(hasDuplicateTitleWarning(draft: draft, profile: profile))
 
     profile.resolvedWarnsWhenBodyH1DuplicatesTitle = true
+    XCTAssertFalse(hasDuplicateTitleWarning(draft: draft, profile: profile))
+    profile.themeProvidesTitleH1 = true
     XCTAssertTrue(hasDuplicateTitleWarning(draft: draft, profile: profile))
     profile.resolvedWarnsWhenBodyH1DuplicatesTitle = false
     XCTAssertFalse(hasDuplicateTitleWarning(draft: draft, profile: profile))
@@ -202,7 +235,7 @@ final class SEOAuditServiceTests: XCTestCase {
     XCTAssertTrue(results.allSatisfy { !$0 })
   }
 
-  func testUnknownThemeLayoutKeepsLegacyDefaultEnabled() throws {
+  func testUnknownThemeLayoutKeepsConservativeAdvisoryWithoutInventingKnownFact() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(
       "SEOAuditUnknownH1-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: root) }
@@ -214,9 +247,91 @@ final class SEOAuditServiceTests: XCTestCase {
     let profile = SiteProfile(
       name: "Zola 主题站点", siteKind: .zola, localRepositoryRootPath: root.path)
 
+    let resolution = await profile.resolveThemeTitleH1(repositoryRevision: UUID())
+
+    XCTAssertNil(resolution.providesTitleH1)
+    XCTAssertEqual(resolution.source, .unknown)
     XCTAssertTrue(profile.resolvedWarnsWhenBodyH1DuplicatesTitle)
     XCTAssertTrue(
       hasDuplicateTitleWarning(draft: duplicateTitleDraft(profile: profile), profile: profile))
+  }
+
+  @MainActor
+  func testSynchronousStoreReportUsesOnlyMatchingCompletedThemeCacheAndExplicitOverride() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "SEOAuditSynchronousCache-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let template = root.appendingPathComponent("layouts/_default/single.html")
+    try FileManager.default.createDirectory(
+      at: template.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try "<article><h2>{{ .Title }}</h2></article>".write(
+      to: template, atomically: true, encoding: .utf8)
+
+    let persistenceURL = root.appendingPathComponent("workbench.json")
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      safeMode: true
+    )
+    store.updateActiveProfile { profile in
+      profile.siteKind = .hugo
+      profile.localRepositoryRootPath = root.path
+      profile.themeProvidesTitleH1 = nil
+    }
+    var draft = try XCTUnwrap(store.selectedDraft)
+    draft.title = "同步 SEO 报告"
+    draft.bodyMarkdown = "正文没有一级标题。"
+    let profile = store.profile(for: draft)
+    let currentRevision = store.repositoryReportRevision
+    let staleRevision = UUID()
+    let detector = ThemeTitleH1Detector()
+
+    XCTAssertFalse(
+      detector.cachedOrDetect(profile: profile, repositoryRevision: staleRevision) ?? true)
+    XCTAssertNil(detector.cachedResult(profile: profile, repositoryRevision: currentRevision))
+    let unknownReport = store.seoReport(for: draft)
+    XCTAssertTrue(unknownReport.findings.contains { $0.title == "无法确认页面 H1" })
+    XCTAssertFalse(unknownReport.findings.contains { $0.title == "页面缺少 H1" })
+
+    XCTAssertFalse(
+      detector.cachedOrDetect(profile: profile, repositoryRevision: currentRevision) ?? true)
+    try FileManager.default.removeItem(at: template)
+    XCTAssertFalse(
+      store.seoReport(for: draft).findings.contains { $0.title == "无法确认页面 H1" })
+    XCTAssertTrue(
+      store.seoReport(for: draft).findings.contains { $0.title == "页面缺少 H1" })
+
+    store.setSEOThemeProvidesTitleH1(true, forProfileID: profile.id)
+    let explicitReport = store.seoReport(for: draft)
+    XCTAssertTrue(explicitReport.findings.contains { $0.title == "主题提供页面 H1" })
+    XCTAssertFalse(explicitReport.findings.contains { $0.title == "页面缺少 H1" })
+  }
+
+  func testSynchronousThemeCacheReadRejectsStaleRevisionAndPreservesUnknown() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "SEOAuditRevisionCache-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let template = root.appendingPathComponent("templates/page.html")
+    try FileManager.default.createDirectory(
+      at: template.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try "<article><h2>{{ page.title }}</h2></article>".write(
+      to: template, atomically: true, encoding: .utf8)
+    let profile = SiteProfile(
+      name: "缓存 revision 站点", siteKind: .zola, localRepositoryRootPath: root.path)
+    let completedRevision = UUID()
+    let staleRevision = UUID()
+    let detector = ThemeTitleH1Detector()
+
+    XCTAssertFalse(
+      detector.cachedOrDetect(profile: profile, repositoryRevision: completedRevision) ?? true)
+    XCTAssertEqual(
+      detector.cachedResult(profile: profile, repositoryRevision: completedRevision), false)
+    XCTAssertNil(detector.cachedResult(profile: profile, repositoryRevision: staleRevision))
+
+    try "{% include \"article-title.html\" %}".write(
+      to: template, atomically: true, encoding: .utf8)
+    XCTAssertNil(detector.cachedOrDetect(profile: profile, repositoryRevision: staleRevision))
+    XCTAssertNil(detector.cachedResult(profile: profile, repositoryRevision: staleRevision))
+    XCTAssertNil(detector.cachedResult(profile: profile, repositoryRevision: completedRevision))
   }
 
   private func duplicateTitleDraft(profile: SiteProfile) -> ArticleDraft {

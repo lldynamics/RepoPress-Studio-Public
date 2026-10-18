@@ -34,10 +34,10 @@ struct WorkspaceBackupArticleSelectionView: View {
       HStack {
         VStack(alignment: .leading, spacing: 4) {
           Text("选择文章恢复")
-            .font(.title2.weight(.semibold))
+            .font(.workbenchTitle2.weight(.semibold))
           Text(backupURL.lastPathComponent)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .textSelection(.enabled)
         }
         Spacer()
@@ -45,9 +45,9 @@ struct WorkspaceBackupArticleSelectionView: View {
       }
 
       if let selectionPreview {
-        Text("只会读取所选文章的当前版本，并将其恢复为新建的通用草稿；现有文章、设置和历史记录不会改变。缺失附件会保留元数据。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+        Text("只会读取所选文章的当前版本，并将其恢复为新建的仅本地草稿；现有文章、设置和历史记录不会改变。缺失附件会保留元数据。")
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
 
         HStack(spacing: 12) {
@@ -58,7 +58,7 @@ struct WorkspaceBackupArticleSelectionView: View {
           Button("清空") { selectedDraftIDs.removeAll() }
             .disabled(selectedDraftIDs.isEmpty || isRestoring || successMessage != nil)
         }
-        .font(.callout)
+        .font(.workbenchBody)
 
         if selectionPreview.articles.isEmpty {
           ContentUnavailableView("备份中没有可恢复的文章", systemImage: "doc.text.magnifyingglass")
@@ -79,7 +79,7 @@ struct WorkspaceBackupArticleSelectionView: View {
                     VStack(alignment: .leading, spacing: 3) {
                       Text(article.title).frame(maxWidth: .infinity, alignment: .leading)
                       Text(attachmentSummary(for: article))
-                        .font(.caption)
+                        .font(.workbenchMetadata)
                         .foregroundStyle(
                           article.unresolvedAttachmentCount > 0
                             ? WorkbenchTheme.warning : .secondary)
@@ -215,7 +215,7 @@ struct WorkspaceBackupArticleSelectionView: View {
           selectedDraftIDs: selectedIDs
         )
         guard !Task.isCancelled else { return }
-        successMessage = String(format: String(localized: "已恢复 %@ 篇文章为新建通用草稿。"), count.formatted())
+        successMessage = String(format: String(localized: "已恢复 %@ 篇文章为新建仅本地草稿。"), count.formatted())
       } catch {
         if !Task.isCancelled { errorMessage = localizedError(error) }
       }
@@ -306,9 +306,9 @@ struct WorkspaceExchangeRestorePreviewSheet: View {
     let validation = pathValidation
     return VStack(alignment: .leading, spacing: 16) {
       Text("跨端交换文件预览")
-        .font(.title2.weight(.semibold))
+        .font(.workbenchTitle2.weight(.semibold))
       Text("文件会作为新草稿追加。重复导入也会创建新副本；现有草稿和站点配置不会被覆盖。")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
 
       Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 8) {
         metric("站点配置", value: preview.package.payload.profiles.count)
@@ -334,7 +334,7 @@ struct WorkspaceExchangeRestorePreviewSheet: View {
 
       if !sourceProfileIDs.isEmpty {
         Text("为每个来源配置选择处理方式")
-          .font(.headline)
+          .font(.workbenchHeadline)
         ScrollView {
           VStack(alignment: .leading, spacing: 12) {
             ForEach(sourceProfileIDs, id: \.self) { sourceID in
@@ -353,26 +353,26 @@ struct WorkspaceExchangeRestorePreviewSheet: View {
       }
       if !editableDrafts.isEmpty {
         Text("调整重复的发布路径")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Text("以下草稿在所选目标站点生成了相同发布路径。请修改 Slug，直到冲突消失；原有文章不会被覆盖。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
         ScrollView {
           LazyVStack(alignment: .leading, spacing: 12) {
             ForEach(editableDrafts, id: \.id) { draft in
               let conflict = conflictsByDraftID[draft.id]
               VStack(alignment: .leading, spacing: 4) {
                 Text(draft.title.isEmpty ? String(localized: "未命名文章") : draft.title)
-                  .font(.subheadline.weight(.semibold))
+                  .font(.workbenchMetadata.weight(.semibold))
                 if let conflict {
                   Text("\(conflict.destinationProfileName) · \(conflict.path)")
-                    .font(.caption.monospaced())
+                    .font(.workbenchMetadata.monospaced())
                     .foregroundStyle(.orange)
                     .textSelection(.enabled)
                 } else {
                   Text("发布路径冲突已解决")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.workbenchMetadata)
+                    .foregroundStyle(.workbenchSecondary)
                 }
                 TextField("新 Slug", text: slugBinding(for: draft))
                   .textFieldStyle(.roundedBorder)
@@ -425,14 +425,14 @@ struct WorkspaceExchangeRestorePreviewSheet: View {
 
   private func metric(_ title: LocalizedStringKey, value: Int) -> some View {
     GridRow {
-      Text(title).foregroundStyle(.secondary)
+      Text(title).foregroundStyle(.workbenchSecondary)
       Text(value.formatted()).monospacedDigit()
     }
   }
 
   private func metric(_ title: LocalizedStringKey, detail: String) -> some View {
     GridRow {
-      Text(title).foregroundStyle(.secondary)
+      Text(title).foregroundStyle(.workbenchSecondary)
       Text(detail).monospacedDigit()
     }
   }
@@ -442,15 +442,15 @@ struct WorkspaceExchangeRestorePreviewSheet: View {
     let source = profileByID[sourceID]
     VStack(alignment: .leading, spacing: 5) {
       Text(source?.name ?? "包中未包含来源配置")
-        .font(.subheadline.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
       if let source {
         Text("\(source.siteKind) · \(source.repoOwner)/\(source.repoName) · \(source.branch)")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       } else {
         Text(sourceID.uuidString)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospaced())
+          .foregroundStyle(.workbenchSecondary)
       }
       Picker("目标配置", selection: choiceBinding(for: sourceID)) {
         Text("请选择…").tag(ProfileChoice.choose)
@@ -485,8 +485,8 @@ struct WorkspaceExchangeRestorePreviewSheet: View {
 
   private func warning(_ message: String) -> some View {
     Label(message, systemImage: "info.circle")
-      .font(.callout)
-      .foregroundStyle(.secondary)
+      .font(.workbenchBody)
+      .foregroundStyle(.workbenchSecondary)
       .fixedSize(horizontal: false, vertical: true)
   }
 

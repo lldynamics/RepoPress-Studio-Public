@@ -6,14 +6,14 @@ struct WorkbenchDisclosureGroupStyle: DisclosureGroupStyle {
   let toggleIdentifier: String
 
   func makeBody(configuration: Configuration) -> some View {
-    VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
       Button {
         configuration.isExpanded.toggle()
       } label: {
-        HStack(spacing: 8) {
+        HStack(spacing: WorkbenchSpacing.control) {
           Image(systemName: configuration.isExpanded ? "chevron.down" : "chevron.right")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.weight(.semibold))
+            .foregroundStyle(.workbenchSecondary)
             .frame(width: 12)
             .accessibilityHidden(true)
           configuration.label
@@ -30,5 +30,6 @@ struct WorkbenchDisclosureGroupStyle: DisclosureGroupStyle {
         configuration.content
       }
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 }

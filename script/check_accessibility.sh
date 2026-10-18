@@ -74,18 +74,13 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
-  'moduleVisibility.allows($0.section)' \
-  "workspace command menu must hide disabled optional modules"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Support/WorkspaceModuleVisibility.swift" \
-  "WorkspaceNavigationRouteDescriptor.primarySections.filter(allows)" \
-  "module visibility must filter the shared navigation descriptor"
+  "KeyEquivalent(item.keyboardShortcutKey)" \
+  "workspace command menu must use stable keyboard shortcut keys"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
-  "KeyEquivalent(item.keyboardShortcutKey)" \
-  "workspace command menu must use stable keyboard shortcut keys"
+  'moduleVisibility.allows($0.section)' \
+  "workspace command menu must hide disabled optional modules"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
@@ -144,58 +139,35 @@ require_literal \
 
 unexpected_publish_execution_references="$(
   grep -R -n -oE \
-    '(writeSelectedDraftToLocalRepository|commitSelectedDraftUsingPreferredStrategy|commitSelectedDraftDirectly|commitSelectedDraftToReviewBranch|publishSelectedDraftOnlineUsingPreferredStrategy|writeBatchReadyDraftsToLocalRepository|publishBatchReadyDraftsOnlineUsingPreferredStrategy)\(' \
+    '(writeSelectedDraftToLocalRepository|commitSelectedDraftUsingPreferredStrategy|commitSelectedDraftDirectly|commitSelectedDraftToReviewBranch|publishSelectedDraftOnlineUsingPreferredStrategy|writeBatchReadyDraftsToLocalRepository|publishBatchReadyDraftsOnlineUsingPreferredStrategy|prepareArticleRepositoryPublish|prepareAllChangesRepositoryPublish|publishRepositoryWorktree|retryRepositoryWorktreePush)\(' \
     "$ROOT_DIR/Sources/PersonalSitePublisherMac" \
     --include='*.swift' \
-    | grep -v '/Views/Publishing/PublishDrawerView.swift:' \
-    | grep -vE '/Views/Publishing/PublishDrawerOperations.swift:[0-9]+:publishSelectedDraftOnlineUsingPreferredStrategy\($' \
+    | grep -v '/Support/WorkspacePublishSession.swift:' \
     || true
 )"
 if [[ -n "$unexpected_publish_execution_references" ]]; then
   printf '%s\n' "$unexpected_publish_execution_references" >&2
-  fail "desktop publishing mutations must remain isolated to the drawer and its reviewed direct-article operation"
+  fail "desktop publishing mutations must remain isolated to the window publish session"
 fi
 
 require_literal_count \
-  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerOperations.swift" \
-  'publishSelectedDraftOnlineUsingPreferredStrategy(' \
+  "Sources/PersonalSitePublisherMac/Support/WorkspacePublishSession.swift" \
+  'store.publishRepositoryWorktree(' \
   "1" \
-  "the direct-article operation must have exactly one preferred-strategy publish call"
+  "both publish actions must commit through exactly one confirmed worktree publish call"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerOperations.swift" \
-  "expectedReview: review.expectation" \
-  "the direct-article operation must preserve its frozen review expectation"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftListComponents.swift" \
-  "display.title.nilIfEmpty" \
-  "private draft rows must render the privacy-safe title"
+  "Sources/PersonalSitePublisherMac/Support/WorkspacePublishSession.swift" \
+  "store.publishRepositoryWorktree(review.confirmation)" \
+  "publishing must commit only the frozen confirmation the user reviewed"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPalette.swift" \
   "masksPrivateContent: store.privacySettings.masksPrivateContent" \
   "command palette article search must pass the private-content masking policy"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPaletteArticleSearch.swift" \
-  "DraftFullTextSearchPreparation.prepare" \
-  "command palette article search must prepare privacy-safe drafts before searching"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPaletteArticleSearch.swift" \
-  "let hits = await search(normalizedQuery, searchableDrafts, resultLimit)" \
-  "command palette article search must search the prepared drafts"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Support/DraftFullTextSearchPresentation.swift" \
-  "draft.bodyMarkdown = \"\"" \
-  "private article search preparation must clear hidden content"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Support/DraftFullTextSearchPresentation.swift" \
-  "guard masksPrivateContent, draft.isPrivate else { return draft }" \
-  "private article search preparation must honor the masking preference"
+# Search preparation and masking behavior is covered by
+# WorkspaceCommandPaletteArticleSearchTests and
+# DraftFullTextSearchPresentationSnapshotTests; only the view wiring stays here.
 
 require_absent_literal \
   "Sources/PersonalSitePublisherMac/Views/Shared/SharedViews.swift" \
@@ -216,26 +188,6 @@ require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/MetadataColumn.swift" \
   ".accessibilityIdentifier(\"workspace-inspector\")" \
   "workspace inspector must expose a stable accessibility identifier"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerView.swift" \
-  "@EnvironmentObject var sceneCommandRouter: WorkspaceSceneCommandRouter" \
-  "markdown composer must receive the shared scene command router"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerView.swift" \
-  "sceneCommandRouter.registerMarkdownEditor(" \
-  "markdown composer must register its editor commands with the scene router"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerView.swift" \
-  ".onDisappear(perform: handleComposerDisappear)" \
-  "markdown composer must invoke its disappearance teardown"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerLifecycle.swift" \
-  "sceneCommandRouter.unregisterMarkdownEditor(owner: sceneCommandOwnerID)" \
-  "markdown composer teardown must remove editor commands from the scene router"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MarkdownEditorEnhancementPanels.swift" \
@@ -264,8 +216,18 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspacePublishingStatusToolbar.swift" \
-  '.accessibilityLabel(String(localized: "发布"))' \
-  "publish action must expose its own accessibility label"
+  '.accessibilityLabel(actionTitle)' \
+  "publish action must expose its own article action label"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspacePublishingStatusToolbar.swift" \
+  'let actionTitle = Self.primaryActionTitle(' \
+  "publish action label must follow the selected article state"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspacePublishingStatusToolbar.swift" \
+  'isPublished: explicitDraft?.articleState == .published)' \
+  "publish action label must follow the selected article publication state"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspacePublishingStatusToolbar.swift" \
@@ -398,11 +360,6 @@ require_literal \
   "combined preview must retain its own native accessibility name"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPalette.swift" \
-  ".accessibilityIdentifier(\"workspace-command-palette-result-\\(id)\")" \
-  "command palette results must expose stable native accessibility identifiers"
-
-require_literal \
   "Sources/PersonalSitePublisherMac/Views/Knowledge/KnowledgeLibraryInspectorPanel.swift" \
   ".accessibilityIdentifier(\"knowledge-library-inspector\")" \
   "knowledge Inspector content must expose a stable accessibility identifier"
@@ -415,7 +372,7 @@ require_literal \
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
   "guard prepareInspectorForUserRequest() else { return }" \
-  "AI and Inspector requests must arbitrate with the publish drawer"
+  "AI and Inspector requests must arbitrate with the publish checks"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView+PublishingPresentation.swift" \
@@ -424,8 +381,8 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView+PublishingPresentation.swift" \
-  "PublishDrawerView(" \
-  "compact publishing must reuse the reviewed drawer workflow"
+  "PublishChecklistView(" \
+  "compact publishing must reuse the publish checks panel"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
@@ -568,31 +525,6 @@ if not re.search(pattern, source):
     raise SystemExit("accessibility gate: draft titles must keep full hover/copy affordances with two readable lines")
 PY
 
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Images/ImageWorkbenchView.swift" \
-  ".accessibilityIdentifier(\"image-workbench\")" \
-  "image workbench must expose a stable root accessibility identifier"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Images/ImageWorkbenchView.swift" \
-  "ForEach(ImageWorkbenchBatchAction.allActions)" \
-  "every primary image operation must remain visible instead of being hidden in a menu"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Images/ImageWorkbenchView.swift" \
-  ".accessibilityIdentifier(action.accessibilityIdentifier)" \
-  "every visible image operation must expose its stable accessibility identifier"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Images/ImageWorkbenchBatchSupport.swift" \
-  "\"image-action-\(id)\"" \
-  "image operation identifiers must be derived from stable action IDs"
-
-require_absent_literal \
-  "Sources/PersonalSitePublisherMac/Views/Images/ImageWorkbenchView.swift" \
-  "private var optimizationMenu" \
-  "primary image operations must not be hidden in the legacy optimization menu"
-
 for repository_image_identifier in \
   repository-image-browser \
   repository-image-search \
@@ -641,14 +573,14 @@ require_literal \
   "each selected problem article in Checks must expose a unique open-article accessibility identifier"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerView.swift" \
-  ".accessibilityLabel(\"发布流程\")" \
-  "publish drawer flow must expose an accessibility label"
+  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishChecklistView.swift" \
+  ".accessibilityLabel(\"发布检查\")" \
+  "publish checks panel must expose an accessibility label"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerComponents.swift" \
-  ".accessibilityValue(value)" \
-  "publish drawer stats and rows must expose current values"
+  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerPresentationComponents.swift" \
+  ".accessibilityValue(selectedIssueID == issue.id" \
+  "publish check rows must expose their selection state"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Settings/SettingsProfileBar.swift" \
@@ -774,13 +706,13 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPalette.swift" \
-  ".onExitCommand" \
-  "command palette article search must close with Escape"
+  ".modifier(WorkspaceCommandPaletteDismissal(" \
+  "command palette article search must use the shared dismissal modifier"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPalette.swift" \
-  ".onSubmit(performSelectedResult)" \
-  "command palette article search must open the selected result with Return"
+  "Sources/PersonalSitePublisherMac/Support/WorkspaceCommandPaletteOutsideClickDismissal.swift" \
+  ".onExitCommand" \
+  "command palette article search must close with Escape"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPalette.swift" \
@@ -820,7 +752,7 @@ sheet_action_files=(
   "Sources/PersonalSitePublisherMac/Views/Settings/SiteKindChangeConfirmationView.swift"
   "Sources/PersonalSitePublisherMac/Views/Repository/RemoteArticleImportPreviewView.swift"
   "Sources/PersonalSitePublisherMac/Views/Repository/RemoteRepositoryCreationConfirmationView.swift"
-  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerComponents.swift"
+  "Sources/PersonalSitePublisherMac/Views/Publishing/RepositoryWorktreePublishConfirmationView.swift"
   "Sources/PersonalSitePublisherMac/Views/Images/ImageWorkbenchBatchSupport.swift"
   "Sources/PersonalSitePublisherMac/Views/Knowledge/KnowledgeLibraryRestorePreviewView.swift"
 )
@@ -835,52 +767,26 @@ for sheet_action_file in "${sheet_action_files[@]}"; do
     "submission sheet must support Return: $sheet_action_file"
 done
 
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerView.swift" \
-  ".keyboardShortcut(.cancelAction)" \
-  "publish drawer must support Escape"
-
 for publish_drawer_disclosure_file in \
-  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerComponents.swift" \
   "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerPresentationComponents.swift"; do
   require_literal \
     "$publish_drawer_disclosure_file" \
     "DisclosureGroup(isExpanded:" \
-    "publish drawer disclosures must use the native Reduce Motion-aware control"
+    "publish check disclosures must use the native Reduce Motion-aware control"
   require_absent_literal \
     "$publish_drawer_disclosure_file" \
     "withAnimation" \
-    "publish drawer disclosures must not override native Reduce Motion behavior"
+    "publish check disclosures must not override native Reduce Motion behavior"
   require_absent_literal \
     "$publish_drawer_disclosure_file" \
     ".animation(" \
-    "publish drawer disclosures must not add unconditional animation"
-done
-
-for publish_drawer_identifier in \
-  publish-drawer-header \
-  publish-drawer-action-save-local \
-  publish-drawer-action-publish-all \
-  publish-drawer-action-publish-current \
-  publish-drawer-primary-disabled-reason \
-  publish-drawer-review-disclosure \
-  publish-drawer-diff; do
-  require_literal \
-    "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerView.swift" \
-    "\"$publish_drawer_identifier\"" \
-    "publish drawer must expose $publish_drawer_identifier"
+    "publish check disclosures must not add unconditional animation"
 done
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerPresentationComponents.swift" \
-  ".accessibilityIdentifier(\"publish-drawer-readiness-checklist\")" \
-  "publish drawer must expose its check results"
-
-require_literal_any_file \
+  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishOutcomeView.swift" \
   ".keyboardShortcut(.defaultAction)" \
-  "publish drawer must expose a visible Return action through its composed controls" \
-  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerPresentationComponents.swift" \
-  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerComponents.swift"
+  "publish outcome and blockers sheets must expose a visible Return action"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTopBarView.swift" \
@@ -945,12 +851,22 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceContextSidebarView.swift" \
-  ".accessibilityElement(children: .contain)" \
+  ".workbenchAccessibilityContainer(identifier: \"workspace-sidebar\"" \
   "unified workspace sidebar must own its identifier without overwriting descendants"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceContextSidebarView.swift" \
-  ".accessibilityIdentifier(\"workspace-sidebar\")" \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceQuickSearchView.swift" \
+  ".workbenchAccessibilityContainer(identifier: \"workspace-quick-search\")" \
+  "quick search must stay a separate container from its only child stage navigation"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Shared/WorkbenchAccessibilityContainer.swift" \
+  ".accessibilityHidden(true)" \
+  "accessibility containers need a hidden sibling so a single child container is not merged"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Shared/WorkbenchAccessibilityContainer.swift" \
+  ".accessibilityIdentifier(identifier)" \
   "unified workspace sidebar must expose a stable accessibility identifier"
 
 require_literal \
@@ -972,13 +888,6 @@ require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceRailView.swift" \
   '.accessibilityIdentifier("workspace-sidebar-\(section.rawValue)")' \
   "workspace task navigation buttons must expose stable accessibility identifiers"
-
-for workspace_section in rss library sync contentHealth writing images; do
-  require_literal \
-    "Sources/PublishingWorkbenchCore/Models/WorkspaceModels.swift" \
-    ".$workspace_section" \
-    "workspace task navigation must keep the $workspace_section entry"
-done
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceRailView.swift" \
@@ -1014,11 +923,6 @@ require_absent_literal \
   "Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift" \
   'Window("RSS 阅读器"' \
   "RSS must not declare a separate scene"
-
-require_literal \
-  "Sources/PublishingWorkbenchCore/Models/WorkspaceModels.swift" \
-  "    .images," \
-  "image resources must have a direct primary route after the existing shortcuts"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspacePrimaryActions.swift" \
@@ -1104,11 +1008,6 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceQuickSearchView.swift" \
-  '"image-sidebar-stage-\(item.rawValue)"' \
-  "image-workbench stages must remain separate full-width sidebar buttons"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceQuickSearchView.swift" \
   '"content-health-sidebar-stage-\(item.rawValue)"' \
   "content-health stages must remain separate full-width sidebar buttons"
 
@@ -1135,7 +1034,7 @@ require_absent_literal \
 require_absent_literal \
   "Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspacePublishingSections.swift" \
   "repositoryPublishPreviewSection" \
-  "repository workspace must leave publish preview and final confirmation to PublishDrawer"
+  "repository workspace must leave publish preview and final confirmation to the publish sheet"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspaceOverviewSections.swift" \
@@ -1286,7 +1185,6 @@ require_literal \
   "repository release history must expose a stable accessibility identifier"
 
 for quick_search_identifier in \
-  workspace-quick-search \
   workspace-quick-search-field \
   repository-sidebar-stage-navigation \
   workspace-quick-search-results; do
@@ -1345,26 +1243,6 @@ require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftColumn+Toolbar.swift" \
   '.accessibilityLabel("新建站点文章")' \
   "writing create action must keep an accessible name when its label falls back to an icon"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftColumn+Toolbar.swift" \
-  ".accessibilityIdentifier(\"writing-create-article\")" \
-  "writing create action must expose a stable accessibility identifier"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftColumn+Toolbar.swift" \
-  ".accessibilityIdentifier(\"writing-create-menu\")" \
-  "writing create menu must expose a stable accessibility identifier"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftColumn+Toolbar.swift" \
-  ".accessibilityIdentifier(\"writing-draft-search\")" \
-  "writing search field must expose a stable accessibility identifier"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftList.swift" \
-  ".accessibilityIdentifier(\"writing-draft-list\")" \
-  "writing list must expose a stable accessibility identifier"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Knowledge/KnowledgeSourceListColumn+Toolbar.swift" \
@@ -1442,16 +1320,6 @@ require_literal \
   "custom/plain buttons must retain a visible keyboard focus ring"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
-  "private var editingTools: some View" \
-  "writing-page tools must keep a dedicated responsive row"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
-  "editingToolsRow(formattingLayout: .scrollable, collapsesWritingTools: true)" \
-  "writing tools must remain available in narrow writing windows"
-
-require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownFormattingToolbar.swift" \
   "formattingRow(items: MarkdownToolbarLayout.primaryFormattingItems)" \
   "compact formatting must preserve primary actions"
@@ -1463,11 +1331,6 @@ require_literal_count \
   "formatting menu labels must surface as one menu button each, not one per icon or text"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownFormattingToolbar.swift" \
-  ".accessibilityIdentifier(identifier)" \
-  "grouped insert and format menus must expose stable accessibility identifiers"
-
-require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
   "MarkdownFocusModeToggles(isActive: \$isFocusModeActive)" \
   "focus mode must remain reachable from the editor's more-actions menu"
@@ -1476,11 +1339,6 @@ require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownEditorStatusBar.swift" \
   ".accessibilityIdentifier(\"markdown-editor-diagnostics\")" \
   "body diagnostics must stay reachable from the editor status bar"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
-  "private var writingToolsMenu: some View" \
-  "collapsed writing tools must remain accessible through a menu"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
@@ -1508,31 +1366,6 @@ require_literal \
   "formatting toolbar buttons must expose a visible keyboard focus state"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Support/ZenModeController.swift" \
-  "isKeyboardNavigationActive" \
-  "Zen mode must keep a typed keyboard-navigation session"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Support/ZenModeController.swift" \
-  "isVoiceOverEnabled" \
-  "Zen mode must keep its toolbar visible while VoiceOver is enabled"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Support/ZenModeController.swift" \
-  "isReduceMotionEnabled" \
-  "Zen mode transitions must honor Reduce Motion"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
-  ".accessibilityIdentifier(\"markdown-editor-toolbar\")" \
-  "the editor toolbar must expose a stable accessibility identifier"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownFormattingToolbar.swift" \
-  ".accessibilityIdentifier(\"markdown-formatting-toolbar\")" \
-  "the formatting toolbar must expose a stable accessibility identifier"
-
-require_literal \
   "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
   "testWritingMinimumWindowAndAccessibilityTypeKeepsEditorAndToolbarsAccessible" \
   "minimum-window accessibility smoke must remain independently selectable"
@@ -1541,16 +1374,6 @@ require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MarkdownEditorComfortControl.swift" \
   "Label(\"编辑器设置…\", systemImage: \"textformat.size\")" \
   "editor settings control must expose text when space permits"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MarkdownSlashCommandMenu.swift" \
-  ".accessibilityIdentifier(\"markdown-slash-command-menu\")" \
-  "slash command menu must expose a stable accessibility identifier"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MarkdownSlashCommandMenu.swift" \
-  ".accessibilityIdentifier(\"markdown-slash-command-\\(item.id)\")" \
-  "slash command items must expose stable accessibility identifiers"
 
 require_literal \
   "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \

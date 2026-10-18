@@ -53,8 +53,8 @@ struct RSSMaintenanceSettingsView: View {
           Text(
             "RSS 默认保存 Feed 返回的摘要和正文。启用全文提取或离线缓存全文后，还会访问原网站并保存净化后的正文；关闭这些选项后不会新增原网页全文。历史网页快照和媒体缓存仍可读取。"
           )
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
 
           VStack(alignment: .leading, spacing: 8) {
@@ -74,8 +74,8 @@ struct RSSMaintenanceSettingsView: View {
 
             if let offlineCacheFeedback {
               Text(offlineCacheFeedback)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.workbenchMetadata)
+                .foregroundStyle(.workbenchSecondary)
             }
           }
         } header: {
@@ -106,7 +106,7 @@ struct RSSMaintenanceSettingsView: View {
           if !allowsBackgroundRefresh {
             Text("安全模式下后台刷新保持暂停；退出安全模式后会按此设置恢复。")
               .font(.workbenchSupporting)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
               .fixedSize(horizontal: false, vertical: true)
           }
 
@@ -130,7 +130,7 @@ struct RSSMaintenanceSettingsView: View {
 
           Text("自动刷新只检查已到刷新时间的订阅；关闭后台自动刷新不会影响手动刷新。")
             .font(.workbenchSupporting)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
             .fixedSize(horizontal: false, vertical: true)
 
           settingsToggle(
@@ -192,7 +192,7 @@ struct RSSMaintenanceSettingsView: View {
 
           Text(translationBackendDescription)
             .font(.workbenchSupporting)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
             .fixedSize(horizontal: false, vertical: true)
 
           settingsToggle(
@@ -235,7 +235,7 @@ struct RSSMaintenanceSettingsView: View {
 
           Text("只有启用全文提取或离线缓存全文时，才会从原网站新增净化后的正文；媒体归档已停止新增，历史数据仅作兼容读取。")
             .font(.workbenchSupporting)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
             .fixedSize(horizontal: false, vertical: true)
         } header: {
           Text(String(localized: "离线保存范围"))
@@ -258,8 +258,8 @@ struct RSSMaintenanceSettingsView: View {
       Group {
         Section {
           Text(String(localized: "低频的 OPML 导入和导出放在这里；文件只包含订阅名称与地址，不包含文章缓存或阅读状态。"))
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
             .fixedSize(horizontal: false, vertical: true)
 
           HStack {
@@ -307,8 +307,8 @@ struct RSSMaintenanceSettingsView: View {
           .accessibilityIdentifier("rss-retention-days")
 
           Text("只会清理超过保留期限、已读、未加入稍后阅读且没有高亮的文章；稍后阅读文章和批注不会被误删。")
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
             .fixedSize(horizontal: false, vertical: true)
 
           ViewThatFits(in: .horizontal) {
@@ -390,7 +390,7 @@ struct RSSMaintenanceSettingsView: View {
 
       Text(detail)
         .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityHidden(true)
     }

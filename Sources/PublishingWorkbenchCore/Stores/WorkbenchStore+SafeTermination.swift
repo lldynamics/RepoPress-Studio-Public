@@ -27,12 +27,9 @@ extension WorkbenchStore {
     safeTerminationProof = nil
     defer { isPreparingSafeTermination = false }
     suspendScheduledSiteDraftFileWrites()
-    suspendScheduledExternalDraftWrites()
     flushDraftBodyEditorBuffers()
     await waitForPendingSiteDraftFileWrites()
-    await waitForPendingExternalDraftWrites()
     _ = flushPendingSiteDraftFileWrites(retryKnownFailures: false)
-    _ = flushPendingExternalDraftWrites(retryKnownFailures: false)
     do {
       try persistLocalRecoverySnapshot()
       guard let ledger = await flushOperationLogPersistence(), ledger == operationHistory.document else {
@@ -43,12 +40,11 @@ extension WorkbenchStore {
       flushDraftBodyEditorBuffers()
       await waitForPendingDraftWordCountRefreshes()
       _ = flushPendingSiteDraftFileWrites(retryKnownFailures: false)
-      _ = flushPendingExternalDraftWrites(retryKnownFailures: false)
       try persistLocalRecoverySnapshot()
       safeTerminationProof = WorkbenchSafeTerminationProof(
         snapshot: persistenceStore.persistence.snapshot(from: self),
         recoveryRecords: Set(draftRecoveryRecords.values), ledger: ledger, requiresPrimarySnapshot: true)
-      let count = currentSiteDraftFileSaveFailures.count + pendingExternalDraftWriteCount
+      let count = currentSiteDraftFileSaveFailures.count
       return count == 0 ? .saved : .savedLocally(pendingProjectFileCount: count)
     } catch {
       return .failed(error.localizedDescription)
@@ -97,10 +93,8 @@ extension WorkbenchStore {
     safeTerminationProof = nil
     defer { isPreparingSafeTermination = false }
     suspendScheduledSiteDraftFileWrites()
-    suspendScheduledExternalDraftWrites()
     flushDraftBodyEditorBuffers()
     await waitForPendingSiteDraftFileWrites()
-    await waitForPendingExternalDraftWrites()
     // Drain the ledger queue even when its original location cannot be written.
     // The recovery package itself becomes the durability barrier for these records.
     _ = await flushOperationLogPersistence()
@@ -154,7 +148,6 @@ extension WorkbenchStore {
     guard let proof = safeTerminationProof,
       !isPreparingSafeTermination, !isRetryingProjectFileWrites,
       siteDraftFileWritesInProgress.isEmpty, siteDraftFileAutosaveTasks.isEmpty,
-      externalDraftWritesInProgress.isEmpty, externalDraftWriteTasks.isEmpty,
       persistenceStore.persistence.snapshot(from: self) == proof.snapshot,
       Set(draftRecoveryRecords.values) == proof.recoveryRecords,
       operationHistory.document == proof.ledger

@@ -83,7 +83,7 @@ struct ContentHealthIssueListView: View {
                 .font(.workbenchSectionTitle)
               Text("\(sectionRows.reduce(0) { $0 + $1.occurrenceCount }) 项")
                 .font(.workbenchMetadata.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.workbenchSecondary)
             }
             .padding(WorkbenchSpacing.card)
             .accessibilityAddTraits(.isHeader)
@@ -141,10 +141,10 @@ struct ContentHealthIssueListView: View {
           VStack(alignment: .leading, spacing: WorkbenchSpacing.tight) {
             Text(row.title)
               .font(.workbenchItemTitle)
-              .workbenchTruncatedIdentity(row.title)
+              .workbenchTruncatedTitle(row.title)
             Text(description(row))
               .font(.workbenchMetadata)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
               .lineLimit(1)
               .help(description(row))
           }
@@ -223,7 +223,7 @@ struct ContentHealthIssueListView: View {
     } else {
       Text("\(row.occurrenceCount) 项")
         .font(.workbenchMetadata.monospacedDigit())
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 
@@ -282,7 +282,7 @@ struct ContentHealthSelectedIssueInspector: View {
             header(selectedIssue)
             Text(selectedIssue.detail)
               .font(.workbenchSupporting)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
               .fixedSize(horizontal: false, vertical: true)
             if !selectedIssue.articles.isEmpty {
               Label("受影响的文章", systemImage: "doc.text")
@@ -302,7 +302,7 @@ struct ContentHealthSelectedIssueInspector: View {
               .font(.workbenchSectionTitle)
             Text("选择一个问题以查看详情。")
               .font(.workbenchSupporting)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
           }
         }
         .padding(WorkbenchSpacing.content)
@@ -322,7 +322,7 @@ struct ContentHealthSelectedIssueInspector: View {
         Label(selection.section.title, systemImage: selection.section.systemImage)
           .foregroundStyle(selection.section.color)
         Text(sourceTitle(selection))
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
       .font(.workbenchMetadata)
       Text(selection.title)
@@ -331,16 +331,32 @@ struct ContentHealthSelectedIssueInspector: View {
       if selection.affectedArticleCount > 0 {
         Text("\(selection.affectedArticleCount) 篇文章")
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
       if let generatedAt = actions.generatedAt {
         Text("上次扫描 \(generatedAt.workbenchShortText)")
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
     }
-    .accessibilityElement(children: .combine)
+    // Native static-text accessibility may replace an explicit value with its
+    // label. Keep the title and its context in one readable name instead.
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(
+      Text(verbatim: "\(selection.title)，\(headingAccessibilityDetails(selection))")
+    )
     .accessibilityIdentifier("content-health-selected-issue-heading")
+  }
+
+  private func headingAccessibilityDetails(_ selection: ContentHealthIssueSelection) -> String {
+    var details = [selection.section.title, sourceTitle(selection)]
+    if selection.affectedArticleCount > 0 {
+      details.append(String(localized: "\(selection.affectedArticleCount) 篇文章"))
+    }
+    if let generatedAt = actions.generatedAt {
+      details.append(String(localized: "上次扫描 \(generatedAt.workbenchShortText)"))
+    }
+    return details.joined(separator: "、")
   }
 
   private func sourceTitle(_ selection: ContentHealthIssueSelection) -> String {
@@ -353,10 +369,10 @@ struct ContentHealthSelectedIssueInspector: View {
     VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
       Text(article.draftTitle)
         .font(.workbenchItemTitle)
-        .workbenchTruncatedIdentity(article.draftTitle)
+        .workbenchTruncatedTitle(article.draftTitle)
       Text(article.markdownPath)
         .font(.workbenchMetadata.monospaced())
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .workbenchTruncatedIdentity(article.markdownPath)
       Button("前往写作") { actions.openMaintenanceDraft(article.draftID) }
         .buttonStyle(.link)
@@ -373,7 +389,7 @@ struct ContentHealthSelectedIssueInspector: View {
         Divider()
         Text("修复建议生成后先审阅，再选择要应用的字段。")
           .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
         Button {
           actions.runAIFix(item)
@@ -404,14 +420,14 @@ struct ContentHealthSelectedIssueInspector: View {
         .fixedSize(horizontal: false, vertical: true)
       Text(item.contentHealthActionTarget)
         .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
       Text(
         String.localizedStringWithFormat(
           String(localized: "优先级：%@"), item.priority.localizedDisplayName)
       )
       .font(.workbenchMetadata)
-      .foregroundStyle(.secondary)
+      .foregroundStyle(.workbenchSecondary)
       ViewThatFits(in: .horizontal) {
         HStack(spacing: WorkbenchSpacing.control) { maintenanceButtons(item) }
         VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
@@ -446,14 +462,14 @@ struct ContentHealthSelectedIssueInspector: View {
     VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
       Button("检查规则") {
         SettingsNavigation.present(
-          destination: .tab(.siteAI), workspaceAction: settingsWorkspaceAction,
+          destination: .ai(.writingStyle), workspaceAction: settingsWorkspaceAction,
           openSettings: { openSettings() })
       }
       .buttonStyle(.link)
       .accessibilityIdentifier("content-health-inspector-rules")
       Text("可选内容警告和提示可在问题列表中忽略；页面上的已忽略设置可恢复检查。")
         .font(.workbenchMetadata)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
     }
     .padding(WorkbenchSpacing.content)

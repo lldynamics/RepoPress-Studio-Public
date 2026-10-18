@@ -23,10 +23,10 @@ struct AIModelSearchPopoverView: View {
     VStack(spacing: 0) {
       HStack(spacing: 6) {
         Image(systemName: "magnifyingglass")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
         TextField(String(localized: "搜索模型 (如 r1, sonnet, gemini, flash...)"), text: $searchText)
           .textFieldStyle(.plain)
-          .font(.body)
+          .font(.workbenchBody)
           .accessibilityLabel(
             String(localized: "搜索模型 (如 r1, sonnet, gemini, flash...)")
           )
@@ -35,7 +35,7 @@ struct AIModelSearchPopoverView: View {
             searchText = ""
           } label: {
             Image(systemName: "xmark.circle.fill")
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
           }
           .buttonStyle(.plain)
         }
@@ -49,11 +49,11 @@ struct AIModelSearchPopoverView: View {
         VStack(spacing: 6) {
           Spacer()
           Image(systemName: "questionmark.folder")
-            .font(.title2)
-            .foregroundStyle(.secondary)
+            .font(.workbenchTitle2)
+            .foregroundStyle(.workbenchSecondary)
           Text("未找到包含 \"\(searchText)\" 的模型")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
           Spacer()
         }
         .frame(minHeight: 140)
@@ -67,12 +67,12 @@ struct AIModelSearchPopoverView: View {
                 HStack(spacing: 8) {
                   VStack(alignment: .leading, spacing: 2) {
                     Text(descriptor.name)
-                      .font(.callout.monospaced())
+                      .font(.workbenchBody.monospaced())
                       .foregroundStyle(Color.primary)
                     if descriptor.id != descriptor.name {
                       Text(descriptor.id)
                         .font(.workbenchMetadata.monospaced())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.workbenchSecondary)
                     }
                     AIModelMetadataView(model: descriptor)
                   }
@@ -85,7 +85,7 @@ struct AIModelSearchPopoverView: View {
                       .padding(.horizontal, WorkbenchSpacing.tight)
                       .padding(.vertical, 2)
                       .background(Color.secondary.opacity(0.12), in: Capsule())
-                      .foregroundStyle(.secondary)
+                      .foregroundStyle(.workbenchSecondary)
                   }
 
                   if descriptor.hasProviderMetadata, descriptor.isVision {
@@ -94,12 +94,12 @@ struct AIModelSearchPopoverView: View {
                       .padding(.horizontal, WorkbenchSpacing.tight)
                       .padding(.vertical, 2)
                       .background(Color.secondary.opacity(0.12), in: Capsule())
-                      .foregroundStyle(.secondary)
+                      .foregroundStyle(.workbenchSecondary)
                   }
 
                   if descriptor.id == selectedModel {
                     Image(systemName: "checkmark")
-                      .font(.caption.weight(.bold))
+                      .font(.workbenchMetadata.weight(.bold))
                       .foregroundStyle(WorkbenchTheme.brand)
                   }
                 }
@@ -126,12 +126,12 @@ struct AIModelSearchPopoverView: View {
       HStack {
         Text("共 \(models.count) 个可用模型")
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
         Spacer()
         if !searchText.isEmpty {
           Text("已筛选出 \(filteredModels.count) 个")
             .font(.workbenchMetadata)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
       .padding(.horizontal, WorkbenchSpacing.control)

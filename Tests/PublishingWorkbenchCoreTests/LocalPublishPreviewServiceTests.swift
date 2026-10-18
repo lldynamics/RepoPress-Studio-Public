@@ -420,6 +420,238 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     XCTAssertEqual(try String(contentsOf: destinationURL, encoding: .utf8), "publisher content")
   }
 
+  func testWriteWithEvidenceRejectsExistingMarkdownModifiedAfterFinalValidation() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let destinationURL = rootURL.appendingPathComponent("content/posts/existing.md")
+    let package = publishPackage(
+      files: [
+        .init(
+          kind: .markdown,
+          repositoryPath: "content/posts/existing.md",
+          content: "publisher content"
+        )
+      ]
+    )
+    let service = LocalPublishPreviewService()
+    let preview = service.preview(package: package, rootURL: rootURL)
+    let externalBytes = Data("late external markdown edit".utf8)
+    var hookCalls = 0
+
+    XCTAssertThrowsError(
+      try service.writeWithEvidence(
+        package: package,
+        rootURL: rootURL,
+        preview: preview,
+        beforeDestinationIsolation: { url in
+          hookCalls += 1
+          try externalBytes.write(to: url, options: .atomic)
+        },
+        afterDestinationIsolation: nil
+      )
+    )
+    XCTAssertEqual(hookCalls, 1)
+    XCTAssertEqual(try Data(contentsOf: destinationURL), externalBytes)
+  }
+
+  func testWriteWithEvidenceRejectsFileCreatedAfterFinalValidation() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let destinationURL = rootURL.appendingPathComponent("content/posts/late-created.md")
+    let package = publishPackage(
+      files: [
+        .init(
+          kind: .markdown,
+          repositoryPath: "content/posts/late-created.md",
+          content: "publisher content"
+        )
+      ]
+    )
+    let service = LocalPublishPreviewService()
+    let preview = service.preview(package: package, rootURL: rootURL)
+    XCTAssertEqual(preview.fileDiffs.first?.baselineState, .missing)
+    let externalBytes = Data("late external creation".utf8)
+    var hookCalls = 0
+
+    XCTAssertThrowsError(
+      try service.writeWithEvidence(
+        package: package,
+        rootURL: rootURL,
+        preview: preview,
+        beforeDestinationIsolation: { url in
+          hookCalls += 1
+          try externalBytes.write(to: url, options: .atomic)
+        },
+        afterDestinationIsolation: nil
+      )
+    )
+    XCTAssertEqual(hookCalls, 1)
+    XCTAssertEqual(try Data(contentsOf: destinationURL), externalBytes)
+  }
+
+  func testWriteWithEvidenceRejectsFileCreatedAfterDestinationIsolation() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let destinationURL = rootURL.appendingPathComponent("content/posts/existing.md")
+    let package = publishPackage(
+      files: [
+        .init(
+          kind: .markdown,
+          repositoryPath: "content/posts/existing.md",
+          content: "publisher content"
+        )
+      ]
+    )
+    let service = LocalPublishPreviewService()
+    let preview = service.preview(package: package, rootURL: rootURL)
+    let originalBytes = Data("old content\n".utf8)
+    let externalBytes = Data("late isolated creation".utf8)
+    var hookCalls = 0
+
+    XCTAssertThrowsError(
+      try service.writeWithEvidence(
+        package: package,
+        rootURL: rootURL,
+        preview: preview,
+        beforeDestinationIsolation: nil,
+        afterDestinationIsolation: { url in
+          hookCalls += 1
+          try externalBytes.write(to: url, options: .atomic)
+        }
+      )
+    )
+    XCTAssertEqual(hookCalls, 1)
+    XCTAssertEqual(try Data(contentsOf: destinationURL), externalBytes)
+    let rollbackDirectories = try FileManager.default.contentsOfDirectory(
+      at: rootURL,
+      includingPropertiesForKeys: [.isDirectoryKey]
+    ).filter {
+      $0.lastPathComponent.hasPrefix(".repopress-local-publish-rollback-")
+    }
+    XCTAssertTrue(
+      rollbackDirectories.contains { directory in
+        guard
+          let files = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil)
+        else { return false }
+        return files.compactMap { $0 as? URL }.contains { file in
+          (try? Data(contentsOf: file)) == originalBytes
+        }
+      }
+    )
+  }
+
+  func testWriteWithEvidenceDoesNotDeleteModificationBeforeDestinationIsolation() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let destinationURL = rootURL.appendingPathComponent("content/posts/existing.md")
+    let package = publishPackage(
+      files: [
+        .init(
+          kind: .markdown,
+          operation: .delete,
+          repositoryPath: "content/posts/existing.md"
+        )
+      ]
+    )
+    let service = LocalPublishPreviewService()
+    let preview = service.preview(package: package, rootURL: rootURL)
+    let externalBytes = Data("late external delete edit".utf8)
+    var hookCalls = 0
+
+    XCTAssertThrowsError(
+      try service.writeWithEvidence(
+        package: package,
+        rootURL: rootURL,
+        preview: preview,
+        beforeDestinationIsolation: { url in
+          hookCalls += 1
+          try externalBytes.write(to: url, options: .atomic)
+        },
+        afterDestinationIsolation: nil
+      )
+    )
+    XCTAssertEqual(hookCalls, 1)
+    XCTAssertEqual(try Data(contentsOf: destinationURL), externalBytes)
+  }
+
+  func testWriteWithEvidenceDoesNotDeleteLateExternalModification() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let destinationURL = rootURL.appendingPathComponent("content/posts/existing.md")
+    let package = publishPackage(
+      files: [
+        .init(
+          kind: .markdown,
+          operation: .delete,
+          repositoryPath: "content/posts/existing.md"
+        )
+      ]
+    )
+    let service = LocalPublishPreviewService()
+    let preview = service.preview(package: package, rootURL: rootURL)
+    let externalBytes = Data("late external delete replacement".utf8)
+    var hookCalls = 0
+
+    XCTAssertThrowsError(
+      try service.writeWithEvidence(
+        package: package,
+        rootURL: rootURL,
+        preview: preview,
+        beforeDestinationIsolation: nil,
+        afterDestinationIsolation: { url in
+          hookCalls += 1
+          try externalBytes.write(to: url, options: .atomic)
+        }
+      )
+    )
+    XCTAssertEqual(hookCalls, 1)
+    XCTAssertEqual(try Data(contentsOf: destinationURL), externalBytes)
+  }
+
+  func testWriteWithEvidenceAppliesNormalMultiFileTransaction() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceURL = rootURL.appendingPathComponent("cover.jpg")
+    try Data("image bytes".utf8).write(to: sourceURL)
+    let package = publishPackage(
+      files: [
+        .init(
+          kind: .markdown,
+          repositoryPath: "content/posts/transaction.md",
+          content: "publisher content"
+        ),
+        .init(
+          kind: .image,
+          repositoryPath: "images/cover.jpg",
+          sourceFilePath: sourceURL.path
+        ),
+      ]
+    )
+    let service = LocalPublishPreviewService()
+    let preview = service.preview(package: package, rootURL: rootURL)
+
+    let written = try service.writeWithEvidence(
+      package: package,
+      rootURL: rootURL,
+      preview: preview,
+      beforeDestinationIsolation: nil,
+      afterDestinationIsolation: nil
+    )
+
+    XCTAssertEqual(written.writtenPaths, ["content/posts/transaction.md", "images/cover.jpg"])
+    XCTAssertEqual(
+      try String(
+        contentsOf: rootURL.appendingPathComponent("content/posts/transaction.md"),
+        encoding: .utf8
+      ),
+      "publisher content"
+    )
+    XCTAssertEqual(
+      try Data(contentsOf: rootURL.appendingPathComponent("images/cover.jpg")),
+      Data("image bytes".utf8)
+    )
+  }
+
   func testDeleteOperationRejectsRepositorySymlink() throws {
     let rootURL = try makeRepositoryFixture()
     let outsideURL = FileManager.default.temporaryDirectory

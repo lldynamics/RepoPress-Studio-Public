@@ -84,11 +84,11 @@ struct KnowledgeNoteEditorView: View {
     VStack(spacing: 0) {
       HStack {
         Label("本地笔记", systemImage: "note.text")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
         Text("先保存到本机；开启 iCloud 同步后会上传笔记与附件。")
           .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
       .padding(WorkbenchSpacing.content)
       Divider()
@@ -112,7 +112,7 @@ struct KnowledgeNoteEditorView: View {
         VStack(alignment: .leading, spacing: 6) {
           Text("Markdown 正文")
           TextEditor(text: $markdown)
-            .font(.body.monospaced())
+            .font(.workbenchBody.monospaced())
             .accessibilityLabel("笔记 Markdown 正文")
             .frame(minHeight: 300)
             .overlay {
@@ -123,7 +123,7 @@ struct KnowledgeNoteEditorView: View {
         Section("附件") {
           if attachments.isEmpty {
             Text("还没有附件")
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
           } else {
             ForEach(attachments) { attachment in
               HStack {
@@ -133,7 +133,7 @@ struct KnowledgeNoteEditorView: View {
                   ByteCountFormatter.string(
                     fromByteCount: Int64(attachment.data.count), countStyle: .file)
                 )
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.workbenchSecondary)
                 Button("移除", role: .destructive) {
                   attachments.removeAll { $0.id == attachment.id }
                 }
@@ -147,7 +147,7 @@ struct KnowledgeNoteEditorView: View {
           }
           Text("保存时会将所选文件复制进本机资料库。")
             .font(.workbenchSupporting)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
       .formStyle(.grouped)

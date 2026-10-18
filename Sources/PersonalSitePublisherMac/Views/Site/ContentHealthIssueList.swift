@@ -2,12 +2,13 @@ import Foundation
 import PublishingWorkbenchCore
 
 enum ContentHealthIssueSection: String, CaseIterable, Sendable {
-  case errors, warnings, maintenance
+  case errors, warnings, optimizations, maintenance
 
   var title: String {
     switch self {
     case .errors: String(localized: "错误")
     case .warnings: String(localized: "警告")
+    case .optimizations: String(localized: "优化建议")
     case .maintenance: String(localized: "维护")
     }
   }
@@ -16,6 +17,7 @@ enum ContentHealthIssueSection: String, CaseIterable, Sendable {
     switch self {
     case .errors: "xmark.octagon"
     case .warnings: "exclamationmark.triangle"
+    case .optimizations: "wand.and.stars"
     case .maintenance: "wrench.and.screwdriver"
     }
   }
@@ -55,13 +57,14 @@ struct ContentHealthIssueSelection: Identifiable, Equatable, Sendable {
 }
 
 enum ContentHealthCountFilter: String {
-  case errors, warnings, maintenance
+  case errors, warnings, optimizations, maintenance
 
   func isSelected(severity: ContentHealthSeverityFilter, source: ContentHealthSourceFilter) -> Bool
   {
     switch self {
     case .errors: severity == .errors && source != .maintenance
     case .warnings: severity == .warnings && source != .maintenance
+    case .optimizations: severity == .optimizations && source != .maintenance
     case .maintenance: source == .maintenance
     }
   }
@@ -73,6 +76,7 @@ enum ContentHealthCountFilter: String {
     switch self {
     case .errors: return (.errors, .all)
     case .warnings: return (.warnings, .all)
+    case .optimizations: return (.optimizations, .all)
     case .maintenance: return (.all, .maintenance)
     }
   }
@@ -145,7 +149,7 @@ enum ContentHealthIssueListProjection {
       }.sorted { $0.draftID.uuidString < $1.draftID.uuidString }
       result.append(
         ContentHealthIssueSelection(
-          id: key, section: issue.severity == .error ? .errors : .warnings,
+          id: key, section: issueSection(for: issue),
           title: issue.title, detail: issue.message, subgroup: subgroups[key],
           articles: merged, siteIssues: [], maintenanceItems: []
         ))
@@ -160,7 +164,7 @@ enum ContentHealthIssueListProjection {
       guard let first = issues.first else { continue }
       result.append(
         ContentHealthIssueSelection(
-          id: "site:" + key, section: first.severity == .error ? .errors : .warnings,
+          id: "site:" + key, section: issueSection(for: first),
           title: first.title, detail: first.message, subgroup: nil,
           articles: [], siteIssues: issues, maintenanceItems: []
         ))
@@ -220,6 +224,11 @@ enum ContentHealthIssueListProjection {
       issue.severity.rawValue, issue.category?.rawValue ?? "", issue.field ?? "",
       issue.code?.rawValue ?? "", issue.title,
     ]
+  }
+
+  private static func issueSection(for issue: PreflightIssue) -> ContentHealthIssueSection {
+    if issue.isOptionalOptimization { return .optimizations }
+    return issue.severity == .error ? .errors : .warnings
   }
 
   private static func identity(_ values: [String]) -> String {

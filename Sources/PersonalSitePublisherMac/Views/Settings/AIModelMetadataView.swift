@@ -24,6 +24,6 @@ struct AIModelMetadataView: View {
       }
     }
     .font(.workbenchMetadata)
-    .foregroundStyle(.secondary)
+    .foregroundStyle(.workbenchSecondary)
   }
 }

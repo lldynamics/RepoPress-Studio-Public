@@ -42,14 +42,14 @@ struct AIKeychainSection: View {
             "保存位置仅适用于当前连接，其他连接不受影响。切换位置不会读取、复制、迁移或删除旧位置的密钥；请在目标位置重新保存。"
         )
       )
-      .font(.callout)
-      .foregroundStyle(.secondary)
+      .font(.workbenchBody)
+      .foregroundStyle(.workbenchSecondary)
 
       HStack(spacing: 8) {
         if isKeyRevealed {
           TextField("API Key", text: aiAPIKeyInput)
             .focused($isAPIKeyFocused)
-            .font(.body.monospaced())
+            .font(.workbenchBody.monospaced())
             .accessibilityLabel("AI API Key")
             .accessibilityIdentifier("settings-ai-key-input")
         } else {
@@ -63,7 +63,7 @@ struct AIKeychainSection: View {
           isKeyRevealed.toggle()
         } label: {
           Image(systemName: isKeyRevealed ? "eye.slash" : "eye")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
         .buttonStyle(.plain)
         .help(
@@ -102,7 +102,7 @@ struct AIKeychainSection: View {
           )
         } else if !aiAPIKeyInput.wrappedValue.trimmedForPublishing.isEmpty {
           Text("待保存修改")
-            .font(.caption.weight(.medium))
+            .font(.workbenchMetadata.weight(.medium))
             .foregroundStyle(WorkbenchTheme.warning)
         }
       }
@@ -169,11 +169,11 @@ struct AIKeychainSection: View {
 
       HStack(spacing: 6) {
         Image(systemName: storageModeSystemImage)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         Text(storageModeExplanation)
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
       .padding(.top, WorkbenchSpacing.tight)
     }

@@ -8,16 +8,13 @@ struct WorkspaceDeferredPublishIssueState {
     let profileID: UUID
     let draftID: UUID
     let target: PublishReadinessTarget
-    let scope: PublishScope
   }
 
   private var request: Request?
   private var didDismissSheet = false
 
-  mutating func enqueue(
-    profileID: UUID, draftID: UUID, target: PublishReadinessTarget, scope: PublishScope
-  ) {
-    request = Request(profileID: profileID, draftID: draftID, target: target, scope: scope)
+  mutating func enqueue(profileID: UUID, draftID: UUID, target: PublishReadinessTarget) {
+    request = Request(profileID: profileID, draftID: draftID, target: target)
     didDismissSheet = false
   }
 

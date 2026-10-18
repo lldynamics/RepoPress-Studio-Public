@@ -8,11 +8,11 @@ struct AIWritingStyleEditor: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       Text(title)
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.weight(.semibold))
+        .foregroundStyle(.workbenchSecondary)
 
       TextEditor(text: text)
-        .font(.body)
+        .font(.workbenchBody)
         .frame(minHeight: 58, idealHeight: 72, maxHeight: 96)
         .padding(WorkbenchSpacing.tight)
         .background(

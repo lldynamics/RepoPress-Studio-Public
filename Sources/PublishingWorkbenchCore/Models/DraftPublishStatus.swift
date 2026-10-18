@@ -1,8 +1,8 @@
 import Foundation
 
 /// A publish-status decision for one article's current checks. The pending
-/// count comes from the complete publish checklist; severity describes the
-/// strongest outstanding condition, so the two numbers need not be equal.
+/// count includes blockers and actionable warnings, excluding optional
+/// optimizations; severity describes the strongest outstanding condition.
 public struct DraftPublishStatus: Equatable, Sendable {
   public enum State: Equatable, Sendable {
     case contentBlocked
@@ -16,10 +16,16 @@ public struct DraftPublishStatus: Equatable, Sendable {
   public struct Issue: Equatable, Sendable {
     public let severity: PreflightSeverity
     public let title: String
+    public let isOptionalOptimization: Bool
 
-    public init(severity: PreflightSeverity, title: String) {
+    public init(
+      severity: PreflightSeverity,
+      title: String,
+      isOptionalOptimization: Bool = false
+    ) {
       self.severity = severity
       self.title = title
+      self.isOptionalOptimization = isOptionalOptimization
     }
   }
 
@@ -54,7 +60,13 @@ public struct DraftPublishStatus: Equatable, Sendable {
     if !conditions.isEmpty {
       state = .publishConditionsBlocked
       severityCount = conditions.count
-      reason = Self.firstTitle(in: conditions.map { Issue(severity: $0.severity, title: $0.title) })
+      reason = Self.firstTitle(
+        in: conditions.map {
+          Issue(
+            severity: $0.severity, title: $0.title,
+            isOptionalOptimization: $0.isOptionalOptimization
+          )
+        })
       return
     }
 

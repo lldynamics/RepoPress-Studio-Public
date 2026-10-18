@@ -16,13 +16,6 @@ final class WorkspaceContextNavigationTests: XCTestCase {
     XCTAssertEqual(WorkspaceResponsiveLayoutSnapshot(width: 1_424).band, .standardInspector)
   }
 
-  func testPrimaryRailExposesTheFiveVisualWorkspaceRoutesInOrder() {
-    XCTAssertEqual(
-      WorkspacePrimaryNavigationRail.primarySections,
-      [.writing, .library, .rss, .images, .sync]
-    )
-  }
-
   func testVisualRailAndCommandMenuKeepSeparateStableOrders() {
     XCTAssertEqual(
       WorkspaceNavigationRouteDescriptor.primarySections,

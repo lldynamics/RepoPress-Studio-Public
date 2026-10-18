@@ -67,10 +67,10 @@ struct WorkspaceModuleSettingsSection: View {
 
   private func label(title: LocalizedStringKey, subtitle: LocalizedStringKey) -> some View {
     VStack(alignment: .leading, spacing: 4) {
-      Text(title).font(.body.weight(.semibold))
+      Text(title).font(.workbenchBody.weight(.semibold))
       Text(subtitle)
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
     }
   }

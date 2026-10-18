@@ -802,10 +802,6 @@ extension WorkbenchAIStore {
     if aiConversations[index].isArchived {
       return true
     }
-    guard !blockChatMutationForDeliveryUncertainty(conversationID: conversationID) else {
-      return false
-    }
-
     let now = Date()
     var updatedConversations = aiConversations
     updatedConversations[index].archivedAt = now
@@ -872,10 +868,6 @@ extension WorkbenchAIStore {
       aiChatMessage = "请先停止当前 AI 回复，再删除这条对话。"
       return false
     }
-    guard !blockChatMutationForDeliveryUncertainty(conversationID: conversationID) else {
-      return false
-    }
-
     aiConversations.removeAll { $0.id == conversationID }
     if isActive {
       if let draftID = conversation.draftID {
@@ -947,14 +939,6 @@ extension WorkbenchAIStore {
       aiChatMessage = "请先选择一篇文章。"
       return nil
     }
-    guard
-      !blockChatMutationForDeliveryUncertainty(
-        conversationID: activeAIChatConversationID(for: draftID)
-      )
-    else {
-      return nil
-    }
-
     cacheCurrentAIChatSessionForAIStore()
     let now = Date()
     let conversation = AIConversation(
@@ -1031,14 +1015,10 @@ extension WorkbenchAIStore {
     at date: Date
   ) -> [AIPublishingChatMessage] {
     messages.map { message in
-      guard
-        message.agentContinuation != nil
-          || message.automationPlan?.source == .agentLoop
-      else {
+      guard message.automationPlan?.source == .agentLoop else {
         return message
       }
       var copy = message
-      copy.agentContinuation = nil
       if var plan = copy.automationPlan {
         for index in plan.steps.indices where !plan.steps[index].status.isTerminal {
           plan.steps[index].status = .cancelled
@@ -1091,13 +1071,6 @@ extension WorkbenchAIStore {
       store.setAIChatMessage("请先切回发生错误的 AI 对话，再重试回复。")
       return nil
     }
-    guard
-      !blockChatMutationForDeliveryUncertainty(
-        conversationID: retryState.conversationID
-      )
-    else {
-      return nil
-    }
     if let retryAfter = retryState.retryAfter, retryAfter > Date() {
       let remainingSeconds = max(1, Int(ceil(retryAfter.timeIntervalSinceNow)))
       store.setAIChatMessage("服务器要求稍后重试，请等待约 \(remainingSeconds) 秒。")
@@ -1139,13 +1112,6 @@ extension WorkbenchAIStore {
     cacheCurrentAIChatSessionForAIStore()
     guard let conversationIdentity = aiChatConversationIdentity(for: chatDraft.id) else {
       store.setAIChatMessage("找不到可重新生成的 AI 对话。")
-      return nil
-    }
-    guard
-      !blockChatMutationForDeliveryUncertainty(
-        conversationID: conversationIdentity.conversationID
-      )
-    else {
       return nil
     }
     guard

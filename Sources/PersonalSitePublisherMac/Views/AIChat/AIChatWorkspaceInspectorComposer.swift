@@ -28,7 +28,7 @@ extension AIChatContextInspectorView {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           Text(status)
             .font(.workbenchSupporting)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
             .lineLimit(4)
             .accessibilityLabel("AI 状态")
             .accessibilityValue(status)
@@ -63,7 +63,7 @@ extension AIChatContextInspectorView {
             .font(.workbenchMetadata)
             .foregroundStyle(WorkbenchTheme.progress)
           Text("AI 思考中…")
-            .font(.caption.weight(.medium))
+            .font(.workbenchMetadata.weight(.medium))
             .foregroundStyle(WorkbenchTheme.progress)
           Spacer()
         }
@@ -110,7 +110,7 @@ extension AIChatContextInspectorView {
                 ? String(localized: "开始通用聊天…")
                 : String(localized: "询问当前文章…")
             )
-            .font(.body)
+            .font(.workbenchBody)
             .foregroundStyle(.tertiary)
             .padding(.top, WorkbenchSpacing.control)
             .padding(.leading, WorkbenchSpacing.tight)
@@ -123,7 +123,7 @@ extension AIChatContextInspectorView {
             .accessibilityIdentifier("ai-assistant-input")
             .accessibilityHint("输入问题；⌘Return 发送")
             .scrollContentBackground(.hidden)
-            .font(.body)
+            .font(.workbenchBody)
             .disabled(isComposerInputUnavailable)
             .focused($isComposerFocused)
         }
@@ -291,7 +291,7 @@ extension AIChatContextInspectorView {
       .buttonStyle(.plain)
       .accessibilityLabel("移除上下文 \(label)")
     }
-    .font(.caption)
+    .font(.workbenchMetadata)
     .padding(.horizontal, WorkbenchSpacing.control)
     .padding(.vertical, WorkbenchSpacing.tight)
     .background(Color.primary.opacity(0.07), in: Capsule())
@@ -329,7 +329,7 @@ extension AIChatContextInspectorView {
       .buttonStyle(.plain)
       .accessibilityLabel("移除图片 \(attachment.originalFilename)")
     }
-    .font(.caption)
+    .font(.workbenchMetadata)
     .padding(.horizontal, WorkbenchSpacing.control)
     .padding(.vertical, WorkbenchSpacing.tight)
     .background(Color.primary.opacity(0.07), in: Capsule())

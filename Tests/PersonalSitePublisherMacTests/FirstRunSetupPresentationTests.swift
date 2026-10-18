@@ -223,49 +223,6 @@ final class FirstRunSetupPresentationTests: XCTestCase {
   }
 
   @MainActor
-  func testSelectingExistingAIConnectionOnlyStagesItsIDAndConfiguration() throws {
-    let fileURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("FirstRunAIConnection-\(UUID().uuidString)", isDirectory: false)
-    defer { try? FileManager.default.removeItem(at: fileURL) }
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: fileURL))
-    let originalProfile = store.activeProfile
-    let connection = AIConnectionProfile.template(
-      named: "现有连接",
-      preset: .local
-    )
-    var staging = FirstRunSetupProfileStaging(profile: originalProfile)
-
-    staging.selectAIConnection(connection)
-
-    XCTAssertEqual(store.activeProfile, originalProfile)
-    XCTAssertEqual(staging.profile.aiConnectionProfileID, connection.id)
-    XCTAssertEqual(staging.profile.aiProviderConfig, connection.config)
-
-    XCTAssertEqual(store.activeProfile, originalProfile)
-  }
-
-  func testSkippingAPreviouslySelectedAIConnectionRestoresPersistedSelection() {
-    let persistedConnection = AIConnectionProfile.template(
-      named: "已有连接",
-      preset: .openAICompatible
-    )
-    let temporaryConnection = AIConnectionProfile.template(
-      named: "临时连接",
-      preset: .local
-    )
-    var persistedProfile = SiteProfile.defaultProfile
-    persistedProfile.aiConnectionProfileID = persistedConnection.id
-    persistedProfile.aiProviderConfig = persistedConnection.config
-    var staging = FirstRunSetupProfileStaging(profile: persistedProfile)
-
-    staging.selectAIConnection(temporaryConnection)
-    staging.restoreAIConnection(from: persistedProfile)
-
-    XCTAssertEqual(staging.profile.aiConnectionProfileID, persistedConnection.id)
-    XCTAssertEqual(staging.profile.aiProviderConfig, persistedConnection.config)
-  }
-
-  @MainActor
   func testStagedSiteKindAndPublishingChoicesDoNotMutateTheStoreBeforeFinalCommit() throws {
     let fileURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("FirstRunStaging-\(UUID().uuidString)", isDirectory: false)

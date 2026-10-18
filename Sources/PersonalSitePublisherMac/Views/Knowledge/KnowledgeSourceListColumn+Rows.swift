@@ -42,17 +42,17 @@ extension KnowledgeSourceListColumn {
         KnowledgeDocumentThumbnailView(knowledge: knowledge, document: document)
       } else {
         Image(systemName: document.kind.systemImage)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .frame(width: 16)
           .accessibilityHidden(true)
       }
       VStack(alignment: .leading, spacing: KnowledgeSidebarMetrics.rowTextSpacing) {
         Text(displayTitle(for: document))
           .font(.workbenchItemTitle)
-          .workbenchTruncatedIdentity(document.title)
+          .workbenchTruncatedTitle(document.title, lineLimit: 2)
         Text(row.subtitle)
           .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .workbenchTruncatedIdentity(row.subtitle)
       }
       .accessibilityElement(children: .combine)
@@ -66,19 +66,19 @@ extension KnowledgeSourceListColumn {
 
       if knowledge.isPinned(document.id) {
         Image(systemName: "pin.fill")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .accessibilityLabel("已固定到 AI")
       } else if !document.allowsLocalSemanticIndex {
         Image(systemName: "slash.circle")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .accessibilityLabel("未建立本地语义索引")
       }
       if !document.allowsRemoteAIUse {
         Image(systemName: "hand.raised")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .accessibilityLabel("禁止发送给远程 AI")
       }
 
@@ -198,8 +198,8 @@ extension KnowledgeSourceListColumn {
         ProgressView()
           .controlSize(.small)
         Text("正在执行全文与本地语义检索…")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
       .padding(.top, WorkbenchSpacing.spacious + WorkbenchSpacing.tight)
@@ -276,7 +276,7 @@ extension KnowledgeSourceListColumn {
               Spacer(minLength: 2)
               Text("\(group.results.count) 个片段")
                 .font(.workbenchMetadata.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.workbenchSecondary)
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("\(group.document.title)，\(group.results.count) 个命中片段")

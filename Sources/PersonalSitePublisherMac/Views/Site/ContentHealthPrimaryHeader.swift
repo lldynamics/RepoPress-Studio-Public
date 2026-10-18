@@ -28,12 +28,12 @@ struct ContentHealthPrimaryHeader: View {
             )
           )
           .font(.workbenchPageSubtitle)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
           if isRefreshing {
             Text("正在更新")
               .font(.workbenchMetadata)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
           }
         }
         Spacer(minLength: 0)
@@ -60,6 +60,9 @@ struct ContentHealthPrimaryHeader: View {
       HStack(spacing: WorkbenchSpacing.control) {
         countCard("错误", value: summary.errorCount, section: .errors, filter: .errors)
         countCard("警告", value: summary.warningCount, section: .warnings, filter: .warnings)
+        countCard(
+          "优化建议", value: snapshot.optimizationCount, section: .optimizations,
+          filter: .optimizations)
         countCard(
           "维护", value: summary.maintenanceCount, section: .maintenance, filter: .maintenance)
         metric(
@@ -96,7 +99,7 @@ struct ContentHealthPrimaryHeader: View {
   private var searchField: some View {
     HStack(spacing: WorkbenchSpacing.icon) {
       Image(systemName: "magnifyingglass")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityHidden(true)
       TextField("筛选问题或文章", text: $search)
         .textFieldStyle(.plain)
@@ -218,6 +221,7 @@ extension ContentHealthIssueSection {
     switch self {
     case .errors: WorkbenchTheme.risk
     case .warnings: WorkbenchTheme.warning
+    case .optimizations: WorkbenchTheme.info
     case .maintenance: WorkbenchTheme.info
     }
   }

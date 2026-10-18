@@ -58,16 +58,21 @@ final class MarkdownArticleHeaderMetadataTests: XCTestCase {
     profile.warnsWhenBodyH1DuplicatesTitle = false
     XCTAssertFalse(shows(true))
     profile.warnsWhenBodyH1DuplicatesTitle = true
-    XCTAssertTrue(shows(false))
+    XCTAssertFalse(shows(false))
+    XCTAssertTrue(shows(true))
     draft.assignToGeneralDraft(editingProfileID: profile.id)
     XCTAssertFalse(shows(true))
     draft = ArticleDraft(siteProfileID: UUID(), title: "Title", bodyMarkdown: "# Title")
     XCTAssertFalse(shows(true))
   }
 
-  func testLocalOnlyIsNotAnAvailableStateForSiteOwnedArticles() {
-    var draft = ArticleDraft(siteProfileID: UUID(), title: "Site article")
-    XCTAssertEqual(ArticleStatePicker.availableStates(for: draft), [.draft, .ready, .published])
+  func testOnlyDraftIsChosenByHandAndPublishingStatesStayVisible() {
+    var draft = ArticleDraft(siteProfileID: UUID(), title: "Site article", draft: true)
+    XCTAssertEqual(ArticleStatePicker.availableStates(for: draft), [.draft])
+    XCTAssertTrue(draft.setArticleState(.ready))
+    XCTAssertEqual(ArticleStatePicker.availableStates(for: draft), [.draft, .ready])
+    draft.status = .published
+    XCTAssertEqual(ArticleStatePicker.availableStates(for: draft), [.draft, .published])
     draft.assignToGeneralDraft()
     XCTAssertEqual(ArticleStatePicker.availableStates(for: draft), [.localOnly])
   }
@@ -123,27 +128,6 @@ final class MarkdownArticleHeaderMetadataTests: XCTestCase {
     }
   }
 
-  func testExternalGeneralDraftUsesMappedOrDetachedFolder() {
-    let source = ExternalDraftSource(
-      mappingID: UUID(), relativePath: "notes/article.md", importedTitle: "Article",
-      importedFingerprint: "fingerprint"
-    )
-    var draft = ArticleDraft(
-      siteProfileID: UUID(), scope: .general, title: "Article", externalDraftSource: source
-    )
-    let mapped = MarkdownArticleHeaderMetadata(
-      draft: draft, profile: nil,
-      externalFolder: URL(fileURLWithPath: "/tmp/header-external", isDirectory: true)
-    )
-    XCTAssertEqual(mapped.relativePath, source.relativePath)
-    XCTAssertEqual(mapped.fileURL?.path, "/tmp/header-external/notes/article.md")
-    draft.externalDraftSource?.detachedFolderPath = "/tmp/header-detached"
-    XCTAssertEqual(
-      MarkdownArticleHeaderMetadata(draft: draft, profile: nil).fileURL?.path,
-      "/tmp/header-detached/notes/article.md"
-    )
-  }
-
   func testPathMenuKeepsEveryParentReachableForLongAndShortPaths() {
     XCTAssertEqual(
       InteractiveBreadcrumbView.parentPaths(for: "content/posts/2026/10/article.md"),
@@ -176,44 +160,6 @@ final class MarkdownArticleHeaderMetadataTests: XCTestCase {
     store.publishingStore.documents.drafts = [first, second]
     await fulfillment(of: [updated], timeout: 1)
     XCTAssertEqual(state.value.status, .draft)
-    withExtendedLifetime(observation) {}
-  }
-
-  func testHeaderTracksExternalSourceAndInactiveSiteFolderChanges() async throws {
-    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    defer { try? FileManager.default.removeItem(at: root) }
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: root.appendingPathComponent("workbench.json")),
-      safeMode: true
-    )
-    let mapping = ExternalDraftFolderMapping(path: root.appendingPathComponent("external").path)
-    var owner = SiteProfile(name: "Inactive owner", externalDraftFolder: mapping)
-    store.setProfiles([store.activeProfile, owner])
-    var draft = ArticleDraft(
-      siteProfileID: store.activeProfileID, scope: .general, title: "External",
-      externalDraftSource: ExternalDraftSource(
-        mappingID: mapping.id, relativePath: "old.md", importedTitle: "External",
-        importedFingerprint: "fingerprint"
-      )
-    )
-    store.setDrafts([draft])
-    let state = MarkdownArticleHeaderMetadataState(store: store, draftID: draft.id)
-    let pathChanged = expectation(description: "external source-only change is observed")
-    let moved = expectation(description: "inactive owner folder change is observed")
-    let observation = state.$value.dropFirst().sink { value in
-      if value.relativePath == "new.md" && value.fileURL?.path.hasSuffix("external/new.md") == true
-      {
-        pathChanged.fulfill()
-      }
-      if value.fileURL?.path.hasSuffix("moved/new.md") == true { moved.fulfill() }
-    }
-    draft.externalDraftSource?.relativePath = "new.md"
-    store.setDrafts([draft])
-    await fulfillment(of: [pathChanged], timeout: 1)
-    owner.externalDraftFolder?.path = root.appendingPathComponent("moved").path
-    store.setProfiles([store.activeProfile, owner])
-    await fulfillment(of: [moved], timeout: 1)
-    XCTAssertEqual(state.value.fileURL?.path, root.appendingPathComponent("moved/new.md").path)
     withExtendedLifetime(observation) {}
   }
 

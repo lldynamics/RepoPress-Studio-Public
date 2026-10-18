@@ -9,7 +9,7 @@ extension PersonalSitePublisherMacAppDelegate {
 
   func configureWorkbenchLaunchActions() {
     ArticlePublishReminderCoordinator.shared.configureLaunch { [weak self] in
-      self?.openWorkbenchFromMenuBar()
+      self?.openWorkbenchWindow()
     }
   }
 
@@ -17,7 +17,7 @@ extension PersonalSitePublisherMacAppDelegate {
     for url in urls {
       guard let request = WorkbenchShortcutRequest(url: url) else { continue }
       WorkbenchShortcutCoordinator.shared.enqueue(request)
-      openWorkbenchFromMenuBar()
+      openWorkbenchWindow()
     }
   }
 }

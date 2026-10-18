@@ -116,7 +116,7 @@ struct AIProviderSection: View {
           Button(String(localized: "恢复为预设默认值")) {
             restorePresetDefaults()
           }
-          .font(.caption)
+          .font(.workbenchMetadata)
           .buttonStyle(.borderless)
         }
       }
@@ -247,7 +247,7 @@ struct AIProviderSection: View {
             baseURLDraft = ""
           } label: {
             Image(systemName: "xmark.circle.fill")
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
           }
           .buttonStyle(.plain)
           .help(String(localized: "清空 API 基础地址"))
@@ -321,7 +321,7 @@ struct AIProviderSection: View {
             model.wrappedValue = ""
           } label: {
             Image(systemName: "xmark.circle.fill")
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
           }
           .buttonStyle(.plain)
           .help(String(localized: "清空模型名称"))
@@ -333,14 +333,14 @@ struct AIProviderSection: View {
       if !suggestedModels.isEmpty {
         HStack(spacing: 6) {
           Text("可用候选:")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
           ForEach(suggestedModels, id: \.self) { candidate in
             Button {
               model.wrappedValue = candidate
             } label: {
               Text(candidate)
-                .font(.caption)
+                .font(.workbenchMetadata)
                 .padding(.horizontal, WorkbenchSpacing.icon)
                 .padding(.vertical, 2)
                 .background(
@@ -366,8 +366,8 @@ struct AIProviderSection: View {
               Text("搜索与选择已拉取模型 (\(discoveredModels.count))")
               Image(systemName: "chevron.right").font(.workbenchMetadata)
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
           }
           .buttonStyle(.borderless)
           .popover(isPresented: $isSearchPopoverPresented) {
@@ -424,13 +424,13 @@ struct AIProviderSection: View {
 
       if let modelDiscoveryAuthorizationMessage {
         Text(modelDiscoveryAuthorizationMessage)
-          .font(.caption).foregroundStyle(.secondary)
+          .font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
       }
       if hasLoadedModels, !model.wrappedValue.isEmpty,
         !discoveredModels.contains(where: { $0.id == model.wrappedValue })
       {
         Text("当前模型未出现在本次返回列表中，原选择已保留。可检查账户权限或选择列表中的模型；列表缺失不代表模型已下线。")
-          .font(.caption).foregroundStyle(WorkbenchTheme.warning)
+          .font(.workbenchMetadata).foregroundStyle(WorkbenchTheme.warning)
           .accessibilityIdentifier("settings-ai-model-not-listed")
       }
       if let selected = discoveredModels.first(where: { $0.id == model.wrappedValue }) {

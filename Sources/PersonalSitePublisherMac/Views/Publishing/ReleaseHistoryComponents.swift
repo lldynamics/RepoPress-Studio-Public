@@ -22,6 +22,32 @@ struct ReleaseHistoryFailureGroup: Identifiable {
   }
 }
 
+extension ReleaseHistoryDetailView {
+  func deploymentRecheckButton(
+    _ entry: ReleaseLedgerEntry,
+    accessibilityIdentifier: String
+  ) -> some View {
+    Button {
+      Task {
+        await store.refreshDeploymentStatus(for: entry.record)
+      }
+    } label: {
+      releaseHistoryActionLabel("重试检查", systemImage: "checkmark.icloud")
+    }
+    .disabled(
+      store.isDeploymentStatusChecking || !store.canCheckDeploymentStatus(for: entry.record)
+    )
+    .accessibilityIdentifier(accessibilityIdentifier)
+  }
+
+  func releaseHistoryActionLabel(
+    _ title: LocalizedStringKey,
+    systemImage: String
+  ) -> some View {
+    Label(title, systemImage: systemImage)
+  }
+}
+
 enum ReleaseHistoryRecordPresentation: Identifiable {
   case failureGroup(ReleaseHistoryFailureGroup)
   case entry(ReleaseLedgerEntry)
@@ -95,8 +121,8 @@ struct DeploymentStatusTrendChart: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       Label("部署趋势", systemImage: "chart.bar.xaxis")
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.weight(.semibold))
+        .foregroundStyle(.workbenchSecondary)
 
       HStack(alignment: .bottom, spacing: 5) {
         ForEach(orderedHistory) { snapshot in
@@ -158,8 +184,8 @@ struct DeploymentStatusTrendChart: View {
         .fill(color)
         .frame(width: 6, height: 6)
       Text(title)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 }

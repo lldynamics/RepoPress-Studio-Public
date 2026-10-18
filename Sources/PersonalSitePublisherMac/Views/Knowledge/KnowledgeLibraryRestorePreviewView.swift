@@ -17,10 +17,10 @@ struct KnowledgeLibraryRestorePreviewView: View {
           .foregroundStyle(WorkbenchTheme.success)
         VStack(alignment: .leading, spacing: 4) {
           Text("备份完整性校验通过")
-            .font(.title2.weight(.semibold))
+            .font(.workbenchTitle2.weight(.semibold))
           Text(preview.backupURL.lastPathComponent)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .textSelection(.enabled)
         }
       }
@@ -40,10 +40,10 @@ struct KnowledgeLibraryRestorePreviewView: View {
       if !preview.sampleTitles.isEmpty {
         VStack(alignment: .leading, spacing: 6) {
           Text("最近资料")
-            .font(.headline)
+            .font(.workbenchHeadline)
           ForEach(preview.sampleTitles, id: \.self) { title in
             Label(title, systemImage: "doc.text")
-              .workbenchTruncatedIdentity(title)
+              .workbenchTruncatedTitle(title)
           }
         }
       }
@@ -61,7 +61,7 @@ struct KnowledgeLibraryRestorePreviewView: View {
 
       if let lastError = knowledge.lastError {
         Text(lastError)
-          .font(.callout)
+          .font(.workbenchBody)
           .foregroundStyle(WorkbenchTheme.risk)
           .textSelection(.enabled)
       }
@@ -86,7 +86,7 @@ struct KnowledgeLibraryRestorePreviewView: View {
   private func metadataRow(_ label: LocalizedStringKey, value: String) -> some View {
     GridRow {
       Text(label)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       Text(value)
         .textSelection(.enabled)
     }

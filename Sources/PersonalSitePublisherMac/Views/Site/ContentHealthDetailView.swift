@@ -272,7 +272,7 @@ struct ContentHealthDetailView: View {
             ForEach(notes) { note in
               Text(verbatim: [note.title, note.message].joined(separator: " · "))
                 .font(.workbenchSupporting)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.workbenchSecondary)
             }
           }
           .accessibilityElement(children: .contain)
@@ -316,31 +316,14 @@ struct ContentHealthDetailView: View {
 
   @ViewBuilder
   private func filteredEmptyState(_ snapshot: ContentHealthSnapshot) -> some View {
-    if sourceFilter.includesMaintenance && severityFilter == .all
-      && maintenanceScanPresentation != .ready
-    {
-      maintenanceScanStatus
-    } else {
-      VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
-        Label("全部通过", systemImage: "checkmark.seal.fill")
-          .font(.workbenchCardTitle)
-          .foregroundStyle(WorkbenchTheme.success)
-        Text("当前筛选下没有待处理的问题。")
-          .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
-        Text("上次扫描 \(snapshot.generatedAt.workbenchShortText)")
-          .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
-      }
-      .padding(WorkbenchSpacing.content)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(
-        WorkbenchBackgroundStyle.card,
-        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-      )
-      .accessibilityElement(children: .contain)
-      .accessibilityIdentifier("content-health-all-clear")
-    }
+    ContentHealthFilteredEmptyState(
+      snapshot: snapshot,
+      isMaintenancePending: sourceFilter.includesMaintenance && severityFilter == .all
+        && maintenanceScanPresentation != .ready,
+      isFiltered: severityFilter != .all || sourceFilter != .all
+        || aiFixFilter != .all || !issueSearch.isEmpty,
+      maintenanceContent: maintenanceScanStatus
+    )
   }
 
   private var maintenanceScanPresentation: ContentHealthMaintenanceScanPresentation.Status {
@@ -372,7 +355,7 @@ struct ContentHealthDetailView: View {
         HStack(spacing: WorkbenchSpacing.control) {
           Text("维护扫描结果已过期，请重新检查。")
             .font(.workbenchSupporting)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
           Button("重试维护扫描") {
             Task { await store.refreshSiteMaintenanceSnapshot(force: true) }
           }
@@ -380,12 +363,12 @@ struct ContentHealthDetailView: View {
       case .loading:
         Label("正在后台扫描维护事项…", systemImage: "arrow.clockwise")
           .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
       if currentMaintenanceSnapshot != nil && maintenanceScanPresentation != .ready {
         Text("维护事项为上次扫描结果。")
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
     }
   }
@@ -557,45 +540,12 @@ struct ContentHealthDetailView: View {
   }
 
   private var snapshotCancelledState: some View {
-    VStack(spacing: 12) {
-      Image(systemName: "pause.circle")
-        .font(.system(size: WorkbenchIconSize.hero))
-        .foregroundStyle(.secondary)
-        .accessibilityHidden(true)
-      Text("内容健康检查已取消")
-        .font(.headline)
-      Text("尚未修改任何文章。需要时可以重新生成检查快照。")
-        .foregroundStyle(.secondary)
-        .multilineTextAlignment(.center)
-      Button(action: refreshContentHealthSnapshot) {
-        Label("重新开始", systemImage: "arrow.clockwise")
-      }
-      .workbenchProminentActionStyle()
-    }
-    .frame(maxWidth: .infinity, minHeight: 360)
-    .padding(WorkbenchSpacing.page)
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("content-health-loading-cancelled")
+    ContentHealthSnapshotCancelledState(refresh: refreshContentHealthSnapshot)
   }
 
   private func snapshotFailureState(_ errorMessage: String) -> some View {
-    VStack(spacing: 12) {
-      Image(systemName: "xmark.octagon")
-        .font(.system(size: WorkbenchIconSize.hero))
-        .foregroundStyle(WorkbenchTheme.risk)
-        .accessibilityHidden(true)
-      Text("无法生成检查快照")
-        .font(.headline)
-      AccessibleStatusMessage(message: errorMessage, severity: .error)
-        .multilineTextAlignment(.center)
-        .frame(maxWidth: 420)
-      Button(action: refreshContentHealthSnapshot) {
-        Label(String(localized: "重试"), systemImage: "arrow.clockwise")
-      }
-      .workbenchProminentActionStyle()
-    }
-    .frame(maxWidth: .infinity, minHeight: 360)
-    .padding(WorkbenchSpacing.page)
+    ContentHealthSnapshotFailureState(
+      errorMessage: errorMessage, retry: refreshContentHealthSnapshot)
   }
 
   private func prepareSlugReferenceReview(draftID: UUID) {
@@ -640,18 +590,18 @@ struct ContentHealthDetailView: View {
   private func slugChangeResolutionCard(_ impact: SlugChangeImpact) -> some View {
     VStack(alignment: .leading, spacing: 9) {
       Label("Slug 变更处理", systemImage: "arrow.triangle.branch")
-        .font(.callout.weight(.semibold))
+        .font(.workbenchBody.weight(.semibold))
       Text("\(impact.oldRoutes.joined(separator: "、")) → \(impact.newRoute)")
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospaced())
+        .foregroundStyle(.workbenchSecondary)
         .textSelection(.enabled)
       Text(
         impact.referenceCount == 0
           ? "站内未检测到旧引用；仍可保留旧地址，承接搜索引擎和站外来路。"
           : "检测到 \(impact.affectedDraftCount) 篇文章、\(impact.referenceCount) 处旧引用。"
       )
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
 
       Button {
         prepareSlugReferenceReview(draftID: impact.targetDraftID)
@@ -694,7 +644,7 @@ struct ContentHealthDetailView: View {
                 systemImage: "arrow.right.circle")
             }
             .buttonStyle(.link)
-            .font(.caption)
+            .font(.workbenchMetadata)
             .foregroundStyle(WorkbenchTheme.risk)
             .accessibilityIdentifier("content-health-view-conflicting-draft-\(draft.id.uuidString)")
           }
@@ -702,7 +652,7 @@ struct ContentHealthDetailView: View {
       } else {
         Text(String(localized: "aliases 会写入 Front Matter；是否生成 HTTP 跳转取决于当前框架或重定向插件。"))
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
     }
     .padding(WorkbenchSpacing.card)

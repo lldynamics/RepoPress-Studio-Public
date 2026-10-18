@@ -114,7 +114,7 @@ struct WorkspaceToolbarMenuLabel: View {
       if showsTitle {
         Text(title)
           .foregroundStyle(.primary)
-          .workbenchTruncatedIdentity(title)
+          .workbenchTruncatedTitle(title)
         if !siteKindDisplayName.isEmpty {
           Text(siteKindDisplayName)
             .font(.workbenchMetadata.weight(.medium))
@@ -123,7 +123,7 @@ struct WorkspaceToolbarMenuLabel: View {
             .padding(.horizontal, WorkbenchSpacing.tight)
             .padding(.vertical, 1)
             .background(Color.primary.opacity(0.06), in: Capsule())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
     }
@@ -145,19 +145,19 @@ struct OmniCommandSearchBar: View {
     Button(action: action) {
       HStack(spacing: 6) {
         Image(systemName: "magnifyingglass")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.weight(.semibold))
+          .foregroundStyle(.workbenchSecondary)
 
         switch density {
         case .expanded:
           Text("搜索草稿、标签与指令…")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .lineLimit(1)
         case .compact:
           Text("搜索…")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .lineLimit(1)
         case .minimal:
           EmptyView()
@@ -174,7 +174,7 @@ struct OmniCommandSearchBar: View {
               Color.primary.opacity(0.08),
               in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge)
             )
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
       .padding(.horizontal, WorkbenchSpacing.control)

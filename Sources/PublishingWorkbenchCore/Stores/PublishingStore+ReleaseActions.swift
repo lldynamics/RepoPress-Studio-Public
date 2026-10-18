@@ -232,28 +232,6 @@ extension PublishingStore {
     )
   }
 
-  /// Pushes only the selected article to its stable `draft/<slug>` branch.
-  /// The operation intentionally uses the same preflight and mutation guards
-  /// as normal online publishing, but never marks the draft as published.
-  @discardableResult
-  public func publishSelectedDraftToPreviewBranch(
-    store: WorkbenchStore
-  ) async -> RemoteRepositoryPublishResult? {
-    guard !blockPublishingIfGeneralDraftSelected(store: store) else { return nil }
-
-    guard let package = publishPackageForSelectedDraft(store: store) else {
-      setPublishingActionMessage(CoreL10n.text("没有可线上预览的文章。"), status: .warning)
-      return nil
-    }
-    let profile = store.profile(for: package)
-    return await publishSelectedDraftOnline(
-      package: package,
-      profile: profile,
-      mode: .previewBranch,
-      store: store
-    )
-  }
-
   func publishSelectedDraftOnline(
     package: PublishPackage,
     profile requestedProfile: SiteProfile,

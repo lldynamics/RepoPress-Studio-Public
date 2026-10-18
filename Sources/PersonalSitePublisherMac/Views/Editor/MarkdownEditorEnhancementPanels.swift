@@ -19,7 +19,7 @@ struct MarkdownInternalLinkPicker: View {
       Divider()
       HStack {
         Image(systemName: "magnifyingglass")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
         TextField("搜索标题、Slug、标签或摘要", text: $query)
           .textFieldStyle(.plain)
           .focused($isQueryFocused)
@@ -31,8 +31,8 @@ struct MarkdownInternalLinkPicker: View {
       HSplitView {
         VStack(alignment: .leading, spacing: 8) {
           Text("可链接文章")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.weight(.semibold))
+            .foregroundStyle(.workbenchSecondary)
           if suggestions.isEmpty {
             ContentUnavailableView("没有匹配文章", systemImage: "link.badge.plus")
               .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -46,12 +46,12 @@ struct MarkdownInternalLinkPicker: View {
                   Text(suggestion.title)
                     .foregroundStyle(.primary)
                   Text(suggestion.destination)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .font(.workbenchMetadata.monospaced())
+                    .foregroundStyle(.workbenchSecondary)
                   if !suggestion.summary.isEmpty {
                     Text(suggestion.summary)
-                      .font(.caption)
-                      .foregroundStyle(.tertiary)
+                      .font(.workbenchMetadata)
+                      .foregroundStyle(.workbenchSecondary)
                       .lineLimit(2)
                   }
                 }
@@ -67,12 +67,12 @@ struct MarkdownInternalLinkPicker: View {
 
         VStack(alignment: .leading, spacing: 10) {
           Text("反向链接")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.weight(.semibold))
+            .foregroundStyle(.workbenchSecondary)
           if backlinks.isEmpty {
             Text("还没有其他文章链接到当前文章。")
-              .font(.callout)
-              .foregroundStyle(.secondary)
+              .font(.workbenchBody)
+              .foregroundStyle(.workbenchSecondary)
           } else {
             ForEach(backlinks) { backlink in
               Button {
@@ -118,7 +118,7 @@ struct MarkdownInternalLinkPicker: View {
   private func panelHeader(title: String, systemImage: String) -> some View {
     HStack {
       Label(title, systemImage: systemImage)
-        .font(.headline)
+        .font(.workbenchHeadline)
       Spacer()
       Button("完成") { dismiss() }
     }
@@ -133,15 +133,15 @@ struct MarkdownDiagnosticsPanel: View {
   let onQuickFix: (MarkdownInlineDiagnostic) -> Void
 
   var body: some View {
+    let symbol = diagnostics.isEmpty ? "checkmark.circle.fill" : "waveform.badge.exclamationmark"
     VStack(spacing: 0) {
       HStack {
-        Label("正文诊断", systemImage: diagnostics.isEmpty ? "checkmark.circle.fill" : "waveform.badge.exclamationmark")
-          .font(.headline)
+        Label("正文诊断", systemImage: symbol).font(.workbenchHeadline)
           .foregroundStyle(diagnostics.isEmpty ? WorkbenchTheme.success : .primary)
         Spacer()
         Text(diagnostics.isEmpty ? "没有发现问题" : "\(diagnostics.count) 项")
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospacedDigit())
+          .foregroundStyle(.workbenchSecondary)
         Button("完成") { dismiss() }
       }
       .padding(WorkbenchSpacing.content)
@@ -165,12 +165,12 @@ struct MarkdownDiagnosticsPanel: View {
               .foregroundStyle(diagnostic.severity == .error ? WorkbenchTheme.risk : WorkbenchTheme.warning)
               Spacer()
               Text("位置 \(diagnostic.range.location)")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.tertiary)
+                .font(.workbenchMetadata.monospacedDigit())
+                .foregroundStyle(.workbenchSecondary)
             }
             Text(diagnostic.message)
-              .font(.callout)
-              .foregroundStyle(.secondary)
+              .font(.workbenchBody)
+              .foregroundStyle(.workbenchSecondary)
             HStack {
               Button("定位") {
                 onSelect(diagnostic)
@@ -239,7 +239,7 @@ struct MarkdownSnippetLibraryPanel: View {
     VStack(spacing: 0) {
       HStack {
         Label("SSG 组件、模板与正文片段", systemImage: "rectangle.3.group")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
         if !themeShortcodes.isEmpty {
           Menu {
@@ -298,15 +298,15 @@ struct MarkdownSnippetLibraryPanel: View {
               ForEach(visibleDefinitions) { definition in
                 HStack(spacing: 12) {
                   Image(systemName: "curlybraces.square")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.workbenchSecondary)
                   VStack(alignment: .leading, spacing: 3) {
-                    Text(definition.name).font(.callout.weight(.medium))
+                    Text(definition.name).font(.workbenchBody.weight(.medium))
                     Text(shortcodeParameterHint(definition))
-                      .font(.caption)
-                      .foregroundStyle(.secondary)
+                      .font(.workbenchMetadata)
+                      .foregroundStyle(.workbenchSecondary)
                     Text(definition.insertionTemplate)
-                      .font(.caption.monospaced())
-                      .foregroundStyle(.tertiary)
+                      .font(.workbenchMetadata.monospaced())
+                      .foregroundStyle(.workbenchSecondary)
                       .lineLimit(2)
                   }
                   Spacer()
@@ -331,29 +331,29 @@ struct MarkdownSnippetLibraryPanel: View {
               .frame(width: 126, height: 60)
             } else {
               Image(systemName: snippet.systemImage)
-                .font(.title3)
+                .font(.workbenchTitle3)
                 .frame(width: 28)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.workbenchSecondary)
             }
             VStack(alignment: .leading, spacing: 3) {
               Text(snippet.title)
-                .font(.callout.weight(.medium))
+                .font(.workbenchBody.weight(.medium))
               Text(snippet.detail.isEmpty ? "站点自定义片段" : snippet.detail)
                 .font(.workbenchSupporting)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.workbenchSecondary)
               if snippet.isSiteScoped {
                 Label(siteName, systemImage: "building.2")
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchMetadata)
+                  .foregroundStyle(.workbenchSecondary)
               }
               Text(MarkdownSnippetLibraryService.expandedMarkdown(for: snippet, draft: draft))
-                .font(.caption.monospaced())
-                .foregroundStyle(.tertiary)
+                .font(.workbenchMetadata.monospaced())
+                .foregroundStyle(.workbenchSecondary)
                 .lineLimit(2)
               if let shortcut = snippet.shortcut {
                 Label("/\(shortcut)", systemImage: "keyboard")
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchMetadata)
+                  .foregroundStyle(.workbenchSecondary)
               }
             }
             Spacer()
@@ -543,7 +543,7 @@ private struct MarkdownCustomSnippetEditorPanel: View {
     VStack(spacing: 0) {
       HStack {
         Label(snippet == nil ? "新建站点片段" : "编辑站点片段", systemImage: "text.badge.plus")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
       }
       .padding(WorkbenchSpacing.content)
@@ -568,12 +568,12 @@ private struct MarkdownCustomSnippetEditorPanel: View {
         }
         Section("Markdown 内容") {
           TextEditor(text: $markdown)
-            .font(.body.monospaced())
+            .font(.workbenchBody.monospaced())
             .frame(minHeight: 210)
             .accessibilityLabel("站点片段 Markdown 内容")
           Text("可使用 {{title}}、{{slug}} 和 {{date}} 占位符。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
       .formStyle(.grouped)

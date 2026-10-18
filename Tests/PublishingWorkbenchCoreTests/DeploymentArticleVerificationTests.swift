@@ -51,6 +51,7 @@ final class DeploymentArticleVerificationTests: XCTestCase {
       profile: profile, releaseRecord: record,
       articleDraftID: record.batchItems[1].draftID, previousSnapshot: first)
     XCTAssertFalse(next.verifiesArticle(record.batchItems[0], in: record))
+    XCTAssertFalse(next.verifiesAllArticles(in: record))
     XCTAssertFalse(next.attributionVerified == true)
   }
 

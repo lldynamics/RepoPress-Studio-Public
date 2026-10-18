@@ -29,11 +29,11 @@ struct RemoteArticleImportPreviewView: View {
     VStack(spacing: 0) {
       VStack(alignment: .leading, spacing: 6) {
         Label("预览远端文章导入", systemImage: "tray.and.arrow.down")
-          .font(.title3.weight(.semibold))
+          .font(.workbenchTitle3.weight(.semibold))
         LabeledContent("目标站点", value: siteName)
         LabeledContent("仓库名称", value: repositoryName)
         Text("选择要导入的文章。相同仓库路径的现有草稿会先保存版本快照，再使用远端内容更新。")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
       .padding(WorkbenchSpacing.page)
@@ -50,16 +50,16 @@ struct RemoteArticleImportPreviewView: View {
               VStack(alignment: .leading, spacing: 2) {
                 WorkbenchPathIdentity(path: file.displayPath)
                 Text("\(file.kind.localizedDisplayName) · \(file.status)")
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchMetadata)
+                  .foregroundStyle(.workbenchSecondary)
               }
             }
           }
 
           if let lineDiff = file.lineDiff?.nilIfEmpty {
             Text(lineDiff)
-              .font(.caption.monospaced())
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata.monospaced())
+              .foregroundStyle(.workbenchSecondary)
               .textSelection(.enabled)
               .lineLimit(8)
               .padding(WorkbenchSpacing.control)
@@ -81,8 +81,8 @@ struct RemoteArticleImportPreviewView: View {
           .keyboardShortcut(.cancelAction)
         Spacer()
         Text("已选择 \(selectedPaths.count) / \(files.count) 篇")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         Button {
           confirmAction(files.map(\.displayPath).filter(selectedPaths.contains))
         } label: {

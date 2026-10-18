@@ -1,294 +1,7 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
-/// Pure presentation state for the batch online-publish action.
-///
-/// Keeping the gate explanation separate from the SwiftUI view makes it
-/// possible to test every disabled state without constructing a store or
-/// starting a network operation.
-enum PublishDrawerBatchPermissionState: Equatable {
-  case unchecked
-  case readOnly
-  case writable
-}
-
-enum PublishDrawerRemoteOperationPurpose: Equatable {
-  case publication
-  case websiteDraftSync
-
-  var confirmationTitle: String {
-    switch self {
-    case .publication:
-      return String(localized: "最终发布确认")
-    case .websiteDraftSync:
-      return String(localized: "网站草稿同步确认")
-    }
-  }
-
-  var confirmationDetail: String {
-    switch self {
-    case .publication:
-      return String(localized: "请确认远端、分支、发布方式和完整文件清单。确认后会立即写入远端。")
-    case .websiteDraftSync:
-      return String(
-        localized: "只同步当前网站草稿到远端；不会纳入批量正式发布，也不会移除 draft 标记。请确认远端、分支和完整文件清单。"
-      )
-    }
-  }
-
-  var targetSectionTitle: String {
-    self == .websiteDraftSync
-      ? String(localized: "草稿同步目标")
-      : String(localized: "发布目标")
-  }
-
-  var modeLabel: String {
-    self == .websiteDraftSync ? String(localized: "同步方式") : String(localized: "模式")
-  }
-
-  var branchLabel: String {
-    self == .websiteDraftSync ? String(localized: "同步分支") : String(localized: "发布分支")
-  }
-
-  var fileListTitle: String {
-    self == .websiteDraftSync ? String(localized: "完整同步文件清单") : String(localized: "完整文件清单")
-  }
-
-  var emptyFileMessage: String {
-    self == .websiteDraftSync ? String(localized: "没有待同步文件。") : String(localized: "没有待发布文件。")
-  }
-
-  var warningTitle: String {
-    self == .websiteDraftSync ? String(localized: "同步警告") : String(localized: "发布警告")
-  }
-
-  func footerSummary(fileCount: Int) -> String {
-    if self == .websiteDraftSync {
-      return String(format: String(localized: "将同步 %d 个草稿文件"), fileCount)
-    }
-    return String(format: String(localized: "将发布 %d 个文件"), fileCount)
-  }
-
-  var confirmActionTitle: String {
-    self == .websiteDraftSync ? String(localized: "确认同步网站草稿") : String(localized: "确认线上发布")
-  }
-
-  var confirmAccessibilityHint: String {
-    self == .websiteDraftSync
-      ? String(localized: "确认后立即同步当前网站草稿")
-      : String(localized: "确认后立即执行远端发布")
-  }
-}
-
-struct PublishDrawerSingleArticleActionPresentation: Equatable {
-  let actionTitle: String
-  let accessibilityLabel: String
-  let enabledHint: String
-  let disabledHint: String
-  let confirmationPurpose: PublishDrawerRemoteOperationPurpose
-
-  static func make(isWebsiteDraft: Bool) -> Self {
-    if isWebsiteDraft {
-      return Self(
-        actionTitle: String(localized: "同步当前网站草稿…"),
-        accessibilityLabel: String(localized: "同步当前网站草稿"),
-        enabledHint: String(localized: "打开当前网站草稿的单篇同步确认页；不会纳入批量正式发布"),
-        disabledHint: String(localized: "当前网站草稿的远端同步预览未通过"),
-        confirmationPurpose: .websiteDraftSync
-      )
-    }
-    return Self(
-      actionTitle: String(localized: "仅发布当前文章…"),
-      accessibilityLabel: String(localized: "仅发布当前文章"),
-      enabledHint: String(localized: "打开当前文章的最终发布确认页"),
-      disabledHint: String(localized: "当前文章的线上发布预览未通过"),
-      confirmationPurpose: .publication
-    )
-  }
-}
-
-struct PublishDrawerPreviewBranchActionPresentation: Equatable {
-  let title: String
-  let detail: String
-  let actionTitle: String
-  let accessibilityLabel: String
-  let accessibilityHint: String
-
-  static func make(branchName: String, targetBranch: String) -> Self {
-    Self(
-      title: String(localized: "推送草稿预览分支"),
-      detail: String(
-        format: String(localized: "创建或复用 %@，只写入该分支；不会更新 %@、创建 PR/MR 或改变正式发布状态。"),
-        branchName,
-        targetBranch
-      ),
-      actionTitle: String(localized: "推送预览分支"),
-      accessibilityLabel: String(localized: "推送草稿预览分支"),
-      accessibilityHint: String(
-        format: String(localized: "将当前单篇草稿推送到 %@"),
-        branchName
-      )
-    )
-  }
-}
-
-struct PublishDrawerBatchActionPresentation {
-  struct State: Equatable {
-    var repositoryConfigured: Bool
-    var hasToken: Bool
-    var tokenAccessFailureMessage: String?
-    var permission: PublishDrawerBatchPermissionState
-    var blockingIssueTitle: String?
-    var hasRemoteConflict: Bool
-    var publishableArticleCount: Int?
-    var draftSyncArticleCount: Int
-    var pendingDeletionCount: Int
-    var changedFileCount: Int?
-    var isPlanRefreshing: Bool
-    var isPermissionChecking: Bool
-    var isPublishing: Bool
-
-    init(
-      repositoryConfigured: Bool,
-      hasToken: Bool,
-      tokenAccessFailureMessage: String? = nil,
-      permission: PublishDrawerBatchPermissionState = .unchecked,
-      blockingIssueTitle: String? = nil,
-      hasRemoteConflict: Bool = false,
-      publishableArticleCount: Int? = nil,
-      draftSyncArticleCount: Int = 0,
-      pendingDeletionCount: Int = 0,
-      changedFileCount: Int? = nil,
-      isPlanRefreshing: Bool = false,
-      isPermissionChecking: Bool = false,
-      isPublishing: Bool = false
-    ) {
-      self.repositoryConfigured = repositoryConfigured
-      self.hasToken = hasToken
-      self.tokenAccessFailureMessage = tokenAccessFailureMessage
-      self.permission = permission
-      self.blockingIssueTitle = blockingIssueTitle
-      self.hasRemoteConflict = hasRemoteConflict
-      self.publishableArticleCount = publishableArticleCount
-      self.draftSyncArticleCount = draftSyncArticleCount
-      self.pendingDeletionCount = pendingDeletionCount
-      self.changedFileCount = changedFileCount
-      self.isPlanRefreshing = isPlanRefreshing
-      self.isPermissionChecking = isPermissionChecking
-      self.isPublishing = isPublishing
-    }
-  }
-
-  static let title = String(localized: "审阅并发布文章变更")
-  static let detail = String(
-    localized: "仅包含应用管理的文章发布包；待下线请求请到回收站单独处理，不包含 CSS、模板、脚本等其他 Git 工作区变更。发布前会显示完整批次与文件差异。"
-  )
-  static let actionTitle = String(localized: "审阅并发布文章变更…")
-
-  static func isEnabled(_ state: State) -> Bool {
-    guard !state.isPlanRefreshing,
-      !state.isPermissionChecking,
-      !state.isPublishing,
-      state.repositoryConfigured,
-      state.hasToken,
-      state.tokenAccessFailureMessage == nil,
-      state.permission == .writable,
-      state.blockingIssueTitle == nil,
-      let articleCount = state.publishableArticleCount,
-      articleCount > 0
-    else {
-      return false
-    }
-    return true
-  }
-
-  static func status(_ state: State) -> String {
-    if state.isPlanRefreshing {
-      return String(localized: "正在汇总文章发布包")
-    }
-    if state.isPermissionChecking {
-      return String(localized: "正在检查仓库写入权限")
-    }
-    if state.isPublishing {
-      return String(localized: "正在发布文章")
-    }
-    if !state.repositoryConfigured {
-      return String(localized: "先配置线上仓库")
-    }
-    if let blockingIssueTitle = state.blockingIssueTitle {
-      return blockingIssueTitle
-    }
-    if state.tokenAccessFailureMessage != nil {
-      return String(localized: "仓库 Token 状态读取失败")
-    }
-    if !state.hasToken {
-      return String(localized: "请先保存仓库 Token")
-    }
-    switch state.permission {
-    case .unchecked:
-      return String(localized: "请先检查仓库写入权限")
-    case .readOnly:
-      return String(localized: "Token 没有仓库写入权限")
-    case .writable:
-      break
-    }
-    if state.hasRemoteConflict {
-      return String(localized: "远端存在冲突，请先核对")
-    }
-    guard let articleCount = state.publishableArticleCount else {
-      return String(localized: "正在准备文章发布包")
-    }
-    guard articleCount > 0 else {
-      if state.pendingDeletionCount > 0 {
-        return String(localized: "没有可发布文章；待下线请求请到回收站单独处理")
-      }
-      if state.draftSyncArticleCount > 0 {
-        return String(
-          format: String(localized: "%d 篇网站草稿未纳入发布，请单独同步"),
-          state.draftSyncArticleCount
-        )
-      }
-      return String(localized: "没有待处理变更")
-    }
-    let fileCount = state.changedFileCount ?? 0
-    let draftSuffix =
-      state.draftSyncArticleCount > 0
-      ? String(
-        format: String(localized: " · 另有 %d 篇网站草稿未纳入发布"),
-        state.draftSyncArticleCount
-      )
-      : ""
-    if state.pendingDeletionCount > 0 {
-      return String(
-        format: String(localized: "可发布 %d 篇 · %d 个文件 · 不包含 %d 个待下线请求"),
-        articleCount,
-        fileCount,
-        state.pendingDeletionCount
-      ) + draftSuffix
-    }
-    return String(
-      format: String(localized: "可发布 %d 篇文章 · %d 个文章文件"),
-      articleCount,
-      fileCount
-    ) + draftSuffix
-  }
-
-  static func accessibilityHint(isEnabled: Bool, status: String) -> String {
-    if isEnabled {
-      return String(localized: "打开完整批次确认页，审阅全部文章和文件差异后再发布")
-    }
-    return status
-  }
-}
-
-/// A batch-scoped, immutable summary for every surface that explains whether
-/// the current site is ready to publish.  It deliberately describes only
-/// evidence the current plan can prove: image files are "included", and a
-/// clean scan means no risk was found by the enabled checks rather than
-/// promising that disclosure is impossible.
-///
-/// This is presentation-only.  It must not be used to authorize a publish,
-/// bypass preflight, or infer a remote write outcome.
+/// Pure presentation state for the site overview's publishing summary.
 struct UnifiedPublishReadinessPresentation: Equatable {
   struct ContentHealth: Equatable, Sendable {
     let errorCount: Int
@@ -386,12 +99,6 @@ struct UnifiedPublishReadinessPresentation: Equatable {
   }
 }
 
-enum PublishDrawerActionStyle: Equatable {
-  case localSave
-  case formalRelease
-  case isolatedPreview
-}
-
 extension PublishActionMessageStatus {
   var publishDrawerSystemImage: String {
     switch self {
@@ -448,32 +155,32 @@ struct PublishDrawerReadinessChecklist: View {
       }
       if presentation.isLoading {
         Label("正在读取最新检查结果…", systemImage: "arrow.clockwise")
-          .font(.caption).foregroundStyle(.secondary)
+          .font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
       }
       if presentation.ignoredCount > 0 {
         Label(
           String(format: String(localized: "已按站点检查设置忽略 %d 项可选提醒"), presentation.ignoredCount),
           systemImage: "eye.slash"
         )
-        .font(.caption).foregroundStyle(.secondary)
+        .font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
         .help(String(localized: "在“站点 → 站点检查 → 已忽略设置”中可恢复。"))
         .accessibilityIdentifier("publish-drawer-ignored-checks")
       }
       DisclosureGroup(isExpanded: $showsPassedChecks) {
         ForEach(presentation.passedSections) { section in
           Label(section.title, systemImage: section.systemImage)
-            .font(.caption).foregroundStyle(.secondary)
+            .font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
             .padding(.vertical, WorkbenchSpacing.tight)
         }
         if presentation.passedSections.isEmpty {
-          Text("尚无已完成的通过项").font(.caption).foregroundStyle(.secondary)
+          Text("尚无已完成的通过项").font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
         }
       } label: {
         Label(
           String(format: String(localized: "已通过 %d 项"), presentation.passedSections.count),
           systemImage: "checkmark.circle"
         )
-        .font(.callout.weight(.medium)).foregroundStyle(WorkbenchTheme.success)
+        .font(.workbenchBody.weight(.medium)).foregroundStyle(WorkbenchTheme.success)
       }
       .disclosureGroupStyle(
         WorkbenchDisclosureGroupStyle(toggleIdentifier: "publish-inspector-passed-checks")
@@ -483,6 +190,7 @@ struct PublishDrawerReadinessChecklist: View {
         WorkbenchBackgroundStyle.card,
         in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     }
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("publish-drawer-readiness-checklist")
   }
 
@@ -492,8 +200,8 @@ struct PublishDrawerReadinessChecklist: View {
         .foregroundStyle(issue.severity.publishDrawerColor)
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: WorkbenchSpacing.tight) {
-        Text(issue.title).font(.callout.weight(.medium))
-        Text(issue.message).font(.caption).foregroundStyle(.secondary)
+        Text(issue.title).font(.workbenchBody.weight(.medium))
+        Text(issue.message).font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
         ViewThatFits(in: .horizontal) {
           HStack(spacing: WorkbenchSpacing.tight) { issueActions(issue) }
@@ -519,28 +227,63 @@ struct PublishDrawerReadinessChecklist: View {
         selectedIssueID = issue.id
         onNavigate(issue)
       }
-      .buttonStyle(.bordered).controlSize(.small)
+      .buttonStyle(.bordered)
+      .controlSize(.small)
       .accessibilityLabel("\(issue.actionTitle)：\(issue.title)")
       .accessibilityIdentifier("publish-readiness-action-\(issue.id)")
     }
     if issue.supportsAIFix, let onRequestAIFix {
       if let store {
-        PublishDrawerAIFixButton(issue: issue, store: store) {
+        PublishDrawerAIFixButton(
+          issue: issue, store: store, isPrimaryAction: onNavigate == nil
+        ) {
           selectedIssueID = issue.id
           onRequestAIFix(issue)
         }
       } else {
-        Button {
+        let button = Button {
           selectedIssueID = issue.id
           onRequestAIFix(issue)
         } label: {
           Label("AI 修复", systemImage: "sparkles")
         }
-        .buttonStyle(.bordered).controlSize(.small)
         .accessibilityLabel("AI 修复：\(issue.title)")
         .accessibilityHint("打开 AI 助手准备修复请求")
         .accessibilityIdentifier("publish-readiness-ai-fix-\(issue.id)")
+        if onNavigate == nil {
+          button
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        } else {
+          button
+            .buttonStyle(.link)
+        }
       }
+    }
+  }
+}
+
+struct PublishDrawerAttentionSummary: View {
+  let blockingCount: Int
+  let pendingCount: Int
+  let optimizationCount: Int
+  let isReady: Bool
+
+  var body: some View {
+    if blockingCount > 0 {
+      Text(String(format: String(localized: "阻止发布 · %d"), blockingCount))
+        .font(.workbenchMetadata.weight(.semibold)).foregroundStyle(.red)
+    }
+    if pendingCount > 0 {
+      Text(String(format: String(localized: "需要处理 · %d"), pendingCount))
+        .font(.workbenchMetadata.weight(.semibold)).foregroundStyle(.workbenchSecondary)
+    } else if isReady {
+      Text("可发布")
+        .font(.workbenchMetadata.weight(.semibold)).foregroundStyle(.green)
+    }
+    if optimizationCount > 0 {
+      Text(String(format: String(localized: "可选优化 · %d"), optimizationCount))
+        .font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
     }
   }
 }

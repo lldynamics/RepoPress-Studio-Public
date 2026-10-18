@@ -10,7 +10,7 @@ struct AIChatToolRunCard: View {
     VStack(alignment: .leading, spacing: 8) {
       Label(String(localized: "Agent 工具记录"), systemImage: "wrench.and.screwdriver")
         .font(.workbenchCardTitle)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
 
       VStack(spacing: 0) {
         ForEach(Array(runs.enumerated()), id: \.element.id) { index, run in
@@ -32,7 +32,7 @@ struct AIChatToolRunCard: View {
       if let copyStatus {
         Text(copyStatus)
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .accessibilityElement(children: .combine)
       }
     }
@@ -43,14 +43,14 @@ struct AIChatToolRunCard: View {
   private func runRow(_ run: WorkbenchAIAgentToolRunRecord) -> some View {
     HStack(alignment: .top, spacing: 8) {
       Image(systemName: statusImage(run.status))
-        .font(.caption.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
         .foregroundStyle(statusColor(run.status))
         .frame(width: 22, height: 22)
 
       VStack(alignment: .leading, spacing: 3) {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
           Text(toolTitle(run))
-            .font(.callout.weight(.medium))
+            .font(.workbenchBody.weight(.medium))
           Text(statusTitle(run.status))
             .font(.workbenchMetadata.weight(.semibold))
             .foregroundStyle(statusColor(run.status))
@@ -58,15 +58,15 @@ struct AIChatToolRunCard: View {
           if let elapsed = elapsedTitle(run) {
             Text(elapsed)
               .font(.workbenchMetadata.monospacedDigit())
-              .foregroundStyle(.tertiary)
+              .foregroundStyle(.workbenchSecondary)
           }
         }
 
         let summary = run.summary.nilIfEmpty ?? fallbackSummary(run.status)
         let isExpanded = expandedRunIDs.contains(run.id)
         Text(summary)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .lineLimit(isExpanded ? nil : 4)
           .textSelection(.enabled)
           .fixedSize(horizontal: false, vertical: true)
@@ -109,7 +109,7 @@ struct AIChatToolRunCard: View {
   }
 
   private func toolTitle(_ run: WorkbenchAIAgentToolRunRecord) -> String {
-    if let command = WorkbenchAutomationAgentToolRegistry.command(for: run.toolID) {
+    if let command = run.command {
       return WorkbenchAutomationRegistry.descriptor(for: command)?.title ?? command.rawValue
     }
     return run.modelToolName.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty

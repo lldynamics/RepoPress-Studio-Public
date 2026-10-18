@@ -182,8 +182,8 @@ struct WorkbenchStateView: View {
       VStack(spacing: WorkbenchSpacing.card) {
         stateIcon(size: 38)
         stateCopy(
-          titleFont: .headline,
-          messageFont: .callout,
+          titleFont: .workbenchHeadline,
+          messageFont: .workbenchBody,
           messageWidth: 360,
           alignment: .center
         )
@@ -304,7 +304,7 @@ struct WorkbenchStateView: View {
   ) -> some View {
     text
       .font(font)
-      .foregroundStyle(.secondary)
+      .foregroundStyle(.workbenchSecondary)
       .multilineTextAlignment(alignment)
       .frame(maxWidth: width, alignment: alignment == .leading ? .leading : .center)
   }

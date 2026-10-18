@@ -53,12 +53,12 @@ struct KnowledgeSourceListColumn: View {
       if let inboxError = externalImport.inboxError {
         VStack(alignment: .leading, spacing: 6) {
           Text(inboxError)
-            .font(.caption)
+            .font(.workbenchMetadata)
             .foregroundStyle(.orange)
           Button("重试系统共享导入") {
             externalImport.scheduleInboxDrain()
           }
-          .font(.caption)
+          .font(.workbenchMetadata)
         }
         .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
         .padding(.bottom, WorkbenchSpacing.control)

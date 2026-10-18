@@ -29,8 +29,8 @@ struct RepositoryWorkspaceGitManagementSection: View {
         newBranchControls
         if let branchActionUnavailableReason {
           Text(branchActionUnavailableReason)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
         Divider()
         commitHistory
@@ -38,7 +38,7 @@ struct RepositoryWorkspaceGitManagementSection: View {
       .padding(.top, WorkbenchSpacing.control)
     } label: {
       Label("分支管理", systemImage: "arrow.triangle.branch")
-        .font(.headline)
+        .font(.workbenchSectionTitle)
     }
     .disclosureGroupStyle(
       WorkbenchDisclosureGroupStyle(toggleIdentifier: "repository-section-git-management")
@@ -66,8 +66,8 @@ struct RepositoryWorkspaceGitManagementSection: View {
       )
 
       Text("切换或新建分支前，工作区必须没有未提交变更；成功后会同步更新发布目标。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .lineSpacing(1)
     }
   }
@@ -76,19 +76,19 @@ struct RepositoryWorkspaceGitManagementSection: View {
   private var branchList: some View {
     if store.localRepositoryBranches.isEmpty {
       Text("未检测到可用分支。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     } else {
       VStack(alignment: .leading, spacing: 5) {
         HStack {
           Text("本地工作分支")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
           Spacer()
           if store.localRepositoryBranches.count > 6 {
             Text("共 \(store.localRepositoryBranches.count) 个")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
         }
 
@@ -105,8 +105,8 @@ struct RepositoryWorkspaceGitManagementSection: View {
 
           if filtered.isEmpty {
             Text("未找到匹配的分支。")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
               .padding(.vertical, WorkbenchSpacing.tight)
           } else {
             ScrollView {
@@ -125,7 +125,7 @@ struct RepositoryWorkspaceGitManagementSection: View {
             branchSearchQuery = ""
           }
           .buttonStyle(.borderless)
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(WorkbenchTheme.documentForeground)
           .padding(.top, 2)
         } else {
@@ -138,7 +138,7 @@ struct RepositoryWorkspaceGitManagementSection: View {
               showAllBranches = true
             }
             .buttonStyle(.borderless)
-            .font(.caption)
+            .font(.workbenchMetadata)
             .foregroundStyle(WorkbenchTheme.documentForeground)
             .padding(.top, 2)
             .accessibilityIdentifier("repository-git-management-expand-branches")
@@ -151,12 +151,12 @@ struct RepositoryWorkspaceGitManagementSection: View {
   private func branchRow(for branch: RepositoryBranch) -> some View {
     HStack {
       Text(branch.name)
-        .font(.caption.monospaced())
+        .font(.workbenchMetadata.monospaced())
         .workbenchTruncatedIdentity(branch.name)
       Spacer()
       if branch.isCurrent {
         Label("当前", systemImage: "checkmark.circle.fill")
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(workbenchAccentColor)
       } else {
         Button("切换") {
@@ -203,12 +203,12 @@ struct RepositoryWorkspaceGitManagementSection: View {
   private var commitHistory: some View {
     VStack(alignment: .leading, spacing: 8) {
       Label("提交历史", systemImage: "clock.arrow.circlepath")
-        .font(.caption.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
 
       if store.localRepositoryRecentCommits.isEmpty {
         Text("未查询到提交记录。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       } else {
         let defaultCount = 6
         let displayCount = min(
@@ -222,17 +222,19 @@ struct RepositoryWorkspaceGitManagementSection: View {
             VStack(alignment: .leading, spacing: 2) {
               HStack(alignment: .top, spacing: 6) {
                 Text(commit.shortSHA)
-                  .font(.caption.monospaced())
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchMetadata.monospaced())
+                  .foregroundStyle(.workbenchSecondary)
                 Text(commit.message)
-                  .font(.caption.weight(.medium))
-                  .workbenchTruncatedIdentity(commit.message)
+                  .font(.workbenchMetadata.weight(.medium))
+                  .workbenchTruncatedTitle(commit.message)
                 Spacer(minLength: 0)
               }
-              Text("\(commit.author) · \(commit.date.formatted(date: .abbreviated, time: .shortened))")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+              Text(
+                "\(commit.author) · \(commit.date.formatted(date: .abbreviated, time: .shortened))"
+              )
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
+              .lineLimit(1)
             }
             if index != displayCommits.count - 1 {
               Divider()
@@ -244,7 +246,7 @@ struct RepositoryWorkspaceGitManagementSection: View {
               showAllCommits.toggle()
             }
             .buttonStyle(.borderless)
-            .font(.caption)
+            .font(.workbenchMetadata)
             .foregroundStyle(WorkbenchTheme.documentForeground)
             .padding(.top, WorkbenchSpacing.tight)
             .accessibilityLabel(
@@ -301,15 +303,15 @@ struct RepositoryWorkspaceGitManagementSection: View {
   ) -> some View {
     HStack(spacing: 6) {
       Image(systemName: systemImage)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .frame(width: 16)
       Text(title)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       Spacer(minLength: 6)
       Text(value)
         .workbenchTruncatedIdentity(value)
     }
-    .font(.caption)
+    .font(.workbenchMetadata)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(Text(title))
     .accessibilityValue(value)

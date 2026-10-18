@@ -43,15 +43,15 @@ struct InsertedImageMetadataPanel: View {
 
       HStack(alignment: .firstTextBaseline, spacing: 8) {
         Text(metadata.filename)
-          .font(.callout.weight(.medium))
+          .font(.workbenchBody.weight(.medium))
           .workbenchTruncatedIdentity(metadata.filename)
 
         Spacer(minLength: 8)
 
         if total > 1 {
           Text("图片 \(position) / \(total)")
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.monospacedDigit())
+            .foregroundStyle(.workbenchSecondary)
         }
       }
 
@@ -87,8 +87,8 @@ struct InsertedImageMetadataPanel: View {
         Spacer(minLength: 8)
 
         Text("高级压缩保留在图片工作台。")
-          .font(.caption)
-          .foregroundStyle(.tertiary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       footer
@@ -117,8 +117,8 @@ struct InsertedImageMetadataPanel: View {
       } icon: {
         Image(systemName: "photo.badge.checkmark")
       }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
+      .font(.workbenchMetadata.weight(.semibold))
+      .foregroundStyle(.workbenchSecondary)
 
       Spacer()
 

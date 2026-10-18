@@ -226,7 +226,7 @@ struct MacMarkdownFormattingToolbar: View {
           .font(.workbenchButtonLabel)
         Image(systemName: "chevron.down")
           .font(.system(size: WorkbenchIconSize.indicator, weight: .bold))
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
       .fixedSize(horizontal: true, vertical: false)
       .padding(.horizontal, WorkbenchSpacing.tight)
@@ -237,7 +237,7 @@ struct MacMarkdownFormattingToolbar: View {
       .accessibilityLabel(Text(title))
     }
     .menuIndicator(.hidden)
-    .foregroundStyle(.secondary)
+    .foregroundStyle(.workbenchSecondary)
     .help(help)
     .accessibilityLabel(Text(title))
     .accessibilityIdentifier(identifier)
@@ -258,7 +258,7 @@ struct MacMarkdownFormattingToolbar: View {
             .monospaced()
           Image(systemName: "chevron.down")
             .font(.system(size: WorkbenchIconSize.indicator, weight: .bold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
         .frame(minWidth: 28, minHeight: 28)
         .accessibilityElement(children: .ignore)
@@ -266,7 +266,7 @@ struct MacMarkdownFormattingToolbar: View {
       }
     }
     .menuIndicator(.hidden)
-    .foregroundStyle(.secondary)
+    .foregroundStyle(.workbenchSecondary)
     .help("插入或切换标题 (H1-H6)")
     .accessibilityLabel("标题层级")
   }
@@ -287,7 +287,7 @@ struct MacMarkdownFormattingToolbar: View {
             .font(.system(size: WorkbenchIconSize.inline, weight: .regular))
           Image(systemName: "chevron.down")
             .font(.system(size: WorkbenchIconSize.indicator, weight: .bold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
         .frame(minWidth: 28, minHeight: 28)
         .accessibilityElement(children: .ignore)
@@ -295,7 +295,7 @@ struct MacMarkdownFormattingToolbar: View {
       }
     }
     .menuIndicator(.hidden)
-    .foregroundStyle(.secondary)
+    .foregroundStyle(.workbenchSecondary)
     .help("插入或切换列表（无序、有序、任务列表）")
     .accessibilityLabel("列表")
   }
@@ -309,7 +309,7 @@ struct MacMarkdownFormattingToolbar: View {
     Button(action: action) {
       toolbarLabel(title, systemName: systemName, showsTitle: showsTitle)
     }
-    .foregroundStyle(.secondary)
+    .foregroundStyle(.workbenchSecondary)
     .help(title)
     .accessibilityLabel(Text(title))
   }

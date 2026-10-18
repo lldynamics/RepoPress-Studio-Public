@@ -53,8 +53,8 @@ struct SettingsProfileBar: View {
 
   private var profileLabel: some View {
     Text("当前站点")
-      .font(.callout.weight(.medium))
-      .foregroundStyle(.secondary)
+      .font(.workbenchBody.weight(.medium))
+      .foregroundStyle(.workbenchSecondary)
       .fixedSize()
       .accessibilityHidden(true)
   }
@@ -66,7 +66,7 @@ struct SettingsProfileBar: View {
       }
     }
     .labelsHidden()
-    .font(.callout)
+    .font(.workbenchBody)
     .accessibilityLabel("当前站点")
     .accessibilityValue(activeProfile.name)
     .accessibilityIdentifier("settings-current-site-picker")
@@ -80,7 +80,7 @@ struct SettingsProfileBar: View {
         .labelStyle(.iconOnly)
     }
     .buttonStyle(.bordered)
-    .font(.callout)
+    .font(.workbenchBody)
     .help("管理站点")
     .accessibilityLabel("管理站点")
     .accessibilityIdentifier("settings-manage-sites")
@@ -124,8 +124,8 @@ struct SettingsProfileBar: View {
       if let recentlyDeletedProfile {
         Section("最近删除") {
           Text("\(recentlyDeletedProfile.profile.name) · \(recentlyDeletedProfile.draftCount) 篇草稿")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
           Button("撤销删除", action: restoreRecentlyDeletedProfile)
         }
       }

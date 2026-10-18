@@ -29,8 +29,8 @@ struct TokenDeploymentAutomationSection: View {
       .accessibilityIdentifier("token-deployment-polling-interval")
 
       Text("这些选项只作用于当前工作区；App 保持前台时会持续检查 PR/MR 是否合并，再验证对应部署。所选分钟数限制远端请求的最短间隔。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("token-deployment-automation")

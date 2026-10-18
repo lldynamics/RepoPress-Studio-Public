@@ -663,8 +663,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "general-agent-model",
-      requiresAPIKey: false,
-      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: true)
+      requiresAPIKey: false
     )
     let config = capabilitySupportedConfig(baseConfig, capabilities: [.toolCalling])
     let consentStore = AIDataSharingConsentStore(defaults: testConsentDefaults)
@@ -722,8 +721,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "general-tools-disabled",
-      requiresAPIKey: false,
-      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: false)
+      requiresAPIKey: false
     )
     let config = capabilityConfig(baseConfig, outcome: .supported)
     let (store, consentStore, directory) = try makeGeneralToolingStore(
@@ -760,8 +758,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "general-tools-disabled-consultation",
-      requiresAPIKey: false,
-      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: false)
+      requiresAPIKey: false
     )
     let config = capabilityConfig(baseConfig, outcome: .supported)
     let (store, consentStore, directory) = try makeGeneralToolingStore(
@@ -821,8 +818,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "general-news-article",
-      requiresAPIKey: false,
-      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: false)
+      requiresAPIKey: false
     )
     let (store, consentStore, directory) = try makeGeneralToolingStore(
       transport: transport,
@@ -856,11 +852,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "general-draft-permission-disabled",
-      requiresAPIKey: false,
-      advancedSettings: AIProviderAdvancedSettings(
-        allowsApplicationTools: true,
-        agentPermissionPolicy: AIAgentPermissionPolicy(enabledScopes: [.localRead])
-      )
+      requiresAPIKey: false
     )
     let config = capabilityConfig(baseConfig, outcome: .supported)
     let (store, consentStore, directory) = try makeGeneralToolingStore(
@@ -895,8 +887,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "general-tools-unknown",
-      requiresAPIKey: false,
-      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: true)
+      requiresAPIKey: false
     )
     let (store, consentStore, directory) = try makeGeneralToolingStore(
       transport: transport,
@@ -930,8 +921,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "general-tools-unsupported",
-      requiresAPIKey: false,
-      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: true)
+      requiresAPIKey: false
     )
     let config = capabilityConfig(baseConfig, outcome: .unsupported)
     let (store, consentStore, directory) = try makeGeneralToolingStore(
@@ -964,8 +954,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "general-knowledge-agent-model",
-      requiresAPIKey: false,
-      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: true)
+      requiresAPIKey: false
     )
     let config = capabilitySupportedConfig(baseConfig, capabilities: [.toolCalling])
     let consentStore = AIDataSharingConsentStore(defaults: testConsentDefaults)
@@ -1121,8 +1110,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "general-text-only-model",
-      requiresAPIKey: false,
-      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: true)
+      requiresAPIKey: false
     )
     let config = capabilitySupportedConfig(baseConfig, capabilities: [.toolCalling])
     let consentStore = AIDataSharingConsentStore(defaults: testConsentDefaults)
@@ -1150,11 +1138,6 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     let conversation = try XCTUnwrap(
       store.aiStore.startNewGeneralAIChatConversation()
     )
-    // Restore the historical mode directly: new conversations no longer expose this setting.
-    let conversationIndex = try XCTUnwrap(
-      store.aiStore.aiConversations.firstIndex(where: { $0.id == conversation.id })
-    )
-    store.aiStore.aiConversations[conversationIndex].agentMode = .textOnly
 
     let reply = await store.aiStore.sendGeneralAIChatMessage(
       "不要使用工具。",
@@ -1175,8 +1158,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "general-text-only-create",
-      requiresAPIKey: false,
-      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: true)
+      requiresAPIKey: false
     )
     let config = capabilityConfig(baseConfig, outcome: .supported)
     let (store, consentStore, directory) = try makeGeneralToolingStore(
@@ -1189,11 +1171,6 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       try? FileManager.default.removeItem(at: directory)
     }
     let conversation = try XCTUnwrap(store.aiStore.startNewGeneralAIChatConversation())
-    // Restore the historical mode directly: new conversations no longer expose this setting.
-    let conversationIndex = try XCTUnwrap(
-      store.aiStore.aiConversations.firstIndex(where: { $0.id == conversation.id })
-    )
-    store.aiStore.aiConversations[conversationIndex].agentMode = .textOnly
 
     let reply = await store.aiStore.sendGeneralAIChatMessage(
       "请直接新建一篇仅文字模式的文章。",

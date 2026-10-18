@@ -25,8 +25,8 @@ struct PrivacySettingsView: View {
     Section("遮挡效果预览") {
       VStack(alignment: .leading, spacing: 6) {
         Text("私密文章或离席遮罩效果")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
 
         ViewThatFits(in: .horizontal) {
           HStack(spacing: WorkbenchSpacing.card) {
@@ -91,9 +91,9 @@ struct PrivacySettingsView: View {
   ) -> some View {
     VStack(alignment: .leading, spacing: 4) {
       Text(title)
-        .font(.caption.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
       Text(content)
-        .font(.subheadline)
+        .font(.workbenchMetadata)
         .blur(radius: isMasked && privacySettings.masksPrivateContent ? 4 : 0)
     }
     .frame(maxWidth: .infinity, alignment: .leading)

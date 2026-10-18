@@ -63,7 +63,7 @@ extension ArticleDraft {
     }
   }
 
-  public static let currentSoftwareGuideSeedVersion = 11
+  public static let currentSoftwareGuideSeedVersion = 12
 
   public struct SoftwareGuideSynchronizationResult: Sendable {
     public let drafts: [ArticleDraft]
@@ -271,7 +271,7 @@ extension ArticleDraft {
       categories: ["指南"],
       summary: "认识顶部状态区、工作区导航、文章范围和详情栏，并按推荐顺序完成第一次安全发布。",
       bodyMarkdown: """
-        欢迎使用 RepoPress Studio。你正在阅读的“使用指南”默认位于通用草稿（General Drafts），不会自动发布，也没有仓库写入路径。可以直接阅读、复制，或移到回收站；如果准备改写成自己的操作手册，建议先复制一份。
+        欢迎使用 RepoPress Studio。你正在阅读的“使用指南”默认位于仅本地草稿（Local-only Drafts），不会自动发布，也没有仓库写入路径。可以直接阅读、复制，或移到回收站；如果准备改写成自己的操作手册，建议先复制一份。
 
         ## 顶部：先看站点、状态和入口
 
@@ -287,7 +287,7 @@ extension ArticleDraft {
         写作列表上方有两个范围：
 
         - **当前站点（Current Site）**：属于当前网站，可进入检查和发布。
-        - **通用草稿（General Drafts）**：跨站点复用的草稿，不直接绑定仓库；需要时再转到某个站点。
+        - **仅本地草稿（Local-only Drafts）**：只保存在本机、不绑定站点的草稿；需要时移入当前站点。
 
         ## 推荐的第一次使用顺序
 
@@ -312,7 +312,7 @@ extension ArticleDraft {
       bodyMarkdown: """
         ## 1. 先选文章范围
 
-        在“当前站点”中新建的文章属于当前网站，可以进入发布流程；在“通用草稿”中新建的是通用草稿，适合跨网站积累提纲和素材。确认范围后，点击文章列表上方的 **＋**。
+        在“当前站点”中新建的文章属于当前网站，可以进入发布流程；在“仅本地草稿”中新建的草稿只保存在本机，适合积累提纲和素材。确认范围后，点击文章列表上方的 **＋**。
 
         先填写清晰标题，再检查自动生成的 slug。slug 会成为文章路径的一部分，发布后尽量不要频繁修改。
 
@@ -492,7 +492,7 @@ extension ArticleDraft {
       summary:
         "Learn the top status area, workspace navigation, draft scopes, and the recommended path to a safe first release.",
       bodyMarkdown: """
-        Welcome to RepoPress Studio. These Guide articles live in General Drafts by default. They are never published automatically and have no repository write path. Read, duplicate, or move them to the recycle bin. If you want to turn one into your own runbook, duplicate it first.
+        Welcome to RepoPress Studio. These Guide articles live in Local-only Drafts by default. They are never published automatically and have no repository write path. Read, duplicate, or move them to the recycle bin. If you want to turn one into your own runbook, duplicate it first.
 
         ## Top bar: site, status, and entry points
 
@@ -508,7 +508,7 @@ extension ArticleDraft {
         Writing has two content scopes:
 
         - **Current Site** contains site-owned articles that can enter the publishing flow.
-        - **General Drafts** contains reusable drafts that are not directly bound to a repository.
+        - **Local-only Drafts** contains drafts kept only on this Mac and not bound to a site; move one into the current site when it is ready.
 
         ## A good first-use sequence
 
@@ -534,7 +534,7 @@ extension ArticleDraft {
       bodyMarkdown: """
         ## 1. Choose the draft scope
 
-        Articles created under Current Site belong to the active site and can enter publishing. General Drafts are reusable drafts for outlines and material shared across sites. Choose the scope, then click **＋** above the article list.
+        Articles created under Current Site belong to the active site and can enter publishing. Local-only Drafts stay on this Mac and suit outlines and material. Choose the scope, then click **＋** above the article list.
 
         Start with a clear title, then review the generated slug. The slug becomes part of the article path, so avoid changing it frequently after publication.
 

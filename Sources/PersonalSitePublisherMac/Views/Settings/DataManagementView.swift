@@ -34,7 +34,7 @@ enum DataManagementSection: String, CaseIterable, Identifiable {
   var subtitle: String {
     switch self {
     case .drafts:
-      return String(localized: "版本、回收站、仓库待清理和草稿归属")
+      return String(localized: "版本、回收站和仓库待清理")
     case .backup:
       return String(localized: "立即备份、预览恢复和自动备份保存位置")
     case .migration:
@@ -71,7 +71,7 @@ enum DataManagementTask: String, CaseIterable, Identifiable {
   var subtitle: String {
     switch self {
     case .drafts:
-      return String(localized: "查看版本历史、回收站、草稿归属和待清理的仓库文件。")
+      return String(localized: "查看版本历史、回收站和待清理的仓库文件。")
     case .storage:
       return String(localized: "查看空间占用，清理资料库数据，或更改存储位置。")
     case .backup:
@@ -224,7 +224,7 @@ struct DataManagementView: View {
           .font(.workbenchSectionTitle)
         Text("每项任务会在单独界面中打开，设置页保持简洁。")
           .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       LazyVGrid(
@@ -300,20 +300,20 @@ struct DataManagementView: View {
   ) -> some View {
     HStack(alignment: .top, spacing: WorkbenchSpacing.card) {
       Image(systemName: systemImage)
-        .font(.title3)
-        .foregroundStyle(.secondary)
+        .font(.workbenchTitle3)
+        .foregroundStyle(.workbenchSecondary)
         .frame(width: 24)
         .accessibilityHidden(true)
 
       VStack(alignment: .leading, spacing: 3) {
         Text(title)
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
         Text(value)
           .font(.workbenchMetricValue)
         Text(detail)
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
     }
@@ -330,8 +330,8 @@ struct DataManagementView: View {
     VStack(alignment: .leading, spacing: WorkbenchSpacing.card) {
       HStack(alignment: .top, spacing: WorkbenchSpacing.card) {
         Image(systemName: task.systemImage)
-          .font(.title3)
-          .foregroundStyle(.secondary)
+          .font(.workbenchTitle3)
+          .foregroundStyle(.workbenchSecondary)
           .frame(width: 24)
           .accessibilityHidden(true)
 
@@ -340,7 +340,7 @@ struct DataManagementView: View {
             .font(.workbenchCardTitle)
           Text(task.subtitle)
             .font(.workbenchMetadata)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
             .fixedSize(horizontal: false, vertical: true)
         }
       }
@@ -508,8 +508,8 @@ private struct DataManagementStorageTaskSheet: View {
   private var taskHeader: some View {
     HStack(alignment: .top, spacing: WorkbenchSpacing.card) {
       Image(systemName: task.systemImage)
-        .font(.title2)
-        .foregroundStyle(.secondary)
+        .font(.workbenchTitle2)
+        .foregroundStyle(.workbenchSecondary)
         .frame(width: 28)
         .accessibilityHidden(true)
 
@@ -518,7 +518,7 @@ private struct DataManagementStorageTaskSheet: View {
           .font(.workbenchPageTitle)
         Text(task.subtitle)
           .font(.workbenchPageSubtitle)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
 

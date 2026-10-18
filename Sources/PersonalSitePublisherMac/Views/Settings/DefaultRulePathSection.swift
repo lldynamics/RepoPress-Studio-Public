@@ -38,8 +38,8 @@ struct DefaultRulePathSection: View {
     )
 
     Text("留空时，Hugo 和 Zola 使用与原稿同目录的语言后缀文件；按语言分目录时填写包含 {language} 的模板，并在站点生成器中配置对应语言。")
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
 
     TextField("图片路径模板", text: activeProfileBinding.imagePathPattern)
       .accessibilityLabel("图片路径模板")
@@ -144,14 +144,14 @@ struct DefaultRulePathSection: View {
     HStack(spacing: 6) {
       Image(systemName: icon)
         .font(.workbenchMetadata)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
 
       Text("\(label)：")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
 
       Text(path.isEmpty ? "未生成有效路径" : path)
-        .font(.caption.monospaced())
+        .font(.workbenchMetadata.monospaced())
         .foregroundStyle(path.isEmpty ? .secondary : .primary)
         .lineLimit(1)
         .truncationMode(.middle)
@@ -169,8 +169,8 @@ struct DefaultRulePathSection: View {
   private var placeholderGuidance: some View {
     VStack(alignment: .leading, spacing: 6) {
       Text("支持的占位符变量：")
-        .font(.caption.weight(.medium))
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.weight(.medium))
+        .foregroundStyle(.workbenchSecondary)
 
       ViewThatFits(in: .horizontal) {
         HStack(spacing: 6) {
@@ -210,7 +210,7 @@ struct DefaultRulePathSection: View {
         .foregroundStyle(.primary)
       Text("(\(desc))")
         .font(.workbenchMetadata)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
     }
     .padding(.horizontal, WorkbenchSpacing.icon)
     .padding(.vertical, 2)

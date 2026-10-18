@@ -122,8 +122,8 @@ public final class WorkbenchMarkdownEditorFeatureFacade: ObservableObject {
           return request
         }
     )
-    observeValue(store.aiWorkspaceStore.$aiTokenAvailability)
-    observeValue(store.aiWorkspaceStore.$isAIActionRunning)
+    observeValue(store.aiWorkspaceStore.publisher(for: \.aiTokenAvailability))
+    observeValue(store.aiWorkspaceStore.publisher(for: \.isAIActionRunning))
 
     store.aiStore.$aiDraftSuggestionStateRevision
       .map { [weak self] _ -> AIPublishingMetadataSuggestion? in
@@ -143,8 +143,8 @@ public final class WorkbenchMarkdownEditorFeatureFacade: ObservableObject {
       .store(in: &cancellables)
 
     Publishers.CombineLatest(
-      store.aiWorkspaceStore.$aiChatDraftID,
-      store.aiWorkspaceStore.$aiChatMessages
+      store.aiWorkspaceStore.publisher(for: \.aiChatDraftID),
+      store.aiWorkspaceStore.publisher(for: \.aiChatMessages)
     )
     .map { draftID, messages in
       WorkbenchEditorLatestAssistantReference(

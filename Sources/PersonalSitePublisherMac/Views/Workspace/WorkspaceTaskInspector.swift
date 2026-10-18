@@ -96,13 +96,13 @@ struct RepositoryContextInspectorView: View {
     VStack(spacing: 0) {
       HStack(spacing: 10) {
         Image(systemName: "arrow.left.arrow.right")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
         VStack(alignment: .leading, spacing: 2) {
           Text("仓库与发布详情栏")
-            .font(.headline)
+            .font(.workbenchHeadline)
           Text("只显示当前阻断与文件变更")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
         Spacer()
       }
@@ -144,20 +144,20 @@ struct RepositoryContextInspectorView: View {
       ) {
         SeverityBadge(severity: issue.severity)
         Text(issue.title)
-          .font(.callout.weight(.medium))
+          .font(.workbenchBody.weight(.medium))
         Text(issue.message)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
     } else if let readiness = statusState.localPublishReadiness,
       readiness.blockingIssueCount > 0
     {
       inspectorCard(title: "当前阻断", systemImage: "checklist") {
         Text("当前文章有 \(readiness.blockingIssueCount) 个发布阻断项。")
-          .font(.callout)
+          .font(.workbenchBody)
         Text("在“检查”中选择文章，可在详情栏直接处理检查结果。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
     } else {
       Label("没有仓库或发布阻断", systemImage: "checkmark.circle")
@@ -187,8 +187,8 @@ struct RepositoryContextInspectorView: View {
           .onAppear { reconcileSelection(selection) }
       } else {
         Text("在主区域选择本地或远端文件后，这里会显示完整状态和可选差异。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .onAppear { reconcileSelection(nil) }
       }
     }
@@ -212,26 +212,26 @@ struct RepositoryContextInspectorView: View {
         source.localizedDisplayName,
         systemImage: source == .local ? "desktopcomputer" : "arrow.down.doc"
       )
-      .font(.caption.weight(.semibold))
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata.weight(.semibold))
+      .foregroundStyle(.workbenchSecondary)
       WorkbenchPathIdentity(path: file.displayPath)
       LabeledContent("状态", value: file.status)
-        .font(.caption.monospaced())
+        .font(.workbenchMetadata.monospaced())
       LabeledContent("变更", value: file.kind.localizedDisplayName)
-        .font(.caption)
+        .font(.workbenchMetadata)
 
       if let lineDiff = file.lineDiff {
         DisclosureGroup("完整差异") {
           ScrollView([.horizontal, .vertical]) {
             Text(lineDiff)
-              .font(.caption.monospaced())
+              .font(.workbenchMetadata.monospaced())
               .textSelection(.enabled)
               .frame(maxWidth: .infinity, alignment: .leading)
           }
           .frame(maxHeight: 260)
           .padding(.top, WorkbenchSpacing.icon)
         }
-        .font(.caption.weight(.medium))
+        .font(.workbenchMetadata.weight(.medium))
         .accessibilityIdentifier("repository-inspector-selected-file-diff")
       } else {
         Button {
@@ -263,8 +263,8 @@ struct RepositoryContextInspectorView: View {
   ) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       Label(title, systemImage: systemImage)
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.weight(.semibold))
+        .foregroundStyle(.workbenchSecondary)
       content()
     }
     .padding(WorkbenchSpacing.card)

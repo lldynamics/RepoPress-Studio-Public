@@ -225,7 +225,6 @@ extension PublishingStore {
     if hasUnsavedDraftChange {
       store.scheduleAutosave()
       store.scheduleSiteDraftFileAutosave(for: updated)
-      store.scheduleExternalDraftWrite(for: updated)
     }
   }
 
@@ -466,15 +465,6 @@ extension PublishingStore {
     }
     let removed = activeProfileID
     guard let profile = profiles.first(where: { $0.id == removed }) else { return nil }
-    if let mapping = profile.externalDraftFolder,
-      !store.detachExternalDraftSources(for: mapping)
-    {
-      store.setPublishActionMessage(
-        CoreL10n.text("外部草稿正在写回；完成后请重新删除此站点 Profile。"),
-        status: .warning
-      )
-      return nil
-    }
     // Capture the editor's latest debounced body in the reversible deletion
     // payload instead of restoring the older baseline after an undo.
     store.flushDraftBodyEditorBuffers()
@@ -588,9 +578,6 @@ extension PublishingStore {
     customMarkdownSnippets.append(contentsOf: recentlyDeletedProfile.customMarkdownSnippets)
     draftVersions.append(contentsOf: recentlyDeletedProfile.draftVersions)
     recycledDrafts.append(contentsOf: recentlyDeletedProfile.recycledDrafts)
-    if let mapping = recentlyDeletedProfile.profile.externalDraftFolder {
-      store.reconnectDetachedExternalDraftSources(to: mapping)
-    }
     draftRepositoryCleanupRequests.append(
       contentsOf: recentlyDeletedProfile.draftRepositoryCleanupRequests
     )

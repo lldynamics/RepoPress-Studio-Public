@@ -43,3 +43,8 @@ enum MarkdownFormattingResponderBridge {
     return NSApp.sendAction(NSSelectorFromString(selectorName), to: nil, from: nil)
   }
 }
+
+extension KeyboardShortcut {
+  /// Yields to 导入资料…, which uses the same keys while the library is active.
+  static let insertImages = KeyboardShortcut("i", modifiers: [.command, .shift])
+}

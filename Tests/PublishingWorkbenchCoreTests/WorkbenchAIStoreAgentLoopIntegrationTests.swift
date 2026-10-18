@@ -16,7 +16,6 @@ final class WorkbenchAIStoreAgentLoopIntegrationTests: XCTestCase {
 
     XCTAssertEqual(reply?.content, "写作建议")
     XCTAssertTrue(reply?.toolRuns.isEmpty == true)
-    XCTAssertNil(reply?.agentContinuation)
     XCTAssertEqual(fixture.store.drafts.map(\.repositoryContentFingerprint), initialDrafts)
     XCTAssertEqual(fixture.store.drafts.map(\.id), initialIDs)
     let count = await fixture.transport.capturedRequestCount()
@@ -40,7 +39,6 @@ final class WorkbenchAIStoreAgentLoopIntegrationTests: XCTestCase {
     XCTAssertEqual(fixture.store.drafts.map(\.repositoryContentFingerprint), initialDrafts)
     XCTAssertEqual(fixture.store.drafts.map(\.id), initialIDs)
     XCTAssertTrue(fixture.store.automationRunRecords.isEmpty)
-    XCTAssertNil(reply?.agentContinuation)
     XCTAssertTrue(reply?.toolRuns.isEmpty ?? true)
     let count = await fixture.transport.capturedRequestCount()
     XCTAssertEqual(count, 1)
@@ -89,10 +87,7 @@ final class WorkbenchAIStoreAgentLoopIntegrationTests: XCTestCase {
     let consent = AIDataSharingConsentStore(defaults: defaults)
     var config = AIProviderConfig(
       preset: .custom, baseURL: "https://retirement.example/v1", model: "fixture-model",
-      requiresAPIKey: false,
-      advancedSettings: AIProviderAdvancedSettings(
-        allowsApplicationTools: true, agentPermissionPolicy: .all
-      )
+      requiresAPIKey: false
     )
     consent.grant(for: config)
     let store = WorkbenchStore(

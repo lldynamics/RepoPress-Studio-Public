@@ -71,26 +71,26 @@ struct SlugReferenceUpdateReviewSheet: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
       Text("审阅 Slug 引用更新")
-        .font(.headline)
+        .font(.workbenchHeadline)
       Text(review.impact.targetTitle)
-        .font(.callout.weight(.medium))
+        .font(.workbenchBody.weight(.medium))
       Text("将更新 \(review.impact.affectedDraftCount) 篇文章中的 \(review.impact.referenceCount) 处引用。")
       Text("仅替换以下链接目标，保留链接文字、查询参数和锚点；更新前会创建恢复版本。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 16) {
           ForEach(review.articles) { article in
             VStack(alignment: .leading, spacing: 8) {
-              Text(article.title).font(.callout.weight(.semibold))
-              Text(article.path).font(.caption.monospaced()).textSelection(.enabled)
+              Text(article.title).font(.workbenchBody.weight(.semibold))
+              Text(article.path).font(.workbenchMetadata.monospaced()).textSelection(.enabled)
               ForEach(article.changes) { change in
                 VStack(alignment: .leading, spacing: 4) {
                   Label("原目标：\(change.oldTarget)", systemImage: "minus.circle")
                   Label("新目标：\(change.newTarget)", systemImage: "plus.circle")
                 }
-                .font(.caption.monospaced())
+                .font(.workbenchMetadata.monospaced())
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
               }

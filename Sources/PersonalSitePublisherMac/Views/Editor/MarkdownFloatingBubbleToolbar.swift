@@ -62,7 +62,7 @@ struct MarkdownFloatingBubbleToolbar: View {
             .monospaced()
           Image(systemName: "chevron.down")
             .font(.system(size: WorkbenchIconSize.indicator, weight: .bold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
         .frame(minHeight: 24)
         .padding(.horizontal, WorkbenchSpacing.tight)
@@ -99,7 +99,7 @@ struct MarkdownFloatingBubbleToolbar: View {
             .font(.system(size: WorkbenchIconSize.inline, weight: .medium))
           Image(systemName: "chevron.down")
             .font(.system(size: WorkbenchIconSize.indicator, weight: .bold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
         .frame(minHeight: 24)
         .padding(.horizontal, WorkbenchSpacing.tight)
@@ -161,7 +161,7 @@ struct MarkdownFloatingBubbleToolbar: View {
           .font(.workbenchButtonLabel)
       }
       .menuIndicator(.hidden)
-      .foregroundStyle(.secondary)
+      .foregroundStyle(.workbenchSecondary)
       .disabled(isSelectionAIActionRunning)
       .help(isSelectionAIActionRunning ? "AI 正在处理" : "翻译")
       .accessibilityLabel("AI 翻译")

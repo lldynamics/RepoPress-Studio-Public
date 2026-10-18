@@ -20,8 +20,8 @@ struct ArticleStatePicker: View {
     VStack(alignment: .leading, spacing: 6) {
       HStack {
         Text("状态")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         Spacer()
         Picker("状态", selection: stateBinding) {
           ForEach(Self.availableStates(for: draft)) { state in
@@ -30,7 +30,7 @@ struct ArticleStatePicker: View {
               systemImage: state == .published && draft.isPrivate ? "lock.fill" : state.systemImage
             )
             .tag(state)
-            .disabled(state == .published || state == .localOnly)
+            .disabled(state != .draft)
           }
         }
         .labelsHidden()
@@ -40,27 +40,26 @@ struct ArticleStatePicker: View {
       }
 
       Text(stateDescription)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
 
       if draft.isGeneralDraft {
-        Menu("移入站点…") {
-          ForEach(store.profiles.filter { $0.purpose != .generalDraftBackup }) { profile in
-            Button(profile.name) {
-              transferPlan = store.draftOwnershipTransferPlan(
-                draftIDs: [draft.id], operation: .moveToSite, targetProfileID: profile.id)
-            }
-          }
+        Button("移入当前站点…") {
+          transferPlan = store.draftOwnershipTransferPlan(
+            draftIDs: [draft.id], operation: .moveToSite, targetProfileID: store.activeProfile.id)
         }
-        .disabled(store.profiles.allSatisfy { $0.purpose == .generalDraftBackup })
+        .buttonStyle(.link)
+        .font(.workbenchMetadata)
+        .disabled(store.activeProfile.purpose == .generalDraftBackup)
+        .accessibilityIdentifier("article-move-to-current-site")
       } else {
-        Button("移到通用草稿…") {
+        Button("移到仅本地草稿…") {
           transferPlan = store.draftOwnershipTransferPlan(
             draftIDs: [draft.id], operation: .moveToGeneral)
         }
-        .buttonStyle(.borderless)
-        .font(.caption)
+        .buttonStyle(.link)
+        .font(.workbenchMetadata)
         .accessibilityIdentifier("article-move-to-general-drafts")
       }
 
@@ -68,8 +67,8 @@ struct ArticleStatePicker: View {
         Button("撤销上次归属变更") {
           _ = store.undoLatestDraftOwnershipTransfer()
         }
-        .buttonStyle(.borderless)
-        .font(.caption)
+        .buttonStyle(.link)
+        .font(.workbenchMetadata)
       }
     }
     .sheet(item: $transferPlan) { plan in
@@ -80,20 +79,24 @@ struct ArticleStatePicker: View {
     .onChange(of: draft.id) { _, _ in transferPlan = nil }
   }
 
+  /// Only 草稿 is chosen by hand. 待发布 and 已发布 come from publishing and
+  /// are listed only so an article in that state still shows it.
   static func availableStates(for draft: ArticleDraft) -> [ArticleState] {
-    draft.isGeneralDraft ? [.localOnly] : [.draft, .ready, .published]
+    if draft.isGeneralDraft { return [.localOnly] }
+    let state = draft.articleState
+    return state == .draft ? [.draft] : [.draft, state]
   }
 
   private var stateDescription: String {
     switch draft.articleState {
     case .draft:
-      return String(localized: "继续写作；完成后改为待发布。更改状态不会撤回线上版本。")
+      return String(localized: "继续写作；正式发布时会自动取消草稿标记。更改状态不会撤回线上版本。")
     case .ready:
-      return String(localized: "可进入发布检查；此选项不会自动发布。")
+      return String(localized: "已取消草稿标记，尚未发布；可改回草稿。")
     case .published:
       return String(localized: "发布结果或导入记录产生此状态，不能手动设为已发布。")
     case .localOnly:
-      return String(localized: "不绑定站点；移入站点后可设为草稿或待发布。原站点文件和线上版本不会被撤回。")
+      return String(localized: "不绑定站点；移入站点后从草稿开始。原站点文件和线上版本不会被撤回。")
     }
   }
 }

@@ -31,6 +31,7 @@ public enum SEOSocialPreviewCardKind: String, Codable, CaseIterable, Identifiabl
     }
   }
 }
+
 public struct SEOSocialPreviewCard: Identifiable, Codable, Hashable, Sendable {
   public var id: SEOSocialPreviewCardKind { kind }
   public var kind: SEOSocialPreviewCardKind
@@ -118,15 +119,25 @@ public struct SEOSocialPreviewCard: Identifiable, Codable, Hashable, Sendable {
     imageAltText = try container.decodeIfPresent(String.self, forKey: .imageAltText)
     imageDimensions = try container.decodeIfPresent(ImageDimensions.self, forKey: .imageDimensions)
     siteName = try container.decode(String.self, forKey: .siteName)
-    titleCharacterLimit = try container.decodeIfPresent(Int.self, forKey: .titleCharacterLimit) ?? defaults.titleCharacterLimit
-    descriptionCharacterLimit = try container.decodeIfPresent(Int.self, forKey: .descriptionCharacterLimit) ?? defaults.descriptionCharacterLimit
-    imageAspectRatio = try container.decodeIfPresent(String.self, forKey: .imageAspectRatio) ?? defaults.imageAspectRatio
-    imageGuidance = try container.decodeIfPresent(String.self, forKey: .imageGuidance) ?? defaults.imageGuidance
+    titleCharacterLimit =
+      try container.decodeIfPresent(Int.self, forKey: .titleCharacterLimit)
+      ?? defaults.titleCharacterLimit
+    descriptionCharacterLimit =
+      try container.decodeIfPresent(Int.self, forKey: .descriptionCharacterLimit)
+      ?? defaults.descriptionCharacterLimit
+    imageAspectRatio =
+      try container.decodeIfPresent(String.self, forKey: .imageAspectRatio)
+      ?? defaults.imageAspectRatio
+    imageGuidance =
+      try container.decodeIfPresent(String.self, forKey: .imageGuidance) ?? defaults.imageGuidance
   }
 
   private static func defaults(
     for kind: SEOSocialPreviewCardKind
-  ) -> (titleCharacterLimit: Int, descriptionCharacterLimit: Int, imageAspectRatio: String?, imageGuidance: String) {
+  ) -> (
+    titleCharacterLimit: Int, descriptionCharacterLimit: Int, imageAspectRatio: String?,
+    imageGuidance: String
+  ) {
     switch kind {
     case .search:
       return (60, 160, nil, "搜索结果通常不展示社交图。")
@@ -158,8 +169,8 @@ public struct SEOSocialPreviewMetaTag: Identifiable, Codable, Hashable, Sendable
   }
 }
 
-public extension SEOSocialPreviewMetaTag {
-  var htmlElement: String {
+extension SEOSocialPreviewMetaTag {
+  public var htmlElement: String {
     let key = scope == .openGraph ? "property" : "name"
     return "<meta \(key)=\"\(htmlEscaped(property))\" content=\"\(htmlEscaped(content))\">"
   }
@@ -169,8 +180,8 @@ public extension SEOSocialPreviewMetaTag {
   }
 }
 
-public extension Array where Element == SEOSocialPreviewMetaTag {
-  var htmlBlock: String {
+extension Array where Element == SEOSocialPreviewMetaTag {
+  public var htmlBlock: String {
     map(\.htmlElement).joined(separator: "\n")
   }
 }
@@ -273,8 +284,8 @@ public struct SEOSocialShareCopyItem: Identifiable, Codable, Hashable, Sendable 
       urlText.nilIfEmpty,
       hashtagText.nilIfEmpty,
     ]
-      .compactMap { $0 }
-      .joined(separator: "\n\n")
+    .compactMap { $0 }
+    .joined(separator: "\n\n")
   }
 }
 
@@ -403,6 +414,8 @@ public struct SEOSocialPreviewSnapshot: Identifiable, Codable, Hashable, Sendabl
   public var titleCharacterCount: Int
   public var descriptionCharacterCount: Int
   public var imagePath: String?
+  public var imageSource: SEOSharingImageSource
+  public var articleImageIntent: SEOArticleSocialImageIntent?
   public var socialImageURLText: String?
   public var imageDimensions: ImageDimensions?
   public var imageAltText: String?
@@ -423,6 +436,8 @@ public struct SEOSocialPreviewSnapshot: Identifiable, Codable, Hashable, Sendabl
     titleCharacterCount: Int,
     descriptionCharacterCount: Int,
     imagePath: String?,
+    imageSource: SEOSharingImageSource = .unknown,
+    articleImageIntent: SEOArticleSocialImageIntent? = nil,
     socialImageURLText: String? = nil,
     imageDimensions: ImageDimensions? = nil,
     imageAltText: String? = nil,
@@ -448,6 +463,8 @@ public struct SEOSocialPreviewSnapshot: Identifiable, Codable, Hashable, Sendabl
     self.titleCharacterCount = titleCharacterCount
     self.descriptionCharacterCount = descriptionCharacterCount
     self.imagePath = imagePath
+    self.imageSource = imageSource
+    self.articleImageIntent = articleImageIntent
     self.socialImageURLText = socialImageURLText
     self.imageDimensions = imageDimensions
     self.imageAltText = imageAltText
@@ -469,6 +486,8 @@ public struct SEOSocialPreviewSnapshot: Identifiable, Codable, Hashable, Sendabl
     case titleCharacterCount
     case descriptionCharacterCount
     case imagePath
+    case imageSource
+    case articleImageIntent
     case socialImageURLText
     case imageDimensions
     case imageAltText
@@ -485,108 +504,53 @@ public struct SEOSocialPreviewSnapshot: Identifiable, Codable, Hashable, Sendabl
     id = try container.decode(UUID.self, forKey: .id)
     draftID = try container.decode(UUID.self, forKey: .draftID)
     signature = try container.decode(String.self, forKey: .signature)
-    renderingMode = try container.decodeIfPresent(
-      SEOSocialPreviewRenderingMode.self,
-      forKey: .renderingMode
-    ) ?? .staticMetadataSnapshot
+    renderingMode =
+      try container.decodeIfPresent(
+        SEOSocialPreviewRenderingMode.self,
+        forKey: .renderingMode
+      ) ?? .staticMetadataSnapshot
     markdownPath = try container.decode(String.self, forKey: .markdownPath)
     canonicalURLText = try container.decode(String.self, forKey: .canonicalURLText)
     titleCharacterCount = try container.decode(Int.self, forKey: .titleCharacterCount)
     descriptionCharacterCount = try container.decode(Int.self, forKey: .descriptionCharacterCount)
     imagePath = try container.decodeIfPresent(String.self, forKey: .imagePath)
+    imageSource =
+      try container.decodeIfPresent(
+        SEOSharingImageSource.self,
+        forKey: .imageSource
+      ) ?? .unknown
+    // Missing legacy data stays unspecified. Never infer an editorial choice
+    // merely because an older snapshot has no image.
+    articleImageIntent = try container.decodeIfPresent(
+      SEOArticleSocialImageIntent.self,
+      forKey: .articleImageIntent
+    )
     socialImageURLText = try container.decodeIfPresent(String.self, forKey: .socialImageURLText)
     imageDimensions = try container.decodeIfPresent(ImageDimensions.self, forKey: .imageDimensions)
     imageAltText = try container.decodeIfPresent(String.self, forKey: .imageAltText)
     shareHashtags = try container.decodeIfPresent([String].self, forKey: .shareHashtags) ?? []
     cards = try container.decode([SEOSocialPreviewCard].self, forKey: .cards)
-    metaTags = try container.decodeIfPresent([SEOSocialPreviewMetaTag].self, forKey: .metaTags) ?? []
-    structuredData = try container.decodeIfPresent(
-      SEOStructuredDataPreview.self,
-      forKey: .structuredData
-    ) ?? SEOStructuredDataPreview(
-      status: .warning,
-      title: "结构化数据未生成",
-      message: "旧缓存缺少 JSON-LD 预览，请手动刷新。",
-      jsonLD: "{}",
-      warningMessages: ["旧缓存缺少 JSON-LD 预览。"]
-    )
+    metaTags =
+      try container.decodeIfPresent([SEOSocialPreviewMetaTag].self, forKey: .metaTags) ?? []
+    structuredData =
+      try container.decodeIfPresent(
+        SEOStructuredDataPreview.self,
+        forKey: .structuredData
+      )
+      ?? SEOStructuredDataPreview(
+        status: .warning,
+        title: "结构化数据未生成",
+        message: "旧缓存缺少 JSON-LD 预览，请手动刷新。",
+        jsonLD: "{}",
+        warningMessages: ["旧缓存缺少 JSON-LD 预览。"]
+      )
     findings = try container.decode([SEOAuditFinding].self, forKey: .findings)
     generatedAt = try container.decode(Date.self, forKey: .generatedAt)
   }
 }
 
-public enum SEOSocialPreviewCacheState: String, Codable, CaseIterable, Identifiable, Sendable {
-  case missing
-  case fresh
-  case stale
-
-  public var id: String { rawValue }
-
-  public var displayName: String {
-    switch self {
-    case .missing:
-      return "未生成快照"
-    case .fresh:
-      return "缓存可用"
-    case .stale:
-      return "缓存已过期"
-    }
-  }
-
-  public var systemImage: String {
-    switch self {
-    case .missing:
-      return "rectangle.on.rectangle.slash"
-    case .fresh:
-      return "checkmark.circle"
-    case .stale:
-      return "clock.badge.exclamationmark"
-    }
-  }
-}
-
-public struct SEOSocialPreviewCachePresentation: Codable, Hashable, Sendable {
-  public var state: SEOSocialPreviewCacheState
-  public var generatedAt: Date?
-  public var message: String
-  public var manualRefreshTitle: String
-
-  public init(
-    snapshot: SEOSocialPreviewSnapshot?,
-    isStale: Bool
-  ) {
-    if let snapshot {
-      state = isStale ? .stale : .fresh
-      generatedAt = snapshot.generatedAt
-    } else {
-      state = .missing
-      generatedAt = nil
-    }
-
-    switch state {
-    case .missing:
-      message = "点击手动刷新生成搜索、Open Graph 和 Twitter/X 预览快照。"
-      manualRefreshTitle = "生成快照"
-    case .fresh:
-      message = "正在使用缓存快照；只有明确刷新才会重新生成社交预览。"
-      manualRefreshTitle = "手动刷新"
-    case .stale:
-      message = "当前显示的是上次缓存快照；复制发布包前请手动刷新。"
-      manualRefreshTitle = "刷新过期快照"
-    }
-  }
-
-  public var hasSnapshot: Bool {
-    state != .missing
-  }
-
-  public var needsManualRefresh: Bool {
-    state != .fresh
-  }
-}
-
-public extension SEOSocialPreviewSnapshot {
-  var socialShareCopyItems: [SEOSocialShareCopyItem] {
+extension SEOSocialPreviewSnapshot {
+  public var socialShareCopyItems: [SEOSocialShareCopyItem] {
     cards.map { card in
       SEOSocialShareCopyItem(
         kind: card.kind,
@@ -600,23 +564,25 @@ public extension SEOSocialPreviewSnapshot {
     }
   }
 
-  var externalDebugLinks: [SEOSocialPreviewDebugLink] {
+  public var externalDebugLinks: [SEOSocialPreviewDebugLink] {
     guard let canonicalURL = canonicalURLText.trimmedForPublishing.nilIfEmpty else {
       return []
     }
-    let title = cards.first(where: { $0.kind == .twitter })?.title.nilIfEmpty
+    let title =
+      cards.first(where: { $0.kind == .twitter })?.title.nilIfEmpty
       ?? cards.first?.title.nilIfEmpty
       ?? ""
 
     return SEOSocialPreviewDebugPlatform.allCases.compactMap { platform in
-      guard let urlText = debugURLText(for: platform, canonicalURLText: canonicalURL, title: title) else {
+      guard let urlText = debugURLText(for: platform, canonicalURLText: canonicalURL, title: title)
+      else {
         return nil
       }
       return SEOSocialPreviewDebugLink(platform: platform, urlText: urlText)
     }
   }
 
-  var platformReadiness: [SEOSocialPreviewPlatformReadiness] {
+  public var platformReadiness: [SEOSocialPreviewPlatformReadiness] {
     SEOSocialPreviewCardKind.allCases.compactMap { kind in
       guard let card = cards.first(where: { $0.kind == kind }) else {
         return SEOSocialPreviewPlatformReadiness(
@@ -643,12 +609,18 @@ public extension SEOSocialPreviewSnapshot {
       if !card.isDescriptionWithinBudget {
         warnings.append("描述 \(card.descriptionBudgetText)，可能在 \(kind.displayName) 中截断。")
       }
-      if kind != .search && card.imagePath == nil {
+      let acceptsNoIndividualImage =
+        articleImageIntent == .noIndividualImage && imageSource == .none
+      if kind != .search && card.imagePath == nil,
+        !acceptsNoIndividualImage,
+        imageSource != .privateArticle
+      {
         warnings.append("\(kind.displayName) 缺少大图，分享时会降级为纯文本或小卡片。")
       }
       if kind != .search,
-         card.imagePath != nil,
-         card.imageAltText?.trimmedForPublishing.nilIfEmpty == nil {
+        card.imagePath != nil,
+        card.imageAltText?.trimmedForPublishing.nilIfEmpty == nil
+      {
         warnings.append("\(kind.displayName) 社交图缺少 Alt 文本，建议补齐 og:image:alt / twitter:image:alt。")
       }
       if kind != .search, let dimensions = card.imageDimensions {
@@ -668,7 +640,8 @@ public extension SEOSocialPreviewSnapshot {
         kind: kind,
         status: status,
         title: readinessTitle(kind: kind, status: status),
-        message: readinessMessage(status: status, missingRequired: missingRequired, warnings: warnings),
+        message: readinessMessage(
+          status: status, missingRequired: missingRequired, warnings: warnings),
         missingRequiredProperties: missingRequired,
         warningMessages: warnings,
         copyableMetaTags: scopedTags
@@ -676,7 +649,7 @@ public extension SEOSocialPreviewSnapshot {
     }
   }
 
-  var socialShareChecklistMarkdown: String {
+  public var socialShareChecklistMarkdown: String {
     var lines = [
       "# SEO / Social Preview Checklist",
       "",
@@ -686,6 +659,8 @@ public extension SEOSocialPreviewSnapshot {
       "- Title: \(titleCharacterCount) chars",
       "- Description: \(descriptionCharacterCount) chars",
       "- Image: \(imagePath ?? "none")",
+      "- Image source: \(imageSource.displayName)",
+      "- Article image intent: \(articleImageIntent?.rawValue ?? "unspecified")",
       "- Image URL: \(socialImageURLText ?? "none")",
       "- Image size: \(imageDimensions?.displayName ?? "unknown")",
       "- Image alt: \(imageAltText?.nilIfEmpty ?? "missing")",
@@ -742,7 +717,8 @@ public extension SEOSocialPreviewSnapshot {
       return components?.url?.absoluteString
     case .linkedinPostInspector:
       let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
-      let encodedURL = canonicalURLText.addingPercentEncoding(withAllowedCharacters: allowed) ?? canonicalURLText
+      let encodedURL =
+        canonicalURLText.addingPercentEncoding(withAllowedCharacters: allowed) ?? canonicalURLText
       return "https://www.linkedin.com/post-inspector/inspect/\(encodedURL)"
     case .xShareIntent:
       var components = URLComponents(string: "https://twitter.com/intent/tweet")
@@ -818,13 +794,15 @@ public extension SEOSocialPreviewSnapshot {
     let minimumHeight = kind == .twitter ? 628 : 630
     var warnings: [String] = []
     if dimensions.width < 1200 || dimensions.height < minimumHeight {
-      warnings.append("\(kind.displayName) 图片尺寸 \(dimensions.displayName)，建议至少 1200x\(minimumHeight)。")
+      warnings.append(
+        "\(kind.displayName) 图片尺寸 \(dimensions.displayName)，建议至少 1200x\(minimumHeight)。")
     }
 
     let actualRatio = Double(dimensions.width) / Double(max(dimensions.height, 1))
     let targetRatio = 1200.0 / Double(minimumHeight)
     if abs(actualRatio - targetRatio) > 0.08 {
-      warnings.append("\(kind.displayName) 图片比例 \(String(format: "%.2f", actualRatio)):1，建议接近 1.91:1。")
+      warnings.append(
+        "\(kind.displayName) 图片比例 \(String(format: "%.2f", actualRatio)):1，建议接近 1.91:1。")
     }
     return warnings
   }

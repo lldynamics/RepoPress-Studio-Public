@@ -56,8 +56,8 @@ struct RepositoryOperationLifecycleView: View {
       }
 
       Text(detail)
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
 
       if let recovery {
@@ -69,14 +69,14 @@ struct RepositoryOperationLifecycleView: View {
           ),
           systemImage: "archivebox"
         )
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospaced())
+        .foregroundStyle(.workbenchSecondary)
         .textSelection(.enabled)
       }
 
       if let diagnostic, !diagnostic.isEmpty {
         Label(diagnostic, systemImage: "exclamationmark.triangle")
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(WorkbenchTheme.warning)
           .textSelection(.enabled)
       }
@@ -277,7 +277,7 @@ struct RepositoryOperationLifecycleView: View {
 
   private var statusBadge: some View {
     Text(statusBadgeTitle)
-      .font(.caption.weight(.semibold).monospacedDigit())
+      .font(.workbenchMetadata.weight(.semibold).monospacedDigit())
       .foregroundStyle(
         lifecycle.unresolvedConflictCount == 0 && lifecycle.kind != .ambiguous
           ? WorkbenchTheme.success : WorkbenchTheme.warning

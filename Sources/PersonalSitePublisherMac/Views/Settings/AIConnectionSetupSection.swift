@@ -14,11 +14,11 @@ struct AIConnectionSetupSection: View {
         systemImage: presentation.nextStep == .success
           ? "checkmark.circle.fill" : "arrow.right.circle"
       )
-      .font(.headline)
-      Text(message).font(.callout).foregroundStyle(.secondary)
+      .font(.workbenchHeadline)
+      Text(message).font(.workbenchBody).foregroundStyle(.workbenchSecondary)
       if !config.usesCodexAppServer, config.preset != .local {
         Text("选择服务商 → 保存 Key → 明确授权 → 选择模型 → 主动验证")
-          .font(.caption).foregroundStyle(.secondary)
+          .font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
       }
       HStack {
         Button(actionTitle, action: onContinue)

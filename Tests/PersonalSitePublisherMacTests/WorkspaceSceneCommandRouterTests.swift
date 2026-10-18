@@ -108,7 +108,7 @@ final class WorkspaceSceneCommandRouterTests: XCTestCase {
   func testClearAllReleasesRootAndContextActions() {
     let router = WorkspaceSceneCommandRouter()
     router.updateRoot(
-      publishDrawerCommandAction: PublishDrawerCommandAction { _ in },
+      publishCommandAction: PublishCommandAction(publishAll: {}),
       localSitePreviewCommandAction: LocalSitePreviewCommandAction {},
       workspaceCommandPaletteAction: WorkspaceCommandPaletteAction(
         open: {},
@@ -140,7 +140,7 @@ final class WorkspaceSceneCommandRouterTests: XCTestCase {
 
     router.clearAll()
 
-    XCTAssertNil(router.publishDrawerCommandAction)
+    XCTAssertNil(router.publishCommandAction)
     XCTAssertNil(router.localSitePreviewCommandAction)
     XCTAssertNil(router.workspaceCommandPaletteAction)
     XCTAssertNil(router.workspaceFirstRunSetupCommandAction)
@@ -160,7 +160,7 @@ final class WorkspaceSceneCommandRouterTests: XCTestCase {
     var secondInvocationCount = 0
 
     firstRouter.updateRoot(
-      publishDrawerCommandAction: PublishDrawerCommandAction { _ in },
+      publishCommandAction: PublishCommandAction(publishAll: {}),
       localSitePreviewCommandAction: LocalSitePreviewCommandAction {},
       workspaceCommandPaletteAction: WorkspaceCommandPaletteAction(
         open: {}, openMaintenance: {}, openReleaseHistory: {}
@@ -177,7 +177,7 @@ final class WorkspaceSceneCommandRouterTests: XCTestCase {
       showTaskCenter: { firstInvocationCount += 1 }
     )
     secondRouter.updateRoot(
-      publishDrawerCommandAction: PublishDrawerCommandAction { _ in },
+      publishCommandAction: PublishCommandAction(publishAll: {}),
       localSitePreviewCommandAction: LocalSitePreviewCommandAction {},
       workspaceCommandPaletteAction: WorkspaceCommandPaletteAction(
         open: {}, openMaintenance: {}, openReleaseHistory: {}

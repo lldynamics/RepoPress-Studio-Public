@@ -8,6 +8,6 @@ public enum AIAgentRetirement {
 
 extension AIPublishingChatMessage {
   public var isRetiredAgentRecord: Bool {
-    automationPlan?.source == .agentLoop || agentContinuation != nil
+    automationPlan?.source == .agentLoop
   }
 }

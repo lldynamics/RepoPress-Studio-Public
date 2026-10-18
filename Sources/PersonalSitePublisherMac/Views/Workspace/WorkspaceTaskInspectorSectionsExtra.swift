@@ -183,16 +183,16 @@ struct ArticleInspectorTabs: View {
   private var header: some View {
     HStack(alignment: .top, spacing: 10) {
       Image(systemName: selectedTab.systemImage)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .frame(width: 18)
 
       VStack(alignment: .leading, spacing: 2) {
         Text("文章详情栏")
-          .font(.headline)
+          .font(.workbenchHeadline)
         let markdownPath = store.profile(for: draft).markdownPath(for: draft)
         Text(markdownPath)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospaced())
+          .foregroundStyle(.workbenchSecondary)
           .workbenchTruncatedIdentity(markdownPath, lineLimit: 2)
       }
 
@@ -469,8 +469,7 @@ struct ArticleInspectorTabs: View {
         rerunPreflight: {
           requestManualPreflightRefresh()
           store.scheduleImageWorkbenchCachesRefresh(for: draft, force: true)
-        },
-        focusIssue: focus
+        }
       )
     )
   }
@@ -487,29 +486,14 @@ struct ArticleInspectorTabs: View {
     .accessibilityIdentifier("article-inspector-checks-unavailable")
   }
 
-  private func focus(_ issue: PreflightIssue) {
-    switch issue.structuredField {
-    case .body:
-      store.requestEditorFocus(draftID: draft.id, field: issue.field, query: issue.editorQuery)
-    case .title:
-      store.requestEditorFocus(draftID: draft.id, field: "title")
-    case .attachments, .cover:
-      selectedTab = .images
-    case .repository, .contentRoot, .assetRoot, .markdownPathPattern:
-      store.selectSection(.sync)
-    default:
-      selectedTab = .metadata
-    }
-  }
-
   private var preflightLoadingIndicator: some View {
     HStack(spacing: 6) {
       ProgressView()
         .controlSize(.small)
       Text("正在检查…")
     }
-    .font(.caption)
-    .foregroundStyle(.secondary)
+    .font(.workbenchMetadata)
+    .foregroundStyle(.workbenchSecondary)
     .accessibilityIdentifier("article-inspector-checks-loading")
   }
 
@@ -518,8 +502,8 @@ struct ArticleInspectorTabs: View {
       Label("检查尚未完成，显示上一次结果。", systemImage: "exclamationmark.circle")
       preflightRetryButton
     }
-    .font(.caption)
-    .foregroundStyle(.secondary)
+    .font(.workbenchMetadata)
+    .foregroundStyle(.workbenchSecondary)
     .accessibilityIdentifier("article-inspector-checks-stale")
   }
 
@@ -528,8 +512,8 @@ struct ArticleInspectorTabs: View {
       Label("检查尚未完成，请重试。", systemImage: "exclamationmark.circle")
       preflightRetryButton
     }
-    .font(.caption)
-    .foregroundStyle(.secondary)
+    .font(.workbenchMetadata)
+    .foregroundStyle(.workbenchSecondary)
   }
 
   private var preflightRetryButton: some View {

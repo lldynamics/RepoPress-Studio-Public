@@ -74,7 +74,7 @@ struct MarkdownBatchFindReplacePanel: View {
           .accessibilityIdentifier("markdown-batch-find-query")
           .disabled(isBusy)
         Image(systemName: "arrow.right")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .accessibilityHidden(true)
         TextField("替换为", text: $replacement)
           .textFieldStyle(.roundedBorder)
@@ -106,24 +106,24 @@ struct MarkdownBatchFindReplacePanel: View {
           siteProfileID == nil ? "全部站点" : "当前站点",
           systemImage: siteProfileID == nil ? "rectangle.3.group" : "doc.text"
         )
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       }
       .toggleStyle(.checkbox)
-      .font(.caption)
+      .font(.workbenchMetadata)
       .disabled(isBusy)
 
       if !message.isEmpty {
         if isBusy {
           Label(message, systemImage: "hourglass")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .accessibilityIdentifier("markdown-batch-status")
         } else {
           Label(
             message,
             systemImage: isFailure ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"
           )
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(isFailure ? WorkbenchTheme.warning : WorkbenchTheme.success)
           .accessibilityIdentifier("markdown-batch-status")
         }
@@ -134,7 +134,7 @@ struct MarkdownBatchFindReplacePanel: View {
           total: Double(max(totalWriteCount, 1))
         ) {
           Text("正在写入 \(appliedWriteCount) / \(totalWriteCount) 篇")
-            .font(.caption)
+            .font(.workbenchMetadata)
         }
         .accessibilityIdentifier("markdown-batch-write-progress")
       }
@@ -207,14 +207,14 @@ struct MarkdownBatchFindReplacePanel: View {
             .fontWeight(.semibold)
           Spacer()
           Text(presentation.statusText)
-            .font(.caption.monospacedDigit())
+            .font(.workbenchMetadata.monospacedDigit())
             .foregroundStyle(preview.canApply ? WorkbenchTheme.success : Color.secondary)
         }
 
         if let sourceExcerpt = presentation.sourceExcerpt {
           Text(sourceExcerpt)
-            .font(.caption.monospaced())
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.monospaced())
+            .foregroundStyle(.workbenchSecondary)
             .lineLimit(2)
         }
         if preview.canApply {
@@ -222,8 +222,8 @@ struct MarkdownBatchFindReplacePanel: View {
             replacement.isEmpty ? "匹配内容将被删除" : "替换为：\(replacement)",
             systemImage: "arrow.turn.down.right"
           )
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .lineLimit(2)
         }
       }
@@ -250,8 +250,8 @@ struct MarkdownBatchFindReplacePanel: View {
       Spacer()
 
       Text("已选择 \(selectedDocumentIDs.count) 篇")
-        .font(.caption.monospacedDigit())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospacedDigit())
+        .foregroundStyle(.workbenchSecondary)
 
       Button {
         applySelected()

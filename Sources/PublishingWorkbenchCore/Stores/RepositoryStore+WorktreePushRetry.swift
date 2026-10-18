@@ -23,10 +23,32 @@ extension RepositoryStore {
       status: .inProgress
     )
     do {
+      let receipts = try store.worktreePushRecoveryStore.records(profileID: profile.id)
+      for receipt in receipts
+      where receipt.repositoryIdentity == DraftRepositoryIdentity(profile: profile)
+        && receipt.repositoryRoot == profile.localRepositoryRootURL?.standardizedFileURL.path
+      {
+        let result = try await Task.detached(priority: .userInitiated) {
+          try service.confirmedRecordedPush(receipt, profile: profile)
+        }.value
+        guard !Task.isCancelled, store.activeProfile == profile else { return nil }
+        if let result {
+          store.recordConfirmedWorktreePush(
+            result, profile: profile, article: receipt.article,
+            trackingRequest: receipt.articleTrackingRequest)
+          let saved = store.finishWorktreePushRecovery(receipt)
+          store.setGitActionMessage(
+            saved
+              ? CoreL10n.text("已核实此前的 Git 推送成功，并恢复发布记录。当前本地修改已保留；网站部署与页面版本仍需验证。")
+              : CoreL10n.text("Git 推送已确认，但发布记录尚未保存。恢复证据已保留；修复保存问题后可重新核对，无需再次推送。"),
+            status: saved ? .information : .warning)
+          return nil
+        }
+      }
       let confirmation = try await Task.detached(priority: .userInitiated) {
         try service.prepare(profile: profile)
       }.value
-      guard !Task.isCancelled, store.activeProfileID == profile.id else {
+      guard !Task.isCancelled, store.activeProfile == profile else {
         store.setGitActionMessage(
           CoreL10n.text("站点已切换，请重新审阅全部文件。"),
           status: .warning
@@ -82,10 +104,17 @@ extension RepositoryStore {
     defer { isRemoteRepositoryPublishing = false }
 
     do {
+      let receipt = try store.worktreePushRecoveryStore.records(profileID: profile.id).first {
+        $0.commitSHA == confirmation.snapshot.localHeadSHA
+          && $0.repositoryIdentity == DraftRepositoryIdentity(profile: profile)
+      }
       let result = try await Task.detached(priority: .userInitiated) {
         try service.push(profile: profile, confirmation: confirmation)
       }.value
-      store.recordConfirmedWorktreePush(result, profile: profile, article: nil)
+      store.recordConfirmedWorktreePush(
+        result, profile: profile, article: receipt?.article,
+        trackingRequest: receipt?.articleTrackingRequest)
+      let recoverySaved = receipt.map { store.finishWorktreePushRecovery($0) } ?? true
       store.setGitActionMessage(
         CoreL10n.format(
           "Git 推送已确认：本地提交 %@ 已到达 %@。网站部署与线上页面仍需另行验证。",
@@ -94,6 +123,11 @@ extension RepositoryStore {
         ),
         status: .information
       )
+      if !recoverySaved {
+        store.setGitActionMessage(
+          CoreL10n.text("Git 推送已确认，但发布记录尚未保存。恢复证据已保留；修复保存问题后可重新核对，无需再次推送。"),
+          status: .warning)
+      }
       if store.activeProfileID == profile.id {
         await scanRepositoryAsync(store: store)
       }

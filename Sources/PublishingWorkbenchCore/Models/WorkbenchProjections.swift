@@ -155,6 +155,7 @@ public struct ContentHealthStatistics: Hashable, Sendable {
   public let issueCount: Int
   public let errorCount: Int
   public let warningCount: Int
+  public let optimizationCount: Int
   public let passingDraftCount: Int
 
   public init(
@@ -162,12 +163,14 @@ public struct ContentHealthStatistics: Hashable, Sendable {
     issueCount: Int,
     errorCount: Int,
     warningCount: Int,
-    passingDraftCount: Int
+    passingDraftCount: Int,
+    optimizationCount: Int = 0
   ) {
     self.draftCount = draftCount
     self.issueCount = issueCount
     self.errorCount = errorCount
     self.warningCount = warningCount
+    self.optimizationCount = optimizationCount
     self.passingDraftCount = passingDraftCount
   }
 }
@@ -191,13 +194,14 @@ public struct ContentHealthProjection: Sendable {
   public static func statistics(
     from summaries: [DraftPreflightSummary]
   ) -> ContentHealthStatistics {
-    let issues = summaries.flatMap(\.issues)
+    let issues = summaries.flatMap(\.blockingIssues)
     return ContentHealthStatistics(
       draftCount: summaries.count,
       issueCount: issues.count,
       errorCount: issues.filter { $0.severity == .error }.count,
       warningCount: issues.filter { $0.severity == .warning }.count,
-      passingDraftCount: summaries.filter(\.isPassing).count
+      passingDraftCount: summaries.filter(\.isPassing).count,
+      optimizationCount: summaries.reduce(0) { $0 + $1.optimizationCount }
     )
   }
 }
@@ -212,7 +216,9 @@ public struct PublishingReadinessProjection: Sendable {
     preview: LocalPublishPreview,
     draftIssues: [PreflightIssue]
   ) -> [PreflightIssue] {
-    (draftIssues + preview.issues).filter { $0.severity == .error }
+    (draftIssues + preview.issues).filter {
+      $0.severity == .error && !$0.isOptionalOptimization
+    }
   }
 
   public static func makeReadiness(
@@ -241,7 +247,7 @@ public struct PublishingReadinessProjection: Sendable {
     }
 
     let warningIssues = (preview.issues + draftIssuesWithRepository + remoteWarningIssues)
-      .filter { $0.severity == .warning }
+      .filter { $0.severity == .warning && !$0.isOptionalOptimization }
     let changedFileCount = preview.changedFileDiffs.count
 
     return LocalPublishReadiness(

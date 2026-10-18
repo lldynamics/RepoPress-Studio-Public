@@ -56,7 +56,7 @@ struct PublishingConsoleCreationCommands: Commands {
       .keyboardShortcut("n")
       .disabled(!primaryTarget.isEnabled)
 
-      Button(String(localized: "新建通用草稿")) {
+      Button(String(localized: "新建仅本地草稿")) {
         commandRouter?.writingDraftCommandActions?.createGeneralDraft?()
       }
       .disabled(commandRouter?.writingDraftCommandActions?.createGeneralDraft == nil)

@@ -45,8 +45,8 @@ struct AIChatInspectorSection<Content: View>: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 9) {
       Text(verbatim: title)
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.weight(.semibold))
+        .foregroundStyle(.workbenchSecondary)
       content
     }
     .frame(maxWidth: .infinity, alignment: .leading)

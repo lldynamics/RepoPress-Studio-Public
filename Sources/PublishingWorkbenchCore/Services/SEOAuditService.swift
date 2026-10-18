@@ -83,7 +83,8 @@ public struct SEOAuditService: Sendable {
     let summary = draft.summary.trimmedForPublishing
     let body = draft.bodyMarkdown.trimmedForPublishing
     let h1Headings = h1Headings(in: draft.bodyMarkdown)
-    let hasCover = hasPublishableCoverImage(draft: draft)
+    let sharingImage = profile.seoSharingImageResolution(for: draft)
+    let hasCover = sharingImage.path != nil
 
     var findings: [SEOAuditFinding] = []
     findings.append(contentsOf: titleFindings(title))
@@ -94,7 +95,7 @@ public struct SEOAuditService: Sendable {
         title: title,
         profile: profile
       ))
-    findings.append(contentsOf: coverFindings(hasCover: hasCover, draft: draft))
+    findings.append(contentsOf: coverFindings(sharingImage: sharingImage, draft: draft))
     findings.append(contentsOf: taxonomyFindings(draft: draft, profile: profile))
     findings.append(
       .init(
@@ -211,14 +212,35 @@ public struct SEOAuditService: Sendable {
     profile: SiteProfile
   ) -> [SEOAuditFinding] {
     if h1Headings.isEmpty {
-      return [
-        .init(
-          severity: .warning,
-          title: "正文缺少 H1",
-          message: "建议正文保留一个一级标题，方便预览和页面结构检查。",
-          field: "body"
-        )
-      ]
+      switch profile.themeProvidesTitleH1 {
+      case true:
+        return [
+          .init(
+            severity: .info,
+            title: CoreL10n.text("主题提供页面 H1"),
+            message: CoreL10n.text("本地模板检查或站点设置确认主题会把页面标题渲染为 H1。"),
+            field: "body"
+          )
+        ]
+      case false:
+        return [
+          .init(
+            severity: .warning,
+            title: CoreL10n.text("页面缺少 H1"),
+            message: CoreL10n.text("站点设置或本地模板检查确认主题不提供 H1，建议在正文补充一个一级标题。"),
+            field: "body"
+          )
+        ]
+      case nil:
+        return [
+          .init(
+            severity: .warning,
+            title: CoreL10n.text("无法确认页面 H1"),
+            message: CoreL10n.text("正文没有 H1，且当前无法确认主题是否会提供页面 H1；发布前建议检查模板或页面结构。"),
+            field: "body"
+          )
+        ]
+      }
     }
 
     var findings: [SEOAuditFinding] = []
@@ -238,14 +260,23 @@ public struct SEOAuditService: Sendable {
       && h1Headings.contains {
         normalizedHeadingTitle($0) == normalizedHeadingTitle(title)
       }
-    if hasDuplicatedTitle && profile.resolvedWarnsWhenBodyH1DuplicatesTitle {
+    if hasDuplicatedTitle,
+      profile.resolvedWarnsWhenBodyH1DuplicatesTitle,
+      profile.themeProvidesTitleH1 != false
+    {
+      let message =
+        profile.themeProvidesTitleH1 == true
+        ? CoreL10n.text(
+          "主题会把 Front Matter title 渲染为 H1，页面上将出现两个相同的主标题。可在 SEO 检查中关闭这条提示。"
+        )
+        : CoreL10n.text(
+          "正文 H1 与 Front Matter title 相同，但主题是否也会输出 H1 尚未确认；发布前建议检查页面结构。"
+        )
       findings.append(
         .init(
           severity: .warning,
           title: CoreL10n.text("正文 H1 与标题重复"),
-          message: CoreL10n.text(
-            "当前主题可能会把 Front Matter title 渲染为 H1，页面上可能出现两个相同的主标题。可在“设置 → 当前站点的 AI 与写作偏好 → 写作检查”中关闭这条提示。"
-          ),
+          message: message,
           field: "body"
         )
       )
@@ -275,7 +306,10 @@ public struct SEOAuditService: Sendable {
     ]
   }
 
-  private func coverFindings(hasCover: Bool, draft: ArticleDraft) -> [SEOAuditFinding] {
+  private func coverFindings(
+    sharingImage: SEOSharingImageResolution,
+    draft: ArticleDraft
+  ) -> [SEOAuditFinding] {
     if draft.isPrivate {
       return [
         .init(
@@ -287,7 +321,8 @@ public struct SEOAuditService: Sendable {
       ]
     }
 
-    if hasCover {
+    switch sharingImage.source {
+    case .articleCover:
       return [
         .init(
           severity: .info,
@@ -296,16 +331,54 @@ public struct SEOAuditService: Sendable {
           field: "cover"
         )
       ]
+    case .siteDefault:
+      return [
+        .init(
+          severity: .info,
+          title: CoreL10n.text("使用站点默认分享图"),
+          message: CoreL10n.text("RepoPress 会用已配置的站点默认图进行检查与预览；不会写入本文 Front Matter，也不代表主题输出已被修改。"),
+          field: "cover"
+        )
+      ]
+    case .unavailableArticleCover:
+      return [
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("所选封面不可用于预览"),
+          message: CoreL10n.text("本文已选择封面，但对应附件不存在或缺少公开路径；请修复所选封面。"),
+          field: "cover"
+        )
+      ]
+    case .invalidSiteDefault:
+      return [
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("站点默认分享图路径无效"),
+          message: CoreL10n.text("请使用以 / 开头的公开路径，或完整的 http/https URL。"),
+          field: "cover"
+        )
+      ]
+    case .none where sharingImage.articleIntent == .noIndividualImage:
+      return [
+        .init(
+          severity: .info,
+          title: CoreL10n.text("本文不单独配图"),
+          message: CoreL10n.text("已记录本文的检查偏好；RepoPress 不会写入封面 Front Matter，主题仍可能输出自己的默认图片。"),
+          field: "cover"
+        )
+      ]
+    case .privateArticle:
+      return []
+    case .none, .unknown:
+      return [
+        .init(
+          severity: .warning,
+          title: "缺少预览图",
+          message: "公开文章建议设置封面图，用于社交分享和列表页。",
+          field: "cover"
+        )
+      ]
     }
-
-    return [
-      .init(
-        severity: .warning,
-        title: "缺少预览图",
-        message: "公开文章建议设置封面图，用于社交分享和列表页。",
-        field: "cover"
-      )
-    ]
   }
 
   private func taxonomyFindings(draft: ArticleDraft, profile: SiteProfile) -> [SEOAuditFinding] {
@@ -351,16 +424,6 @@ public struct SEOAuditService: Sendable {
       )
       .split(whereSeparator: { $0.isWhitespace })
       .joined(separator: " ")
-  }
-
-  private func hasPublishableCoverImage(draft: ArticleDraft) -> Bool {
-    guard let coverAttachmentID = draft.coverAttachmentID else {
-      return false
-    }
-
-    return draft.attachments.contains {
-      $0.id == coverAttachmentID && !$0.relativePublishPath.trimmedForPublishing.isEmpty
-    }
   }
 
   private func sorted(_ findings: [SEOAuditFinding]) -> [SEOAuditFinding] {

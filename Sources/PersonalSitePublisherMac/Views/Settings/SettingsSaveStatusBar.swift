@@ -88,7 +88,7 @@ struct SettingsSaveStatusBar: View {
           .controlSize(.small)
           .accessibilityHidden(true)
         Text(presentation.title)
-          .font(.callout)
+          .font(.workbenchBody)
           .foregroundStyle(statusColor)
           .lineLimit(2)
       } else {
@@ -96,7 +96,7 @@ struct SettingsSaveStatusBar: View {
           .foregroundStyle(statusColor)
           .accessibilityHidden(true)
         Text(presentation.title)
-          .font(.callout)
+          .font(.workbenchBody)
           .foregroundStyle(statusColor)
           .lineLimit(2)
       }
@@ -104,8 +104,8 @@ struct SettingsSaveStatusBar: View {
       Spacer(minLength: WorkbenchSpacing.control)
 
       Text("普通设置自动保存；API Key 与访问令牌需点击保存。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
         .lineLimit(2)
         .multilineTextAlignment(.trailing)
 

@@ -25,8 +25,8 @@ struct TokenRepositoryTokenSection: View {
         DisclosureGroup(isExpanded: $showsPATGuide) {
           VStack(alignment: .leading, spacing: 6) {
             Text("创建 Token 时请注意勾选 repo (全权控制私有仓库) 与 workflow 权限。")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
 
             Button {
               NSWorkspace.shared.open(
@@ -36,15 +36,15 @@ struct TokenRepositoryTokenSection: View {
                 )!)
             } label: {
               Label("前往 GitHub 打开 Token 创建页", systemImage: "arrow.up.right.square")
-                .font(.caption.weight(.medium))
+                .font(.workbenchMetadata.weight(.medium))
             }
             .buttonStyle(.borderless)
           }
           .padding(.vertical, WorkbenchSpacing.tight)
         } label: {
           Label("如何创建 GitHub 个人访问令牌 (PAT)？", systemImage: "questionmark.circle")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.weight(.semibold))
+            .foregroundStyle(.workbenchSecondary)
         }
       }
 
@@ -52,7 +52,7 @@ struct TokenRepositoryTokenSection: View {
         if isTokenRevealed {
           TextField(String(localized: "仓库平台访问令牌（GitHub / GitLab）"), text: repositoryTokenInput)
             .focused($isRepositoryTokenFocused)
-            .font(.body.monospaced())
+            .font(.workbenchBody.monospaced())
             .accessibilityLabel("仓库访问令牌")
         } else {
           SecureField(String(localized: "仓库平台访问令牌（GitHub / GitLab）"), text: repositoryTokenInput)
@@ -64,7 +64,7 @@ struct TokenRepositoryTokenSection: View {
           isTokenRevealed.toggle()
         } label: {
           Image(systemName: isTokenRevealed ? "eye.slash" : "eye")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
         .buttonStyle(.plain)
         .help(isTokenRevealed ? "隐藏令牌" : "显示令牌明文")
@@ -103,7 +103,7 @@ struct TokenRepositoryTokenSection: View {
           )
         } else if !repositoryTokenInput.wrappedValue.trimmedForPublishing.isEmpty {
           Text("待保存修改")
-            .font(.caption.weight(.medium))
+            .font(.workbenchMetadata.weight(.medium))
             .foregroundStyle(WorkbenchTheme.warning)
         }
       }
@@ -148,7 +148,7 @@ struct TokenRepositoryTokenSection: View {
 
       if let accessFailureMessage = tokenAvailability.accessFailureMessage {
         Text(accessFailureMessage)
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(WorkbenchTheme.warning)
           .textSelection(.enabled)
       }

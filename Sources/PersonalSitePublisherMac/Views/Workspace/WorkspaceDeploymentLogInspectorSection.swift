@@ -22,7 +22,7 @@ struct WorkspaceDeploymentLogInspectorSection: View {
     InspectorSection("部署构建") {
       VStack(alignment: .leading, spacing: 8) {
         Label(snapshot.message, systemImage: snapshot.level.systemImage)
-          .font(.caption.weight(.medium))
+          .font(.workbenchMetadata.weight(.medium))
           .foregroundStyle(statusColor)
           .fixedSize(horizontal: false, vertical: true)
 
@@ -30,7 +30,7 @@ struct WorkspaceDeploymentLogInspectorSection: View {
           VStack(alignment: .leading, spacing: 6) {
             HStack {
               Label("SSG / 构建失败详情", systemImage: "xmark.octagon")
-                .font(.caption.weight(.semibold))
+                .font(.workbenchMetadata.weight(.semibold))
                 .foregroundStyle(WorkbenchTheme.risk)
               Spacer()
               CopyLogButton(
@@ -41,8 +41,8 @@ struct WorkspaceDeploymentLogInspectorSection: View {
 
             if let location = primaryFailure.locationText {
               Text(location)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
+                .font(.workbenchMetadata.monospaced())
+                .foregroundStyle(.workbenchSecondary)
                 .textSelection(.enabled)
               if let sourceContext {
                 DeploymentSourceLocationButton(entry: primaryFailure, context: sourceContext)
@@ -64,8 +64,8 @@ struct WorkspaceDeploymentLogInspectorSection: View {
 
         if entries.isEmpty {
           Text("部署状态尚未返回构建日志摘录。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         } else {
           DisclosureGroup("全部日志摘录（\(entries.count) 条）") {
             VStack(alignment: .leading, spacing: 10) {
@@ -75,11 +75,11 @@ struct WorkspaceDeploymentLogInspectorSection: View {
                     Image(systemName: entry.level.systemImage)
                       .foregroundStyle(color(for: entry.level))
                     Text(entry.source)
-                      .font(.caption.weight(.medium))
+                      .font(.workbenchMetadata.weight(.medium))
                     if let location = entry.locationText {
                       Text(location)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
+                        .font(.workbenchMetadata.monospaced())
+                        .foregroundStyle(.workbenchSecondary)
                     }
                     Spacer()
                     if let sourceContext {
@@ -100,7 +100,7 @@ struct WorkspaceDeploymentLogInspectorSection: View {
             }
             .padding(.top, WorkbenchSpacing.tight)
           }
-          .font(.caption)
+          .font(.workbenchMetadata)
         }
       }
     }
@@ -166,7 +166,7 @@ private struct CopyLogButton: View {
       )
     }
     .buttonStyle(.borderless)
-    .font(.caption)
+    .font(.workbenchMetadata)
     .foregroundStyle(isCopied ? WorkbenchTheme.success : WorkbenchTheme.documentForeground)
     .controlSize(.small)
     .accessibilityLabel(label)
@@ -226,11 +226,11 @@ private struct DeploymentLogRow: View {
       Text("\(lineNumber)")
         .font(.workbenchMetadata.monospacedDigit())
         .foregroundStyle(isErrorLine ? WorkbenchTheme.risk.opacity(0.8) : Color.secondary.opacity(0.6))
-        .frame(width: 22, alignment: .trailing)
+        .frame(width: 28, alignment: .trailing)
         .padding(.trailing, 2)
 
       Text(line.isEmpty ? " " : line)
-        .font(.caption.monospaced())
+        .font(.workbenchMetadata.monospaced())
         .foregroundStyle(isErrorLine ? WorkbenchTheme.risk : Color.primary)
         .textSelection(.enabled)
         .fixedSize(horizontal: false, vertical: true)

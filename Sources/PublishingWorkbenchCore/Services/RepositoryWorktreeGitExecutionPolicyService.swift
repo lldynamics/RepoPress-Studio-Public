@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import PublishingCoreSupport
 import PublishingDomainContracts
@@ -25,9 +26,14 @@ struct RepositoryWorktreeGitExecutionPolicyService {
     try FileManager.default.setAttributes(
       [.posixPermissions: NSNumber(value: Int16(0o600))], ofItemAtPath: message.path
     )
+    let beforeHooks = try hookWorktreeSnapshot(policy: confirmation.executionPolicy, root: root)
     try policyService.runPreCommitHooks(
       policy: confirmation.executionPolicy, rootURL: root, indexURL: index,
-      messageURL: message, source: "message", validateSnapshot: validateSnapshot
+      messageURL: message, source: "message",
+      validateSnapshot: {
+        try validateHookWorktree(beforeHooks, policy: confirmation.executionPolicy, root: root)
+        try validateSnapshot()
+      }
     )
     let arguments = ["commit-tree", tree, "-p", confirmation.snapshot.headSHA, "-F", message.path]
     let result = try policyService.commit(
@@ -45,7 +51,9 @@ struct RepositoryWorktreeGitExecutionPolicyService {
     policy: RepositoryGitExecutionPolicy?, root: URL, commitSHA: String
   ) throws {
     do {
+      let beforeHook = try hookWorktreeSnapshot(policy: policy, root: root)
       try policyService.runHook(.postCommit, policy: policy, rootURL: root)
+      try validateHookWorktree(beforeHook, policy: policy, root: root)
     } catch {
       throw RepositoryWorktreePublishError.commitSucceededButPushFailed(
         commitSHA: commitSHA,
@@ -65,6 +73,7 @@ struct RepositoryWorktreeGitExecutionPolicyService {
     validateSnapshot: () throws -> Void
   ) throws {
     guard policy?.hasTrustedHooks == true else { return }
+    let beforeHook = try hookWorktreeSnapshot(policy: policy, root: root)
     let headBeforeHook = git.run(["rev-parse", "HEAD"], rootURL: root)
     guard headBeforeHook.terminationStatus == 0, !headBeforeHook.didTimeOut,
       !headBeforeHook.wasOutputTruncated
@@ -95,7 +104,59 @@ struct RepositoryWorktreeGitExecutionPolicyService {
       !headAfterHook.wasOutputTruncated,
       headAfterHook.standardOutput == headBeforeHook.standardOutput
     else { throw RepositoryGitExecutionPolicyError.reviewedContentChanged }
+    try validateHookWorktree(beforeHook, policy: policy, root: root)
     try validateSnapshot()
+  }
+
+  // Porcelain status alone cannot detect a hook rewriting an already dirty file.
+  // Snapshot only dirty/untracked contents: clean-file changes are covered by status.
+  private func hookWorktreeSnapshot(
+    policy: RepositoryGitExecutionPolicy?, root: URL
+  ) throws -> [String: String] {
+    guard policy?.hasTrustedHooks == true else { return [:] }
+    func output(_ arguments: [String]) throws -> String {
+      let result = git.run(arguments, rootURL: root, preserveStandardOutputWhitespace: true)
+      guard result.terminationStatus == 0, !result.didTimeOut, !result.wasOutputTruncated else {
+        throw RepositoryGitExecutionPolicyError.reviewedContentChanged
+      }
+      return result.standardOutput
+    }
+    var snapshot = ["": try output(["status", "--porcelain=v1", "-z", "--untracked-files=all"])]
+    let paths = try output([
+      "ls-files", "--modified", "--deleted", "--others", "--exclude-standard", "-z",
+    ])
+    for path in Set(paths.split(separator: "\0").map(String.init)) {
+      let url = root.appendingPathComponent(path)
+      let attributes: [FileAttributeKey: Any]
+      do {
+        attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+      } catch CocoaError.fileReadNoSuchFile {
+        snapshot[path] = "missing"
+        continue
+      }
+      switch attributes[.type] as? FileAttributeType {
+      case .typeRegular:
+        let data = try SafeFileReader.data(
+          relativePath: path, under: root, maximumByteCount: 512 * 1_024 * 1_024)
+        snapshot[path] =
+          Data(SHA256.hash(data: data)).base64EncodedString()
+          + ":\(attributes[.posixPermissions] ?? "")"
+      case .typeSymbolicLink:
+        snapshot[path] =
+          "symlink:" + (try FileManager.default.destinationOfSymbolicLink(atPath: url.path))
+      default:
+        throw RepositoryGitExecutionPolicyError.reviewedContentChanged
+      }
+    }
+    return snapshot
+  }
+
+  private func validateHookWorktree(
+    _ before: [String: String], policy: RepositoryGitExecutionPolicy?, root: URL
+  ) throws {
+    guard try hookWorktreeSnapshot(policy: policy, root: root) == before else {
+      throw RepositoryGitExecutionPolicyError.reviewedContentChanged
+    }
   }
 }
 
@@ -164,4 +225,17 @@ extension RepositoryWorktreePushRetryService {
     }
     return result.standardOutput
   }
+}
+
+extension RepositoryWorktreePublishService {
+  func localRemoteURL(_ value: String, root: URL) -> URL? {
+    if value.lowercased().hasPrefix("file://") {
+      return URL(string: value)?.standardizedFileURL
+    }
+    guard value.hasPrefix("/") || value.hasPrefix("./") || value.hasPrefix("../") else {
+      return nil
+    }
+    return URL(fileURLWithPath: value, relativeTo: root).standardizedFileURL
+  }
+
 }

@@ -227,7 +227,7 @@
               .font(.workbenchCardTitle)
             Text("用于检查材质、边框与明暗外观。")
               .font(.workbenchSupporting)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
           }
           .padding(WorkbenchSpacing.content)
         }
@@ -285,7 +285,7 @@
             .font(.workbenchBody)
           Text("检查卡片的材质、内边距和明暗对比。")
             .font(.workbenchSupporting)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
       .padding(WorkbenchSpacing.content)

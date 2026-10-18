@@ -47,7 +47,7 @@ extension DraftFullTextSearchScope {
     case .allDrafts: String(localized: "全部文章")
     case .currentSite: String(localized: "当前站点")
     case .allSites: String(localized: "全部站点")
-    case .generalDrafts: String(localized: "通用草稿")
+    case .generalDrafts: String(localized: "仅本地草稿")
     }
   }
 }

@@ -71,14 +71,14 @@ struct KnowledgeContextRecommendationCard: View {
       if currentQuery.isEmpty {
         Text("写入标题、摘要或正文后，这里会自动关联本地资料。")
           .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       } else if !hasCurrentPresentation || (isLoading && recommendations.isEmpty) {
         HStack(spacing: 8) {
           ProgressView()
             .controlSize(.small)
           Text("正在查找相关网页、摘录和参考代码…")
             .font(.workbenchSupporting)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
       } else if recommendationGroups.strong.isEmpty && recommendationGroups.possible.isEmpty {
         emptyState
@@ -110,7 +110,7 @@ struct KnowledgeContextRecommendationCard: View {
         if additionalCount > 0 {
           Text(String(localized: "另有 \(additionalCount) 个同源相关片段，可在资料库中查看全部结果。"))
             .font(.workbenchMetadata)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
     }
@@ -162,7 +162,7 @@ struct KnowledgeContextRecommendationCard: View {
       } else {
         Text("自动")
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
     }
     .accessibilityElement(children: .combine)
@@ -176,7 +176,7 @@ struct KnowledgeContextRecommendationCard: View {
           .font(.workbenchSupporting.weight(.medium))
         Text(errorMessage)
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       } else {
         Label(
           hasLocalSources ? "暂时没有足够相关的资料" : "还没有可用于本地关联的资料",
@@ -189,7 +189,7 @@ struct KnowledgeContextRecommendationCard: View {
             : "在资料库中开启本地语义索引后，推荐会留在本机运行。"
         )
         .font(.workbenchMetadata)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       }
     }
   }
@@ -241,7 +241,7 @@ struct KnowledgeContextRecommendationCard: View {
         }
         .buttonStyle(.borderless)
         .font(.workbenchMetadata)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .help(String(localized: "只隐藏本次查询中的这份资料，不会影响其他文章或查询。"))
       }
     }
@@ -262,33 +262,33 @@ struct KnowledgeContextRecommendationCard: View {
     return VStack(alignment: .leading, spacing: 6) {
       HStack(alignment: .firstTextBaseline, spacing: 6) {
         Image(systemName: result.document.kind.systemImage)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .accessibilityHidden(true)
         Text(result.document.title)
           .font(.workbenchItemTitle)
-          .workbenchTruncatedIdentity(result.document.title)
+          .workbenchTruncatedTitle(result.document.title)
         Spacer(minLength: 4)
         Text(sourceKindTitle(for: result))
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       if let reason {
         Label(reason, systemImage: "text.magnifyingglass")
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       KnowledgeHighlightedText(text: hit.snippet, terms: hit.highlightTerms)
         .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .lineLimit(3)
 
       HStack(spacing: 6) {
         if result.signals.contains(.semantic) {
           Text("语义")
             .font(.workbenchMetadata.weight(.medium))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
             .padding(.horizontal, WorkbenchSpacing.icon)
             .padding(.vertical, 2)
             .background(Color.secondary.opacity(0.1), in: Capsule())
@@ -296,7 +296,7 @@ struct KnowledgeContextRecommendationCard: View {
         if let location = hit.locationLabel {
           Text(location)
             .font(.workbenchMetadata)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
             .lineLimit(1)
         }
         Spacer(minLength: 0)
@@ -331,8 +331,8 @@ struct KnowledgeContextRecommendationCard: View {
         .controlSize(.small)
 
         Image(systemName: "hand.draw")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .help("拖入正文将插入引用块")
           .accessibilityLabel("拖入正文插入引用块")
           .onDrag {

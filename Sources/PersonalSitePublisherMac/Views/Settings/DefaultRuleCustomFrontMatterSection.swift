@@ -11,11 +11,11 @@ struct DefaultRuleCustomFrontMatterSection: View {
     // The parent owns the Section and DisclosureGroup so Form sections never nest.
     VStack(alignment: .leading, spacing: 8) {
       Text("在此配置新建文章时需自动带出的自定义 YAML 属性（例如 Hexo / Hugo 主题拓展字段）：")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
 
       TextEditor(text: $customFrontMatterPreset)
-        .font(.caption.monospaced())
+        .font(.workbenchMetadata.monospaced())
         .frame(minHeight: 90)
         .accessibilityLabel("自定义 Front-matter 预设字段")
         .overlay(
@@ -33,7 +33,7 @@ struct DefaultRuleCustomFrontMatterSection: View {
           """
         }
         .buttonStyle(.borderless)
-        .font(.caption)
+        .font(.workbenchMetadata)
 
         Spacer()
 
@@ -41,8 +41,8 @@ struct DefaultRuleCustomFrontMatterSection: View {
           customFrontMatterPreset = ""
         }
         .buttonStyle(.borderless)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
       }
     }
     .padding(.vertical, WorkbenchSpacing.tight)

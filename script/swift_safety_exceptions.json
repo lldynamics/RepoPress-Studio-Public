@@ -638,12 +638,6 @@
       "rationale": "Opening an article treats the persisted full-text cache as an optional read-through probe; an unreadable record falls back to the in-memory summary and the explicit fetch path."
     },
     {
-      "file": "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerView.swift",
-      "category": "validationFallback",
-      "contains": "try? SinglePublishReviewSnapshot(",
-      "rationale": "The snapshot validates attachment state before any publish action is enabled; construction failure leaves the review nil and shows a warning instead of publishing."
-    },
-    {
       "file": "Sources/PersonalSitePublisherMac/Views/RSS/RSSReaderPresentationState.swift",
       "category": "probeFallback",
       "contains": "try? await store.loadArticle(id: record.articleID)",

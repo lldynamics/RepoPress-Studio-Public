@@ -52,10 +52,10 @@ struct KnowledgePopOutWindowView: View {
       case .failure(let message):
         VStack(alignment: .leading, spacing: 12) {
           Label("参考资料读取失败", systemImage: "exclamationmark.triangle")
-            .font(.headline)
+            .font(.workbenchHeadline)
             .foregroundStyle(.red)
           Text(message)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
             .textSelection(.enabled)
           Button("重新读取") {
             retryID = UUID()
@@ -77,15 +77,15 @@ struct KnowledgePopOutWindowView: View {
     VStack(spacing: 0) {
       VStack(alignment: .leading, spacing: 5) {
         Label(document.kind.localizedDisplayName, systemImage: document.kind.systemImage)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         Text(document.title)
-          .font(.title2.weight(.semibold))
+          .font(.workbenchTitle2.weight(.semibold))
           .textSelection(.enabled)
         if !document.sourceName.isEmpty {
           Text(document.sourceName)
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
             .textSelection(.enabled)
         }
       }
@@ -140,13 +140,13 @@ struct KnowledgePopOutWindowView: View {
 
     case .paragraph:
       markdownText(block.text)
-        .font(.body)
+        .font(.workbenchBody)
         .lineSpacing(5)
 
     case .quote:
       markdownText(block.text)
-        .font(.body)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
         .lineSpacing(5)
         .padding(.leading, WorkbenchSpacing.content)
         .overlay(alignment: .leading) {
@@ -158,19 +158,19 @@ struct KnowledgePopOutWindowView: View {
     case .unorderedListItem:
       HStack(alignment: .firstTextBaseline, spacing: 8) {
         Text("•")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
         markdownText(block.text)
-          .font(.body)
+          .font(.workbenchBody)
           .lineSpacing(5)
       }
 
     case .orderedListItem(let number):
       HStack(alignment: .firstTextBaseline, spacing: 8) {
         Text(verbatim: number.map { "\($0)." } ?? "•")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .frame(minWidth: 20, alignment: .trailing)
         markdownText(block.text)
-          .font(.body)
+          .font(.workbenchBody)
           .lineSpacing(5)
       }
 
@@ -178,11 +178,11 @@ struct KnowledgePopOutWindowView: View {
       VStack(alignment: .leading, spacing: 6) {
         if let language, !language.isEmpty {
           Text(language.uppercased())
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.weight(.semibold))
+            .foregroundStyle(.workbenchSecondary)
         }
         Text(block.text)
-          .font(.body.monospaced())
+          .font(.workbenchBody.monospaced())
           .frame(maxWidth: .infinity, alignment: .leading)
       }
       .padding(WorkbenchSpacing.card)
@@ -190,8 +190,8 @@ struct KnowledgePopOutWindowView: View {
 
     case .locator:
       Label(block.text, systemImage: "mappin.and.ellipse")
-        .font(.caption.weight(.medium))
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.weight(.medium))
+        .foregroundStyle(.workbenchSecondary)
 
     case .separator:
       Divider()
@@ -215,12 +215,12 @@ struct KnowledgePopOutWindowView: View {
   ) -> some View {
     VStack(spacing: 10) {
       Image(systemName: systemImage)
-        .font(.largeTitle)
-        .foregroundStyle(.secondary)
+        .font(.workbenchLargeTitle)
+        .foregroundStyle(.workbenchSecondary)
       Text(title)
-        .font(.headline)
+        .font(.workbenchHeadline)
       Text(message)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .multilineTextAlignment(.center)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -297,10 +297,10 @@ struct KnowledgePopOutWindowView: View {
 
   private func headingFont(_ level: Int) -> Font {
     switch level {
-    case 1: .title.weight(.semibold)
-    case 2: .title2.weight(.semibold)
-    case 3: .title3.weight(.semibold)
-    default: .headline
+    case 1: .workbenchTitle.weight(.semibold)
+    case 2: .workbenchTitle2.weight(.semibold)
+    case 3: .workbenchTitle3.weight(.semibold)
+    default: .workbenchHeadline
     }
   }
 

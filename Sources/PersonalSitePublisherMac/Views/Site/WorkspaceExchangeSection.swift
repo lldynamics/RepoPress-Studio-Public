@@ -15,12 +15,12 @@ struct WorkspaceExchangeSection: View {
     GroupBox("站点与草稿交换") {
       VStack(alignment: .leading, spacing: 8) {
         Text("在设备之间导出或导入站点配置、文章草稿和附件。导入会先预览，确认后作为新草稿写入。")
-          .font(.callout)
+          .font(.workbenchBody)
           .fixedSize(horizontal: false, vertical: true)
 
         Text("此处不包含私人笔记。笔记请在资料库的“笔记同步与备份”中管理。")
-          .font(.footnote)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
 
         HStack {

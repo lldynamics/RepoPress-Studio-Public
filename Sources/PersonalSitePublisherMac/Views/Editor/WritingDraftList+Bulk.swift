@@ -9,8 +9,8 @@ extension WritingDraftColumn {
       } icon: {
         Image(systemName: "checkmark.circle.fill")
       }
-      .font(.caption.weight(.semibold))
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata.weight(.semibold))
+      .foregroundStyle(.workbenchSecondary)
 
       Spacer(minLength: 0)
 
@@ -20,7 +20,7 @@ extension WritingDraftColumn {
         Label(String(localized: "管理归属"), systemImage: "arrow.triangle.branch")
       }
       .controlSize(.small)
-      .help(String(localized: "批量移动、复制或转为通用草稿"))
+      .help(String(localized: "批量移入当前站点或转为仅本地草稿"))
 
       if store.draftListContentScope == .general {
         Menu {
@@ -78,35 +78,35 @@ extension WritingDraftColumn {
     store.flushDraftBodyEditorBuffer(for: draft.id)
     guard let currentDraft = store.draft(for: draft.id) else {
       store.setPublishActionMessage(
-        String(localized: "通用草稿已不存在，未执行导出。"),
+        String(localized: "仅本地草稿已不存在，未执行导出。"),
         status: .warning
       )
       return
     }
     Task { @MainActor in
       do {
-      let document = try GeneralDraftExportService().document(
-        for: currentDraft,
-        profile: store.profile(for: currentDraft)
-      )
+        let document = try GeneralDraftExportService().document(
+          for: currentDraft,
+          profile: store.profile(for: currentDraft)
+        )
         guard let destinationURL = try await GeneralDraftExportPanel.export(document) else {
           return
-      }
-      store.setPublishActionMessage(
-        String(
-          format: String(localized: "通用草稿已导出：%@"),
-          destinationURL.lastPathComponent
-        ),
-        status: .success
-      )
+        }
+        store.setPublishActionMessage(
+          String(
+            format: String(localized: "仅本地草稿已导出：%@"),
+            destinationURL.lastPathComponent
+          ),
+          status: .success
+        )
       } catch {
-      store.setPublishActionMessage(
-        String(
-          format: String(localized: "通用草稿导出失败：%@"),
-          error.localizedDescription
-        ),
-        status: .failure
-      )
+        store.setPublishActionMessage(
+          String(
+            format: String(localized: "仅本地草稿导出失败：%@"),
+            error.localizedDescription
+          ),
+          status: .failure
+        )
       }
     }
   }
@@ -114,12 +114,27 @@ extension WritingDraftColumn {
   @ViewBuilder
   func draftOwnershipActions(for draft: ArticleDraft) -> some View {
     let renderedDraft = liveDraft(for: draft) ?? draft
-    let availableProfiles = availableTransferProfiles(
-      for: renderedDraft,
-      includeCurrentSite: false
-    )
+    let isBatch = transferDraftIDs(for: renderedDraft).count > 1
 
-    if !renderedDraft.isGeneralDraft {
+    if renderedDraft.isGeneralDraft {
+      if let site = currentSiteTransferTarget {
+        Button {
+          guard let currentDraft = liveDraft(for: renderedDraft) else { return }
+          presentDraftOwnershipTransfer(
+            draftIDs: transferDraftIDs(for: currentDraft),
+            operation: .moveToSite,
+            targetProfileID: site.id
+          )
+        } label: {
+          Label(
+            isBatch
+              ? String(localized: "批量移入当前站点")
+              : String(localized: "移入当前站点"),
+            systemImage: "arrow.right.doc.on.clipboard"
+          )
+        }
+      }
+    } else {
       Button {
         guard let currentDraft = liveDraft(for: renderedDraft) else { return }
         presentDraftOwnershipTransfer(
@@ -128,55 +143,13 @@ extension WritingDraftColumn {
         )
       } label: {
         Label(
-          transferDraftIDs(for: renderedDraft).count > 1
-            ? String(localized: "批量转为通用草稿")
-            : String(localized: "转为通用草稿"),
+          isBatch
+            ? String(localized: "批量转为仅本地草稿")
+            : String(localized: "转为仅本地草稿"),
           systemImage: "tray.and.arrow.down"
         )
       }
     }
-
-    Menu {
-      ForEach(availableProfiles) { profile in
-        Button(profile.name) {
-          guard let currentDraft = liveDraft(for: renderedDraft) else { return }
-          presentDraftOwnershipTransfer(
-            draftIDs: transferDraftIDs(for: currentDraft),
-            operation: .moveToSite,
-            targetProfileID: profile.id
-          )
-        }
-      }
-    } label: {
-      Label(
-        transferDraftIDs(for: renderedDraft).count > 1
-          ? String(localized: "批量移动到站点")
-          : String(localized: "移动到站点"),
-        systemImage: "arrow.right.doc.on.clipboard"
-      )
-    }
-    .disabled(availableProfiles.isEmpty)
-
-    Menu {
-      ForEach(availableProfiles) { profile in
-        Button(profile.name) {
-          guard let currentDraft = liveDraft(for: renderedDraft) else { return }
-          presentDraftOwnershipTransfer(
-            draftIDs: transferDraftIDs(for: currentDraft),
-            operation: .copyToSite,
-            targetProfileID: profile.id
-          )
-        }
-      }
-    } label: {
-      Label(
-        transferDraftIDs(for: renderedDraft).count > 1
-          ? String(localized: "批量复制到站点")
-          : String(localized: "复制到站点"),
-        systemImage: "doc.on.doc"
-      )
-    }
-    .disabled(availableProfiles.isEmpty)
 
     if store.canUndoLatestDraftOwnershipTransfer {
       Divider()
@@ -199,33 +172,17 @@ extension WritingDraftColumn {
           operation: .moveToGeneral
         )
       } label: {
-        Label(String(localized: "批量转为通用草稿"), systemImage: "tray.and.arrow.down")
+        Label(String(localized: "批量转为仅本地草稿"), systemImage: "tray.and.arrow.down")
       }
-    }
-
-    Menu(String(localized: "批量移动到站点")) {
-      ForEach(availableTransferProfiles(for: selectedDrafts.first, includeCurrentSite: false)) {
-        profile in
-        Button(profile.name) {
-          presentDraftOwnershipTransfer(
-            draftIDs: Array(selectedDraftIDs),
-            operation: .moveToSite,
-            targetProfileID: profile.id
-          )
-        }
-      }
-    }
-
-    Menu(String(localized: "批量复制到站点")) {
-      ForEach(availableTransferProfiles(for: selectedDrafts.first, includeCurrentSite: false)) {
-        profile in
-        Button(profile.name) {
-          presentDraftOwnershipTransfer(
-            draftIDs: Array(selectedDraftIDs),
-            operation: .copyToSite,
-            targetProfileID: profile.id
-          )
-        }
+    } else if selectedDrafts.allSatisfy(\.isGeneralDraft), let site = currentSiteTransferTarget {
+      Button {
+        presentDraftOwnershipTransfer(
+          draftIDs: Array(selectedDraftIDs),
+          operation: .moveToSite,
+          targetProfileID: site.id
+        )
+      } label: {
+        Label(String(localized: "批量移入当前站点"), systemImage: "arrow.right.doc.on.clipboard")
       }
     }
 

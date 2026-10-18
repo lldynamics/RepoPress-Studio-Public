@@ -58,14 +58,14 @@ extension WritingDraftColumn {
           ? "doc.badge.plus" : "doc.text.magnifyingglass"
       )
       .font(.system(size: WorkbenchIconSize.section))
-      .foregroundStyle(.secondary)
+      .foregroundStyle(.workbenchSecondary)
 
       Text(draftListEmptyTitle)
-        .font(.headline)
+        .font(.workbenchHeadline)
 
       Text(draftListEmptyMessage)
         .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .multilineTextAlignment(.center)
 
       if draftListCache.sourceDraftIDs.isEmpty {
@@ -98,7 +98,7 @@ extension WritingDraftColumn {
 
   private var draftListEmptyTitle: LocalizedStringKey {
     guard draftListCache.sourceDraftIDs.isEmpty else { return "没有匹配的文章" }
-    return store.draftListContentScope == .general ? "还没有通用草稿" : "还没有文章"
+    return store.draftListContentScope == .general ? "还没有仅本地草稿" : "还没有文章"
   }
 
   private var draftListEmptyMessage: LocalizedStringKey {
@@ -111,7 +111,7 @@ extension WritingDraftColumn {
   }
 
   private var emptyStateActionTitle: LocalizedStringKey {
-    store.draftListContentScope == .general ? "新建通用草稿" : "新建站点文章"
+    store.draftListContentScope == .general ? "新建仅本地草稿" : "新建站点文章"
   }
 
   func requestDelete(_ draft: ArticleDraft) {
@@ -170,17 +170,10 @@ extension WritingDraftColumn {
     return [draft.id]
   }
 
-  func availableTransferProfiles(
-    for referenceDraft: ArticleDraft?,
-    includeCurrentSite: Bool
-  ) -> [SiteProfile] {
-    store.profiles.filter { profile in
-      guard profile.purpose != .generalDraftBackup else { return false }
-      guard !includeCurrentSite, let referenceDraft, !referenceDraft.isGeneralDraft else {
-        return true
-      }
-      return !referenceDraft.belongs(toSiteProfileID: profile.id)
-    }
+  /// Drafts only move between the local-only library and the active site.
+  var currentSiteTransferTarget: SiteProfile? {
+    let profile = store.activeProfile
+    return profile.purpose == .generalDraftBackup ? nil : profile
   }
 
   func presentDraftOwnershipTransfer(
@@ -237,7 +230,7 @@ extension WritingDraftColumn {
     case .copyToSite:
       return String(localized: "复制草稿到站点")
     case .moveToGeneral:
-      return String(localized: "转为通用草稿")
+      return String(localized: "转为仅本地草稿")
     }
   }
 

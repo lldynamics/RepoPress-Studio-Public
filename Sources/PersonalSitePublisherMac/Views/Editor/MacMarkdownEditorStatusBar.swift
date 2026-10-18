@@ -1,4 +1,3 @@
-import Combine
 import PublishingDomainContracts
 import PublishingMarkdownCore
 import PublishingWorkbenchCore
@@ -89,8 +88,6 @@ struct MacMarkdownEditorStatusBar: View {
         onApplyCompletion: onApplyCompletion,
         onInsertCompletionTrigger: onInsertCompletionTrigger
       )
-      MarkdownEditorBranchLabel(store: store, profileID: draft.scope.siteProfileID)
-        .id(draft.scope)
     }
   }
 
@@ -101,7 +98,7 @@ struct MacMarkdownEditorStatusBar: View {
         MarkdownEditorStatusBarPresentation.diagnosticsTitle(count: diagnosticCount),
         systemImage: "exclamationmark.triangle"
       )
-      .font(.caption)
+      .font(.workbenchMetadata)
       .foregroundStyle(WorkbenchTheme.warning)
     }
     .buttonStyle(.plain)
@@ -133,77 +130,11 @@ enum MarkdownEditorStatusBarPresentation {
 
   static func statisticsSummary(writingUnitCount: Int, readingMinutes: Int) -> String {
     String(
-      format: String(localized: "%lld 字/词 · 约 %lld 分钟"),
+      format: String(localized: "%1$lld 字/词 · 约 %2$lld 分钟"),
       locale: .current,
       Int64(writingUnitCount),
       Int64(readingMinutes)
     )
-  }
-}
-
-/// Observe only repository and profile changes in this leaf. Typing, chat
-/// streaming, and save transitions do not recompute the branch projection.
-@MainActor
-final class MarkdownEditorBranchState: ObservableObject {
-  @Published private(set) var branchName: String?
-  private unowned let store: WorkbenchStore
-  private let profileID: UUID?
-  private var cancellables = Set<AnyCancellable>()
-
-  init(store: WorkbenchStore, profileID: UUID?) {
-    self.store = store
-    self.profileID = profileID
-    branchName = Self.branchName(in: store, profileID: profileID)
-
-    // The public publishing-status boundary follows repository/profile
-    // changes without forwarding body autosaves or AI token streams.
-    store.publishStatus.objectWillChange
-      .receive(on: RunLoop.main)
-      .sink { [weak self] _ in self?.refresh() }
-      .store(in: &cancellables)
-  }
-
-  private static func branchName(in store: WorkbenchStore, profileID: UUID?) -> String? {
-    guard let profileID,
-      let profile = store.profiles.first(where: { $0.id == profileID }),
-      let report = store.repositoryReport(for: profile),
-      report.hasGitDirectory,
-      let status = report.branchStatus,
-      !status.isDetached
-    else { return nil }
-    let branch = status.branchName?.trimmingCharacters(in: .whitespacesAndNewlines)
-    return branch?.isEmpty == false ? branch : nil
-  }
-
-  private func refresh() {
-    let updatedBranch = Self.branchName(in: store, profileID: profileID)
-    guard branchName != updatedBranch else { return }
-    branchName = updatedBranch
-  }
-}
-
-private struct MarkdownEditorBranchLabel: View {
-  @StateObject private var state: MarkdownEditorBranchState
-
-  init(store: WorkbenchStore, profileID: UUID?) {
-    _state = StateObject(
-      wrappedValue: MarkdownEditorBranchState(store: store, profileID: profileID))
-  }
-
-  var body: some View {
-    if let branchName = state.branchName {
-      Label(branchName, systemImage: "arrow.triangle.branch")
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
-        .truncationMode(.middle)
-        .frame(maxWidth: 140)
-        .help(branchName)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("当前分支")
-        .accessibilityValue(branchName)
-        .accessibilityIdentifier("markdown-editor-branch")
-    }
   }
 }
 
@@ -241,8 +172,8 @@ private struct MarkdownEditorStatisticsControl: View {
       isStatsPopoverPresented.toggle()
     } label: {
       Label(statisticsSummary, systemImage: "timer")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .monospacedDigit()
         .padding(.horizontal, WorkbenchSpacing.tight)
         .padding(.vertical, 2)
@@ -267,11 +198,11 @@ private struct MarkdownEditorStatisticsControl: View {
     VStack(alignment: .leading, spacing: 12) {
       HStack {
         Label("文章统计与目标", systemImage: "chart.bar.doc.horizontal")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
         Label(readingTimeSummary, systemImage: "timer")
-          .font(.caption.weight(.medium))
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.weight(.medium))
+          .foregroundStyle(.workbenchSecondary)
       }
 
       Divider()
@@ -292,21 +223,21 @@ private struct MarkdownEditorStatisticsControl: View {
       }
 
       Text("字数按中文字数与西文单词合计。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
 
       Divider()
 
       VStack(alignment: .leading, spacing: 6) {
         HStack {
           Label("目标字数", systemImage: "target")
-            .font(.subheadline.weight(.medium))
+            .font(.workbenchMetadata.weight(.medium))
           Spacer()
           if targetWordCount > 0 {
             let ratio = Double(writingUnitCount) / Double(targetWordCount)
             let percent = Int(ratio * 100)
             Text("\(percent)%")
-              .font(.caption.monospacedDigit().weight(.semibold))
+              .font(.workbenchMetadata.monospacedDigit().weight(.semibold))
               .foregroundStyle(ratio >= 1.0 ? WorkbenchTheme.success : WorkbenchTheme.progress)
           }
         }
@@ -319,12 +250,12 @@ private struct MarkdownEditorStatisticsControl: View {
 
           if writingUnitCount >= targetWordCount {
             Text("🎉 已达成目标字数！（超出 \(writingUnitCount - targetWordCount) 字）")
-              .font(.caption)
+              .font(.workbenchMetadata)
               .foregroundStyle(WorkbenchTheme.success)
           } else {
             Text("还需 \(targetWordCount - writingUnitCount) 字达成目标")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
         }
 
@@ -372,7 +303,7 @@ private struct MarkdownEditorStatisticsControl: View {
               onFormatChineseTypography()
             } label: {
               Label("中英文排版", systemImage: "character.textbox")
-                .font(.caption)
+                .font(.workbenchMetadata)
             }
           }
 
@@ -382,7 +313,7 @@ private struct MarkdownEditorStatisticsControl: View {
               onCopyForWeChatAndZhihu()
             } label: {
               Label("复制公众号", systemImage: "doc.on.doc")
-                .font(.caption)
+                .font(.workbenchMetadata)
             }
           }
         }
@@ -396,9 +327,9 @@ private struct MarkdownEditorStatisticsControl: View {
     VStack(alignment: .leading, spacing: 2) {
       Text(title)
         .font(.workbenchMetadata)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       Text(value)
-        .font(.callout.monospacedDigit().weight(.semibold))
+        .font(.workbenchBody.monospacedDigit().weight(.semibold))
     }
     .frame(maxWidth: .infinity, alignment: .leading)
   }
@@ -474,7 +405,7 @@ struct MacMarkdownEditorSaveStatusIcon: View {
             .fixedSize(horizontal: true, vertical: false)
         }
       }
-      .font(.caption)
+      .font(.workbenchMetadata)
       .foregroundStyle(
         saveStatus.saveFailure != nil
           ? WorkbenchTheme.warning
@@ -490,10 +421,10 @@ struct MacMarkdownEditorSaveStatusIcon: View {
     .popover(isPresented: $isDetailPresented) {
       VStack(alignment: .leading, spacing: 10) {
         Label(saveStatus.shortSaveStatus, systemImage: statusImage)
-          .font(.headline)
+          .font(.workbenchHeadline)
         if let failure = saveStatus.saveFailure {
           Text(failure.message)
-            .font(.callout)
+            .font(.workbenchBody)
             .textSelection(.enabled)
           if failure.scope == .project {
             Button(
@@ -512,13 +443,13 @@ struct MacMarkdownEditorSaveStatusIcon: View {
           }
         } else {
           Text("发布进度请在右侧“发布检查”中查看。")
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
         }
         if let draft = store.draft(for: draftID), !draft.isGeneralDraft {
           Text(store.profile(for: draft).markdownPath(for: draft))
-            .font(.caption.monospaced())
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.monospaced())
+            .foregroundStyle(.workbenchSecondary)
             .textSelection(.enabled)
         }
       }

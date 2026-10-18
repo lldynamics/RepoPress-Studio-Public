@@ -141,7 +141,7 @@ struct AIChatContextInspectorView: View {
         HStack(spacing: 8) {
           Label(String(localized: "正文已更新，资料引用尚未保存"), systemImage: "exclamationmark.triangle")
             .font(.workbenchSupporting)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
           Spacer(minLength: 6)
           Button(String(localized: "重试保存")) {
             retryCitationBacklinks(retry)

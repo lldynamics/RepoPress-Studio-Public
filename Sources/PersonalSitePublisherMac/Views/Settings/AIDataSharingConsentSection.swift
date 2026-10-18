@@ -54,7 +54,7 @@ struct AIDataSharingConsentSection: View {
       Toggle("允许远程 AI", isOn: remoteAIEnabledBinding)
         .accessibilityIdentifier("settings-ai-remote-master-switch")
       Text(remoteAIEnabledDescription)
-        .font(.callout)
+        .font(.workbenchBody)
         .foregroundStyle(presentation.isRemoteAIEnabled ? .secondary : WorkbenchTheme.warning)
 
       switch AIDataSharingConsentSectionMode(
@@ -112,7 +112,7 @@ struct AIDataSharingConsentSection: View {
       case .codexManaged(let hasDestinationGrant):
         remoteDestinationDetails
         Text("ChatGPT 账户绑定和重新同意由上方的 ChatGPT 账户区管理。")
-          .font(.callout)
+          .font(.workbenchBody)
         if !presentation.isRemoteAIEnabled {
           Label(
             hasDestinationGrant
@@ -126,7 +126,7 @@ struct AIDataSharingConsentSection: View {
             "已保存 ChatGPT 目的地授权；当前账户是否可用请以上方实时账户状态为准。",
             systemImage: "person.crop.circle.badge.checkmark"
           )
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
         } else {
           Label(
             "尚未绑定 ChatGPT 账户；请在上方账户区登录并重新同意。",
@@ -148,15 +148,15 @@ struct AIDataSharingConsentSection: View {
         Label("本地 AI 服务", systemImage: "desktopcomputer")
           .foregroundStyle(WorkbenchTheme.success)
         Text("当前地址是本机回环地址。内容只发送给此 Mac 上运行的模型服务，不需要第三方数据发送授权。")
-          .font(.callout)
+          .font(.workbenchBody)
       case .unconfigured:
         Label(String(localized: "未配置发送地址"), systemImage: "gearshape")
           .foregroundStyle(WorkbenchTheme.warning)
         Text(
           String(localized: "请先配置 API 基础地址。配置完成后，应用会判断数据只发送到本机，还是需要第三方授权。")
         )
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
       }
     }
     .confirmationDialog(
@@ -198,17 +198,17 @@ struct AIDataSharingConsentSection: View {
   @ViewBuilder
   private var remoteDestinationDetails: some View {
     Text("资料库中的“允许发送给远程 AI”是独立的逐条权限，默认关闭；只有资料权限和本处授权同时满足时，资料片段才会发送。")
-      .font(.callout)
+      .font(.workbenchBody)
     LabeledContent("接收方", value: presentation.providerName)
     LabeledContent("发送地址") {
       Text(
         presentation.destination.isEmpty ? String(localized: "未配置发送地址") : presentation.destination
       )
-      .font(.system(.body, design: .monospaced))
+      .font(.workbenchBody.monospaced())
       .foregroundStyle(presentation.destination.isEmpty ? .secondary : .primary)
       .textSelection(.enabled)
     }
     Text("发送内容：当你主动使用 AI 功能时，应用可能发送你的提示词、当前文章与站点上下文、已允许发送的资料库片段，以及你主动添加的图片。服务商会按其隐私政策处理这些内容。")
-      .font(.callout)
+      .font(.workbenchBody)
   }
 }

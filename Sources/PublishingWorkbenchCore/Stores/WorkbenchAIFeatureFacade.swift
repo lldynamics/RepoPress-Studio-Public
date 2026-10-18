@@ -160,7 +160,7 @@ public final class WorkbenchRSSListTitleTranslationFeatureFacade: ObservableObje
     .removeDuplicates()
 
     observe(providerConfiguration)
-    observe(store.aiWorkspaceStore.$aiTokenAvailability)
+    observe(store.aiWorkspaceStore.publisher(for: \.aiTokenAvailability))
   }
 
   public var providerConfiguration: AIProviderConfig { state.providerConfiguration }
@@ -235,7 +235,7 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.publishingStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &cancellables)
-    store.aiWorkspaceStore.objectWillChange
+    store.aiWorkspaceStore.anyPropertyChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &cancellables)
     store.aiStore.objectWillChange
@@ -810,23 +810,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
   }
 
   @discardableResult
-  public func abandonAgentContinuation(
-    conversationID: UUID,
-    messageID: AIPublishingChatMessage.ID,
-    planID: UUID,
-    continuationID: UUID,
-    expectedRevision: Int
-  ) -> Bool {
-    store.aiStore.abandonAgentContinuation(
-      conversationID: conversationID,
-      messageID: messageID,
-      planID: planID,
-      continuationID: continuationID,
-      expectedRevision: expectedRevision
-    )
-  }
-
-  @discardableResult
   public func executeAutomationPlan(
     conversationID: UUID,
     messageID: AIPublishingChatMessage.ID,
@@ -838,36 +821,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
       messageID: messageID,
       onlyStepID: onlyStepID,
       confirmedStepIDs: confirmedStepIDs
-    )
-  }
-
-  @discardableResult
-  public func acceptAutomationStep(
-    conversationID: UUID,
-    messageID: AIPublishingChatMessage.ID,
-    stepID: UUID,
-    previewBaselineFingerprint: String
-  ) async -> WorkbenchAutomationExecutionResult? {
-    await store.acceptAutomationStep(
-      conversationID: conversationID,
-      messageID: messageID,
-      stepID: stepID,
-      previewBaselineFingerprint: previewBaselineFingerprint
-    )
-  }
-
-  @discardableResult
-  public func rejectAutomationStep(
-    conversationID: UUID,
-    messageID: AIPublishingChatMessage.ID,
-    stepID: UUID,
-    previewBaselineFingerprint: String? = nil
-  ) async -> Bool {
-    await store.rejectAutomationStep(
-      conversationID: conversationID,
-      messageID: messageID,
-      stepID: stepID,
-      previewBaselineFingerprint: previewBaselineFingerprint
     )
   }
 

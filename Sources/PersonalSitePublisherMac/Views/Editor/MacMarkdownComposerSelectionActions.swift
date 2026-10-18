@@ -26,9 +26,9 @@ struct SelectionActionBar: View {
       HStack(spacing: 4) {
         Image(systemName: "wand.and.sparkles")
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
         Text("AI 操作")
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
       }
 
       Menu {
@@ -86,12 +86,12 @@ struct SelectionActionBar: View {
 
       if !selectionActionMessage.isEmpty {
         Text(selectionActionMessage)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .lineLimit(1)
       }
     }
-    .font(.caption)
+    .font(.workbenchMetadata)
     .padding(.horizontal, WorkbenchSpacing.control)
     .padding(.vertical, WorkbenchSpacing.control)
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))

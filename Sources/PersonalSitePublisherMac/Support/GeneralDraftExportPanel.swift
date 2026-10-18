@@ -6,9 +6,9 @@ enum GeneralDraftExportPanel {
   @MainActor
   static func export(_ document: GeneralDraftExportDocument) async throws -> URL? {
     let panel = NSSavePanel()
-    panel.title = String(localized: "导出通用草稿")
+    panel.title = String(localized: "导出仅本地草稿")
     panel.prompt = String(localized: "导出")
-    panel.message = String(localized: "导出为独立 Markdown 文件；软件中的通用草稿会继续保留。")
+    panel.message = String(localized: "导出为独立 Markdown 文件；软件中的仅本地草稿会继续保留。")
     panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
     panel.canCreateDirectories = true
     panel.isExtensionHidden = false

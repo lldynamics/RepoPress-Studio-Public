@@ -41,7 +41,7 @@ extension RepositoryWorkspaceView {
 
         if report.changedFiles.isEmpty {
           Text("当前工作树没有变更。")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         } else {
           LazyVStack(alignment: .leading, spacing: 12) {
             ForEach(RepositoryChangedFileRole.allCases, id: \.self) { role in
@@ -54,8 +54,8 @@ extension RepositoryWorkspaceView {
               if !files.isEmpty {
                 LazyVStack(alignment: .leading, spacing: 8) {
                   Text("\(role.localizedDisplayName)变更")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .font(.workbenchMetadata.weight(.semibold))
+                    .foregroundStyle(.workbenchSecondary)
 
                   ForEach(files) { file in
                     RepositoryChangedFileDisclosureRow(
@@ -94,10 +94,10 @@ extension RepositoryWorkspaceView {
   private var localChangesHeading: some View {
     VStack(alignment: .leading, spacing: 3) {
       Text("本地文件变更")
-        .font(.headline)
+        .font(.workbenchHeadline)
       Text("检查这台 Mac 上尚未发布的文章、图片和配置修改。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 
@@ -136,8 +136,8 @@ extension RepositoryWorkspaceView {
 
   private func localPublishRelevantCount(_ count: Int) -> some View {
     Text("\(count) 个发布相关变更")
-      .font(.callout)
-      .foregroundStyle(.secondary)
+      .font(.workbenchBody)
+      .foregroundStyle(.workbenchSecondary)
       .accessibilityLabel("发布相关本地变更")
       .accessibilityValue(String(localized: "\(count) 个"))
       .accessibilityIdentifier("repository-local-publish-relevant-count")
@@ -146,9 +146,9 @@ extension RepositoryWorkspaceView {
   private func localChangedFileIdentity(_ file: RepositoryChangedFile) -> some View {
     HStack(spacing: 10) {
       Text(file.kind.localizedDisplayName)
-        .font(.caption)
+        .font(.workbenchMetadata)
         .frame(width: 58, alignment: .leading)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       WorkbenchPathIdentity(path: file.path)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -158,29 +158,9 @@ extension RepositoryWorkspaceView {
 
   private func localChangedFileActions(_ file: RepositoryChangedFile) -> some View {
     HStack(spacing: 8) {
-      if file.kind != .deleted,
-        ["html", "htm"].contains(
-          URL(fileURLWithPath: file.displayPath).pathExtension.lowercased()
-        )
-      {
-        Button {
-          changedFileSelection = RepositoryChangedFileSelection(source: .local, file: file)
-          sourceSession.requestOpen(
-            repositoryPath: file.displayPath,
-            profile: store.activeProfile
-          )
-          stage = .source
-        } label: {
-          Label("查看 HTML 文件", systemImage: "doc.text")
-        }
-        .buttonStyle(.bordered)
-        .accessibilityIdentifier(
-          "repository-local-file-\(file.accessibilityIdentifierToken)-open-source")
-      }
-
       Text(file.status)
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospaced())
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityLabel("本地文件状态")
         .accessibilityValue(file.status)
         .accessibilityIdentifier(
@@ -254,7 +234,7 @@ struct RepositoryChangedFileDisclosureRow<Identity: View, Actions: View, DiffAct
             }
             if source == .remote {
               Text(lineDiff)
-                .font(.caption.monospaced())
+                .font(.workbenchMetadata.monospaced())
                 .textSelection(.enabled)
                 .lineLimit(16)
                 .padding(WorkbenchSpacing.card)
@@ -269,7 +249,7 @@ struct RepositoryChangedFileDisclosureRow<Identity: View, Actions: View, DiffAct
                   "repository-remote-file-\(file.accessibilityIdentifierToken)-diff")
             } else {
               Text(lineDiff)
-                .font(.caption.monospaced())
+                .font(.workbenchMetadata.monospaced())
                 .textSelection(.enabled)
                 .lineLimit(16)
                 .padding(WorkbenchSpacing.card)
@@ -293,8 +273,8 @@ struct RepositoryChangedFileDisclosureRow<Identity: View, Actions: View, DiffAct
                 )
             } else {
               Text("没有可显示的文本差异。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.workbenchMetadata)
+                .foregroundStyle(.workbenchSecondary)
             }
           }
         }
@@ -316,8 +296,8 @@ struct RepositoryChangedFileDisclosureRow<Identity: View, Actions: View, DiffAct
 
   private var diffPreviewNotice: some View {
     Text("差异预览（最多 16 行）")
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
   }
 
   private var fullDiffButton: some View {

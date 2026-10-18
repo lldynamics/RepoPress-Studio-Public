@@ -2,11 +2,6 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 enum ReleaseFailureReviewContext {
-  static func initialScope(for record: ReleaseRecord) -> PublishScope {
-    if !record.batchItems.isEmpty { return .managedArticles }
-    return record.draftID == nil ? .repository : .currentArticle
-  }
-
   static func canReview(
     _ record: ReleaseRecord,
     profile: SiteProfile,
@@ -57,15 +52,15 @@ enum ReleaseFailureReviewContext {
   }
 }
 
-/// Keeps the failed record visible while entering the existing review flow.
-/// No publishing action is executed here and no historical mode is guessed.
+/// Keeps the failed record visible and points back to the two publish
+/// actions. Nothing is published from here; every retry is reviewed again.
 struct ReleaseFailureReviewSheet: View {
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.publishCommandAction) private var publishCommandAction
   @ObservedObject private var publishing: WorkbenchPublishingFeatureFacade
   @ObservedObject private var history: WorkbenchReleaseHistoryObservationFacade
   let store: WorkbenchStore
   let record: ReleaseRecord
-  @State private var isPresented = true
 
   init(store: WorkbenchStore, record: ReleaseRecord) {
     self.store = store
@@ -78,32 +73,43 @@ struct ReleaseFailureReviewSheet: View {
     VStack(alignment: .leading, spacing: 0) {
       VStack(alignment: .leading, spacing: 6) {
         Text("重新审阅发布")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Text(record.title)
-          .font(.callout)
+          .font(.workbenchBody)
           .textSelection(.enabled)
         if let branch = record.branchName {
           Text("原分支：\(branch)")
-            .font(.caption)
+            .font(.workbenchMetadata)
         }
         if let target = record.targetBranch {
           Text("原目标分支：\(target)")
-            .font(.caption)
+            .font(.workbenchMetadata)
         }
-        Text("重新核对发布范围和目标分支；不会自动重试发布。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+        Text("重新发布会再次打开确认页，核对全部文件和目标分支；不会自动重试。")
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       }
       .padding(WorkbenchSpacing.content)
       Divider()
       if canContinueReview {
-        PublishDrawerView(
-          publishingFacade: publishing,
-          store: store,
-          draftID: record.draftID,
-          isPresented: $isPresented,
-          initialScope: ReleaseFailureReviewContext.initialScope(for: record)
-        )
+        HStack(spacing: WorkbenchSpacing.control) {
+          if let draftID = record.draftID {
+            Button("打开这篇文章") {
+              _ = store.focusDraft(draftID, section: .writing)
+              dismiss()
+            }
+            .help("回到写作页后，用“发布这篇”重新发布")
+          }
+          Button("发布全部…") {
+            dismiss()
+            publishCommandAction?.publishAll()
+          }
+          .disabled(publishCommandAction?.canPublishAll != true)
+          Spacer()
+          Button("关闭") { dismiss() }
+            .keyboardShortcut(.cancelAction)
+        }
+        .padding(WorkbenchSpacing.content)
       } else {
         ContentUnavailableView(
           "发布上下文已变化",
@@ -114,10 +120,7 @@ struct ReleaseFailureReviewSheet: View {
           .padding(WorkbenchSpacing.content)
       }
     }
-    .frame(minWidth: 680, idealWidth: 780, minHeight: 600, idealHeight: 720)
-    .onChange(of: isPresented) { _, isPresented in
-      if !isPresented { dismiss() }
-    }
+    .frame(minWidth: 520, idealWidth: 600)
     .accessibilityIdentifier("release-failure-review-sheet")
   }
 

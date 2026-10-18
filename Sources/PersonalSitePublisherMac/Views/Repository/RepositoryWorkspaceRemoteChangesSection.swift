@@ -43,10 +43,10 @@ extension RepositoryWorkspaceView {
 
         if report.branchStatus?.upstreamName == nil {
           Text("设置 upstream 后，这里会审阅远端待拉取的文章、图片和配置变化。")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         } else if report.remoteChangedFiles.isEmpty {
           Text("当前 upstream 没有待拉取的文件变化。")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         } else {
           ForEach(RepositoryChangedFileRole.allCases, id: \.self) { role in
             let files = report.remoteChangedFilesForRole(
@@ -58,8 +58,8 @@ extension RepositoryWorkspaceView {
             if !files.isEmpty {
               VStack(alignment: .leading, spacing: 8) {
                 Text("远端\(role.localizedDisplayName)变更")
-                  .font(.caption.weight(.semibold))
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchMetadata.weight(.semibold))
+                  .foregroundStyle(.workbenchSecondary)
 
                 ForEach(files, id: \.id) { (file: RepositoryChangedFile) in
                   RepositoryChangedFileDisclosureRow(
@@ -114,13 +114,13 @@ extension RepositoryWorkspaceView {
     let upstreamName = report.branchStatus?.upstreamName ?? String(localized: "当前分支未设置 upstream")
     return VStack(alignment: .leading, spacing: 3) {
       Text("远端文件变更")
-        .font(.headline)
+        .font(.workbenchHeadline)
       Text("发布前先审阅网站或其他设备的更新，避免覆盖新内容。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
       Text(upstreamName)
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospaced())
+        .foregroundStyle(.workbenchSecondary)
         .workbenchTruncatedIdentity(upstreamName)
     }
   }
@@ -162,8 +162,8 @@ extension RepositoryWorkspaceView {
 
   private func remotePublishRelevantCount(_ count: Int) -> some View {
     Text("\(count) 个发布相关远端变更")
-      .font(.callout)
-      .foregroundStyle(.secondary)
+      .font(.workbenchBody)
+      .foregroundStyle(.workbenchSecondary)
       .accessibilityLabel("发布相关远端变更")
       .accessibilityValue(String(localized: "\(count) 个"))
       .accessibilityIdentifier("repository-remote-publish-relevant-count")
@@ -172,9 +172,9 @@ extension RepositoryWorkspaceView {
   private func remoteChangedFileIdentity(_ file: RepositoryChangedFile) -> some View {
     HStack(spacing: 10) {
       Text(file.kind.localizedDisplayName)
-        .font(.caption)
+        .font(.workbenchMetadata)
         .frame(width: 58, alignment: .leading)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       WorkbenchPathIdentity(path: file.displayPath)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -216,8 +216,8 @@ extension RepositoryWorkspaceView {
         "repository-remote-file-\(file.accessibilityIdentifierToken)-copy-path")
 
       Text(file.status)
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospaced())
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityLabel("远端文件状态")
         .accessibilityValue(file.status)
         .accessibilityIdentifier(

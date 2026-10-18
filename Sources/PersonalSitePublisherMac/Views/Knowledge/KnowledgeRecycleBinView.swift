@@ -11,10 +11,10 @@ struct KnowledgeRecycleBinView: View {
     VStack(spacing: 0) {
       HStack(spacing: 10) {
         Label("资料回收站", systemImage: "trash")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Text("\(knowledge.recycledDocuments.count) 条")
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospacedDigit())
+          .foregroundStyle(.workbenchSecondary)
         Spacer()
       }
       .padding(WorkbenchSpacing.content)
@@ -54,8 +54,8 @@ struct KnowledgeRecycleBinView: View {
       Divider()
       HStack {
         Label("回收站资料不会参与全文搜索或语义检索", systemImage: "info.circle")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         Spacer()
       }
       .padding(WorkbenchSpacing.card)
@@ -67,8 +67,8 @@ struct KnowledgeRecycleBinView: View {
           .keyboardShortcut(.cancelAction)
         Spacer()
         Text("已选择 \(selection.count) 条")
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospacedDigit())
+          .foregroundStyle(.workbenchSecondary)
         Button("永久删除…", role: .destructive) {
           isPermanentDeleteConfirmationPresented = true
         }
@@ -98,16 +98,16 @@ struct KnowledgeRecycleBinView: View {
   private func recycledRow(_ recycled: KnowledgeRecycledDocument) -> some View {
     HStack(spacing: 10) {
       Image(systemName: recycled.document.kind.systemImage)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .frame(width: 20)
       VStack(alignment: .leading, spacing: 3) {
         Text(recycled.document.title)
-          .workbenchTruncatedIdentity(recycled.document.title)
+          .workbenchTruncatedTitle(recycled.document.title)
         Text(
           "移除于 \(recycled.deletedAt.formatted(date: .abbreviated, time: .shortened))"
         )
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
       }
       Spacer()
       Text(
@@ -116,8 +116,8 @@ struct KnowledgeRecycleBinView: View {
           countStyle: .file
         )
       )
-      .font(.caption.monospacedDigit())
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata.monospacedDigit())
+      .foregroundStyle(.workbenchSecondary)
     }
     .accessibilityElement(children: .combine)
     .accessibilityLabel(

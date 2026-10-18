@@ -119,7 +119,6 @@ public final class RepositoryContentChangeMonitor: @unchecked Sendable {
   public typealias ChangeHandler = @Sendable ([String]?) -> Void
 
   private let debounceInterval: TimeInterval
-  private let scanOnAnyChange: Bool
   private let onChange: ChangeHandler
   private let queue: DispatchQueue
   private let stateLock = NSLock()
@@ -136,11 +135,9 @@ public final class RepositoryContentChangeMonitor: @unchecked Sendable {
 
   public init(
     debounceInterval: TimeInterval = RepositoryContentChangeMonitor.defaultDebounceInterval,
-    scanOnAnyChange: Bool = false,
     onChange: @escaping ChangeHandler
   ) {
     self.debounceInterval = max(0, debounceInterval)
-    self.scanOnAnyChange = scanOnAnyChange
     self.onChange = onChange
     queue = DispatchQueue(
       label: "com.jinfang.PersonalSitePublisherMac.repository-content-change-monitor",
@@ -310,10 +307,6 @@ public final class RepositoryContentChangeMonitor: @unchecked Sendable {
 
   private func handle(eventPath: String, flags: FSEventStreamEventFlags) {
     guard isActiveNow() else { return }
-    if scanOnAnyChange {
-      scheduleNotification(paths: nil, requiresFullScan: true)
-      return
-    }
     guard let repositoryRootPath = configuredRepositoryRootPathNow else { return }
     let normalizedPath = Self.normalizedPath(eventPath) ?? eventPath
     let relativePath: String?
@@ -433,12 +426,6 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
         owner?.handleFileChange(paths: paths)
       }
     }
-
-    func notifyExternal() {
-      Task { @MainActor [weak owner] in
-        owner?.requestExternalScan()
-      }
-    }
   }
 
   private struct WatchPath: Equatable {
@@ -450,7 +437,6 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
   private unowned let store: WorkbenchStore
   private let eventSink: EventSink
   private let monitors: [RepositoryContentChangeMonitor]
-  private let externalMonitor: RepositoryContentChangeMonitor
   private var cancellables = Set<AnyCancellable>()
   private var isStarted = false
   private var activeClientIDs = Set<UUID>()
@@ -464,8 +450,6 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
   private var importPendingPaths = Set<String>()
   private var importPendingFullScan = false
   private var configurationTask: Task<Void, Never>?
-  private var externalScanTask: Task<Void, Never>?
-  private var externalScanGeneration: UInt64 = 0
 
   public init(store: WorkbenchStore) {
     self.store = store
@@ -474,16 +458,12 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
     self.monitors = [
       RepositoryContentChangeMonitor { paths in eventSink.notify(paths: paths) }
     ]
-    self.externalMonitor = RepositoryContentChangeMonitor(scanOnAnyChange: true) { _ in
-      eventSink.notifyExternal()
-    }
     eventSink.owner = self
     observeProfileChanges()
   }
 
   deinit {
     monitors.forEach { $0.stop() }
-    externalMonitor.stop()
   }
 
   public static func shared(store: WorkbenchStore) -> RepositoryContentChangeMonitorCoordinator {
@@ -506,7 +486,6 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
     isStarted = true
     needsFullDiscovery = true
     configureMonitorsIfNeeded()
-    requestExternalScan()
   }
 
   public func stop(clientID: UUID) {
@@ -516,12 +495,8 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
     configurationTask?.cancel()
     configurationTask = nil
     cancelPendingImport()
-    externalScanGeneration &+= 1
-    externalScanTask?.cancel()
-    externalScanTask = nil
     needsFullDiscovery = true
     monitors.forEach { $0.stop() }
-    externalMonitor.stop()
   }
 
   /// Performs the initial/explicit automatic discovery using the full index
@@ -612,22 +587,6 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
     requestImport(repositoryPaths: paths)
   }
 
-  private func requestExternalScan() {
-    guard isStarted, !store.isSafeMode,
-      store.activeProfile.externalDraftFolder?.observesChanges == true
-    else { return }
-    externalScanGeneration &+= 1
-    let generation = externalScanGeneration
-    externalScanTask?.cancel()
-    externalScanTask = Task { @MainActor [weak self] in
-      guard let self else { return }
-      _ = await self.store.scanExternalDraftFolder()
-      if self.externalScanGeneration == generation {
-        self.externalScanTask = nil
-      }
-    }
-  }
-
   private func observeProfileChanges() {
     store.publishingStore.$profiles
       .removeDuplicates()
@@ -652,7 +611,6 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
       self.needsFullDiscovery = true
       self.configureMonitorsIfNeeded()
       self.requestImport()
-      self.requestExternalScan()
     }
   }
 
@@ -679,17 +637,6 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
         watchedPath: path.watchedPath,
         allowedRelativePrefixes: path.allowedRelativePrefixes
       )
-    }
-    if isStarted, !store.isSafeMode,
-      let mapping = store.activeProfile.externalDraftFolder,
-      mapping.observesChanges
-    {
-      externalMonitor.reconfigure(
-        repositoryRootPath: mapping.path,
-        watchedPath: mapping.path
-      )
-    } else {
-      externalMonitor.stop()
     }
   }
 

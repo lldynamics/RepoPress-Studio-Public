@@ -33,7 +33,7 @@ struct MarkdownCursorWorkflowControls: View {
               : "exclamationmark.triangle"
           )
           .labelStyle(.titleAndIcon)
-          .font(.caption)
+          .font(.workbenchMetadata)
         }
         .buttonStyle(.borderless)
         .foregroundStyle(fenceMatch.isClosed ? Color.secondary : WorkbenchTheme.warning)
@@ -53,11 +53,11 @@ struct MarkdownCursorWorkflowControls: View {
         isGoToLinePresented = true
       } label: {
         Text(cursorStatus)
-          .font(.caption.monospacedDigit())
+          .font(.workbenchMetadata.monospacedDigit())
       }
       .buttonStyle(.borderless)
       .keyboardShortcut("l", modifiers: [.command])
-      .foregroundStyle(.secondary)
+      .foregroundStyle(.workbenchSecondary)
       .help(String(localized: "当前光标位置；点击或按 ⌘L 跳转到指定行"))
       .accessibilityLabel("光标位置")
       .accessibilityValue(cursorStatus)
@@ -109,7 +109,7 @@ struct MarkdownCursorWorkflowControls: View {
           systemImage: "text.cursor"
         )
         .labelStyle(.titleAndIcon)
-        .font(.caption)
+        .font(.workbenchMetadata)
         .fixedSize(horizontal: true, vertical: false)
       } else {
         Image(systemName: "text.cursor")
@@ -133,7 +133,7 @@ struct MarkdownCursorWorkflowControls: View {
   private var goToLinePopover: some View {
     VStack(alignment: .leading, spacing: 10) {
       Text("跳转到行")
-        .font(.headline)
+        .font(.workbenchHeadline)
       TextField("行号", text: $requestedLine)
         .textFieldStyle(.roundedBorder)
         .frame(width: 180)
@@ -142,8 +142,8 @@ struct MarkdownCursorWorkflowControls: View {
         .accessibilityLabel("行号")
         .accessibilityIdentifier("markdown-go-to-line-field")
       Text(String(localized: "正文共 \(lineCount) 行"))
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
       HStack {
         Button("取消") {
           isGoToLinePresented = false

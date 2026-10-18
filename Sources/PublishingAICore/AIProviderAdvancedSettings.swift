@@ -17,13 +17,6 @@ public struct AIProviderAdvancedSettings: Codable, Hashable, Sendable {
   /// ChatGPT/Codex account. A raw string keeps this forward compatible with
   /// levels added by the service after this build.
   public var reasoningEffortOverride: String?
-  /// Optional for backwards-compatible connection profiles. A missing value
-  /// keeps the historical behaviour (the native Agent path is enabled).
-  public var allowsApplicationTools: Bool?
-  /// Optional fine-grained Agent scopes. A missing value is deliberately
-  /// resolved to `localRead + draftCreation` so legacy profiles do not gain
-  /// network, content, repository, or publishing authority after upgrade.
-  public var agentPermissionPolicy: AIAgentPermissionPolicy?
   /// Optional proxy URL for network requests (e.g. http://127.0.0.1:7890 or socks5://127.0.0.1:7890).
   public var proxyURL: String?
   /// Reserved persisted fallback profile. Runtime failover is intentionally
@@ -36,8 +29,6 @@ public struct AIProviderAdvancedSettings: Codable, Hashable, Sendable {
     maximumOutputTokens: Int? = nil,
     reasoningPreference: AIProviderReasoningPreference = .automatic,
     reasoningEffortOverride: String? = nil,
-    allowsApplicationTools: Bool? = nil,
-    agentPermissionPolicy: AIAgentPermissionPolicy? = nil,
     proxyURL: String? = nil,
     fallbackProfileID: UUID? = nil
   ) {
@@ -46,32 +37,8 @@ public struct AIProviderAdvancedSettings: Codable, Hashable, Sendable {
     self.maximumOutputTokens = maximumOutputTokens
     self.reasoningPreference = reasoningPreference
     self.reasoningEffortOverride = Self.normalizeReasoningEffort(reasoningEffortOverride)
-    self.allowsApplicationTools = allowsApplicationTools
-    self.agentPermissionPolicy = agentPermissionPolicy
     self.proxyURL = proxyURL?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
     self.fallbackProfileID = fallbackProfileID
-  }
-
-  /// Resolves the optional persisted value. Existing profiles that do not
-  /// contain the field keep Agent behaviour enabled.
-  public var resolvedAllowsApplicationTools: Bool {
-    allowsApplicationTools ?? true
-  }
-
-  /// Returns the persisted policy or the migration-safe baseline for legacy
-  /// snapshots that have no fine-grained scope field.
-  public var resolvedAgentPermissionPolicy: AIAgentPermissionPolicy {
-    agentPermissionPolicy ?? .legacySafeDefault
-  }
-
-  /// The scopes that can actually be consumed by an Agent after applying the
-  /// connection-level master switch.
-  public var effectiveAgentPermissionPolicy: AIAgentPermissionPolicy {
-    AIAgentPermissionPolicy(
-      enabledScopes: resolvedAgentPermissionPolicy.effectiveScopes(
-        masterEnabled: resolvedAllowsApplicationTools
-      )
-    )
   }
 
   public var normalizedSystemPrompt: String {
@@ -104,8 +71,6 @@ public struct AIProviderAdvancedSettings: Codable, Hashable, Sendable {
       && normalizedMaximumOutputTokens == nil
       && reasoningPreference == .automatic
       && normalizedReasoningEffortOverride == nil
-      && allowsApplicationTools == nil
-      && (agentPermissionPolicy == nil || agentPermissionPolicy?.isDefault == true)
       && normalizedProxyURL == nil
       && fallbackProfileID == nil
   }
@@ -120,8 +85,6 @@ public struct AIProviderAdvancedSettings: Codable, Hashable, Sendable {
     case maximumOutputTokens
     case reasoningPreference
     case reasoningEffortOverride
-    case allowsApplicationTools
-    case agentPermissionPolicy
     case proxyURL
     case fallbackProfileID
   }
@@ -139,14 +102,6 @@ public struct AIProviderAdvancedSettings: Codable, Hashable, Sendable {
     reasoningEffortOverride = Self.normalizeReasoningEffort(
       try container.decodeIfPresent(String.self, forKey: .reasoningEffortOverride)
     )
-    allowsApplicationTools = try container.decodeIfPresent(
-      Bool.self,
-      forKey: .allowsApplicationTools
-    )
-    agentPermissionPolicy = try container.decodeIfPresent(
-      AIAgentPermissionPolicy.self,
-      forKey: .agentPermissionPolicy
-    )
     proxyURL = try container.decodeIfPresent(String.self, forKey: .proxyURL)?.trimmingCharacters(
       in: .whitespacesAndNewlines
     ).nilIfEmpty
@@ -163,8 +118,6 @@ public struct AIProviderAdvancedSettings: Codable, Hashable, Sendable {
       normalizedReasoningEffortOverride,
       forKey: .reasoningEffortOverride
     )
-    try container.encodeIfPresent(allowsApplicationTools, forKey: .allowsApplicationTools)
-    try container.encodeIfPresent(agentPermissionPolicy, forKey: .agentPermissionPolicy)
     try container.encodeIfPresent(normalizedProxyURL, forKey: .proxyURL)
     try container.encodeIfPresent(fallbackProfileID, forKey: .fallbackProfileID)
   }

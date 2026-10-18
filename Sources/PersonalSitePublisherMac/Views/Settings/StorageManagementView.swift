@@ -182,7 +182,7 @@ struct StorageManagementView: View {
         }
       } else {
         Text("当前数据文件夹尚未准备完成。")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       if let usageError {
@@ -203,8 +203,8 @@ struct StorageManagementView: View {
       }
       if let dataRootMessage = coordinator.dataRootMessage {
         Text(dataRootMessage)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .textSelection(.enabled)
       }
     }
@@ -293,8 +293,8 @@ struct StorageManagementView: View {
       legendItem(title: String(localized: "备份"), color: .green)
       legendItem(title: String(localized: "其他"), color: .secondary)
     }
-    .font(.caption)
-    .foregroundStyle(.secondary)
+    .font(.workbenchMetadata)
+    .foregroundStyle(.workbenchSecondary)
   }
 
   private func legendItem(title: String, color: Color) -> some View {
@@ -317,8 +317,8 @@ struct StorageManagementView: View {
         value: dataManagement.knowledgeRecycledDocumentCount.formatted()
       )
       Text("只清空已经移入资料库回收站的内容；仍在资料库中的正文和原始外部文件不会被删除。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
       Button(String(localized: "清空资料库回收站"), systemImage: "trash", role: .destructive) {
         isKnowledgeCleanupConfirmationPresented = true
@@ -348,8 +348,8 @@ struct StorageManagementView: View {
         }
       }
       Text("只清理超过期限、已读、未加入稍后阅读且没有高亮的文章。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
       Button(String(localized: "清理 RSS 历史文章"), systemImage: "trash", role: .destructive) {
         isRSSCleanupConfirmationPresented = true
@@ -361,8 +361,8 @@ struct StorageManagementView: View {
   private var backupSection: some View {
     Section(String(localized: "备份与恢复")) {
       Text("备份包含草稿、历史版本、配置、资料库（含笔记）、RSS、附件、发布记录和 AI 对话；不包含 API Key。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
       HStack {
         Button(String(localized: "立即备份…"), systemImage: "externaldrive.badge.plus") {
@@ -377,8 +377,8 @@ struct StorageManagementView: View {
       .disabled(backupControlsDisabled)
 
       Text("创建后自动校验；恢复前先预览内容并确认替换范围。旧版资料库备份也可从这里恢复。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
 
       if isPerformingBackupOperation {
@@ -417,24 +417,24 @@ struct StorageManagementView: View {
       .disabled(backupControlsDisabled)
 
       Text("开启后每天检查一次并备份完整工作区，内容未变化时跳过。应用需要处于运行状态。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
       if backupScheduler.settings.frequency != .off,
         backupScheduler.settings.frequency != .daily
           || backupScheduler.selectedCategories != Set(WorkspaceBackupCategory.allCases)
       {
         Text(legacyAutomaticBackupDescription)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
 
       LabeledContent(String(localized: "保存位置")) {
         HStack {
           Text(backupScheduler.destinationFolderLabel)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .lineLimit(2)
             .truncationMode(.middle)
             .textSelection(.enabled)
@@ -451,12 +451,12 @@ struct StorageManagementView: View {
           ? String(localized: "当前保存位置保留全部自动快照，请留意磁盘空间。")
           : String(localized: "自动快照按最多 12 份、90 天和 4 GiB 保留，并始终保留最近的有效备份。")
       )
-      .font(.caption)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
+      .fixedSize(horizontal: false, vertical: true)
       Text("可选择本机、外置磁盘或云盘文件夹。云盘是否完成上传，以文件提供器的状态为准。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
 
       if let lastBackupAt = backupScheduler.settings.lastBackupAt {
@@ -467,7 +467,7 @@ struct StorageManagementView: View {
       }
       LabeledContent(String(localized: "备份副本状态")) {
         Text(cloudUploadStatusText(backupScheduler.cloudUploadStatus))
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(cloudUploadStatusColor(backupScheduler.cloudUploadStatus))
           .fixedSize(horizontal: false, vertical: true)
       }
@@ -560,20 +560,18 @@ struct StorageManagementView: View {
   private var relocationSection: some View {
     Section(String(localized: "更改存储位置")) {
       Text("选择本机或外置硬盘中的目标位置。RepoPress Studio 会新建数据文件夹，复制并校验全部资料库、RSS 和附件后再切换；原文件夹会保留。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
-      Button(String(localized: "复制到新位置并切换…"), systemImage: "externaldrive.badge.timemachine") {
-        chooseRelocationDestination()
-      }
-      .disabled(isRelocating || rootURL == nil)
+      DataRootLocationActions(
+        coordinator: coordinator, isBusy: $isRelocating, onCopy: chooseRelocationDestination)
       if isRelocating {
         ProgressView(String(localized: "正在复制并校验，请勿断开硬盘…"))
           .controlSize(.small)
       } else {
         Text("切换成功后应用会退出。重新打开即可使用新位置；确认无误前请不要删除原文件夹。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
     }
   }

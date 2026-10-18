@@ -87,12 +87,12 @@ struct AIConnectionReconfigurationConfirmation: View {
   var body: some View {
     VStack(alignment: .leading, spacing: WorkbenchSpacing.content) {
       Text("确认重配共享连接")
-        .font(.title2.bold())
+        .font(.workbenchTitle2.bold())
       Text("你正在修改“\(request.connectionName)”。以下站点会一起使用修改后的配置。")
         .fixedSize(horizontal: false, vertical: true)
       Grid(alignment: .leading, horizontalSpacing: WorkbenchSpacing.content, verticalSpacing: 8) {
         GridRow {
-          Text("配置").foregroundStyle(.secondary)
+          Text("配置").foregroundStyle(.workbenchSecondary)
           Text("当前").fontWeight(.semibold)
           Text("修改后").fontWeight(.semibold)
         }
@@ -116,7 +116,7 @@ struct AIConnectionReconfigurationConfirmation: View {
         || request.originalConfig.model != request.proposedConfig.model
       {
         Text("地址或模型将按上表替换；其他引用站点也会使用新的值。")
-          .font(.callout)
+          .font(.workbenchBody)
       }
       if request.invalidatesAPIKey {
         Label("旧 API Key 将失效并从此连接移除；需要时请为新服务重新保存。", systemImage: "key.slash")
@@ -125,10 +125,10 @@ struct AIConnectionReconfigurationConfirmation: View {
 
       VStack(alignment: .leading, spacing: 6) {
         Text("引用站点：\(request.referencingSites.count) 个")
-          .font(.headline)
+          .font(.workbenchHeadline)
         if request.referencingSites.isEmpty {
           Text("目前没有站点引用此连接。")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         } else {
           ScrollView {
             VStack(alignment: .leading, spacing: 4) {
@@ -147,7 +147,7 @@ struct AIConnectionReconfigurationConfirmation: View {
       .accessibilityIdentifier("settings-ai-reconfigure-sites")
 
       Text("想保留原连接时，可取消并新增独立连接。站点的连接选择不会自动改变。")
-        .font(.callout).foregroundStyle(.secondary)
+        .font(.workbenchBody).foregroundStyle(.workbenchSecondary)
       HStack {
         Spacer()
         Button("取消", role: .cancel, action: onCancel)
@@ -168,7 +168,7 @@ struct AIConnectionReconfigurationConfirmation: View {
     -> some View
   {
     GridRow {
-      Text(title).foregroundStyle(.secondary)
+      Text(title).foregroundStyle(.workbenchSecondary)
       Text(previous.isEmpty ? String(localized: "未填写") : previous)
       Text(proposed.isEmpty ? String(localized: "未填写") : proposed)
     }

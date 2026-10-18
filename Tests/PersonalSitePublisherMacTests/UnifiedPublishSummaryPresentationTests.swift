@@ -103,43 +103,6 @@ final class UnifiedPublishSummaryPresentationTests: XCTestCase {
     XCTAssertEqual(summary.preflightTitle, "正在汇总发布检查")
   }
 
-  func testBatchConfirmationFreezesEveryArticleAndRejectsChangedMembershipOrContent() {
-    let profile = SiteProfile(name: "Site")
-    let first = makeItem(
-      title: "First", markdownPath: "content/first.md", markdownStatus: .added,
-      imagePath: "static/first.webp", imageStatus: .added
-    )
-    let second = makeItem(
-      title: "Second", markdownPath: "content/second.md", markdownStatus: .modified,
-      imagePath: "static/second.webp", imageStatus: .modified
-    )
-    var plan = BatchPublishPlan(profileID: profile.id, siteName: profile.name, items: [first, second])
-    var package = first.package
-    package.files = plan.remotePublishableItems.flatMap(\.package.files)
-    let preview = RemoteRepositoryPublishPreview(
-      provider: .github, repositoryName: "owner/site", mode: .directCommit,
-      branchName: "main", targetBranch: "main", changedPaths: package.files.map(\.repositoryPath),
-      hasToken: true, blockingIssues: [], warningIssues: []
-    )
-    let review = BatchPublishReviewSnapshot(
-      plan: plan, package: package, profile: profile, preview: preview,
-      reviewDraft: nil, excludedCleanupCount: 2
-    )
-    XCTAssertEqual(review.items.map(\.draftTitle), ["First", "Second"])
-    XCTAssertEqual(review.items.flatMap(\.preview.changedFileDiffs).count, 4)
-    XCTAssertEqual(review.preview.changedPaths.count, 4)
-    XCTAssertEqual(review.excludedCleanupCount, 2)
-    XCTAssertTrue(review.expectation.matches(plan: plan, package: package))
-
-    package.files[0].content = "unreviewed edit at the same path"
-    XCTAssertFalse(review.expectation.matches(plan: plan, package: package))
-    XCTAssertEqual(review.expectation.files[0].content, "body")
-    package.files = review.expectation.files
-    plan.items.removeLast()
-    XCTAssertFalse(review.expectation.matches(plan: plan, package: package))
-    XCTAssertEqual(review.items.count, 2, "The sheet must keep its frozen batch, not follow live state")
-  }
-
   private func makeItem(
     title: String,
     markdownPath: String,

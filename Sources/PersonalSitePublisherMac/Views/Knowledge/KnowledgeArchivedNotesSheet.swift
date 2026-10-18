@@ -14,9 +14,9 @@ struct KnowledgeArchivedNotesSheet: View {
       HStack {
         VStack(alignment: .leading, spacing: 4) {
           Text("归档笔记")
-            .font(.title2.weight(.semibold))
+            .font(.workbenchTitle2.weight(.semibold))
           Text("归档笔记不会进入资料回收站，可在这里恢复，也会包含在笔记导出中。")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
         Spacer()
         Button("完成") { dismiss() }
@@ -32,16 +32,16 @@ struct KnowledgeArchivedNotesSheet: View {
         List(notes) { note in
           VStack(alignment: .leading, spacing: 6) {
             Text(note.title.isEmpty ? "未命名笔记" : note.title)
-              .font(.headline)
+              .font(.workbenchHeadline)
             if !note.tags.isEmpty {
               Text(note.tags.joined(separator: " · "))
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+                .font(.workbenchMetadata)
+                .foregroundStyle(.workbenchSecondary)
             }
             if !note.markdown.isEmpty {
               Text(note.markdown)
                 .lineLimit(2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.workbenchSecondary)
             }
             HStack {
               Spacer()

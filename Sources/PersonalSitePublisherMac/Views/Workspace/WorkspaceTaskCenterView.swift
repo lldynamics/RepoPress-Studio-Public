@@ -84,13 +84,13 @@ struct WorkspaceTaskCenterView: View {
   private var header: some View {
     HStack(spacing: 10) {
       Image(systemName: "list.bullet.rectangle.portrait")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       VStack(alignment: .leading, spacing: 2) {
         Text("任务中心")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Text(headerDetail)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
       Spacer()
       Button("关闭") { dismiss() }
@@ -117,8 +117,8 @@ struct WorkspaceTaskCenterView: View {
     VStack(spacing: 0) {
       if let taskActionFeedback {
         Text(taskActionFeedback)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(WorkbenchSpacing.content)
           .accessibilityIdentifier("workspace-task-action-feedback")
@@ -247,19 +247,19 @@ private struct WorkspaceTaskCenterRow: View {
         VStack(alignment: .leading, spacing: 3) {
           HStack(spacing: 7) {
             Text(task.title)
-              .font(.callout.weight(.semibold))
+              .font(.workbenchBody.weight(.semibold))
             Text(task.state.title)
-              .font(.caption.weight(.medium))
+              .font(.workbenchMetadata.weight(.medium))
               .foregroundStyle(statusColor)
           }
           if let checkedAt = task.checkedAt {
             Text("最近检查：\(checkedAt.formatted(date: .abbreviated, time: .shortened))")
               .font(.workbenchMetadata)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
           }
           Text(task.primaryPresentationDetail)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .lineLimit(3)
             .fixedSize(horizontal: false, vertical: true)
         }
@@ -300,8 +300,8 @@ private struct WorkspaceTaskCenterRow: View {
           ProgressView(value: progress)
             .progressViewStyle(.linear)
           Text("\(Int(progress * 100))%")
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.monospacedDigit())
+            .foregroundStyle(.workbenchSecondary)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("任务进度")
@@ -326,11 +326,11 @@ private struct WorkspaceTaskCenterRow: View {
           .accessibilityIdentifier("workspace-task-copy-diagnostic-\(task.id)")
         Spacer()
       }
-      .font(.caption)
+      .font(.workbenchMetadata)
 
       if isExpanded {
         Text(task.diagnosticText)
-          .font(.system(.caption, design: .monospaced))
+          .font(.workbenchMetadata.monospaced())
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(WorkbenchSpacing.control)

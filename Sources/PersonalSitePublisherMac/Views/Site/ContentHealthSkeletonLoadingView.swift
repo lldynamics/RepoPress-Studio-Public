@@ -21,10 +21,10 @@ struct ContentHealthSkeletonLoadingView: View {
             .accessibilityHidden(true)
           VStack(alignment: .leading, spacing: 4) {
             Text("正在生成内容健康快照")
-              .font(.caption.weight(.semibold))
+              .font(.workbenchMetadata.weight(.semibold))
             Text("正在检查 Front Matter、链接、SEO 与内容风险。当前分析未提供可显示的分阶段进度。")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
           Spacer(minLength: 8)
           Button("取消", action: cancel)

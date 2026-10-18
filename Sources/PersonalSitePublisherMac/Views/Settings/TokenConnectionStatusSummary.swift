@@ -91,17 +91,17 @@ struct TokenConnectionStatusSummary: View {
     Section {
       HStack(alignment: .top, spacing: WorkbenchSpacing.control) {
         Image(systemName: presentation.systemImage)
-          .font(.title3)
+          .font(.workbenchTitle3)
           .foregroundStyle(statusColor)
           .frame(width: 24)
           .accessibilityHidden(true)
 
         VStack(alignment: .leading, spacing: 3) {
           Text(presentation.title)
-            .font(.headline)
+            .font(.workbenchHeadline)
           Text(presentation.detail)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .fixedSize(horizontal: false, vertical: true)
         }
       }

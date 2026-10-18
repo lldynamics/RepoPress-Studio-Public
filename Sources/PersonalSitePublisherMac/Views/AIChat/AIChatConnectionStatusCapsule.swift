@@ -16,13 +16,13 @@ struct AIChatConnectionStatusCapsule: View {
           .accessibilityHidden(true)
 
         Text(statusSummary)
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
           .lineLimit(1)
           .truncationMode(.middle)
 
         Image(systemName: "chevron.down")
           .font(.workbenchMetadata.weight(.bold))
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
       .padding(.horizontal, WorkbenchSpacing.control)
       .padding(.vertical, WorkbenchSpacing.tight)

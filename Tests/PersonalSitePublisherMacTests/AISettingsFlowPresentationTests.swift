@@ -76,13 +76,13 @@ final class AISettingsFlowPresentationTests: XCTestCase {
     XCTAssertEqual(AIConnectionKind(preset: .custom), .apiKey)
   }
 
-  func testWritingStyleDestinationUsesTheSiteAISubsection() {
+  func testWritingStyleDestinationUsesTheMergedAISubsection() {
     XCTAssertEqual(
       SettingsSubsection.section(for: .ai(.writingStyle)),
       .aiWritingStyle
     )
-    XCTAssertEqual(SettingsSubsection.aiWritingStyle.tab, .siteAI)
-    XCTAssertEqual(SettingsSubsection.aiSiteConnection.tab, .siteAI)
+    XCTAssertEqual(SettingsSubsection.aiWritingStyle.tab, .ai)
+    XCTAssertEqual(SettingsSubsection.aiSiteConnection.tab, .ai)
     XCTAssertEqual(SettingsSubsection.aiConnection.tab, .ai)
   }
 
@@ -315,25 +315,6 @@ final class AISettingsFlowPresentationTests: XCTestCase {
       false
     )
     XCTAssertNil(AIKeychainActionFeedback(message: "AI 连接测试失败：网络不可用"))
-  }
-
-  func testAgentPermissionScopesExposeAccessibleTitlesAndDescriptions() {
-    XCTAssertEqual(AIAgentPermissionScope.allCases.count, 6)
-    for scope in AIAgentPermissionScope.allCases {
-      XCTAssertFalse(scope.id.isEmpty)
-      XCTAssertFalse(scope.localizedTitle.isEmpty)
-      XCTAssertFalse(scope.localizedDescription.isEmpty)
-    }
-  }
-
-  func testAgentPermissionMasterOffLeavesNoEffectiveScopeForSettingsPresentation() {
-    let settings = AIProviderAdvancedSettings(
-      allowsApplicationTools: false,
-      agentPermissionPolicy: .all
-    )
-
-    XCTAssertTrue(settings.resolvedAgentPermissionPolicy.isFullyEnabled)
-    XCTAssertTrue(settings.effectiveAgentPermissionPolicy.isDisabled)
   }
 
   @MainActor

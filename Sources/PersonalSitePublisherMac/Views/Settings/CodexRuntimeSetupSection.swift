@@ -11,12 +11,12 @@ struct CodexRuntimeSetupSection: View {
     if needsSetupPresentation {
       VStack(alignment: .leading, spacing: 8) {
         Label(setupTitle, systemImage: "shippingbox")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Text(runtimeManagementTitle)
-          .font(.caption.weight(.medium))
+          .font(.workbenchMetadata.weight(.medium))
         Text(setupDetail)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         HStack(spacing: 8) {
           if showsPrepareAction {
             Button(primaryActionTitle) { connection.prepare() }
@@ -38,12 +38,14 @@ struct CodexRuntimeSetupSection: View {
           }
         }
         if let progress = connection.progress?.nilIfEmpty {
-          Text(progress).font(.caption).accessibilityIdentifier(
+          Text(progress).font(.workbenchMetadata).accessibilityIdentifier(
             "settings-ai-codex-prepare-progress")
         }
         if let failure = connection.failure?.nilIfEmpty {
-          Text(failure).font(.caption).foregroundStyle(WorkbenchTheme.warning).textSelection(
-            .enabled)
+          Text(failure)
+            .font(.workbenchMetadata)
+            .foregroundStyle(WorkbenchTheme.warning)
+            .textSelection(.enabled)
         }
         if connection.canRollback {
           Button(String(localized: "回退到上一个已验证版本")) { connection.rollback() }
@@ -54,7 +56,7 @@ struct CodexRuntimeSetupSection: View {
           connection.runtimeStatus?.isAvailable == true
         {
           Toggle(String(localized: "自动更新已验证的 Codex 组件"), isOn: $connection.automaticallyUpdates)
-            .font(.caption)
+            .font(.workbenchMetadata)
             .disabled(connection.isPreparing || connection.isChecking)
         }
         if isManagedRuntime {
@@ -65,8 +67,8 @@ struct CodexRuntimeSetupSection: View {
             .buttonStyle(.borderless)
             .disabled(connection.isPreparing || connection.isChecking)
             Text(String(localized: "此操作会停止使用本应用管理的组件，并重新检测系统安装的 Codex CLI。"))
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
         }
         DisclosureGroup(String(localized: "安装信息"), isExpanded: $showDetails) {
@@ -75,7 +77,7 @@ struct CodexRuntimeSetupSection: View {
             Text(path).textSelection(.enabled)
           }
         }
-        .font(.caption).foregroundStyle(.secondary)
+        .font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
       }
       .padding(.vertical, WorkbenchSpacing.tight)
     }

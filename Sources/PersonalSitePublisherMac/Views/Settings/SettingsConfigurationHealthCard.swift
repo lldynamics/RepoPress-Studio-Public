@@ -85,14 +85,14 @@ struct SettingsConfigurationHealthCard: View {
           Text("当前站点")
             .font(.workbenchSectionTitle)
           summaryText
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
         }
 
         Spacer()
 
         Label(LocalizedStringKey(overallStatusText), systemImage: overallStatusImage)
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
           .foregroundStyle(overallStatusColor)
           .padding(.horizontal, WorkbenchSpacing.control)
           .padding(.vertical, WorkbenchSpacing.tight)
@@ -117,11 +117,11 @@ struct SettingsConfigurationHealthCard: View {
       if let nextItem = unresolvedItems.first {
         HStack(alignment: .center, spacing: 10) {
           Text("下一步")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.weight(.semibold))
+            .foregroundStyle(.workbenchSecondary)
 
           Text(LocalizedStringKey(nextItem.title))
-            .font(.callout.weight(.medium))
+            .font(.workbenchBody.weight(.medium))
 
           Spacer(minLength: 8)
 
@@ -133,8 +133,8 @@ struct SettingsConfigurationHealthCard: View {
         }
       } else {
         Label("本地发布基础已经就绪，可按需继续配置线上发布与 AI。", systemImage: "checkmark.circle.fill")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       }
     }
     .padding(.vertical, WorkbenchSpacing.control)
@@ -305,13 +305,13 @@ private struct SettingsConfigurationHealthTile: View {
     ) {
       HStack(spacing: WorkbenchSpacing.control) {
         Image(systemName: item.state.systemImage)
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
           .foregroundStyle(item.state.color)
           .accessibilityHidden(true)
 
         if showsActionIndicator {
           Image(systemName: "chevron.right")
-            .font(.caption.weight(.semibold))
+            .font(.workbenchMetadata.weight(.semibold))
             .foregroundStyle(.tertiary)
             .accessibilityHidden(true)
         }

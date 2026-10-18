@@ -114,18 +114,18 @@ struct AIConnectionTestSection: View {
 
       if !availability.isEnabled {
         Label(availability.message, systemImage: availability.systemImage)
-          .font(.callout)
+          .font(.workbenchBody)
           .foregroundStyle(WorkbenchTheme.warning)
           .accessibilityElement(children: .combine)
       } else if !hasAttemptedConnectionTest && !isReportStale {
         Text(availability.message)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       Text("测试会向当前服务发送一次最小请求，不会发送站点文章或资料库内容。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
 
       DisclosureGroup("可选能力探测") { capabilityProbeSelection }
     }
@@ -134,10 +134,10 @@ struct AIConnectionTestSection: View {
   private var capabilityProbeSelection: some View {
     VStack(alignment: .leading, spacing: 5) {
       Text("可选能力探测")
-        .font(.caption.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
       Text("默认不额外探测。勾选后会增加对应请求；选择普通对话会复用本次最小 ping。")
         .font(.workbenchMetadata)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       ForEach(AIProviderCapabilityProbeKind.allCases.filter { $0 != .toolCalling }) { capability in
         Toggle(
           localizedProbeCapabilityName(capability),
@@ -196,13 +196,13 @@ struct AIConnectionTestSection: View {
         announcesNonUrgentStatus: true
       )
       Text(report.detailText)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .textSelection(.enabled)
       if let capabilityProbeReport = report.capabilityProbeReport {
         VStack(alignment: .leading, spacing: 4) {
           Text("能力探测结果")
-            .font(.caption.weight(.semibold))
+            .font(.workbenchMetadata.weight(.semibold))
           ForEach(
             capabilityProbeReport.results.values.sorted {
               $0.capability.rawValue < $1.capability.rawValue
@@ -218,11 +218,11 @@ struct AIConnectionTestSection: View {
                 + " · \(observationLabel)"
             )
             .font(.workbenchMetadata)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
           }
           Text("状态：\(localizedProbeCacheStateName(capabilityProbeReport.cacheState))")
             .font(.workbenchMetadata)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
         .padding(.top, 2)
         .accessibilityElement(children: .combine)
@@ -240,11 +240,11 @@ struct AIConnectionTestSection: View {
         report: nil
       )
       Label(presentation.title, systemImage: presentation.systemImage)
-        .font(.callout.weight(.semibold))
+        .font(.workbenchBody.weight(.semibold))
         .foregroundStyle(statusColor(presentation.level))
       Text(presentation.message)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .textSelection(.enabled)
     }
   }

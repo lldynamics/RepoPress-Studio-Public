@@ -14,8 +14,8 @@ struct OperationLogRow: View {
           .lineLimit(1)
         if let targetLabel = entry.targetLabel {
           Text(targetLabel)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .lineLimit(1)
         }
         HStack(spacing: 5) {
@@ -45,21 +45,21 @@ struct OperationLogDetailView: View {
       VStack(alignment: .leading, spacing: 20) {
         HStack(alignment: .top, spacing: 12) {
           Image(systemName: entry.systemImage)
-            .font(.title2)
+            .font(.workbenchTitle2)
             .foregroundStyle(operationLogOutcomeColor(entry.outcome))
             .frame(width: 32)
           VStack(alignment: .leading, spacing: 4) {
             Text(entry.title)
-              .font(.title2.weight(.semibold))
+              .font(.workbenchTitle2.weight(.semibold))
               .textSelection(.enabled)
             if let targetLabel = entry.targetLabel {
               Text(targetLabel)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.workbenchSecondary)
             }
           }
           Spacer(minLength: 0)
           Text(entry.outcomeDisplayName)
-            .font(.callout.weight(.medium))
+            .font(.workbenchBody.weight(.medium))
             .foregroundStyle(operationLogOutcomeColor(entry.outcome))
         }
 
@@ -84,8 +84,8 @@ struct OperationLogDetailView: View {
           detailSection("发布相关记录") {
             VStack(alignment: .leading, spacing: 10) {
               Text(entry.sourceLabel)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(.workbenchBody)
+                .foregroundStyle(.workbenchSecondary)
                 .textSelection(.enabled)
               Button(action: openSyncWorkspace) {
                 Label("前往同步工作区", systemImage: "arrow.right.circle")
@@ -108,7 +108,7 @@ struct OperationLogDetailView: View {
   ) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       Text(title)
-        .font(.headline)
+        .font(.workbenchHeadline)
       content()
     }
     .padding(WorkbenchSpacing.content)
@@ -121,7 +121,7 @@ struct OperationLogDetailView: View {
   private func detailRow(_ title: LocalizedStringKey, value: String) -> some View {
     GridRow {
       Text(title)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       Text(value)
         .textSelection(.enabled)
     }

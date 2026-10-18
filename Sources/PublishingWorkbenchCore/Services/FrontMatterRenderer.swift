@@ -4,6 +4,17 @@ public struct FrontMatterRenderer: Sendable {
   public init() {}
 
   public func render(draft: ArticleDraft, profile: SiteProfile) -> String {
+    if let source = draft.importedFrontMatter {
+      // Unsafe edits remain visible as blockers. Never fall back to a
+      // destructive canonical rewrite of an imported envelope.
+      do {
+        return try ArticleFrontMatterPreservation.rendered(draft: draft, profile: profile)
+          ?? source.rawBlock
+      } catch {
+        // Preservation preflight blocks writes; previews retain the source.
+        return source.rawBlock
+      }
+    }
     switch profile.frontMatterStyle {
     case .yaml:
       return renderYAML(draft: draft, profile: profile)
@@ -14,7 +25,8 @@ public struct FrontMatterRenderer: Sendable {
 
   public func renderDocument(draft: ArticleDraft, profile: SiteProfile) -> String {
     let body = draft.bodyMarkdown.trimmingCharacters(in: .newlines)
-    return render(draft: draft, profile: profile) + "\n\n" + body + "\n"
+    let header = render(draft: draft, profile: profile)
+    return (header.isEmpty ? "" : header + "\n\n") + body + "\n"
   }
 
   private func renderYAML(draft: ArticleDraft, profile: SiteProfile) -> String {
@@ -45,11 +57,15 @@ public struct FrontMatterRenderer: Sendable {
       lines.append("authors: \(yamlArray(authors))")
     }
 
-    if !draft.tags.isEmpty {
+    if profile.siteKind == .zola, !draft.tags.isEmpty || !draft.categories.isEmpty {
+      lines.append("taxonomies:")
+      if !draft.tags.isEmpty { lines.append("  tags: \(yamlArray(draft.tags))") }
+      if !draft.categories.isEmpty { lines.append("  categories: \(yamlArray(draft.categories))") }
+    } else if !draft.tags.isEmpty {
       lines.append("tags: \(yamlArray(draft.tags))")
     }
 
-    if !draft.categories.isEmpty {
+    if profile.siteKind != .zola, !draft.categories.isEmpty {
       lines.append("categories: \(yamlArray(draft.categories))")
     }
 
@@ -153,11 +169,16 @@ public struct FrontMatterRenderer: Sendable {
       lines.append("authors = \(tomlArray(authors))")
     }
 
-    if !draft.tags.isEmpty {
+    if profile.siteKind == .zola, !draft.tags.isEmpty || !draft.categories.isEmpty {
+      var fields: [String] = []
+      if !draft.tags.isEmpty { fields.append("tags = \(tomlArray(draft.tags))") }
+      if !draft.categories.isEmpty { fields.append("categories = \(tomlArray(draft.categories))") }
+      lines.append("taxonomies = { " + fields.joined(separator: ", ") + " }")
+    } else if !draft.tags.isEmpty {
       lines.append("tags = \(tomlArray(draft.tags))")
     }
 
-    if !draft.categories.isEmpty {
+    if profile.siteKind != .zola, !draft.categories.isEmpty {
       lines.append("categories = \(tomlArray(draft.categories))")
     }
 
@@ -217,9 +238,14 @@ public struct FrontMatterRenderer: Sendable {
   }
 
   private func formattedDate(_ date: Date, profile: SiteProfile) -> String {
+    Self.formattedDate(date, format: profile.dateFormat.nilIfEmpty ?? "yyyy-MM-dd")
+  }
+
+  /// Shared with the imported-envelope path so both writers agree on locale and time zone.
+  static func formattedDate(_ date: Date, format: String) -> String {
     let formatter = DateFormatter()
     formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.dateFormat = profile.dateFormat.nilIfEmpty ?? "yyyy-MM-dd"
+    formatter.dateFormat = format
     return formatter.string(from: date)
   }
 

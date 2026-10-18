@@ -50,7 +50,7 @@ struct MacMarkdownLocalPreviewPopover: View {
         "本地预览",
         systemImage: state.runtimeStatus.isRunning ? "safari" : "play.rectangle"
       )
-      .font(.headline)
+      .font(.workbenchHeadline)
 
       Spacer(minLength: 8)
 
@@ -66,14 +66,14 @@ struct MacMarkdownLocalPreviewPopover: View {
       VStack(alignment: .leading, spacing: 12) {
         VStack(alignment: .leading, spacing: 3) {
           Text("\(plan.siteKind.localizedDisplayName) · \(plan.previewURL.absoluteString)")
-            .font(.caption.monospaced())
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.monospaced())
+            .foregroundStyle(.workbenchSecondary)
             .lineLimit(1)
             .truncationMode(.middle)
 
           Text(state.runtimeStatus.message)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .lineLimit(2)
         }
 
@@ -141,14 +141,14 @@ struct MacMarkdownLocalPreviewPopover: View {
     } else {
       VStack(alignment: .leading, spacing: 8) {
         Label("尚未配置本地站点", systemImage: "exclamationmark.triangle")
-          .font(.callout.weight(.semibold))
+          .font(.workbenchBody.weight(.semibold))
           .foregroundStyle(WorkbenchTheme.warning)
         Text("当前写作界面没有可用的本地仓库，暂时无法启动预览。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         Text("请在站点设置中选择仓库并完成扫描。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
       .padding(WorkbenchSpacing.content)
     }
@@ -156,7 +156,7 @@ struct MacMarkdownLocalPreviewPopover: View {
 
   private var statusBadge: some View {
     Label(statusTitle, systemImage: statusIcon)
-      .font(.caption)
+      .font(.workbenchMetadata)
       .foregroundStyle(statusColor)
   }
 
@@ -229,7 +229,7 @@ struct MacMarkdownLocalPreviewPopover: View {
   private func diagnosticsHint(plan: LocalSitePreviewPlan) -> some View {
     VStack(alignment: .leading, spacing: 4) {
       Label(plan.diagnostics.statusTitle, systemImage: "exclamationmark.triangle")
-        .font(.caption.weight(.medium))
+        .font(.workbenchMetadata.weight(.medium))
         .foregroundStyle(WorkbenchTheme.warning)
 
       if let blockingIssue = plan.diagnostics.issues.first(where: { $0.severity.isBlocking }) {
@@ -242,8 +242,8 @@ struct MacMarkdownLocalPreviewPopover: View {
         Text("请先完成本地预览所需的仓库配置。")
       }
     }
-    .font(.caption)
-    .foregroundStyle(.secondary)
+    .font(.workbenchMetadata)
+    .foregroundStyle(.workbenchSecondary)
     .padding(WorkbenchSpacing.control)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
@@ -261,7 +261,7 @@ struct MacMarkdownLocalPreviewPopover: View {
     if !matchingDiagnostics.isEmpty {
       VStack(alignment: .leading, spacing: 6) {
         Label("当前文章的预览错误", systemImage: "exclamationmark.triangle.fill")
-          .font(.caption.weight(.medium))
+          .font(.workbenchMetadata.weight(.medium))
           .foregroundStyle(WorkbenchTheme.warning)
 
         ForEach(matchingDiagnostics) { diagnostic in
@@ -282,7 +282,7 @@ struct MacMarkdownLocalPreviewPopover: View {
           .accessibilityIdentifier("markdown-local-preview-jump-to-error-line")
         }
       }
-      .font(.caption)
+      .font(.workbenchMetadata)
       .padding(WorkbenchSpacing.control)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(

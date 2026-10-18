@@ -1,5 +1,6 @@
 import Foundation
 import PublishingDomainContracts
+import RepoPressCore
 
 public enum MarkdownFrontMatterEditingIssue: Error, Equatable, Sendable {
   case invalidDelimiter
@@ -43,6 +44,9 @@ public struct MarkdownFrontMatterEditingService: Sendable {
   public init() {}
 
   public func render(draft: ArticleDraft, profile: SiteProfile) -> String {
+    if draft.importedFrontMatter != nil {
+      return FrontMatterRenderer().render(draft: draft, profile: profile)
+    }
     switch profile.frontMatterStyle {
     case .yaml:
       return renderYAML(draft: draft, profile: profile)
@@ -92,20 +96,38 @@ public struct MarkdownFrontMatterEditingService: Sendable {
     to draft: ArticleDraft,
     profile: SiteProfile
   ) -> MarkdownFrontMatterEditingResult {
-    let parsed: Result<[String: [String]], MarkdownFrontMatterEditingIssue>
-    switch profile.frontMatterStyle {
-    case .yaml:
-      parsed = parse(source, delimiter: "---", separator: ":", style: .yaml)
-    case .toml:
-      parsed = parse(source, delimiter: "+++", separator: "=", style: .toml)
+    let parts = ImportedFrontMatter.split(source)
+    let expectedSyntax =
+      draft.importedFrontMatter?.syntax
+      ?? (profile.frontMatterStyle == .toml ? .toml : .yaml)
+    guard let envelope = parts.frontMatter, envelope.syntax == expectedSyntax,
+      parts.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else {
+      return MarkdownFrontMatterEditingResult(draft: draft, issue: .invalidDelimiter)
     }
-
-    let values: [String: [String]]
-    switch parsed {
-    case .success(let parsedValues):
-      values = parsedValues
-    case .failure(let issue):
-      return MarkdownFrontMatterEditingResult(draft: draft, issue: issue)
+    do { _ = try envelope.replacing([:]) } catch {
+      let legacyParse = parse(
+        source, delimiter: envelope.syntax == .toml ? "+++" : "---",
+        separator: envelope.syntax == .toml ? "=" : ":",
+        style: envelope.syntax == .toml ? .toml : .yaml)
+      if case .failure(let issue) = legacyParse {
+        return MarkdownFrontMatterEditingResult(draft: draft, issue: issue)
+      }
+      return MarkdownFrontMatterEditingResult(draft: draft, issue: .malformedLine(2))
+    }
+    var values = ArticleFrontMatterPreservation.values(from: envelope, profile: profile)
+    if values["draft"] == nil, profile.siteKind == .quartz,
+      let publish = values["publish"]?.first.flatMap(parsedBool)
+    {
+      values["draft"] = [publish ? "false" : "true"]
+    }
+    if values["draft"] == nil, profile.siteKind == .foam, let status = values["status"]?.first {
+      values["draft"] = [status.lowercased() == "draft" ? "true" : "false"]
+    }
+    if draft.importedFrontMatter != nil, values["date"] == nil {
+      values["date"] =
+        values["published"] ?? values["publishdate"] ?? values["created"]
+        ?? [formattedDate(draft.date, profile: profile)]
     }
 
     guard let dateText = values["date"]?.first?.trimmedForPublishing.nilIfEmpty else {
@@ -126,7 +148,7 @@ public struct MarkdownFrontMatterEditingService: Sendable {
       }
       updated.draft = draftFlag
     } else {
-      updated.draft = false
+      updated.draft = draft.importedFrontMatter == nil ? false : draft.draft
     }
 
     let visibilityText: String
@@ -141,7 +163,9 @@ public struct MarkdownFrontMatterEditingService: Sendable {
         ? ArticleVisibility.private.rawValue
         : ArticleVisibility.public.rawValue
     } else {
-      visibilityText = ArticleVisibility.public.rawValue
+      visibilityText =
+        draft.importedFrontMatter == nil
+        ? ArticleVisibility.public.rawValue : draft.visibility.rawValue
     }
     guard
       let visibility = ArticleVisibility(rawValue: visibilityText.trimmedForPublishing.lowercased())
@@ -149,12 +173,13 @@ public struct MarkdownFrontMatterEditingService: Sendable {
       return MarkdownFrontMatterEditingResult(draft: draft, issue: .invalidVisibility)
     }
 
-    updated.title = values["title"]?.first ?? ""
-    updated.slug = values["slug"]?.first ?? ""
+    updated.title = values["title"]?.first ?? (draft.importedFrontMatter == nil ? "" : draft.title)
+    updated.slug = values["slug"]?.first ?? (draft.importedFrontMatter == nil ? "" : draft.slug)
     updated.summary =
       values["description"]?.first
       ?? values["summary"]?.first
       ?? values["excerpt"]?.first
+      ?? values["socialdescription"]?.first
       ?? ""
     updated.authors = values["authors"] ?? values["author"] ?? []
     updated.aliases = values["aliases"] ?? values["alias"] ?? []
@@ -165,6 +190,12 @@ public struct MarkdownFrontMatterEditingService: Sendable {
     updated.tags = values["tags"] ?? []
     updated.categories = values["categories"] ?? []
     updated.visibility = visibility
+    if !ArticleFrontMatterPreservation.requiresLegacyRecovery(draft: draft) {
+      updated.importedFrontMatter = ArticleFrontMatterPreservation.capturing(
+        envelope, draft: updated, profile: profile)
+    }
+    // Editing a regenerated legacy preview cannot establish the missing
+    // original-file baseline. Only reimport/conflict recovery can do that.
 
     return MarkdownFrontMatterEditingResult(draft: updated)
   }
@@ -264,9 +295,16 @@ public struct MarkdownFrontMatterEditingService: Sendable {
     if profile.siteKind == .hugo, let key = draft.translationKey?.trimmedForPublishing.nilIfEmpty {
       lines.append("translationKey: \(quotedString(key))")
     }
+    if profile.siteKind == .zola {
+      lines.append(contentsOf: [
+        "taxonomies:", "  tags: \(array(draft.tags))", "  categories: \(array(draft.categories))",
+      ])
+    } else {
+      lines.append(contentsOf: [
+        "tags: \(array(draft.tags))", "categories: \(array(draft.categories))",
+      ])
+    }
     lines.append(contentsOf: [
-      "tags: \(array(draft.tags))",
-      "categories: \(array(draft.categories))",
       "draft: \(draft.draft ? "true" : "false")",
       "visibility: \(quotedString(draft.visibility.rawValue))",
       "---",
@@ -292,9 +330,15 @@ public struct MarkdownFrontMatterEditingService: Sendable {
     if profile.siteKind == .hugo, let key = draft.translationKey?.trimmedForPublishing.nilIfEmpty {
       lines.append("translationKey = \(quotedString(key))")
     }
+    if profile.siteKind == .zola {
+      lines.append(
+        "taxonomies = { tags = \(array(draft.tags)), categories = \(array(draft.categories)) }")
+    } else {
+      lines.append(contentsOf: [
+        "tags = \(array(draft.tags))", "categories = \(array(draft.categories))",
+      ])
+    }
     lines.append(contentsOf: [
-      "tags = \(array(draft.tags))",
-      "categories = \(array(draft.categories))",
       "draft = \(draft.draft ? "true" : "false")",
       "visibility = \(quotedString(draft.visibility.rawValue))",
       "+++",

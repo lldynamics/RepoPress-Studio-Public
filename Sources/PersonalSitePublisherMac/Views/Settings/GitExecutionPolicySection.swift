@@ -19,13 +19,13 @@ struct GitExecutionPolicySection: View {
           .accessibilityLabel("SSH 提交签名密钥路径")
           .accessibilityIdentifier("git-ssh-signing-key")
         Text("填写 SSH 公钥或私钥文件的绝对路径。签名使用系统 ssh-keygen；签名失败会阻止提交。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       LabeledContent("仓库 hooks") {
         Text(trustDescription)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
       Button("信任此仓库 hooks…") {
         proposedTrustRoot = repositoryRootURL?.standardizedFileURL
@@ -53,15 +53,15 @@ struct GitExecutionPolicySection: View {
             configuredHooksPath),
           systemImage: "exclamationmark.triangle"
         )
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
         .accessibilityIdentifier("git-configured-hooks-path")
       }
       Text(
         "仅用于本地整仓提交与合并完成，不用于 GitHub/GitLab API。默认禁用 hooks；信任后仅执行标准 hooks 目录中的提交 hooks 和整仓发布的 pre-push。路径变化须重新确认。"
       )
-      .font(.callout)
-      .foregroundStyle(.secondary)
+      .font(.workbenchBody)
+      .foregroundStyle(.workbenchSecondary)
     }
     .task(id: repositoryRootURL) {
       guard let repositoryRootURL else {

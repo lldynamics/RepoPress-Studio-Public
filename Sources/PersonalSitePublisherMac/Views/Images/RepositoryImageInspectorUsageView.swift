@@ -80,9 +80,9 @@ struct RepositoryImageInspectorUsageView: View {
       if let selectedDraft {
         HStack(spacing: 8) {
           Text(draftTitle(selectedDraft))
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .workbenchTruncatedIdentity(draftTitle(selectedDraft), lineLimit: 2)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
+            .workbenchTruncatedTitle(draftTitle(selectedDraft), lineLimit: 2)
           Spacer(minLength: 4)
           Button {
             onOpenDraft(selectedDraft.id)
@@ -102,11 +102,11 @@ struct RepositoryImageInspectorUsageView: View {
     if let selectedUsage {
       VStack(alignment: .leading, spacing: 9) {
         Text(String(localized: "以下说明仅应用到当前选择的文章。"))
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
 
         Text(String(localized: "Alt 文本"))
-          .font(.caption)
+          .font(.workbenchMetadata)
           .accessibilityHidden(true)
         TextField(
           String(localized: "Alt 文本"),
@@ -122,7 +122,7 @@ struct RepositoryImageInspectorUsageView: View {
         .accessibilityIdentifier("repository-image-alt-text")
 
         Text(String(localized: "Caption（可选）"))
-          .font(.caption)
+          .font(.workbenchMetadata)
           .accessibilityHidden(true)
         TextField(
           String(localized: "Caption（可选）"),
@@ -167,12 +167,12 @@ struct RepositoryImageInspectorUsageView: View {
               .controlSize(.small)
             Text(String(localized: "正在处理图片…"))
           }
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .accessibilityIdentifier("repository-image-saving")
         } else if let saveStatusText {
           Text(saveStatusText)
-            .font(.caption)
+            .font(.workbenchMetadata)
             .foregroundStyle(saveStatusIsError ? .red : .secondary)
             .workbenchTruncatedIdentity(saveStatusText, lineLimit: 2)
             .accessibilityIdentifier("repository-image-save-status")
@@ -181,13 +181,13 @@ struct RepositoryImageInspectorUsageView: View {
     } else if let selectedDraft {
       if alreadyReferencedDraftIDs.contains(selectedDraft.id) {
         Label(String(localized: "这张图片已登记到当前文章。"), systemImage: "checkmark.circle")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       } else {
         VStack(alignment: .leading, spacing: 8) {
           Text(String(localized: "当前文章尚未使用这张图片。加入后可在此编辑说明和封面状态。"))
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
           Button {
             onAttach(selectedDraft.id)
           } label: {
@@ -201,12 +201,12 @@ struct RepositoryImageInspectorUsageView: View {
       }
     } else if availableDrafts.isEmpty {
       Text(String(localized: "当前站点还没有可选文章。"))
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     } else {
       Text(String(localized: "选择一篇文章后，可查看或加入这张图片。"))
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 

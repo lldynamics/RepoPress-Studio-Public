@@ -14,7 +14,7 @@ struct KnowledgeLibraryInsertionActions: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       Text("插入到当前文章")
-        .font(.callout.weight(.semibold))
+        .font(.workbenchBody.weight(.semibold))
 
       if document.kind == .image {
         Button {
@@ -104,7 +104,7 @@ struct KnowledgeLibraryInspectorPanel: View {
       VStack(alignment: .leading, spacing: 14) {
         HStack(spacing: 8) {
           Label("资料详情栏", systemImage: "sidebar.trailing")
-            .font(.headline)
+            .font(.workbenchHeadline)
           Spacer()
           Button(action: onEditMetadata) {
             Image(systemName: "pencil")
@@ -154,7 +154,7 @@ struct KnowledgeLibraryInspectorPanel: View {
             "标注与反向链接（\(knowledge.annotations.count + knowledge.backlinkGroups.count)）",
             systemImage: "link.badge.plus"
           )
-          .font(.callout.weight(.semibold))
+          .font(.workbenchBody.weight(.semibold))
         }
 
         Divider()
@@ -183,7 +183,7 @@ struct KnowledgeLibraryInspectorPanel: View {
         } label: {
           HStack {
             Label(relatedTitle, systemImage: "point.3.connected.trianglepath.dotted")
-              .font(.callout.weight(.semibold))
+              .font(.workbenchBody.weight(.semibold))
             Spacer()
             if knowledge.isLoadingRelatedChapters {
               ProgressView()
@@ -191,8 +191,8 @@ struct KnowledgeLibraryInspectorPanel: View {
                 .accessibilityLabel("正在查找\(relatedTitle)")
             } else {
               Text("\(knowledge.relatedChapters.count)")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .font(.workbenchMetadata.monospacedDigit())
+                .foregroundStyle(.workbenchSecondary)
             }
           }
         }
@@ -204,7 +204,7 @@ struct KnowledgeLibraryInspectorPanel: View {
             if document.kind == .webpage {
               Text("如果正文缺失、混入导航、订阅或网页页脚，可以先比较当前正文与重新净化结果，再决定是否创建新版本。")
                 .font(.workbenchSupporting)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.workbenchSecondary)
               Button("正文质量有问题？") {
                 onReportContentIssue()
               }
@@ -212,7 +212,7 @@ struct KnowledgeLibraryInspectorPanel: View {
             } else {
               Text("可以查看来源更新和历史版本；已有版本不会被静默覆盖。")
                 .font(.workbenchSupporting)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.workbenchSecondary)
             }
             Button("来源更新与版本历史…", action: onOpenSourceHistory)
               .buttonStyle(.link)
@@ -220,7 +220,7 @@ struct KnowledgeLibraryInspectorPanel: View {
           .padding(.top, WorkbenchSpacing.control)
         } label: {
           Label("正文质量与版本", systemImage: "checkmark.shield")
-            .font(.callout.weight(.semibold))
+            .font(.workbenchBody.weight(.semibold))
         }
       }
       .padding(WorkbenchSpacing.content)

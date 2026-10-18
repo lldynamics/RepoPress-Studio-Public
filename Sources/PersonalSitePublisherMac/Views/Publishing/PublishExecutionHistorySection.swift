@@ -39,8 +39,8 @@ struct PublishExecutionHistorySection: View {
 
       if displayedRecords.isEmpty {
         Text("当前站点还没有发布执行记录。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       } else {
         let firstPendingRecordID = displayedRecords.first(where: { $0.state.needsVerification })?.id
         ForEach(displayedRecords) { record in
@@ -75,7 +75,7 @@ struct PublishExecutionHistorySection: View {
         ? "最近 \(displayedRecords.count) 条"
         : "待核实 \(pendingCount) 条 · 最近 \(displayedRecords.count) 条"
     )
-    .font(.caption.monospacedDigit())
+    .font(.workbenchMetadata.monospacedDigit())
     .foregroundStyle(pendingCount == 0 ? .secondary : WorkbenchTheme.risk)
   }
 
@@ -101,7 +101,7 @@ struct PublishExecutionHistorySection: View {
         !message.isEmpty
       {
         Text(message)
-          .font(.callout)
+          .font(.workbenchBody)
           .foregroundStyle(record.state.needsVerification ? WorkbenchTheme.risk : .secondary)
           .fixedSize(horizontal: false, vertical: true)
           .textSelection(.enabled)
@@ -109,7 +109,7 @@ struct PublishExecutionHistorySection: View {
 
       if record.state.needsVerification {
         Text("结果未知，请核对远端结果后再重试。")
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(WorkbenchTheme.risk)
       }
 
@@ -131,14 +131,14 @@ struct PublishExecutionHistorySection: View {
       Label(
         localizedExecutionStateName(record.state), systemImage: executionStateImage(record.state)
       )
-      .font(.callout.weight(.semibold))
+      .font(.workbenchBody.weight(.semibold))
       .foregroundStyle(record.state.needsVerification ? WorkbenchTheme.risk : .primary)
       Text(record.plan.package.title)
-        .font(.callout)
+        .font(.workbenchBody)
         .lineLimit(2)
       Text(record.createdAt.workbenchShortText)
-        .font(.caption.monospacedDigit())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospacedDigit())
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 
@@ -190,8 +190,8 @@ struct PublishExecutionHistorySection: View {
 
         if !record.plan.package.files.isEmpty {
           Text(String(localized: "文件列表"))
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.weight(.semibold))
+            .foregroundStyle(.workbenchSecondary)
             .padding(.top, WorkbenchSpacing.tight)
           ForEach(record.plan.package.files.map(\.repositoryPath), id: \.self) { path in
             WorkbenchPathIdentity(path: path)
@@ -200,7 +200,7 @@ struct PublishExecutionHistorySection: View {
       }
       .padding(.top, WorkbenchSpacing.icon)
     }
-    .font(.caption)
+    .font(.workbenchMetadata)
     .accessibilityIdentifier("publish-execution-plan-\(record.id)")
   }
 
@@ -210,13 +210,13 @@ struct PublishExecutionHistorySection: View {
         ForEach(Array(record.events.enumerated()), id: \.offset) { _, event in
           VStack(alignment: .leading, spacing: 2) {
             Text(event.stage.localizedDisplayName)
-              .font(.caption.weight(.semibold))
+              .font(.workbenchMetadata.weight(.semibold))
             Text(event.date.workbenchShortText)
               .font(.workbenchMetadata.monospacedDigit())
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
             Text(event.message)
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
               .fixedSize(horizontal: false, vertical: true)
               .textSelection(.enabled)
           }
@@ -224,14 +224,14 @@ struct PublishExecutionHistorySection: View {
       }
       .padding(.top, WorkbenchSpacing.icon)
     }
-    .font(.caption)
+    .font(.workbenchMetadata)
     .accessibilityIdentifier("publish-execution-events-\(record.id)")
   }
 
   private func evidenceRow(_ title: String, _ value: String) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
       Text(title)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .frame(width: 58, alignment: .leading)
       Text(value)
         .textSelection(.enabled)

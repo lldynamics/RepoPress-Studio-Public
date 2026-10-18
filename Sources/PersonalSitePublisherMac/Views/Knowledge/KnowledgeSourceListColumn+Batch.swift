@@ -5,7 +5,7 @@ extension KnowledgeSourceListColumn {
   var batchActionBar: some View {
     HStack(spacing: 6) {
       Text("已选 \(selectedDocumentIDs.count) 条")
-        .font(.caption.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
         .monospacedDigit()
       Spacer(minLength: 4)
       Button("完成") {

@@ -101,7 +101,6 @@ enum ImageWorkbenchContextStage: String, Identifiable, Hashable {
 enum RepositoryContextStage: String, Identifiable {
   case overview
   case changes
-  case source
   case history
 
   var id: String { rawValue }
@@ -109,13 +108,12 @@ enum RepositoryContextStage: String, Identifiable {
   static let navigationStages: [Self] = [
     .overview,
     .changes,
-    .source,
     .history,
   ]
 
   var primaryNavigationStage: Self {
     switch self {
-    case .overview, .changes, .source, .history:
+    case .overview, .changes, .history:
       return self
     }
   }
@@ -126,8 +124,6 @@ enum RepositoryContextStage: String, Identifiable {
       return "概览"
     case .changes:
       return "文件变更"
-    case .source:
-      return "源码"
     case .history:
       return "发布历史"
     }
@@ -139,8 +135,6 @@ enum RepositoryContextStage: String, Identifiable {
       return String(localized: "概览")
     case .changes:
       return String(localized: "文件变更")
-    case .source:
-      return String(localized: "源码")
     case .history:
       return String(localized: "发布历史")
     }
@@ -150,7 +144,7 @@ enum RepositoryContextStage: String, Identifiable {
     switch self {
     case .overview, .history:
       return false
-    case .changes, .source:
+    case .changes:
       return true
     }
   }

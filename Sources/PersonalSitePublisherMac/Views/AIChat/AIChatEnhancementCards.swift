@@ -62,28 +62,28 @@ struct AIChatStructuredEditReviewCard: View {
           .font(.workbenchCardTitle)
         Spacer()
         Text("\(payload.document.changes.count) 项")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       ForEach(payload.document.changes) { proposal in
         VStack(alignment: .leading, spacing: 6) {
           HStack {
             Text(proposal.category.rawValue)
-              .font(.caption.monospaced())
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata.monospaced())
+              .foregroundStyle(.workbenchSecondary)
             Spacer()
             Text("\(Int((proposal.confidence * 100).rounded()))%")
-              .font(.caption.monospacedDigit())
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata.monospacedDigit())
+              .foregroundStyle(.workbenchSecondary)
           }
           AIChangeComparisonView(
             before: proposal.originalText,
             after: proposal.replacementText
           )
           Text(proposal.reason)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
 
           HStack {
             decisionButton(
@@ -191,8 +191,8 @@ struct AIChatTranslationDraftCard: View {
       Text(plan.translatedDraft.title)
         .font(.workbenchItemTitle)
       Text("目标语言：\(plan.targetLanguageCode) · 新草稿默认保持未发布")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
       Button(action: create) {
         Label("创建并打开新草稿", systemImage: "plus.square.on.square")
       }

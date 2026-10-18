@@ -215,11 +215,8 @@ struct AIChatContextInspectorActions {
   let createTranslationDraft: (AITranslationDraftPlan) -> Void
   let executeAutomationPlan: (UUID, AIPublishingChatMessage.ID) -> Void
   let executeAutomationStep: (UUID, AIPublishingChatMessage.ID, UUID) -> Void
-  let acceptAutomationStep: (UUID, AIPublishingChatMessage.ID, UUID, String) -> Void
-  let rejectAutomationStep: (UUID, AIPublishingChatMessage.ID, UUID, String?) -> Void
   let previewAutomationStep:
     (UUID, AIPublishingChatMessage.ID, UUID) -> WorkbenchAutomationDraftPreview?
   let cancelAutomationPlan: (UUID, AIPublishingChatMessage.ID) -> Void
   let rollbackAutomationRun: (UUID) -> Void
-  let abandonAgentContinuation: (UUID, UUID, UUID, UUID, Int) -> Bool
 }

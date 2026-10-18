@@ -516,8 +516,7 @@ final class AIConnectionProfileCommandsTests: XCTestCase {
       model: "codex-transition-model",
       requiresAPIKey: false,
       advancedSettings: AIProviderAdvancedSettings(
-        reasoningEffortOverride: "high",
-        allowsApplicationTools: false
+        reasoningEffortOverride: "high"
       )
     )
   }

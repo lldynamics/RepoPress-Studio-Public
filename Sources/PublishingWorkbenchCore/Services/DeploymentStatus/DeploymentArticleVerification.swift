@@ -65,21 +65,34 @@ extension ReleaseRecord {
 
 extension DeploymentStatusSnapshot {
   public func verifiesAllArticles(in record: ReleaseRecord) -> Bool {
+    guard matchesReleaseIdentity(record), attributionVerified == true else { return false }
     let targets = record.articleVerificationTargets
     return targets.isEmpty
-      || targets.allSatisfy { target in
-        articleResults?.contains(where: { $0.target == target && $0.level == .success && $0.verifiesSourceVersion }) == true
-      }
+      || (platformLevel == .success
+        && targets.allSatisfy { target in
+          articleResults?.contains(where: {
+            $0.target == target && $0.level == .success && $0.verifiesSourceVersion
+          }) == true
+        })
   }
 
-  public func verifiesArticle(_ target: ReleaseRecordBatchItem, in record: ReleaseRecord) -> Bool {
+  func matchesReleaseIdentity(_ record: ReleaseRecord) -> Bool {
     guard releaseRecordID == record.id, profileID == record.siteProfileID,
       let expected = record.deploymentCommitSHA,
       expectedCommitSHA?.caseInsensitiveCompare(expected) == .orderedSame,
-      expectedBranch == record.deploymentBranchName,
-      attributionVerified == true, platformLevel == .success
+      expectedBranch == record.deploymentBranchName
     else { return false }
-    return articleResults?.contains(where: { $0.target == target && $0.level == .success && $0.verifiesSourceVersion }) == true
+    return true
+  }
+
+  public func verifiesArticle(_ target: ReleaseRecordBatchItem, in record: ReleaseRecord) -> Bool {
+    guard matchesReleaseIdentity(record), attributionVerified == true, platformLevel == .success
+    else {
+      return false
+    }
+    return articleResults?.contains(where: {
+      $0.target == target && $0.level == .success && $0.verifiesSourceVersion
+    }) == true
   }
 }
 

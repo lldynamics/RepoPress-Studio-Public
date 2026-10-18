@@ -5,6 +5,7 @@ import SwiftUI
 struct PublishDrawerAIFixButton: View {
   let issue: PublishDrawerReadinessIssue
   let store: WorkbenchStore
+  let isPrimaryAction: Bool
   let onRequestAIFix: () -> Void
   @ObservedObject private var aiActions: WorkbenchAIFeatureFacade
   @ObservedObject private var codexConnection = CodexConnectionController.shared
@@ -12,10 +13,12 @@ struct PublishDrawerAIFixButton: View {
   @Environment(\.settingsWorkspaceCommandAction) private var settingsWorkspaceCommandAction
 
   init(
-    issue: PublishDrawerReadinessIssue, store: WorkbenchStore, onRequestAIFix: @escaping () -> Void
+    issue: PublishDrawerReadinessIssue, store: WorkbenchStore, isPrimaryAction: Bool = true,
+    onRequestAIFix: @escaping () -> Void
   ) {
     self.issue = issue
     self.store = store
+    self.isPrimaryAction = isPrimaryAction
     self.onRequestAIFix = onRequestAIFix
     _aiActions = ObservedObject(wrappedValue: store.ai)
   }
@@ -42,7 +45,7 @@ struct PublishDrawerAIFixButton: View {
   var body: some View {
     let destination = configurationDestination
     let title = destination == nil ? String(localized: "AI 修复") : String(localized: "去配置")
-    Button {
+    let button = Button {
       if let destination {
         SettingsNavigation.present(
           destination: destination, workspaceAction: settingsWorkspaceCommandAction
@@ -53,7 +56,16 @@ struct PublishDrawerAIFixButton: View {
     } label: {
       Label(title, systemImage: destination == nil ? "sparkles" : "gearshape")
     }
-    .buttonStyle(.bordered).controlSize(.small)
+    Group {
+      if isPrimaryAction {
+        button
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+      } else {
+        button
+          .buttonStyle(.link)
+      }
+    }
     .accessibilityLabel("\(title)：\(issue.title)")
     .accessibilityHint(
       destination == nil

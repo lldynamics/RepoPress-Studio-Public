@@ -157,8 +157,8 @@ struct WorkspaceTaskMetadataSection: View {
           .accessibilityValue(draft.visibility.localizedDisplayName)
           .accessibilityIdentifier("article-visibility-picker")
           Text("私密文章仍可同步到仓库的私密目录；更改状态不会改变可见性。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .fixedSize(horizontal: false, vertical: true)
         }
       }
@@ -184,7 +184,7 @@ struct WorkspaceTaskMetadataSection: View {
             )
           }
           .buttonStyle(.link)
-          .font(.caption)
+          .font(.workbenchMetadata)
           .accessibilityIdentifier("open-slug-change-resolution")
         }
       }
@@ -216,8 +216,8 @@ struct WorkspaceTaskMetadataSection: View {
 
         if selectedProvenance != .humanOriginal {
           Text(provenanceHelpText)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .fixedSize(horizontal: false, vertical: true)
         }
       }
@@ -230,13 +230,13 @@ struct WorkspaceTaskMetadataSection: View {
   private var timestampSlugNotice: some View {
     VStack(alignment: .leading, spacing: WorkbenchSpacing.icon) {
       Label("Slug 使用时间戳", systemImage: "link")
-        .font(.caption.weight(.medium))
+        .font(.workbenchMetadata.weight(.medium))
       Text(verbatim: draft.slug)
-        .font(.caption.monospaced())
+        .font(.workbenchMetadata.monospaced())
         .textSelection(.enabled)
       Text("可用标题生成更易读的网址，也可以保留此网址发布。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
       Button("用标题生成") {
         commitSlugEdit()
@@ -334,8 +334,8 @@ struct WorkspaceTaskMetadataSection: View {
     VStack(alignment: .leading, spacing: 5) {
       HStack(alignment: .center, spacing: 8) {
         Text("摘要")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
 
         Spacer(minLength: 0)
 
@@ -393,7 +393,7 @@ struct WorkspaceTaskMetadataSection: View {
             systemName: summaryGenerationSucceeded ? "checkmark.circle" : "exclamationmark.triangle"
           )
         }
-        .font(.caption)
+        .font(.workbenchMetadata)
         .foregroundStyle(
           summaryGenerationSucceeded ? WorkbenchTheme.success : WorkbenchTheme.warning
         )
@@ -418,7 +418,7 @@ struct WorkspaceTaskMetadataSection: View {
         summaryAIUnavailableReason ?? String(localized: "AI 暂不可用"),
         systemImage: "info.circle"
       )
-      .font(.callout)
+      .font(.workbenchBody)
       .fixedSize(horizontal: false, vertical: true)
       .accessibilityIdentifier("metadata-summary-ai-unavailable-reason")
       Button("前往 AI 设置") {
@@ -552,8 +552,8 @@ struct WorkspaceTaskMetadataSection: View {
   ) -> some View {
     VStack(alignment: .leading, spacing: 5) {
       Text(LocalizedStringKey(title))
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
       content()
         .frame(maxWidth: .infinity, alignment: .leading)
     }

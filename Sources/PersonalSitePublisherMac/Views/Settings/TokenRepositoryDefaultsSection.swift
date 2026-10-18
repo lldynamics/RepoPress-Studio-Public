@@ -65,8 +65,8 @@ struct TokenRepositoryDefaultsSection: View {
           .accessibilityValue(repositoryBaseURL.wrappedValue)
 
         Text("仓库 API 基础地址必须使用 HTTPS，且不能包含用户名、密码、查询参数（Query）或片段（Fragment）；不安全配置不会发送访问令牌。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       TextField(String(localized: "所有者 / 命名空间"), text: ownerOrNamespace)
@@ -90,8 +90,8 @@ struct TokenRepositoryDefaultsSection: View {
       .accessibilityValue(publishStrategyDisplayValue)
 
       Text(publishStrategyDetail)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     }
     GitExecutionPolicySection(
       executionPolicy: gitExecutionPolicy,

@@ -12,18 +12,18 @@ struct SelectionEditPreviewPanel: View {
     VStack(alignment: .leading, spacing: 8) {
       HStack {
         Label("\(preview.kind.localizedDisplayName)预览", systemImage: "doc.text.magnifyingglass")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.weight(.semibold))
+          .foregroundStyle(.workbenchSecondary)
         Text(preview.application.localizedDisplayName)
-          .font(.caption.weight(.medium))
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.weight(.medium))
+          .foregroundStyle(.workbenchSecondary)
           .padding(.horizontal, WorkbenchSpacing.icon)
           .padding(.vertical, 2)
           .background(WorkbenchBackgroundStyle.control, in: Capsule())
         if let modelSummary = preview.modelSummary {
           Text(modelSummary)
-            .font(.caption.weight(.medium))
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.weight(.medium))
+            .foregroundStyle(.workbenchSecondary)
             .lineLimit(1)
             .truncationMode(.middle)
             .padding(.horizontal, WorkbenchSpacing.icon)
@@ -78,11 +78,11 @@ struct SelectionEditPreviewPanel: View {
   private func selectionPreviewColumn(title: String, text: String) -> some View {
     VStack(alignment: .leading, spacing: 5) {
       Text(title)
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.weight(.semibold))
+        .foregroundStyle(.workbenchSecondary)
       ScrollView {
         Text(text)
-          .font(.caption)
+          .font(.workbenchMetadata)
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .leading)
       }
@@ -196,7 +196,7 @@ struct MarkdownShortcutHelpPanel: View {
       VStack(spacing: 0) {
         HStack(spacing: 8) {
           Image(systemName: "magnifyingglass")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
           TextField("搜索命令或按键", text: $searchText)
             .textFieldStyle(.plain)
             .accessibilityLabel("搜索命令或按键")
@@ -207,7 +207,7 @@ struct MarkdownShortcutHelpPanel: View {
               Image(systemName: "xmark.circle.fill")
             }
             .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
             .accessibilityLabel("清除快捷键搜索")
           }
         }
@@ -226,11 +226,11 @@ struct MarkdownShortcutHelpPanel: View {
                   let shortcut = group.1[row]
                   HStack {
                     Text(shortcut.0)
-                      .font(.body)
+                      .font(.workbenchBody)
                     Spacer()
                     Text(shortcut.1)
-                      .font(.body.monospacedDigit())
-                      .foregroundStyle(.secondary)
+                      .font(.workbenchBody.monospacedDigit())
+                      .foregroundStyle(.workbenchSecondary)
                   }
                 }
               }
@@ -324,12 +324,12 @@ struct MacMarkdownEditorTitleArea: View {
       .onChange(of: focusRequestID) { _, requestID in
         if requestID != nil { isTitleFocused = true }
       }
-      .font(.title2.weight(.semibold))
+      .font(.workbenchTitle2.weight(.semibold))
       // Unsaved state is shown by the save-status control; recoloring the
       // title duplicated it and made the heading flicker while typing.
       .accessibilityLabel("文章标题")
       .accessibilityIdentifier("markdown-article-title")
-      .accessibilityValue(title.nilIfEmpty ?? String(localized: "未命名文章"))
+      // Keep the editable field's native value, including spaces during input.
       .lineLimit(1...3)
       .help(title.nilIfEmpty ?? String(localized: "未命名文章"))
 
@@ -353,7 +353,7 @@ struct MacMarkdownEditorTitleArea: View {
         } else {
           Text("未绑定站点")
             .font(.workbenchMetadata)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
             .lineLimit(1)
         }
         Spacer(minLength: 0)
@@ -369,12 +369,12 @@ struct MacMarkdownEditorTitleArea: View {
             failure.scope == .project ? String(localized: "项目保存失败") : String(localized: "保存到软件失败"),
             systemImage: "exclamationmark.triangle.fill"
           )
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
           .foregroundStyle(WorkbenchTheme.warning)
 
           Text(failure.message)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .lineLimit(2)
             .help(failure.message)
 
@@ -406,19 +406,11 @@ struct MarkdownArticleHeaderMetadata: Equatable {
   let relativePath: String?
   let fileURL: URL?
 
-  init(draft: ArticleDraft?, profile: SiteProfile?, externalFolder: URL? = nil) {
+  init(draft: ArticleDraft?, profile: SiteProfile?) {
     status = draft?.status ?? .draft
     articleState = draft?.articleState ?? .localOnly
     isGeneralDraft = draft?.isGeneralDraft ?? true
-    if let source = draft?.externalDraftSource {
-      relativePath = source.relativePath
-      let folder =
-        externalFolder
-        ?? source.detachedFolderPath.map {
-          URL(fileURLWithPath: $0, isDirectory: true)
-        }
-      fileURL = Self.fileURL(for: source.relativePath, under: folder)
-    } else if let draft, !draft.isGeneralDraft, let profile, profile.id == draft.siteProfileID {
+    if let draft, !draft.isGeneralDraft, let profile, profile.id == draft.siteProfileID {
       relativePath = draft.repositoryPath?.nilIfEmpty ?? profile.markdownPath(for: draft)
       // An unbound article only has a proposed path; Finder must not pretend
       // it is already saved to a file in the repository.
@@ -495,12 +487,7 @@ final class MarkdownArticleHeaderMetadataState: ObservableObject {
   {
     let draft = drafts.first { $0.id == draftID }
     let profile = profiles.first { $0.id == draft?.siteProfileID }
-    let mapping = profiles.compactMap(\.externalDraftFolder).first {
-      $0.id == draft?.externalDraftSource?.mappingID
-    }
-    return MarkdownArticleHeaderMetadata(
-      draft: draft, profile: profile, externalFolder: mapping?.directoryURL
-    )
+    return MarkdownArticleHeaderMetadata(draft: draft, profile: profile)
   }
 }
 
@@ -513,10 +500,10 @@ struct MacMarkdownPublishAssetPickerPopover: View {
     VStack(alignment: .leading, spacing: 14) {
       VStack(alignment: .leading, spacing: 4) {
         Text("选择发布资产")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Text("勾选后一次生成所选资产。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       ScrollView {
@@ -530,8 +517,8 @@ struct MacMarkdownPublishAssetPickerPopover: View {
 
       HStack {
         Text("已选择 \(selectedAssets.count) 项")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         Spacer()
         Button("生成所选资产") {
           onGenerate()

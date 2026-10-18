@@ -109,13 +109,11 @@ struct SettingsAITabFactory {
           for: config, enablingRemoteAI: true, codexAccountStatus: accountStatus
         )
       },
-      openSiteAISettings: {
-        context.selectSettingsDestination(.tab(.siteAI))
-      }
+      siteSections: makeSiteSections(context: context)
     )
   }
 
-  static func makeSite(context: SettingsContext) -> some View {
+  private static func makeSiteSections(context: SettingsContext) -> some View {
     AISiteSettingsView(
       activeProfileBinding: context.activeProfileBinding,
       connectionProfiles: context.store.aiConnectionProfiles,
@@ -147,9 +145,6 @@ struct SettingsAITabFactory {
       },
       discardWritingStylePreview: {
         context.store.discardAIWritingStyleProfilePreview()
-      },
-      openSharedConnectionSettings: {
-        context.selectSettingsDestination(.ai(.connection))
       },
       warnsWhenBodyH1DuplicatesTitle: Binding(
         get: { context.store.activeProfile.resolvedWarnsWhenBodyH1DuplicatesTitle },

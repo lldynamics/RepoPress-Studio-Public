@@ -40,7 +40,7 @@ struct WorkspaceTaskImageSection: View {
             report.coverStatus.state.localizedDisplayName,
             systemImage: report.coverStatus.state.systemImage
           )
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(report.coverStatus.state.color)
           .lineLimit(2)
         } else {
@@ -54,8 +54,8 @@ struct WorkspaceTaskImageSection: View {
       InspectorSection("图片元数据") {
         if draft.attachments.isEmpty {
           Text("当前文章还没有图片附件。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         } else {
           ForEach(draft.attachments) { attachment in
             ImageMetadataEditorRow(
@@ -134,12 +134,12 @@ private struct ImageMetadataEditorRow: View {
     VStack(alignment: .leading, spacing: 7) {
       HStack(alignment: .firstTextBaseline) {
         Text(attachment.originalFilename)
-          .font(.callout.weight(.medium))
+          .font(.workbenchBody.weight(.medium))
           .workbenchTruncatedIdentity(attachment.originalFilename)
 
         if item?.isCover == true {
           Image(systemName: "star.fill")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
 
         Spacer()
@@ -149,8 +149,8 @@ private struct ImageMetadataEditorRow: View {
       }
 
       Text(attachment.relativePublishPath)
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospaced())
+        .foregroundStyle(.workbenchSecondary)
         .workbenchTruncatedIdentity(attachment.relativePublishPath, lineLimit: 2)
 
       TextField("Alt", text: $altText)

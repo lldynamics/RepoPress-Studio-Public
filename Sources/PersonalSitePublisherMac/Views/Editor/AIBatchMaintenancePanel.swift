@@ -50,7 +50,7 @@ struct AIBatchMaintenancePanel: View {
           configuration
           selection
           if let message = maintenance.message {
-            Text(message).font(.callout).foregroundStyle(.secondary)
+            Text(message).font(.workbenchBody).foregroundStyle(.workbenchSecondary)
               .frame(maxWidth: .infinity, alignment: .leading).padding(WorkbenchSpacing.card)
               .background(
                 WorkbenchBackgroundStyle.control,
@@ -82,7 +82,7 @@ struct AIBatchMaintenancePanel: View {
 
   private var configuration: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Text("维护项目").font(.headline)
+      Text("维护项目").font(.workbenchHeadline)
       Picker("维护项目", selection: $operation) {
         ForEach(AIBatchMaintenanceOperation.allCases) { item in
           Text(item.title).tag(item)
@@ -92,8 +92,8 @@ struct AIBatchMaintenancePanel: View {
       Text(
         "当前模型：\(store.aiProviderConfig(for: store.profiles.first { $0.id == siteProfileID } ?? store.activeProfile).normalizedModel) · 每篇文章生成一次建议；重试会再次请求 · 正文输入上限 24,000 字符"
       )
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
     }
   }
 
@@ -102,8 +102,8 @@ struct AIBatchMaintenancePanel: View {
       VStack(alignment: .leading, spacing: 8) {
         HStack {
           Text("仅显示当前站点的非私密文章 · 已选 \(selectedDraftIDs.count) / 最多 100 篇")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
           Spacer()
           Button("全选") { selectedDraftIDs = Set(siteDrafts.prefix(100).map(\.id)) }
           Button("清空") { selectedDraftIDs.removeAll() }
@@ -133,9 +133,9 @@ struct AIBatchMaintenancePanel: View {
         .frame(maxHeight: 220)
         .scrollIndicators(.automatic)
         if filteredSiteDrafts.isEmpty {
-          Text("没有匹配的可维护文章。").foregroundStyle(.secondary)
+          Text("没有匹配的可维护文章。").foregroundStyle(.workbenchSecondary)
         }
-        if siteDrafts.isEmpty { Text("当前站点没有可维护的非私密文章。").foregroundStyle(.secondary) }
+        if siteDrafts.isEmpty { Text("当前站点没有可维护的非私密文章。").foregroundStyle(.workbenchSecondary) }
         Button("创建批量队列") {
           if hasExistingQueue { showingResetConfirmation = true } else { createQueue() }
         }
@@ -164,15 +164,15 @@ struct AIBatchMaintenancePanel: View {
             Text(
               "待处理 \(queue.pendingCount) · 就绪 \(queue.readyCount) · 失败 \(queue.failedCount) · 已应用/跳过 \(queue.appliedCount + queue.skippedCount)"
             )
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             Spacer()
             let anotherSiteRunning =
               maintenance.runningSiteID != nil && maintenance.runningSiteID != siteProfileID
             if queue.runningCount > 0 {
               Button("暂停") { maintenance.pause(siteProfileID: siteProfileID) }
             } else if anotherSiteRunning {
-              Text("其他站点正在处理").font(.caption).foregroundStyle(.secondary)
+              Text("其他站点正在处理").font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
             } else {
               Button(queue.isPaused ? String(localized: "继续") : String(localized: "开始")) {
                 maintenance.start(siteProfileID: siteProfileID)
@@ -188,7 +188,7 @@ struct AIBatchMaintenancePanel: View {
                 queue.runningCount > 0 && maintenance.runningSiteID == siteProfileID
                   ? "当前文章完成后暂停" : "已暂停"
               )
-              .font(.caption).foregroundStyle(.secondary)
+              .font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
             }
           }
         }
@@ -200,7 +200,7 @@ struct AIBatchMaintenancePanel: View {
   @ViewBuilder private var results: some View {
     if let queue {
       VStack(alignment: .leading, spacing: 8) {
-        Text("结果").font(.headline)
+        Text("结果").font(.workbenchHeadline)
         LazyVStack(alignment: .leading, spacing: 8) {
           ForEach(queue.items) { item in
             itemRow(item, operation: queue.operation)
@@ -217,12 +217,12 @@ struct AIBatchMaintenancePanel: View {
     return VStack(alignment: .leading, spacing: 7) {
       HStack {
         Text(item.draftTitle.nilIfEmpty ?? String(localized: "未命名文章")).font(
-          .subheadline.weight(.semibold))
+          .workbenchMetadata.weight(.semibold))
         if let modelName = item.modelName ?? queue?.modelName {
-          Text(modelName).font(.caption).foregroundStyle(.secondary)
+          Text(modelName).font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
         }
         Spacer()
-        Text(statusTitle(item.status)).font(.caption).foregroundStyle(.secondary)
+        Text(statusTitle(item.status)).font(.workbenchMetadata).foregroundStyle(.workbenchSecondary)
         if item.status == .ready {
           let current = maintenance.isCurrent(item: item, siteProfileID: siteProfileID)
           if operation == .terminologyReview || operation == .internalLinksReview {
@@ -256,11 +256,11 @@ struct AIBatchMaintenancePanel: View {
         }
         if item.status == .ready && !maintenance.isCurrent(item: item, siteProfileID: siteProfileID)
         {
-          Text("文章已变化，请重新创建预览").font(.caption).foregroundStyle(WorkbenchTheme.risk)
+          Text("文章已变化，请重新创建预览").font(.workbenchMetadata).foregroundStyle(WorkbenchTheme.risk)
         }
       }
       if let error = item.errorMessage {
-        Text(error).font(.caption).foregroundStyle(WorkbenchTheme.risk)
+        Text(error).font(.workbenchMetadata).foregroundStyle(WorkbenchTheme.risk)
       }
       if let result = item.resultText {
         DisclosureGroup("展开结果预览") {
@@ -289,10 +289,10 @@ struct AIBatchMaintenancePanel: View {
           Text(
             "建议标签：\(parsed?.tags.isEmpty == false ? parsed!.tags.joined(separator: "、") : "（未识别）")")
         }
-        Text(result).font(.caption).textSelection(.enabled)
+        Text(result).font(.workbenchMetadata).textSelection(.enabled)
       }
     } else {
-      Text(result).font(.caption).textSelection(.enabled)
+      Text(result).font(.workbenchMetadata).textSelection(.enabled)
     }
   }
 

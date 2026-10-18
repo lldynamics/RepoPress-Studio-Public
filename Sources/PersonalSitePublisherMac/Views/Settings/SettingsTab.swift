@@ -29,7 +29,6 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
   case defaultRules
   case token
   case ai
-  case siteAI
   case appearance
   case editor
   case rss
@@ -46,8 +45,6 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
       return "token"
     case .ai:
       return "ai"
-    case .siteAI:
-      return "siteAI"
     case .appearance:
       return "appearance"
     case .editor:
@@ -70,9 +67,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
     case .token:
       return String(localized: "发布配置")
     case .ai:
-      return String(localized: "应用级 AI 连接")
-    case .siteAI:
-      return String(localized: "当前站点的 AI 与写作偏好")
+      return String(localized: "AI 与写作")
     case .appearance:
       return String(localized: "通用与外观")
     case .editor:
@@ -96,8 +91,6 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
       return "link"
     case .ai:
       return "sparkles"
-    case .siteAI:
-      return "text.quote"
     case .appearance:
       return "paintpalette"
     case .editor:
@@ -120,9 +113,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
     case .token:
       return String(localized: "连接代码仓库和部署平台。")
     case .ai:
-      return String(localized: "管理应用内共享的 AI 连接，修改会影响所有引用此连接的站点。")
-    case .siteAI:
-      return String(localized: "为当前站点选择 AI 连接，并设置本站的写作风格。")
+      return String(localized: "管理共享的 AI 连接，并为当前站点选择连接、设置写作风格。")
     case .appearance:
       return String(localized: "设置启动行为、主题和强调色。")
     case .editor:
@@ -138,7 +129,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
 
   var isSiteScoped: Bool {
     switch self {
-    case .configurationStatus, .defaultRules, .token, .siteAI:
+    case .configurationStatus, .defaultRules, .token:
       return true
     case .ai, .appearance, .editor, .rss, .privacy, .dataManagement:
       return false
@@ -147,7 +138,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
 
   var scopePresentation: SettingsScopePresentation {
     switch self {
-    case .configurationStatus, .defaultRules, .token, .siteAI:
+    case .configurationStatus, .defaultRules, .token:
       return .currentSite
     case .ai:
       return .sharedConnection
@@ -162,12 +153,18 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
       return WorkbenchSettingsMetrics.focusedContentWidth
     case .ai, .dataManagement:
       return WorkbenchSettingsMetrics.detailedContentWidth
-    case .configurationStatus, .defaultRules, .token, .siteAI:
+    case .configurationStatus, .defaultRules, .token:
       return .infinity
     }
   }
 
-  static let siteSettings: [SettingsTab] = [.configurationStatus, .defaultRules, .token, .siteAI]
+  /// The AI page edits app-level connections but also holds the current site's connection
+  /// choice and writing style, so it keeps the site switcher without joining the site group.
+  var showsSiteSwitcher: Bool {
+    isSiteScoped || self == .ai
+  }
+
+  static let siteSettings: [SettingsTab] = [.configurationStatus, .defaultRules, .token]
   static let applicationSettings: [SettingsTab] = [
     .appearance, .editor, .ai, .rss, .dataManagement, .privacy,
   ]

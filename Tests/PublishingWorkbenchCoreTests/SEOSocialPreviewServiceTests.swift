@@ -47,6 +47,7 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     XCTAssertEqual(snapshot.renderingMode, .staticMetadataSnapshot)
     XCTAssertEqual(snapshot.canonicalURLText, "http://127.0.0.1:1111/mac-publishing-console")
     XCTAssertEqual(snapshot.imagePath, "/images/2026/cover.jpg")
+    XCTAssertEqual(snapshot.imageSource, .articleCover)
     XCTAssertEqual(snapshot.socialImageURLText, "http://127.0.0.1:1111/images/2026/cover.jpg")
     XCTAssertEqual(snapshot.cards.map(\.kind), [.search, .openGraph, .twitter])
     XCTAssertNil(snapshot.cards.first { $0.kind == .search }?.imagePath)
@@ -277,7 +278,8 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
   }
 
   func testPrivateSnapshotHidesSocialImage() {
-    let profile = SiteProfile.defaultProfile
+    var profile = SiteProfile.defaultProfile
+    profile.defaultSocialImagePath = "/images/private-site-default.jpg"
     let coverID = UUID(uuidString: "D1854705-168B-4027-A8F6-C741A1E0B87C")!
     let cover = DraftAttachment(
       id: coverID,
@@ -300,6 +302,7 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     let snapshot = SEOSocialPreviewService().snapshot(draft: draft, profile: profile)
 
     XCTAssertNil(snapshot.imagePath)
+    XCTAssertEqual(snapshot.imageSource, .privateArticle)
     XCTAssertTrue(snapshot.cards.allSatisfy { $0.imagePath == nil })
     XCTAssertNil(snapshot.metaTags.first { $0.property == "og:image" })
     XCTAssertNil(snapshot.metaTags.first { $0.property == "og:image:width" })
@@ -307,6 +310,8 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     XCTAssertNil(snapshot.metaTags.first { $0.property == "twitter:image" })
     XCTAssertEqual(snapshot.metaTags.first { $0.property == "twitter:card" }?.content, "summary")
     XCTAssertFalse(snapshot.findings.contains { $0.title == "缺少社交预览图" })
+    XCTAssertFalse(snapshot.signature.contains("private.jpg"))
+    XCTAssertFalse(snapshot.signature.contains("private-site-default.jpg"))
   }
 
   func testMetaTagsBuildCopyableEscapedHTMLBlock() {
@@ -386,12 +391,16 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     payload.removeValue(forKey: "socialImageURLText")
     payload.removeValue(forKey: "renderingMode")
     payload.removeValue(forKey: "structuredData")
+    payload.removeValue(forKey: "imageSource")
+    payload.removeValue(forKey: "articleImageIntent")
     let legacyData = try JSONSerialization.data(withJSONObject: payload)
 
     let decoded = try JSONDecoder.workbench.decode(SEOSocialPreviewSnapshot.self, from: legacyData)
 
     XCTAssertEqual(decoded.shareHashtags, [])
     XCTAssertNil(decoded.socialImageURLText)
+    XCTAssertEqual(decoded.imageSource, .unknown)
+    XCTAssertNil(decoded.articleImageIntent)
     XCTAssertEqual(decoded.renderingMode, .staticMetadataSnapshot)
     XCTAssertEqual(decoded.structuredData.status, .warning)
     XCTAssertEqual(decoded.socialShareCopyItems.first?.clipboardText, "Legacy\n\nLegacy cached snapshot without share tags.\n\n/legacy/")
@@ -660,6 +669,150 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
 
     reloaded.createDraft()
     XCTAssertNil(reloaded.seoSocialPreviewSnapshot)
+  }
+
+  func testSiteDefaultImageIsEffectiveForAuditAndSocialPreview() {
+    var profile = SiteProfile.defaultProfile
+    profile.defaultSocialImagePath = "/images/site-default.jpg"
+    profile.defaultSocialImageAltText = "Site sharing default"
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "使用站点默认分享图",
+      slug: "site-default-image",
+      tags: ["SEO"],
+      summary: "这是一段足够长的摘要，用于验证没有本文封面时会使用明确配置的站点默认分享图。",
+      bodyMarkdown: "# 使用站点默认分享图"
+    )
+
+    let snapshot = SEOSocialPreviewService().snapshot(draft: draft, profile: profile)
+    let audit = SEOAuditService().report(draft: draft, profile: profile)
+
+    XCTAssertEqual(snapshot.imagePath, "/images/site-default.jpg")
+    XCTAssertEqual(snapshot.imageAltText, "Site sharing default")
+    XCTAssertEqual(snapshot.imageSource, .siteDefault)
+    XCTAssertEqual(
+      snapshot.metaTags.first { $0.property == "og:image" }?.content,
+      "/images/site-default.jpg"
+    )
+    XCTAssertFalse(snapshot.findings.contains { $0.title == "缺少社交预览图" })
+    XCTAssertTrue(audit.hasPublishableCoverImage)
+    XCTAssertTrue(audit.findings.contains { $0.title == "使用站点默认分享图" })
+    XCTAssertFalse(audit.findings.contains { $0.title == "缺少预览图" })
+  }
+
+  func testExplicitNoIndividualImagePersistsAndRemainsDraftScoped() async throws {
+    let url = try temporaryPersistenceURL()
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
+    let firstDraft = try XCTUnwrap(store.selectedDraft)
+    let secondDraft = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "另一篇文章",
+      slug: "another-article",
+      summary: "这是一段足够长的摘要，用于验证不单独配图的选择不会错误应用到同站点的另一篇文章。",
+      bodyMarkdown: "# 另一篇文章"
+    )
+    store.setDrafts([firstDraft, secondDraft])
+
+    XCTAssertTrue(
+      store.setSEOArticleSocialImageIntent(
+        .noIndividualImage,
+        draftID: firstDraft.id,
+        profileID: store.activeProfileID
+      ))
+    let configuredProfile = store.profile(for: firstDraft)
+    XCTAssertEqual(
+      configuredProfile.seoArticleSocialImageIntent(for: firstDraft.id),
+      .noIndividualImage
+    )
+    XCTAssertNil(configuredProfile.seoArticleSocialImageIntent(for: secondDraft.id))
+
+    let snapshot = SEOSocialPreviewService().snapshot(
+      draft: firstDraft,
+      profile: configuredProfile
+    )
+    XCTAssertNil(snapshot.imagePath)
+    XCTAssertEqual(snapshot.imageSource, .none)
+    XCTAssertEqual(snapshot.articleImageIntent, .noIndividualImage)
+    XCTAssertFalse(snapshot.findings.contains { $0.title == "缺少社交预览图" })
+    XCTAssertFalse(
+      snapshot.platformReadiness.flatMap(\.warningMessages).contains {
+        $0.contains("缺少大图")
+      })
+    XCTAssertFalse(snapshot.structuredData.warningMessages.contains { $0.contains("缺少 image") })
+
+    store.save()
+    await store.waitForPendingSave()
+
+    let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
+    let reloadedFirst = try XCTUnwrap(reloaded.draft(for: firstDraft.id))
+    let reloadedProfile = reloaded.profile(for: reloadedFirst)
+    XCTAssertEqual(
+      reloadedProfile.seoArticleSocialImageIntent(for: firstDraft.id),
+      .noIndividualImage
+    )
+    XCTAssertNil(reloadedProfile.seoArticleSocialImageIntent(for: secondDraft.id))
+  }
+
+  func testInvalidSelectedArticleCoverIsNotMaskedBySiteDefaultOrNoImageIntent() {
+    var profile = SiteProfile.defaultProfile
+    profile.defaultSocialImagePath = "/images/site-default.jpg"
+    let draftID = UUID(uuidString: "E94683E1-B43F-44B6-B8A7-437B06C93F0A")!
+    profile.seoArticleSocialImagePreferences = [
+      SEOArticleSocialImagePreference(draftID: draftID, intent: .noIndividualImage)
+    ]
+    let draft = ArticleDraft(
+      id: draftID,
+      siteProfileID: profile.id,
+      title: "封面选择不可用",
+      slug: "invalid-selected-cover",
+      tags: ["SEO"],
+      summary: "这是一段足够长的摘要，用于验证明确选择但不可用的本文封面不会被站点默认图掩盖。",
+      coverAttachmentID: UUID(uuidString: "2D6E2910-2AFE-4A7F-8569-66A69D34808F"),
+      bodyMarkdown: "# 封面选择不可用"
+    )
+
+    let snapshot = SEOSocialPreviewService().snapshot(draft: draft, profile: profile)
+    let audit = SEOAuditService().report(draft: draft, profile: profile)
+
+    XCTAssertNil(snapshot.imagePath)
+    XCTAssertEqual(snapshot.imageSource, .unavailableArticleCover)
+    XCTAssertTrue(snapshot.findings.contains { $0.title == "所选封面不可用于社交预览" })
+    XCTAssertTrue(
+      snapshot.platformReadiness.flatMap(\.warningMessages).contains {
+        $0.contains("缺少大图")
+      })
+    XCTAssertTrue(audit.findings.contains { $0.title == "所选封面不可用于预览" })
+    XCTAssertFalse(audit.findings.contains { $0.title == "使用站点默认分享图" })
+  }
+
+  func testSnapshotSignatureIncludesImagePoliciesAndExplicitH1Facts() {
+    let draft = ArticleDraft(
+      siteProfileID: SiteProfile.defaultProfile.id,
+      title: "缓存策略签名",
+      slug: "cache-policy-signature",
+      summary: "这是一段足够长的摘要，用于验证 SEO 策略变化会让已经缓存的社交预览快照过期。",
+      bodyMarkdown: "# 缓存策略签名"
+    )
+    let service = SEOSocialPreviewService()
+    var profile = SiteProfile.defaultProfile
+    let baseline = service.signature(draft: draft, profile: profile)
+
+    profile.defaultSocialImagePath = "/images/default.jpg"
+    let defaultImageSignature = service.signature(draft: draft, profile: profile)
+    XCTAssertNotEqual(defaultImageSignature, baseline)
+
+    profile.seoArticleSocialImagePreferences = [
+      SEOArticleSocialImagePreference(draftID: draft.id, intent: .noIndividualImage)
+    ]
+    let imageIntentSignature = service.signature(draft: draft, profile: profile)
+    XCTAssertNotEqual(imageIntentSignature, defaultImageSignature)
+
+    profile.themeProvidesTitleH1 = true
+    let h1FactSignature = service.signature(draft: draft, profile: profile)
+    XCTAssertNotEqual(h1FactSignature, imageIntentSignature)
+
+    profile.warnsWhenBodyH1DuplicatesTitle = false
+    XCTAssertNotEqual(service.signature(draft: draft, profile: profile), h1FactSignature)
   }
 
   private func temporaryPersistenceURL() throws -> URL {

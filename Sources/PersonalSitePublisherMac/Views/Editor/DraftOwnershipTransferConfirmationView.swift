@@ -27,8 +27,8 @@ struct DraftOwnershipTransferConfirmationView: View {
             String(localized: "归属变更只更新工作台中的草稿，不会修改或删除原站点仓库文件，也不会撤回线上版本。"),
             systemImage: "externaldrive.badge.checkmark"
           )
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
         }
         .padding(WorkbenchSpacing.page)
@@ -73,11 +73,11 @@ struct DraftOwnershipTransferConfirmationView: View {
 
       VStack(alignment: .leading, spacing: 5) {
         Text(panelTitle)
-          .font(.title2.weight(.semibold))
+          .font(.workbenchTitle2.weight(.semibold))
 
         Text(panelSummary)
-          .font(.subheadline)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
 
@@ -93,12 +93,12 @@ struct DraftOwnershipTransferConfirmationView: View {
       } icon: {
         Image(systemName: "exclamationmark.triangle.fill")
       }
-      .font(.headline)
+      .font(.workbenchHeadline)
       .foregroundStyle(WorkbenchTheme.risk)
 
       Text("修改重复文章的 slug 或日期后，再重新选择目标站点。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     }
     .padding(WorkbenchSpacing.card)
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -130,9 +130,9 @@ struct DraftOwnershipTransferConfirmationView: View {
           Label {
             VStack(alignment: .leading, spacing: 2) {
               Text(conflict.title)
-                .font(.caption.weight(.semibold))
+                .font(.workbenchMetadata.weight(.semibold))
               Text(conflict.message)
-                .font(.caption)
+                .font(.workbenchMetadata)
             }
           } icon: {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -144,7 +144,7 @@ struct DraftOwnershipTransferConfirmationView: View {
       .padding(.vertical, WorkbenchSpacing.tight)
     } label: {
       Text(item.title)
-        .font(.headline)
+        .font(.workbenchHeadline)
         .lineLimit(2)
     }
   }
@@ -153,12 +153,12 @@ struct DraftOwnershipTransferConfirmationView: View {
     Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 4) {
       GridRow {
         Text(label)
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.weight(.semibold))
+          .foregroundStyle(.workbenchSecondary)
           .frame(width: 108, alignment: .leading)
 
         Text(source)
-          .font(.caption.monospaced())
+          .font(.workbenchMetadata.monospaced())
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .leading)
       }
@@ -167,9 +167,9 @@ struct DraftOwnershipTransferConfirmationView: View {
         Text("")
         HStack(alignment: .firstTextBaseline, spacing: 6) {
           Image(systemName: "arrow.down")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
           Text(target)
-            .font(.caption.monospaced())
+            .font(.workbenchMetadata.monospaced())
             .textSelection(.enabled)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -180,11 +180,11 @@ struct DraftOwnershipTransferConfirmationView: View {
   private var panelTitle: String {
     switch plan.operation {
     case .moveToSite:
-      return plan.isBatch ? String(localized: "批量移动到站点") : String(localized: "移动到站点")
+      return plan.isBatch ? String(localized: "批量移入当前站点") : String(localized: "移入当前站点")
     case .copyToSite:
       return plan.isBatch ? String(localized: "批量复制到站点") : String(localized: "复制到站点")
     case .moveToGeneral:
-      return plan.isBatch ? String(localized: "批量转为通用草稿") : String(localized: "转为通用草稿")
+      return plan.isBatch ? String(localized: "批量转为仅本地草稿") : String(localized: "转为仅本地草稿")
     }
   }
 

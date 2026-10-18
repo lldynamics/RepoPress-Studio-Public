@@ -22,7 +22,7 @@ struct ProjectFileSaveRecoveryBanner: View {
             .accessibilityHint("检查保存错误、更改项目目录或查看失败文件")
         }
       }
-      .font(.callout)
+      .font(.workbenchBody)
       .padding(.horizontal, WorkbenchSpacing.content)
       .padding(.vertical, WorkbenchSpacing.card)
       .frame(maxWidth: .infinity, alignment: .leading)

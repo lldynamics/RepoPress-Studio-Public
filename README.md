@@ -13,7 +13,9 @@ and release lifecycle.
 - A native three-column SwiftUI workspace with an AppKit-backed Markdown editor,
   live preview, image insertion, local drafts, and revision history.
 - Repository-aware publishing for Zola, Hugo, Astro, Jekyll, and Hexo, including
-  GitHub and GitLab imports, direct commits, and pull/merge request workflows.
+  GitHub and GitLab imports and two publish actions: one article with its
+  images, or every change. Both review the exact file list first and push with
+  local Git, no API token needed.
 - Preflight checks, front matter and path validation, publish diffs, SEO and
   social previews, deployment status, release history, and rollback tools.
 - A local knowledge library, PDF and web imports, macOS Share Sheet and Shortcuts intake, semantic search, RSS reading,

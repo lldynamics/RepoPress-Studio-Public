@@ -11,12 +11,8 @@ struct MetadataColumn: View {
   @Binding private var selectedTab: WorkspaceInspectorTab
   let selectedHealthIssue: ContentHealthIssueSelection?
   let healthInspectorActions: ContentHealthInspectorActions
-  let publishScope: PublishScope
-  let publishRequestGeneration: Int
-  let completedReleaseRecordID: UUID?
-  let onNavigatePublishIssue: (UUID, PublishReadinessTarget, PublishScope) -> Void
+  let onNavigatePublishIssue: (UUID, PublishReadinessTarget) -> Void
   let onRequestAIFix: (UUID, PublishReadinessTarget) -> Void
-  @Binding private var isPresented: Bool
   @ObservedObject private var publishStatus: WorkbenchPublishStatusFeatureFacade
   let rssStore: RSSReaderStore
   @Binding private var repositoryChangedFileSelection: RepositoryChangedFileSelection?
@@ -24,7 +20,6 @@ struct MetadataColumn: View {
   @Binding private var knowledgeInspectorPresentation: KnowledgeLibraryInspectorPresentationState
   private let aiChatOperationSession: AIChatSurfaceOperationSession
   let prioritizesChecks: Bool
-  @State private var hasOpenedPublish = false
   @ObservedObject private var articlePresentation: ArticleInspectorPresentationState
 
   init(
@@ -37,11 +32,7 @@ struct MetadataColumn: View {
     windowSession: WorkspaceWindowSession,
     selectedHealthIssue: ContentHealthIssueSelection?,
     healthInspectorActions: ContentHealthInspectorActions,
-    publishScope: PublishScope,
-    publishRequestGeneration: Int,
-    completedReleaseRecordID: UUID?,
-    isPresented: Binding<Bool>,
-    onNavigatePublishIssue: @escaping (UUID, PublishReadinessTarget, PublishScope) -> Void,
+    onNavigatePublishIssue: @escaping (UUID, PublishReadinessTarget) -> Void,
     onRequestAIFix: @escaping (UUID, PublishReadinessTarget) -> Void,
     repositoryChangedFileSelection: Binding<RepositoryChangedFileSelection?>,
     aiChatSurfaceState: Binding<AIChatSurfaceState>,
@@ -59,10 +50,6 @@ struct MetadataColumn: View {
     _selectedTab = session.inspectorTab
     self.selectedHealthIssue = selectedHealthIssue
     self.healthInspectorActions = healthInspectorActions
-    self.publishScope = publishScope
-    self.publishRequestGeneration = publishRequestGeneration
-    self.completedReleaseRecordID = completedReleaseRecordID
-    _isPresented = isPresented
     self.onNavigatePublishIssue = onNavigatePublishIssue
     self.onRequestAIFix = onRequestAIFix
     _publishStatus = ObservedObject(wrappedValue: store.publishStatus)
@@ -96,6 +83,7 @@ struct MetadataColumn: View {
         switch selectedTab {
         case .information:
           informationContent
+            .environment(\.showPublishChecks) { selectedTab = .publish }
         case .assistant:
           AIChatContextInspectorView(
             store: store,
@@ -105,28 +93,17 @@ struct MetadataColumn: View {
             operationSession: aiChatOperationSession
           )
         case .publish:
-          Color.clear
-        }
-        if selectedTab == .publish || hasOpenedPublish {
-          PublishDrawerView(
+          // Checks only; publishing runs in the window's publish session, so
+          // nothing here has to outlive the tab while it is hidden.
+          PublishChecklistView(
             publishingFacade: store.publishing,
             store: store,
             draftID: selectedDraftID,
-            isPresented: $isPresented,
-            initialScope: publishScope,
-            requestGeneration: publishRequestGeneration,
-            isActive: selectedTab == .publish,
-            initialCompletedReleaseRecordID: completedReleaseRecordID,
             onNavigateIssue: onNavigatePublishIssue,
             onRequestAIFix: onRequestAIFix
           )
-          .opacity(selectedTab == .publish ? 1 : 0)
-          .disabled(selectedTab != .publish)
-          .allowsHitTesting(selectedTab == .publish)
-          .accessibilityHidden(selectedTab != .publish)
           .accessibilityElement(children: .contain)
           .accessibilityIdentifier("workspace-publish-inspector")
-          .onAppear { hasOpenedPublish = true }
         }
       }
       // Non-scrolling content such as empty states must claim the remaining

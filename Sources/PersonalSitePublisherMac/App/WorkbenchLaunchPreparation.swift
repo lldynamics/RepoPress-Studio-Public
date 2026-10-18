@@ -115,3 +115,143 @@ enum WorkbenchLaunchPreparation: Sendable {
       ))
   }
 }
+
+/// Choosing which data folder the app opens: the fresh-install default, an
+/// existing folder picked in Settings, and resolving a user's folder choice.
+extension WorkbenchLaunchCoordinator {
+  /// The app's coordinator: a fresh install uses the recommended data folder.
+  static func production() -> WorkbenchLaunchCoordinator {
+    WorkbenchLaunchCoordinator(firstLaunchDataRootParentURL: recommendedDataRootParentURL)
+  }
+
+  /// A fresh install opens the data folder at the recommended location, or
+  /// creates it there, instead of asking first. Legacy data still asks so the
+  /// user can choose migration; other locations remain available in Settings.
+  func prepareFirstLaunchDataRoot() async {
+    guard let parentURL = firstLaunchDataRootParentURL, !legacyDataAvailability() else {
+      showDataRootSetup(
+        message: String(localized: "请恢复以前的数据文件夹，或新建一个工作区。")
+      )
+      return
+    }
+    let defaultRootURL = parentURL.appendingPathComponent("RepoPress Data", isDirectory: true)
+    let probe = await Task.detached(priority: .utility) {
+      WorkbenchDataRootInspector().probe(at: defaultRootURL)
+    }.value
+    guard !Task.isCancelled else { return }
+    if case .existing = probe {
+      await restoreExistingDataRoot(at: defaultRootURL)
+    } else {
+      await createRecommendedDataRoot(in: parentURL)
+    }
+  }
+
+  /// Remembers another existing data folder chosen in Settings. The current
+  /// workspace is saved first and stays unchanged; the chosen folder opens on
+  /// the next launch, so nothing is copied or merged.
+  func switchToExistingDataRoot(at selectedURL: URL) async -> URL? {
+    guard let pathStore, let store, let rssStore else {
+      dataRootMessage = String(localized: "当前数据文件夹尚未准备完成，无法更改位置。")
+      return nil
+    }
+    guard !store.knowledge.isBusy,
+      !rssStore.isRefreshing,
+      !store.workspaceBackupScheduler.isRunning
+    else {
+      dataRootMessage = String(localized: "资料库、RSS 刷新或备份仍在运行，请完成后再更改存储位置。")
+      return nil
+    }
+    let selection = await Task.detached(priority: .utility) {
+      Self.resolveDataRootSelection(selectedURL)
+    }.value
+    guard case .root(let rootURL) = selection else {
+      dataRootMessage = String(localized: "所选位置不是 RepoPress 数据文件夹，请直接选择数据文件夹。")
+      return nil
+    }
+    guard rootURL.path != dataRootPath else {
+      dataRootMessage = String(localized: "已在使用这个数据文件夹。")
+      return nil
+    }
+    let probe = await Task.detached(priority: .utility) {
+      WorkbenchDataRootInspector().probe(at: rootURL)
+    }.value
+    guard case .existing(let manifest) = probe else {
+      if case .incompatible(let reason) = probe {
+        dataRootMessage = friendlyMessage(for: reason)
+      } else {
+        dataRootMessage = String(localized: "所选位置不是 RepoPress 数据文件夹，请直接选择数据文件夹。")
+      }
+      return nil
+    }
+    guard store.flushPendingChanges() else {
+      dataRootMessage = String(localized: "仍有修改未能保存，未更改存储位置。请先解决保存错误。")
+      return nil
+    }
+    do {
+      try pathStore.rememberRoot(rootURL, dataID: manifest.dataID)
+      dataRootMessage = nil
+      return rootURL
+    } catch {
+      dataRootMessage = friendlyMessage(for: error)
+      return nil
+    }
+  }
+
+  enum DataRootSelectionResolution: Sendable {
+    case root(URL)
+    case multipleRoots
+    case notFound(WorkbenchDataRootProbeResult)
+  }
+
+  nonisolated static func resolveDataRootSelection(
+    _ selectedURL: URL
+  ) -> DataRootSelectionResolution {
+    let standardizedURL = selectedURL.standardizedFileURL
+    let inspector = WorkbenchDataRootInspector()
+    let selectedProbe = inspector.probe(at: standardizedURL)
+    if case .existing = selectedProbe {
+      return .root(standardizedURL)
+    }
+
+    let childURLs: [URL]
+    do {
+      childURLs = try FileManager.default.contentsOfDirectory(
+        at: standardizedURL,
+        includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+        options: [.skipsHiddenFiles]
+      )
+    } catch {
+      return .notFound(selectedProbe)
+    }
+
+    let existingRoots =
+      childURLs
+      .filter { url in
+        guard
+          let values = try? url.resourceValues(
+            forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+          )
+        else {
+          return false
+        }
+        return values.isDirectory == true && values.isSymbolicLink != true
+      }
+      .filter { url in
+        if case .existing = inspector.probe(at: url) {
+          return true
+        }
+        return false
+      }
+      .map(\.standardizedFileURL)
+      .sorted { $0.path < $1.path }
+
+    switch existingRoots.count {
+    case 1:
+      return .root(existingRoots[0])
+    case 2...:
+      return .multipleRoots
+    default:
+      return .notFound(selectedProbe)
+    }
+  }
+}

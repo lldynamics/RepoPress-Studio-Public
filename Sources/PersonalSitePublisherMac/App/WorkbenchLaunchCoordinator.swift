@@ -14,13 +14,19 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   @Published private(set) var store: WorkbenchStore?
   @Published private(set) var rssStore: RSSReaderStore?
   @Published private(set) var phase: WorkbenchLaunchPhase
-  @Published private(set) var dataRootMessage: String?
+  @Published var dataRootMessage: String?
   @Published private(set) var dataRootMessageSeverity: AccessibleStatusSeverity = .info
   @Published private(set) var canMigrateLegacyData = false
   @Published private(set) var dataRootPath: String?
   @Published private(set) var isSafeMode = false
 
-  private let pathStore: WorkbenchDataRootPathStore?
+  let pathStore: WorkbenchDataRootPathStore?
+  /// Where a fresh install keeps its data without a setup screen. `nil` keeps
+  /// the explicit choice screen, which tests rely on to avoid real user folders.
+  var firstLaunchDataRootParentURL: URL?
+  var legacyDataAvailability: @MainActor () -> Bool = {
+    WorkbenchLaunchCoordinator.legacyDataIsAvailable
+  }
   private let explicitRuntimePaths: WorkbenchRuntimePaths?
   private let sessionRecovery: WorkbenchSessionRecovery
   private var applyWorkspaceRestore = WorkbenchLaunchPreparation.applyWorkspaceRestore
@@ -30,13 +36,19 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
 
   convenience init(
     pathStore: WorkbenchDataRootPathStore = WorkbenchDataRootPathStore(),
-    sessionRecovery: WorkbenchSessionRecovery? = nil
+    sessionRecovery: WorkbenchSessionRecovery? = nil,
+    firstLaunchDataRootParentURL: URL? = nil,
+    legacyDataAvailability: (@MainActor () -> Bool)? = nil
   ) {
     self.init(
       pathStore: pathStore,
       explicitRuntimePaths: nil,
       sessionRecovery: sessionRecovery
     )
+    self.firstLaunchDataRootParentURL = firstLaunchDataRootParentURL
+    if let legacyDataAvailability {
+      self.legacyDataAvailability = legacyDataAvailability
+    }
   }
 
   convenience init(
@@ -439,9 +451,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
       try pathStore.openStoredRoot()
     }.value
     guard let session else {
-      showDataRootSetup(
-        message: String(localized: "请恢复以前的数据文件夹，或新建一个工作区。")
-      )
+      await prepareFirstLaunchDataRoot()
       return
     }
 
@@ -562,7 +572,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     }
   }
 
-  private func showDataRootSetup(
+  func showDataRootSetup(
     message: String?,
     severity: AccessibleStatusSeverity = .warning
   ) {
@@ -620,65 +630,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     )
   }
 
-  private enum DataRootSelectionResolution: Sendable {
-    case root(URL)
-    case multipleRoots
-    case notFound(WorkbenchDataRootProbeResult)
-  }
-
-  private nonisolated static func resolveDataRootSelection(
-    _ selectedURL: URL
-  ) -> DataRootSelectionResolution {
-    let standardizedURL = selectedURL.standardizedFileURL
-    let inspector = WorkbenchDataRootInspector()
-    let selectedProbe = inspector.probe(at: standardizedURL)
-    if case .existing = selectedProbe {
-      return .root(standardizedURL)
-    }
-
-    let childURLs: [URL]
-    do {
-      childURLs = try FileManager.default.contentsOfDirectory(
-        at: standardizedURL,
-        includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
-        options: [.skipsHiddenFiles]
-      )
-    } catch {
-      return .notFound(selectedProbe)
-    }
-
-    let existingRoots =
-      childURLs
-      .filter { url in
-        guard
-          let values = try? url.resourceValues(
-            forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
-          )
-        else {
-          return false
-        }
-        return values.isDirectory == true && values.isSymbolicLink != true
-      }
-      .filter { url in
-        if case .existing = inspector.probe(at: url) {
-          return true
-        }
-        return false
-      }
-      .map(\.standardizedFileURL)
-      .sorted { $0.path < $1.path }
-
-    switch existingRoots.count {
-    case 1:
-      return .root(existingRoots[0])
-    case 2...:
-      return .multipleRoots
-    default:
-      return .notFound(selectedProbe)
-    }
-  }
-
-  private func friendlyMessage(for incompatibility: WorkbenchDataRootIncompatibility) -> String {
+  func friendlyMessage(for incompatibility: WorkbenchDataRootIncompatibility) -> String {
     switch incompatibility {
     case .rootIsSymbolicLink:
       return String(localized: "不能使用替身或符号链接作为数据文件夹。")
@@ -710,7 +662,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     }
   }
 
-  private func friendlyMessage(for error: Error) -> String {
+  func friendlyMessage(for error: Error) -> String {
     if let error = error as? WorkbenchDataRootPathError {
       switch error {
       case .dataIdentityMismatch:

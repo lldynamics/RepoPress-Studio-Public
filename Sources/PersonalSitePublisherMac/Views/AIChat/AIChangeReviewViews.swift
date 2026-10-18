@@ -23,10 +23,10 @@ struct AIChangeComparisonView: View {
   {
     VStack(alignment: .leading, spacing: 3) {
       Text(title)
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.weight(.semibold))
+        .foregroundStyle(.workbenchSecondary)
       Text(value.isEmpty ? (isAfter ? String(localized: "清空") : String(localized: "未设置")) : value)
-        .font(.callout)
+        .font(.workbenchBody)
         .foregroundStyle(isAfter ? WorkbenchTheme.info : .secondary)
         .strikethrough(!isAfter && !value.isEmpty)
         .textSelection(.enabled)

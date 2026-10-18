@@ -106,7 +106,7 @@ public struct RepositoryWorktreePublishSnapshot: Hashable, Sendable {
 /// Immutable article identity captured alongside a repository-wide publish.
 /// The target is intentionally independent from the mutable draft model so a
 /// later deployment check can prove exactly which article was published.
-public struct RepositoryWorktreeArticleVerificationTarget: Hashable, Sendable {
+public struct RepositoryWorktreeArticleVerificationTarget: Codable, Hashable, Sendable {
   public let draftID: UUID
   public let title: String
   public let summary: String
@@ -115,6 +115,7 @@ public struct RepositoryWorktreeArticleVerificationTarget: Hashable, Sendable {
   public let publicPath: String?
   public let publicURLText: String?
   public let sourceDocumentDigest: String?
+  public let repositoryBlobOID: String?
 
   public init(
     draftID: UUID,
@@ -124,7 +125,8 @@ public struct RepositoryWorktreeArticleVerificationTarget: Hashable, Sendable {
     markdownPath: String,
     publicPath: String? = nil,
     publicURLText: String? = nil,
-    sourceDocumentDigest: String? = nil
+    sourceDocumentDigest: String? = nil,
+    repositoryBlobOID: String? = nil
   ) {
     self.draftID = draftID
     self.title = title
@@ -134,6 +136,7 @@ public struct RepositoryWorktreeArticleVerificationTarget: Hashable, Sendable {
     self.publicPath = publicPath
     self.publicURLText = publicURLText
     self.sourceDocumentDigest = sourceDocumentDigest
+    self.repositoryBlobOID = repositoryBlobOID
   }
 }
 
@@ -145,6 +148,11 @@ public struct RepositoryWorktreePublishConfirmation: Hashable, Sendable, Identif
   public let articleVerificationTarget: RepositoryWorktreeArticleVerificationTarget?
   public let fileReviews: [RepositoryWorktreeFileReview]
   public let executionPolicy: RepositoryGitExecutionPolicy?
+  /// `nil` reviews every worktree change; otherwise only these exact paths
+  /// are reviewed and committed, and other edits stay in the worktree.
+  public let pathScope: [String]?
+
+  public var isScoped: Bool { pathScope != nil }
 
   public var id: String {
     [
@@ -156,6 +164,7 @@ public struct RepositoryWorktreePublishConfirmation: Hashable, Sendable, Identif
       safetyReport.diagnostics.map(\.id).joined(separator: "\u{1D}"),
       sitePreflightResult.map { String(describing: $0.outcome) } ?? "",
       articleVerificationTarget.map { $0.draftID.uuidString } ?? "",
+      pathScope?.joined(separator: "\u{1D}") ?? "",
     ]
     .joined(separator: "\u{1E}")
   }
@@ -167,7 +176,8 @@ public struct RepositoryWorktreePublishConfirmation: Hashable, Sendable, Identif
     sitePreflightResult: RepositoryPublishPreflightResult? = nil,
     articleVerificationTarget: RepositoryWorktreeArticleVerificationTarget? = nil,
     fileReviews: [RepositoryWorktreeFileReview] = [],
-    executionPolicy: RepositoryGitExecutionPolicy? = nil
+    executionPolicy: RepositoryGitExecutionPolicy? = nil,
+    pathScope: [String]? = nil
   ) {
     self.snapshot = snapshot
     self.commitMessage = commitMessage
@@ -176,6 +186,7 @@ public struct RepositoryWorktreePublishConfirmation: Hashable, Sendable, Identif
     self.articleVerificationTarget = articleVerificationTarget
     self.fileReviews = fileReviews
     self.executionPolicy = executionPolicy
+    self.pathScope = pathScope
   }
 }
 
@@ -267,4 +278,14 @@ public enum RepositoryWorktreePublishError: LocalizedError, Equatable, Sendable 
       "本地提交 \(commitSHA.prefix(8)) 已完成，但没有确认推送成功：\(message)"
     }
   }
+}
+
+/// The outcome of preparing one of the two Git publish actions: publish every
+/// worktree change, or publish one article's files on their own. Preparation
+/// never commits or pushes; a `.review` still needs the user's confirmation.
+public enum RepositoryPublishPreparation: Sendable {
+  case review(RepositoryWorktreePublishConfirmation)
+  /// The article has blocking checks; it was not written to the repository.
+  case blocked(draftID: UUID, issues: [PreflightIssue])
+  case unavailable(message: String)
 }

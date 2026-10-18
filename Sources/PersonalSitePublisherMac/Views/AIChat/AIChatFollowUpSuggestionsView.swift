@@ -13,10 +13,10 @@ struct AIChatFollowUpSuggestionsView: View {
         HStack(spacing: 4) {
           Image(systemName: "sparkles")
             .font(.workbenchMetadata.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
           Text(String(localized: "建议下一步："))
-            .font(.caption.weight(.medium))
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.weight(.medium))
+            .foregroundStyle(.workbenchSecondary)
         }
 
         ScrollView(.horizontal, showsIndicators: false) {
@@ -31,7 +31,7 @@ struct AIChatFollowUpSuggestionsView: View {
                       .font(.workbenchMetadata)
                   }
                   Text(suggestion.title)
-                    .font(.caption.weight(.medium))
+                    .font(.workbenchMetadata.weight(.medium))
                 }
                 .padding(.horizontal, WorkbenchSpacing.control)
                 .padding(.vertical, WorkbenchSpacing.tight)

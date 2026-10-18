@@ -16,7 +16,7 @@ extension WritingDraftColumn {
 
         if let delta = draftCountDelta {
           Text(delta > 0 ? "+\(delta)" : "\(delta)")
-            .font(.caption.weight(.semibold))
+            .font(.workbenchMetadata.weight(.semibold))
             .foregroundStyle(delta > 0 ? WorkbenchTheme.success : WorkbenchTheme.risk)
             .padding(.horizontal, WorkbenchSpacing.icon)
             .padding(.vertical, 2)
@@ -35,17 +35,6 @@ extension WritingDraftColumn {
           .help(String(localized: "加载草稿中…"))
       }
 
-      if store.canUndoLatestDraftOwnershipTransfer {
-        Button {
-          _ = store.undoLatestDraftOwnershipTransfer()
-        } label: {
-          WorkspaceSidebarHeaderIcon("arrow.uturn.backward")
-        }
-        .buttonStyle(.plain)
-        .help(String(localized: "撤销上次归属变更"))
-        .accessibilityLabel("撤销上次归属变更")
-      }
-
       // Creation is a compact icon so the only filled primary action on screen
       // stays "准备发布"; ⌘N creates an article from anywhere.
       Button {
@@ -62,7 +51,7 @@ extension WritingDraftColumn {
         Button {
           store.createGeneralDraft()
         } label: {
-          Label("新建通用草稿", systemImage: "square.and.pencil")
+          Label("新建仅本地草稿", systemImage: "square.and.pencil")
         }
 
         Button {
@@ -100,8 +89,8 @@ extension WritingDraftColumn {
 
       HStack(spacing: 8) {
         Image(systemName: "magnifyingglass")
-          .foregroundStyle(.secondary)
-          .font(.footnote)
+          .foregroundStyle(.workbenchSecondary)
+          .font(.workbenchMetadata)
 
         // Short prompt so it never clips in a 240 pt sidebar; the accessibility
         // label keeps the full description of the searched fields.
@@ -122,7 +111,7 @@ extension WritingDraftColumn {
             Image(systemName: "xmark.circle.fill")
           }
           .buttonStyle(.plain)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .help(String(localized: "清除搜索"))
           .accessibilityLabel("清除草稿搜索")
         }
@@ -140,7 +129,7 @@ extension WritingDraftColumn {
           Image(systemName: "doc.text.magnifyingglass")
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .help("在命令面板中搜索文章正文")
         .accessibilityLabel("在命令面板中搜索文章正文")
         .accessibilityIdentifier("writing-draft-full-text-search")
@@ -154,7 +143,7 @@ extension WritingDraftColumn {
       if filter != .all || !searchText.isEmpty {
         HStack(spacing: 6) {
           Image(systemName: "line.3.horizontal.decrease.circle.fill")
-            .font(.caption)
+            .font(.workbenchMetadata)
             .foregroundStyle(WorkbenchTheme.info)
           Text(
             filter != .all
@@ -162,7 +151,7 @@ extension WritingDraftColumn {
               : String(format: String(localized: "搜索：“%@”"), searchText)
           )
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .lineLimit(1)
 
           Spacer(minLength: 0)
@@ -281,7 +270,7 @@ extension WritingDraftColumn {
   private var contentScopePicker: some View {
     Picker("内容范围", selection: contentScopeSelection) {
       Text("当前站点").tag(DraftListContentScope.currentSite)
-      Text(String(localized: "通用草稿", comment: "草稿范围：通用草稿")).tag(DraftListContentScope.general)
+      Text(String(localized: "仅本地草稿", comment: "草稿范围：仅本地草稿")).tag(DraftListContentScope.general)
     }
     .pickerStyle(.segmented)
     .labelsHidden()

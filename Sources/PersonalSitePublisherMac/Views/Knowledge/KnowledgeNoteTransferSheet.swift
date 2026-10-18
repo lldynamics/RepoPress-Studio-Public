@@ -25,9 +25,9 @@ struct KnowledgeNoteTransferSheet: View {
       HStack(alignment: .top) {
         VStack(alignment: .leading, spacing: 4) {
           Text("笔记同步与备份")
-            .font(.title2.weight(.semibold))
+            .font(.workbenchTitle2.weight(.semibold))
           Text("在 Mac、iPhone 和 iPad 之间接续笔记。")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
         Spacer()
         Button("完成") { dismiss() }
@@ -100,10 +100,10 @@ struct KnowledgeNoteTransferSheet: View {
         Toggle("同步笔记与附件到 iCloud", isOn: $iCloudSyncEnabled)
           .accessibilityIdentifier("knowledge-note-cloud-sync")
         Text("在各设备上登录同一 iCloud 账号，并开启笔记同步。")
-          .font(.footnote)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         Text(syncStatusDescription)
-          .font(.footnote)
+          .font(.workbenchMetadata)
           .foregroundStyle(syncStatusIsFailure ? .red : .secondary)
           .fixedSize(horizontal: false, vertical: true)
         if iCloudSyncEnabled {
@@ -130,7 +130,7 @@ struct KnowledgeNoteTransferSheet: View {
               "笔记 \(entry.key.uuidString.prefix(8))：\(entry.value)",
               systemImage: "exclamationmark.icloud.fill"
             )
-            .font(.footnote)
+            .font(.workbenchMetadata)
             .foregroundStyle(.red)
           }
         }
@@ -149,8 +149,8 @@ struct KnowledgeNoteTransferSheet: View {
           Text("导出所选的 \(selectedNoteIDs.count) 条笔记")
         }
         Text("导出的 .rpnotes 文件可在另一台设备导入，也可作为离线备份。")
-          .font(.footnote)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         HStack {
           Button("导出笔记文件…", systemImage: "square.and.arrow.up") { exportNotes() }
             .accessibilityIdentifier("knowledge-note-export")
@@ -166,15 +166,15 @@ struct KnowledgeNoteTransferSheet: View {
         }
         .disabled(isWorking)
         Text("导入前会预览；内容冲突时保留副本，不覆盖原笔记。")
-          .font(.footnote)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         if automaticICloudBackupEnabled {
           Text("自动版本备份已开启，可在“导入与恢复”中管理。")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
           if !automaticSnapshotError.isEmpty {
             Label("自动备份失败：\(automaticSnapshotError)", systemImage: "exclamationmark.icloud.fill")
-              .font(.footnote)
+              .font(.workbenchMetadata)
               .foregroundStyle(.red)
           }
         }

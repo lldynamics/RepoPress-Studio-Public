@@ -11,15 +11,15 @@ extension AIChatContextInspectorView {
               ? "exclamationmark.triangle" : "shippingbox"
           )
           .foregroundStyle(WorkbenchTheme.warning)
-          Text(codexPresentation.title).font(.caption.weight(.semibold))
+          Text(codexPresentation.title).font(.workbenchMetadata.weight(.semibold))
           Spacer(minLength: 8)
           if codexConnection.isChecking || codexConnection.isPreparing {
             ProgressView().controlSize(.small)
           }
         }
         Text(codexPresentation.detail)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .fixedSize(horizontal: false, vertical: true)
         HStack(spacing: 8) {
           if codexConnection.isChecking || codexConnection.isPreparing {
@@ -66,14 +66,14 @@ extension AIChatContextInspectorView {
             ? "key.horizontal" : "exclamationmark.triangle"
         )
         .foregroundStyle(WorkbenchTheme.warning)
-        Text(connectionReadiness.title).font(.caption.weight(.semibold))
+        Text(connectionReadiness.title).font(.workbenchMetadata.weight(.semibold))
         if AIChatConnectionBlockerPresentation.shouldShowDetail(
           title: connectionReadiness.title,
           detail: connectionReadiness.detail
         ) {
           Text(connectionReadiness.detail)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .lineLimit(2)
             .fixedSize(horizontal: false, vertical: true)
         }

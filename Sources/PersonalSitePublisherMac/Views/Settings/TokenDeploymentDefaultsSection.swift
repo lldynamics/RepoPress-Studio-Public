@@ -39,8 +39,8 @@ struct TokenDeploymentDefaultsSection: View {
 
       if deploymentProviderBinding.wrappedValue != .custom {
         Text("平台部署访问令牌只发送到平台官方 API；如需向状态端点发送 Bearer Token，请选择“自定义端点”平台并使用 HTTPS。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       TextField("部署项目 / Site ID", text: deploymentProjectID)
@@ -51,9 +51,11 @@ struct TokenDeploymentDefaultsSection: View {
         .accessibilityLabel("部署账号、Team 或 Account ID")
         .accessibilityValue(deploymentAccountIDDisplayValue)
 
-      Text("GitHub/GitLab 会优先读取 Pages 与构建状态；Netlify 填写站点 ID 和访问令牌后会读取最近部署记录；Vercel、Cloudflare Pages 和自定义平台使用这里的状态端点或站点 URL 做发布后校验。只有自定义平台的 HTTPS 状态端点可使用 Bearer Token。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+      Text(
+        "GitHub/GitLab 会优先读取 Pages 与构建状态；Netlify 填写站点 ID 和访问令牌后会读取最近部署记录；Vercel、Cloudflare Pages 和自定义平台使用这里的状态端点或站点 URL 做发布后校验。只有自定义平台的 HTTPS 状态端点可使用 Bearer Token。"
+      )
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
     }
   }
 }

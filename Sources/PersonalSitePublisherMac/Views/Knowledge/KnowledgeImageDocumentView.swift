@@ -24,7 +24,7 @@ struct KnowledgeImageDataThumbnailView: View {
           .scaledToFill()
       } else {
         Image(systemName: "photo")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
     }
     .clipShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control, style: .continuous))
@@ -82,7 +82,7 @@ struct KnowledgeDocumentThumbnailView: View {
         )
       } else {
         Image(systemName: "photo")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
           .background(
             .quaternary, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
@@ -154,12 +154,12 @@ struct KnowledgeImageDocumentView: View {
       GroupBox(String(localized: "本机 OCR 文字")) {
         if ocrText.trimmedForPublishing.isEmpty {
           Text("这张图片没有识别到可检索文字；仍可使用标题、说明和标签管理。")
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
           Text(ocrText)
-            .font(.body)
+            .font(.workbenchBody)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityLabel("图片识别文字")
@@ -204,7 +204,7 @@ struct KnowledgeImageDocumentView: View {
   private var imageToolbar: some View {
     HStack(spacing: 8) {
       Label("图片原稿", systemImage: "photo")
-        .font(.headline)
+        .font(.workbenchHeadline)
       Spacer()
       Button {
         zoom = KnowledgeImageViewportPolicy.clampedZoom(zoom - 0.25)
@@ -216,8 +216,8 @@ struct KnowledgeImageDocumentView: View {
       .disabled(image == nil || zoom <= KnowledgeImageViewportPolicy.minimumZoom)
 
       Text("\(Int((zoom * 100).rounded()))%")
-        .font(.caption.monospacedDigit())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospacedDigit())
+        .foregroundStyle(.workbenchSecondary)
         .frame(minWidth: 40)
 
       Button {

@@ -40,7 +40,7 @@ struct RSSSubscriptionDiscoveryView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       Label("发现结果", systemImage: "dot.radiowaves.left.and.right")
-        .font(.title2.weight(.semibold))
+        .font(.workbenchTitle2.weight(.semibold))
 
       Text(
         String(
@@ -49,8 +49,8 @@ struct RSSSubscriptionDiscoveryView: View {
           Int64(discovery.feedURLs.count)
         )
       )
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+      .foregroundStyle(.workbenchSecondary)
+      .fixedSize(horizontal: false, vertical: true)
 
       ScrollView {
         VStack(alignment: .leading, spacing: 12) {
@@ -60,7 +60,7 @@ struct RSSSubscriptionDiscoveryView: View {
 
           if !discovery.alternativeURLs.isEmpty {
             Text("该站还发现了其他订阅")
-              .font(.headline)
+              .font(.workbenchHeadline)
               .padding(.top, WorkbenchSpacing.tight)
 
             ForEach(discovery.alternativeURLs, id: \.self) { url in
@@ -83,8 +83,8 @@ struct RSSSubscriptionDiscoveryView: View {
             Int64(selectedURLs.count)
           )
         )
-          .font(.caption)
-          .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         Spacer()
         Button("取消", role: .cancel) {
           onCancel()
@@ -123,10 +123,10 @@ struct RSSSubscriptionDiscoveryView: View {
     Toggle(isOn: selectionBinding(for: url)) {
       VStack(alignment: .leading, spacing: 3) {
         Text(title)
-          .font(.subheadline.weight(.medium))
+          .font(.workbenchMetadata.weight(.medium))
         Text(verbatim: url.absoluteString)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospaced())
+          .foregroundStyle(.workbenchSecondary)
           .lineLimit(2)
           .textSelection(.enabled)
       }

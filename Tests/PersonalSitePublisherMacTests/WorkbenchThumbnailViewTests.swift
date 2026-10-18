@@ -399,7 +399,7 @@ final class WorkbenchThumbnailViewTests: XCTestCase {
 
     let warmTask = Task { await cache.image(for: warmed) }
     defer { warmTask.cancel() }
-    let warmDidStart = await waitUntil { await decoder.startedCount == 1 }
+    let warmDidStart = await decoder.waitUntilStarted(count: 1)
     XCTAssertTrue(warmDidStart)
     guard warmDidStart else { return }
     await decoder.release(warmed, with: image)
@@ -410,7 +410,7 @@ final class WorkbenchThumbnailViewTests: XCTestCase {
 
     let activeTask = Task { await cache.image(for: active) }
     defer { activeTask.cancel() }
-    let activeDidStart = await waitUntil { await decoder.startedCount == 2 }
+    let activeDidStart = await decoder.waitUntilStarted(count: 2)
     XCTAssertTrue(activeDidStart)
     guard activeDidStart else { return }
     let sharedTask = Task { await cache.image(for: active) }
@@ -446,7 +446,7 @@ final class WorkbenchThumbnailViewTests: XCTestCase {
     await decoder.release(active, with: image)
     let activeResult = await activeTask.value
     let sharedResult = await sharedTask.value
-    let queuedDidStart = await waitUntil { await decoder.startedCount == 3 }
+    let queuedDidStart = await decoder.waitUntilStarted(count: 3)
     XCTAssertNotNil(activeResult)
     XCTAssertNotNil(sharedResult)
     XCTAssertTrue(queuedDidStart)
@@ -516,8 +516,21 @@ private actor SuspendedThumbnailDecoder {
   private(set) var activeCount = 0
   private(set) var maximumActiveCount = 0
   private(set) var cancellationCount = 0
+  private var startWaiters: [Int: [CheckedContinuation<Void, Never>]] = [:]
 
   var startedCount: Int { startedRequests.count }
+
+  func waitUntilStarted(count: Int) async -> Bool {
+    guard startedRequests.count < count else { return true }
+    await withCheckedContinuation { continuation in
+      if startedRequests.count >= count {
+        continuation.resume()
+      } else {
+        startWaiters[count, default: []].append(continuation)
+      }
+    }
+    return startedRequests.count >= count
+  }
 
   func decode(_ request: WorkbenchThumbnailRequest) async -> WorkbenchDecodedImage? {
     activeCount += 1
@@ -527,6 +540,13 @@ private actor SuspendedThumbnailDecoder {
       await withCheckedContinuation { continuation in
         startedRequests.append(request)
         continuations[key] = continuation
+        let readyCounts = startWaiters.keys.filter { $0 <= startedRequests.count }
+        for count in readyCounts {
+          let waiters = startWaiters.removeValue(forKey: count) ?? []
+          for waiter in waiters {
+            waiter.resume()
+          }
+        }
       }
     } onCancel: {
       Task { await self.cancel(key) }

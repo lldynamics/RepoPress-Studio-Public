@@ -15,10 +15,12 @@ struct SiteKindChangeConfirmationView: View {
     VStack(spacing: 0) {
       VStack(alignment: .leading, spacing: 6) {
         Label("预览站点类型变化", systemImage: "arrow.left.arrow.right")
-          .font(.title3.weight(.semibold))
+          .font(.workbenchTitle3.weight(.semibold))
         LabeledContent("目标站点", value: currentProfile.name)
-        Text("从 \(currentProfile.siteKind.localizedDisplayName) 切换到 \(targetKind.localizedDisplayName) 会更新以下发布规则。仓库、访问令牌、作者和默认标签不会改变。")
-          .foregroundStyle(.secondary)
+        Text(
+          "从 \(currentProfile.siteKind.localizedDisplayName) 切换到 \(targetKind.localizedDisplayName) 会更新以下发布规则。仓库、访问令牌、作者和默认标签不会改变。"
+        )
+        .foregroundStyle(.workbenchSecondary)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
       .padding(WorkbenchSpacing.page)
@@ -29,28 +31,28 @@ struct SiteKindChangeConfirmationView: View {
         VStack(alignment: .leading, spacing: 10) {
           if ruleChanges.isEmpty {
             Label("当前规则已经与目标站点类型一致。", systemImage: "checkmark.circle")
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
           } else {
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 10) {
               GridRow {
-                Text("规则").font(.caption.weight(.semibold))
-                Text("当前值").font(.caption.weight(.semibold))
-                Text("应用后").font(.caption.weight(.semibold))
+                Text("规则").font(.workbenchMetadata.weight(.semibold))
+                Text("当前值").font(.workbenchMetadata.weight(.semibold))
+                Text("应用后").font(.workbenchMetadata.weight(.semibold))
               }
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
 
               Divider().gridCellColumns(3)
 
               ForEach(Array(ruleChanges.enumerated()), id: \.element.id) { index, change in
                 GridRow(alignment: .firstTextBaseline) {
                   Text(change.title)
-                    .font(.callout.weight(.medium))
+                    .font(.workbenchBody.weight(.medium))
                   Text(change.before)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .font(.workbenchMetadata.monospaced())
+                    .foregroundStyle(.workbenchSecondary)
                     .textSelection(.enabled)
                   Text(change.after)
-                    .font(.caption.monospaced())
+                    .font(.workbenchMetadata.monospaced())
                     .foregroundStyle(.primary)
                     .textSelection(.enabled)
                 }
@@ -73,8 +75,8 @@ struct SiteKindChangeConfirmationView: View {
           .keyboardShortcut(.cancelAction)
         Spacer()
         Text("将更新 \(ruleChanges.count) 项发布规则")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         Button {
           confirmAction()
         } label: {

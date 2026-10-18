@@ -85,10 +85,10 @@ struct KnowledgeImportAssistantView: View {
     HStack(alignment: .firstTextBaseline, spacing: 12) {
       VStack(alignment: .leading, spacing: 3) {
         Text("导入资料")
-          .font(.title2.weight(.semibold))
+          .font(.workbenchTitle2.weight(.semibold))
         Text("把图片、文章、网页或 PDF 保存到本机资料库并建立检索索引。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       }
       Spacer()
     }
@@ -100,7 +100,7 @@ struct KnowledgeImportAssistantView: View {
       VStack(alignment: .leading, spacing: 12) {
         HStack(spacing: 10) {
           Image(systemName: isFileDropTargeted ? "tray.and.arrow.down.fill" : "arrow.down.doc")
-            .font(.title3)
+            .font(.workbenchTitle3)
             .foregroundStyle(isFileDropTargeted ? workbenchAccentColor : Color.secondary)
           VStack(alignment: .leading, spacing: 2) {
             Text(
@@ -108,10 +108,10 @@ struct KnowledgeImportAssistantView: View {
                 ? String(localized: "释放以生成导入预览")
                 : String(localized: "可直接拖入文件或文件夹")
             )
-              .font(.callout.weight(.medium))
+            .font(.workbenchBody.weight(.medium))
             Text(String(localized: "支持一次拖入多项；会先分析、去重，再由你确认保存。"))
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
           Spacer()
         }
@@ -144,13 +144,13 @@ struct KnowledgeImportAssistantView: View {
         HStack {
           VStack(alignment: .leading, spacing: 3) {
             Text("本地文件或文件夹")
-              .font(.callout.weight(.medium))
+              .font(.workbenchBody.weight(.medium))
             Text("支持 JPEG、PNG、HEIC、Markdown、TXT、HTML、PDF；文件夹会批量分析。")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
             Text("图片按原文件保存，保留拍摄与位置信息；预览和 OCR 不修改图片。")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
           Spacer()
           Button {
@@ -166,10 +166,10 @@ struct KnowledgeImportAssistantView: View {
         Toggle(isOn: $performsPDFOCR) {
           VStack(alignment: .leading, spacing: 3) {
             Text("识别扫描版 PDF")
-              .font(.callout.weight(.medium))
+              .font(.workbenchBody.weight(.medium))
             Text("仅对没有文字层的页面使用本机 Vision OCR；一次最多处理 200 页。")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
         }
         .disabled(isAnalyzing || isCommitting)
@@ -177,10 +177,10 @@ struct KnowledgeImportAssistantView: View {
         Toggle(isOn: $performsImageOCR) {
           VStack(alignment: .leading, spacing: 3) {
             Text("识别图片中的文字")
-              .font(.callout.weight(.medium))
+              .font(.workbenchBody.weight(.medium))
             Text("只在本机使用 Vision OCR；不会上传原图。")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
         }
         .disabled(isAnalyzing || isCommitting)
@@ -231,7 +231,7 @@ struct KnowledgeImportAssistantView: View {
   private func previewSummary(_ preview: KnowledgeImportPreview) -> some View {
     VStack(alignment: .leading, spacing: 10) {
       Text("2. 导入概览")
-        .font(.headline)
+        .font(.workbenchHeadline)
       HStack(spacing: 12) {
         metric(String(localized: "可导入"), value: "\(preview.importableCount)", image: "tray.and.arrow.down")
         metric(String(localized: "新增"), value: "\(preview.newCount)", image: "plus.circle")
@@ -258,25 +258,25 @@ struct KnowledgeImportAssistantView: View {
           ),
           systemImage: "photo.stack"
         )
-        .font(.caption.weight(.medium))
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.weight(.medium))
+        .foregroundStyle(.workbenchSecondary)
       }
       Text("来源：\(preview.sourceName) · 只会保存到本机资料库，不会生成发布草稿。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 
   private func metric(_ title: String, value: String, image: String) -> some View {
     HStack(spacing: 8) {
       Image(systemName: image)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
       VStack(alignment: .leading, spacing: 1) {
         Text(value)
-          .font(.headline)
+          .font(.workbenchHeadline)
         Text(title)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
       Spacer(minLength: 0)
     }
@@ -289,10 +289,10 @@ struct KnowledgeImportAssistantView: View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(spacing: 10) {
         Text("3. 内容预览")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Text("已选择 \(selectedCandidateIDs.count)/\(preview.candidates.count)")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         Spacer()
         Button("全选") {
           selectedCandidateIDs = Set(preview.candidates.map(\.id))
@@ -327,7 +327,7 @@ struct KnowledgeImportAssistantView: View {
           .padding(.top, WorkbenchSpacing.control)
         } label: {
           Text("查看其余 \(remainingCandidates.count) 条资料")
-            .font(.callout.weight(.medium))
+            .font(.workbenchBody.weight(.medium))
         }
         .padding(WorkbenchSpacing.card)
         .background(
@@ -335,8 +335,8 @@ struct KnowledgeImportAssistantView: View {
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
         )
         Text("其余资料默认已勾选；展开后可逐项取消，再确认导入。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
     }
   }
@@ -351,20 +351,20 @@ struct KnowledgeImportAssistantView: View {
         } else {
           Image(systemName: candidate.kind.systemImage)
             .frame(width: 18)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
         VStack(alignment: .leading, spacing: 3) {
           Text(candidate.title)
-            .font(.callout.weight(.medium))
-            .workbenchTruncatedIdentity(candidate.title)
+            .font(.workbenchBody.weight(.medium))
+            .workbenchTruncatedTitle(candidate.title)
           Text(candidateDetail(candidate))
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .lineLimit(2)
         }
         Spacer()
         Text(candidate.disposition.localizedDisplayNameKey)
-          .font(.caption.weight(.medium))
+          .font(.workbenchMetadata.weight(.medium))
           .foregroundStyle(
             candidate.disposition == .duplicate
               ? Color.secondary
@@ -407,13 +407,13 @@ struct KnowledgeImportAssistantView: View {
     if !warnings.isEmpty {
       VStack(alignment: .leading, spacing: 6) {
         Text("注意")
-          .font(.headline)
+          .font(.workbenchHeadline)
         ForEach(
           Array(warnings.prefix(KnowledgeImportSelectionPresentation.initialWarningLimit).enumerated()),
           id: \.offset
         ) { _, warning in
           Label(warning, systemImage: "exclamationmark.triangle")
-            .font(.caption)
+            .font(.workbenchMetadata)
             .foregroundStyle(WorkbenchTheme.warning)
         }
         let remainingWarnings = warnings.dropFirst(
@@ -424,14 +424,14 @@ struct KnowledgeImportAssistantView: View {
             VStack(alignment: .leading, spacing: 6) {
               ForEach(Array(remainingWarnings.enumerated()), id: \.offset) { _, warning in
                 Label(warning, systemImage: "exclamationmark.triangle")
-                  .font(.caption)
+                  .font(.workbenchMetadata)
                   .foregroundStyle(WorkbenchTheme.warning)
               }
             }
             .padding(.top, WorkbenchSpacing.icon)
           } label: {
             Text("查看其余 \(remainingWarnings.count) 条提醒")
-              .font(.caption.weight(.medium))
+              .font(.workbenchMetadata.weight(.medium))
           }
         }
       }
@@ -453,8 +453,8 @@ struct KnowledgeImportAssistantView: View {
         Spacer()
 
         Text("只会保存已勾选的内容；搜索索引在本机建立。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         if let preview {
           let selectedPreview = KnowledgeImportSelectionPresentation.selectedPreview(
             from: preview,

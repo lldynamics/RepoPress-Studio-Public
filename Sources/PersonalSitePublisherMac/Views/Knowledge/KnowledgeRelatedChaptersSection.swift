@@ -23,7 +23,7 @@ struct KnowledgeRelatedChaptersSection: View {
       if showsHeader {
         HStack {
           Label(sectionTitle, systemImage: "point.3.connected.trianglepath.dotted")
-            .font(.headline)
+            .font(.workbenchHeadline)
           Spacer()
           if state.isLoading {
             ProgressView()
@@ -31,20 +31,20 @@ struct KnowledgeRelatedChaptersSection: View {
               .accessibilityLabel("正在查找\(sectionTitle)")
           } else if !state.recommendations.isEmpty {
             Text("本地智能推荐")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
         }
       }
 
       if state.isLoading, state.recommendations.isEmpty {
         Text("正在结合语义、作者、标签和来源计算关联…")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       } else if state.recommendations.isEmpty {
         Text("暂时没有足够相关的其他内容。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
       } else {
         LazyVStack(spacing: 8) {
           ForEach(visibleRecommendations) { recommendation in
@@ -90,19 +90,19 @@ struct KnowledgeRelatedChaptersSection: View {
       HStack(alignment: .firstTextBaseline) {
         Text(recommendation.document.title)
           .font(.workbenchCardTitle)
-          .workbenchTruncatedIdentity(recommendation.document.title)
+          .workbenchTruncatedTitle(recommendation.document.title)
         Spacer()
         let location = recommendation.chunk.locator?.nilIfEmpty
           ?? recommendation.chunk.headingPath?.nilIfEmpty
           ?? String(localized: "正文片段")
         Text(location)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .workbenchTruncatedIdentity(location)
       }
       Text(excerpt)
         .font(.workbenchSupporting)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .lineLimit(2)
         .multilineTextAlignment(.leading)
       LazyVGrid(
@@ -114,7 +114,7 @@ struct KnowledgeRelatedChaptersSection: View {
           Text(reason.localizedDisplayName)
             .font(.workbenchMetadata.weight(.medium))
             .lineLimit(1)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
             .padding(.horizontal, WorkbenchSpacing.icon)
             .padding(.vertical, 2)
             .background(Color.secondary.opacity(0.09), in: Capsule())

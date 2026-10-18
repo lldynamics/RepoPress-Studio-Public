@@ -5,46 +5,6 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class RepositoryWorktreePublishPresentationTests: XCTestCase {
-  func testDrawerRoutesDefaultActionToWorktreePublisherAndKeepsArticleBatchSecondary() throws {
-    let repositoryRoot = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-    let sourceURL = repositoryRoot.appendingPathComponent(
-      "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerView.swift"
-    )
-    let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-    XCTAssertEqual(
-      source.components(separatedBy: "publish-drawer-action-publish-all").count - 1,
-      1
-    )
-    XCTAssertEqual(
-      source.components(separatedBy: "publish-drawer-action-publish-articles").count - 1,
-      1
-    )
-    XCTAssertEqual(
-      source.components(separatedBy: "publish-drawer-action-retry-push").count - 1,
-      1
-    )
-    XCTAssertTrue(
-      source.contains("guard let confirmation = await store.prepareRepositoryWorktreePublish()"))
-    XCTAssertTrue(source.contains("await store.publishRepositoryWorktree(confirmation)"))
-    XCTAssertTrue(source.contains("await store.prepareRepositoryWorktreePushRetry()"))
-    XCTAssertTrue(source.contains("await store.retryRepositoryWorktreePush(confirmation)"))
-    XCTAssertTrue(source.contains("Text(\"全部变更\").tag(PublishScope.repository)"))
-    let footer = try XCTUnwrap(
-      source.components(separatedBy: "private var footerPrimaryAction:").last)
-    let repositoryCase = try XCTUnwrap(
-      footer.components(separatedBy: "case .repository:").dropFirst().first?
-        .components(separatedBy: "case .managedArticles:").first)
-    XCTAssertTrue(repositoryCase.contains("return repositoryFooterAction(isBusy: isBusy)"))
-    XCTAssertFalse(
-      repositoryCase.contains("currentDraft"),
-      "Repository changes must remain reviewable without a selected article.")
-    XCTAssertTrue(source.contains(".disabled(store.isRemoteRepositoryPublishing)"))
-  }
-
   func testFormatsTargetSHAsAndRenameAsFrozenReviewEvidence() {
     let entry = RepositoryWorktreePublishEntry(
       kind: .renamed,
@@ -84,5 +44,33 @@ final class RepositoryWorktreePublishPresentationTests: XCTestCase {
     XCTAssertTrue(
       RepositoryWorktreePublishPresentation.accessibilityLabel(for: entry).contains("删除")
     )
+  }
+
+  func testClassifiesArticleBodyImagesAndDestructiveOperations() {
+    let entries = [
+      RepositoryWorktreePublishEntry(kind: .modified, status: " M", path: "content/a.md"),
+      RepositoryWorktreePublishEntry(kind: .added, status: "??", path: "content/a-cover.webp"),
+      RepositoryWorktreePublishEntry(
+        kind: .renamed, status: " R", path: "content/new.png", sourcePath: "content/old.png"),
+      RepositoryWorktreePublishEntry(kind: .deleted, status: " D", path: "content/old.md"),
+    ]
+
+    let summary = RepositoryWorktreePublishPresentation.contentChangeSummary(
+      entries: entries, articlePath: "content/a.md")
+    XCTAssertEqual(summary.bodyOperations, ["修改"])
+    XCTAssertEqual(summary.imageOperations, ["新增", "重命名"])
+    XCTAssertEqual(summary.otherOperations, ["删除"])
+    XCTAssertEqual(summary.riskPaths, ["content/old.png → content/new.png", "content/old.md"])
+    XCTAssertEqual(RepositoryWorktreePublishPresentation.operationLabel(for: entries[2]), "重命名")
+  }
+
+  func testMissingArticlePathStillProducesHonestSummary() {
+    let summary = RepositoryWorktreePublishPresentation.contentChangeSummary(
+      entries: [
+        RepositoryWorktreePublishEntry(kind: .modified, status: " M", path: "content/a.md")
+      ],
+      articlePath: nil)
+    XCTAssertTrue(summary.bodyOperations.isEmpty)
+    XCTAssertEqual(summary.otherOperations, ["修改"])
   }
 }

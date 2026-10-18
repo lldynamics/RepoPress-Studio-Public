@@ -59,11 +59,11 @@ struct KnowledgeCollectionNavigationView: View {
               "资料整理",
               systemImage: isNavigationExpanded ? "chevron.down" : "chevron.right"
             )
-            .font(.body.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody.weight(.semibold))
+            .foregroundStyle(.workbenchSecondary)
             if !isNavigationExpanded {
               Text("当前：\(selectedNavigationItem.title) · \(selectedNavigationItem.count) 条")
-                .font(.callout)
+                .font(.workbenchBody)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -150,8 +150,8 @@ struct KnowledgeCollectionNavigationView: View {
                     }
                   } label: {
                     Label(kind.localizedDisplayName, systemImage: kind.systemImage)
-                      .font(.body)
-                      .foregroundStyle(.secondary)
+                      .font(.workbenchBody)
+                      .foregroundStyle(.workbenchSecondary)
                   }
                   .padding(.horizontal, WorkbenchSpacing.control)
                   .padding(.vertical, 2)
@@ -180,8 +180,8 @@ struct KnowledgeCollectionNavigationView: View {
 
   private func collectionSectionTitle(_ title: String, systemImage: String) -> some View {
     Label(title, systemImage: systemImage)
-      .font(.caption.weight(.semibold))
-      .foregroundStyle(.tertiary)
+      .font(.workbenchMetadata.weight(.semibold))
+      .foregroundStyle(.workbenchSecondary)
       .padding(.horizontal, WorkbenchSpacing.control)
       .padding(.top, WorkbenchSpacing.tight)
       .accessibilityAddTraits(.isHeader)
@@ -207,16 +207,16 @@ struct KnowledgeCollectionNavigationView: View {
           .frame(width: 18)
           .accessibilityHidden(true)
         Text(item.title)
-          .font(.body)
+          .font(.workbenchBody)
           .lineLimit(1)
         Spacer(minLength: 2)
         Text(item.count.formatted())
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.tertiary)
+          .font(.workbenchMetadata.monospacedDigit())
+          .foregroundStyle(.workbenchSecondary)
         if isFavorite(item.id) {
           Image(systemName: "star.fill")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             .accessibilityHidden(true)
         }
       }
@@ -429,7 +429,7 @@ private struct KnowledgeSavedCollectionBuilderView: View {
     VStack(spacing: 0) {
       HStack {
         Label("新建组合智能集合", systemImage: "line.3.horizontal.decrease.circle")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
       }
       .padding(WorkbenchSpacing.content)
@@ -447,7 +447,7 @@ private struct KnowledgeSavedCollectionBuilderView: View {
         .pickerStyle(.segmented)
 
         Text("选择规则")
-          .font(.callout.weight(.semibold))
+          .font(.workbenchBody.weight(.semibold))
 
         List {
           ForEach(visibleSmartCollectionKinds) { kind in
@@ -462,7 +462,7 @@ private struct KnowledgeSavedCollectionBuilderView: View {
                         systemImage: collection.rule.systemImage)
                       Spacer()
                       Text("\(collection.documentCount)")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.workbenchSecondary)
                         .monospacedDigit()
                     }
                   }
@@ -475,8 +475,8 @@ private struct KnowledgeSavedCollectionBuilderView: View {
         .listStyle(.inset)
 
         Text("组合集合会随作者、标签、来源和时间变化自动更新。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
       .padding(WorkbenchSpacing.content)
 

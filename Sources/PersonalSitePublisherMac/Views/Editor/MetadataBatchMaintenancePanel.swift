@@ -95,8 +95,8 @@ struct MetadataBatchMaintenancePanel: View {
           .disabled(!hasValidInput)
       }
       Text(String(localized: "修改仅作用于目标字段，保存前会自动核对最新变动。正文和其它 Front Matter 字段不会修改。"))
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     }
     .padding(WorkbenchSpacing.content)
   }
@@ -131,11 +131,11 @@ struct MetadataBatchMaintenancePanel: View {
 
             VStack(alignment: .leading, spacing: 6) {
               Text(preview.title.nilIfEmpty ?? String(localized: "未命名文章"))
-                .font(.headline)
+                .font(.workbenchHeadline)
               HStack(alignment: .top, spacing: 8) {
                 metadataValueColumn(title: String(localized: "原值"), values: preview.originalValues)
                 Image(systemName: "arrow.right")
-                  .foregroundStyle(.secondary)
+                  .foregroundStyle(.workbenchSecondary)
                   .padding(.top, WorkbenchSpacing.page)
                 metadataValueColumn(title: String(localized: "建议值"), values: preview.proposedValues)
               }
@@ -156,9 +156,9 @@ struct MetadataBatchMaintenancePanel: View {
 
   private func metadataValueColumn(title: String, values: [String]) -> some View {
     VStack(alignment: .leading, spacing: 4) {
-      Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+      Text(title).font(.workbenchMetadata.weight(.semibold)).foregroundStyle(.workbenchSecondary)
       Text(values.isEmpty ? String(localized: "（空）") : values.joined(separator: "、"))
-        .font(.system(.caption, design: .monospaced))
+        .font(.workbenchMetadata.monospaced())
         .textSelection(.enabled)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -172,7 +172,7 @@ struct MetadataBatchMaintenancePanel: View {
     HStack {
       if let message {
         Text(message)
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(isFailure ? WorkbenchTheme.risk : WorkbenchTheme.success)
           .accessibilityLabel(message)
       }

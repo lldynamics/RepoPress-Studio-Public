@@ -31,7 +31,7 @@ private struct WorkbenchTruncatedIdentityModifier: ViewModifier {
 }
 
 extension View {
-  /// Applies the shared treatment for titles, paths, URLs, and identifiers that may truncate.
+  /// Shared truncation for paths, URLs and identifiers; titles use `workbenchTruncatedTitle`.
   func workbenchTruncatedIdentity(
     _ value: String, lineLimit: Int = 1, truncationMode: Text.TruncationMode = .middle
   ) -> some View {
@@ -48,12 +48,12 @@ struct WorkbenchPathIdentity: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 2) {
       Text(fileName)
-        .font(.callout.weight(.medium))
+        .font(.workbenchBody.weight(.medium))
         .foregroundStyle(.primary)
       if fileName != path {
         Text(path)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospaced())
+          .foregroundStyle(.workbenchSecondary)
       }
     }
     .workbenchTruncatedIdentity(path)
@@ -182,7 +182,7 @@ struct WorkbenchSectionGroup<Content: View>: View {
         if let detail {
           Text(detail)
             .font(.workbenchSupporting)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
             .fixedSize(horizontal: false, vertical: true)
         }
       }
@@ -236,12 +236,12 @@ struct WorkbenchInformationRow<Accessory: View>: View {
           if let detailIdentityValue {
             detail
               .font(.workbenchMetadata.monospaced())
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
               .workbenchTruncatedIdentity(detailIdentityValue, lineLimit: 2)
           } else {
             detail
               .font(.workbenchMetadata)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
               .fixedSize(horizontal: false, vertical: true)
           }
         }
@@ -320,7 +320,7 @@ struct SeverityBadge: View {
 
   var body: some View {
     Label(severity.localizedDisplayName, systemImage: systemImage)
-      .font(.caption)
+      .font(.workbenchMetadata)
       .foregroundStyle(color)
       .labelStyle(.titleAndIcon)
   }
@@ -478,7 +478,7 @@ struct AccessibleStatusMessage: View {
 
   var body: some View {
     Label(message, systemImage: severity.systemImage)
-      .font(.callout)
+      .font(.workbenchBody)
       .foregroundStyle(severity.color)
       .accessibilityElement(children: .combine)
       .accessibilityFocused($isAccessibilityFocused)
@@ -583,17 +583,17 @@ struct GuidedEmptyStateView: View {
 
           Image(systemName: systemImage)
             .font(.system(size: WorkbenchIconSize.hero, weight: .medium))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
 
         VStack(spacing: 4) {
           Text(title)
-            .font(.title2.weight(.bold))
+            .font(.workbenchTitle2.weight(.bold))
             .foregroundStyle(.primary)
 
           Text(message)
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
             .multilineTextAlignment(.center)
             .frame(maxWidth: 420)
         }
@@ -626,22 +626,22 @@ struct GuidedEmptyStateView: View {
     HStack(spacing: 14) {
       Image(systemName: item.systemImage)
         .font(.system(size: WorkbenchIconSize.prominent, weight: .medium))
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.workbenchSecondary)
         .frame(width: 28, height: 28)
 
       VStack(alignment: .leading, spacing: 2) {
         Text(item.title)
-          .font(.body.weight(.semibold))
+          .font(.workbenchBody.weight(.semibold))
           .foregroundStyle(.primary)
         Text(item.subtitle)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       Spacer()
 
       Image(systemName: "chevron.right")
-        .font(.caption.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
         .foregroundStyle(isHovered ? Color.primary : Color.secondary.opacity(0.5))
     }
     .padding(.horizontal, WorkbenchSpacing.content)

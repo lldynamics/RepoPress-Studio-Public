@@ -60,7 +60,7 @@ struct RepositoryMergeConflictSemanticWorkspace: View {
       VStack(alignment: .leading, spacing: 12) {
         VStack(alignment: .leading, spacing: 5) {
           Label("安全三方合并", systemImage: "checkmark.shield")
-            .font(.callout.weight(.semibold))
+            .font(.workbenchBody.weight(.semibold))
           Text(
             String(
               format: String(localized: "已自动合并 %d 个元数据字段和 %d 个正文片段。"),
@@ -68,8 +68,8 @@ struct RepositoryMergeConflictSemanticWorkspace: View {
               plan.autoMergedBodyHunkCount
             )
           )
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           if state.unresolvedSemanticCount > 0 {
             Text(
               String(
@@ -77,7 +77,7 @@ struct RepositoryMergeConflictSemanticWorkspace: View {
                 state.unresolvedSemanticCount
               )
             )
-            .font(.caption.weight(.semibold))
+            .font(.workbenchMetadata.weight(.semibold))
             .foregroundStyle(.orange)
             .accessibilityIdentifier("repository-merge-semantic-unresolved-count")
           }
@@ -104,8 +104,8 @@ struct RepositoryMergeConflictSemanticWorkspace: View {
     VStack(alignment: .leading, spacing: 7) {
       HStack {
         Label("Front Matter 字段", systemImage: "list.bullet.rectangle")
-          .font(.caption.weight(.semibold))
-        Text(verbatim: conflict.key).font(.caption.monospaced().weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
+        Text(verbatim: conflict.key).font(.workbenchMetadata.monospaced().weight(.semibold))
         Spacer()
         selectionStatus(state.frontMatterChoices[conflict.id] != nil)
       }
@@ -142,7 +142,7 @@ struct RepositoryMergeConflictSemanticWorkspace: View {
     VStack(alignment: .leading, spacing: 7) {
       HStack {
         Label(bodyConflictTitle(conflict), systemImage: "text.alignleft")
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
         Spacer()
         selectionStatus(state.bodyChoices[conflict.id] != nil)
       }
@@ -187,12 +187,12 @@ struct RepositoryMergeConflictSemanticWorkspace: View {
     if let document = state.semanticResolvedDocument {
       VStack(alignment: .leading, spacing: 8) {
         Label("所有冲突块已协调，可以应用最终版本。", systemImage: "checkmark.circle.fill")
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
           .foregroundStyle(.green)
         DisclosureGroup("预览最终合并源码") {
           ScrollView {
             Text(verbatim: document)
-              .font(.system(.caption, design: .monospaced))
+              .font(.workbenchMetadata.monospaced())
               .textSelection(.enabled)
               .frame(maxWidth: .infinity, alignment: .topLeading)
               .padding(WorkbenchSpacing.control)
@@ -212,17 +212,17 @@ struct RepositoryMergeConflictSemanticWorkspace: View {
       }
     } else if plan.frontMatterConflicts.isEmpty, plan.bodyConflicts.isEmpty {
       Label("正在生成安全合并结果。", systemImage: "hourglass")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 
   private func sourceBlock(_ title: LocalizedStringKey, text: String?, color: Color) -> some View {
     VStack(alignment: .leading, spacing: 3) {
-      Text(title).font(.caption.weight(.semibold)).foregroundStyle(color)
+      Text(title).font(.workbenchMetadata.weight(.semibold)).foregroundStyle(color)
       ScrollView(.vertical) {
         Text(verbatim: text ?? "（此版本没有该内容）")
-          .font(.system(.caption, design: .monospaced))
+          .font(.workbenchMetadata.monospaced())
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .topLeading)
           .padding(WorkbenchSpacing.control)
@@ -237,7 +237,7 @@ struct RepositoryMergeConflictSemanticWorkspace: View {
     Label(
       resolved ? "已选择" : "待选择", systemImage: resolved ? "checkmark.circle.fill" : "circle.dashed"
     )
-    .font(.caption.weight(.semibold))
+    .font(.workbenchMetadata.weight(.semibold))
     .foregroundStyle(resolved ? Color.green : Color.orange)
   }
 
@@ -261,7 +261,7 @@ struct RepositoryMergeConflictSemanticUnavailableBanner: View {
 
   var body: some View {
     Label(message, systemImage: "exclamationmark.triangle")
-      .font(.caption)
+      .font(.workbenchMetadata)
       .foregroundStyle(.orange)
       .padding(WorkbenchSpacing.card)
       .frame(maxWidth: .infinity, alignment: .leading)

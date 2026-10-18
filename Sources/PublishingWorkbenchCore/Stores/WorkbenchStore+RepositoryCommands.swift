@@ -1,6 +1,6 @@
 import Foundation
-import PublishingSyncCore
 import PublishingGitCore
+import PublishingSyncCore
 
 extension WorkbenchStore {
   public func prepareRepositorySafeSync() async -> RepositorySafeSyncPreparation? {
@@ -164,6 +164,136 @@ extension WorkbenchStore {
       store: self,
       commitMessage: commitMessage
     )
+  }
+
+  /// 发布全部: writes every finished article of the active site into the local
+  /// repository, then freezes a review of all worktree changes, including
+  /// themes, configuration and deletions. Website drafts are not written.
+  public func prepareAllChangesRepositoryPublish() async -> RepositoryPublishPreparation {
+    let profileID = activeProfileID
+    guard activeProfile.localRepositoryRootURL != nil else {
+      return .unavailable(message: CoreL10n.text("请先在站点设置中选择本地仓库，并确认已配置 origin。"))
+    }
+    let written = await publishingStore.writeBatchReadyDraftsToLocalRepository(
+      store: self, includesSiteDrafts: false)
+    guard !Task.isCancelled, activeProfileID == profileID else {
+      return .unavailable(message: CoreL10n.text("站点已切换，请重新发布。"))
+    }
+    guard written.failedTitles.isEmpty else {
+      return .unavailable(
+        message: CoreL10n.format(
+          "以下文章未能写入本地仓库，已停止发布：%@",
+          written.failedTitles.joined(separator: "、")))
+    }
+    guard
+      let confirmation = await repositoryStore.prepareRepositoryWorktreePublish(
+        store: self, commitMessage: "Publish all site changes")
+    else {
+      return .unavailable(
+        message: publishActionMessage ?? CoreL10n.text("无法准备发布，请稍后重试。"))
+    }
+    return .review(confirmation)
+  }
+
+  /// 发布这篇: writes the selected article and its images into the local
+  /// repository, then freezes a review of only those files. Other worktree
+  /// changes are neither reviewed nor committed.
+  public func prepareArticleRepositoryPublish(draftID: UUID) async -> RepositoryPublishPreparation {
+    let profile = activeProfile
+    guard selectedDraftID == draftID, let draft = draft(for: draftID),
+      !draft.isGeneralDraft, draft.belongs(toSiteProfileID: profile.id)
+    else {
+      return .unavailable(message: CoreL10n.text("请选择当前站点的文章后再发布。"))
+    }
+    guard profile.localRepositoryRootURL != nil else {
+      return .unavailable(message: CoreL10n.text("请先在站点设置中选择本地仓库，并确认已配置 origin。"))
+    }
+    await waitForPendingSiteDraftFileWrites(draftIDs: [draftID])
+    guard !Task.isCancelled, selectedDraftID == draftID, activeProfileID == profile.id,
+      let package = publishingStore.publishPackageForSelectedDraft(store: self)
+    else {
+      return .unavailable(message: CoreL10n.text("文章或站点已切换，请重新发布。"))
+    }
+    let preview = publishingStore.localPublishPreviewService.preview(
+      package: package, profile: profile)
+    let issues = blockingLocalPublishIssues(
+      package: package, preview: preview, includeRepositoryReadiness: false)
+    guard issues.isEmpty else { return .blocked(draftID: draftID, issues: issues) }
+
+    if !preview.changedFileDiffs.isEmpty {
+      let written = await writeSelectedDraftToLocalRepository()
+      if case .failed(let message) = written { return .unavailable(message: message) }
+      if case .writtenButRecordSaveFailed(_, let message) = written {
+        return .unavailable(message: message)
+      }
+    }
+    guard !Task.isCancelled, selectedDraftID == draftID, activeProfileID == profile.id else {
+      return .unavailable(message: CoreL10n.text("文章或站点已切换，请重新发布。"))
+    }
+    var paths = package.files.map { $0.repositoryPath.normalizedRelativePath() }
+      .filter { !$0.isEmpty }
+    guard let currentDraft = self.draft(for: draftID) else {
+      return .unavailable(message: CoreL10n.text("文章或站点已切换，请重新发布。"))
+    }
+    func otherArticlePaths() -> Set<String> {
+      Set(
+        drafts.filter {
+          $0.id != draftID && $0.belongs(toSiteProfileID: profile.id)
+        }.flatMap { [$0.repositoryPath, profile.markdownPath(for: $0)].compactMap { $0 } })
+    }
+    let retiredPaths: [String]
+    do {
+      retiredPaths = try siteDraftFileStore.pendingMovePaths(
+        draft: currentDraft, profile: profile, otherArticlePaths: otherArticlePaths())
+      paths += retiredPaths
+    } catch {
+      return .unavailable(message: error.localizedDescription)
+    }
+    let title = draft.title.split(whereSeparator: \.isNewline).first.map(String.init)?
+      .trimmedForPublishing.nilIfEmpty
+    guard
+      let confirmation = await repositoryStore.prepareRepositoryWorktreePublish(
+        store: self,
+        commitMessage: title.map { "Publish \($0)" } ?? "Publish article",
+        pathScope: paths,
+        articleDraftID: draftID)
+    else {
+      return .unavailable(
+        message: publishActionMessage ?? CoreL10n.text("无法准备发布，请稍后重试。"))
+    }
+    guard !Task.isCancelled, selectedDraftID == draftID, activeProfileID == profile.id,
+      self.draft(for: draftID)?.repositoryContentFingerprint
+        == currentDraft.repositoryContentFingerprint,
+      !draftBodyEditorBuffer(for: draftID).isDirty,
+      activeProfile.localRepositoryRootURL == profile.localRepositoryRootURL,
+      DraftRepositoryIdentity(profile: activeProfile) == DraftRepositoryIdentity(profile: profile),
+      confirmation.snapshot.repositoryRoot
+        == profile.localRepositoryRootURL?.standardizedFileURL.path
+    else {
+      return .unavailable(message: CoreL10n.text("文章或站点已切换，请重新发布。"))
+    }
+    do {
+      guard
+        try siteDraftFileStore.pendingMovePaths(
+          draft: currentDraft, profile: profile, otherArticlePaths: otherArticlePaths(),
+          revision: confirmation.snapshot.headSHA) == retiredPaths
+      else {
+        throw RepositoryGitExecutionPolicyError.reviewedContentChanged
+      }
+    } catch {
+      return .unavailable(message: error.localizedDescription)
+    }
+    guard
+      retiredPaths.allSatisfy({ path in
+        confirmation.snapshot.entries.contains { $0.path == path && $0.kind == .deleted }
+      })
+    else {
+      return .unavailable(
+        message: SiteDraftFileStoreError.projectFileChangedExternally(
+          retiredPaths.joined(separator: ", ")
+        ).localizedDescription)
+    }
+    return .review(confirmation)
   }
 
   /// Publishes only the previously frozen complete-worktree confirmation.

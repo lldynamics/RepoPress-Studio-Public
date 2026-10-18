@@ -4,10 +4,6 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class PublishReadinessNavigationTests: XCTestCase {
-  func testPublishDrawerDefaultsToAllRepositoryChanges() {
-    XCTAssertEqual(PublishScope.defaultScope, .repository)
-  }
-
   func testBodyImageIssuePreservesItsSearchTarget() {
     let issue = PreflightIssue(
       severity: .error, title: "图片未登记", message: "修复图片引用", field: "body",
@@ -50,16 +46,14 @@ final class PublishReadinessNavigationTests: XCTestCase {
     XCTAssertEqual(first.target.inspectorTab, .metadata)
   }
 
-  func testArticleRepairSessionPreservesTheCurrentPublishScopeAndExactDraft() {
+  func testArticleRepairSessionPreservesTheExactDraft() {
     let draftID = UUID()
     let session = ArticlePublishRepairSession(
       draftID: draftID,
-      target: .images(attachmentID: UUID()),
-      publishScope: .currentArticle
+      target: .images(attachmentID: UUID())
     )
 
     XCTAssertEqual(session.draftID, draftID)
-    XCTAssertEqual(session.publishScope, .currentArticle)
     XCTAssertEqual(
       ArticlePublishRepairRoutePolicy.route(for: session.target).workspaceSection,
       .writing

@@ -26,7 +26,7 @@ struct RepositoryPermissionSettingsView: View {
     VStack(spacing: 0) {
       HStack {
         Label("仓库连接诊断", systemImage: "lock.shield")
-          .font(.headline)
+          .font(.workbenchHeadline)
 
         Spacer()
 
@@ -51,12 +51,12 @@ struct RepositoryPermissionSettingsView: View {
           Text(
             "\(state.repoOwner.nilIfEmpty ?? "未填写 owner") / \(state.repoName.nilIfEmpty ?? "未填写 repo")"
           )
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
 
           Text("分支：\(state.branch.nilIfEmpty ?? "main")")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
 
         Section("连接诊断") {
@@ -80,8 +80,8 @@ struct RepositoryPermissionSettingsView: View {
 
             if let defaultBranch = check.defaultBranch {
               Text("默认分支：\(defaultBranch)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.workbenchMetadata)
+                .foregroundStyle(.workbenchSecondary)
             }
 
           } else if state.hasStaleAccessCheck {
@@ -92,16 +92,16 @@ struct RepositoryPermissionSettingsView: View {
             .foregroundStyle(WorkbenchTheme.warning)
           } else {
             Text("保存访问令牌后，可在这里诊断当前仓库连接并重新验证写入能力。")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
         }
 
         if let message = state.publishActionMessage {
           Section("最近结果") {
             Text(message)
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
         }
       }

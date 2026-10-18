@@ -21,7 +21,7 @@ public final class WorkbenchSiteMaintenanceFeatureFacade: ObservableObject {
     observe(store.deploymentStore.$deploymentStatusSnapshots)
     observe(store.deploymentStore.$isDeploymentStatusChecking)
     observe(store.deploymentStore.$deploymentStatusMessage)
-    observe(store.aiWorkspaceStore.$isAIChatRunning)
+    observe(store.aiWorkspaceStore.publisher(for: \.isAIChatRunning))
   }
 
   public var snapshot: SiteMaintenanceSnapshot? {

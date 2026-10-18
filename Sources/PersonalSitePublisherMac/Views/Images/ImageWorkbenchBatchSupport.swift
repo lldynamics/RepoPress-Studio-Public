@@ -198,13 +198,13 @@ struct ImageBatchOperationPreviewView: View {
           String(format: String(localized: "确认%@"), preview.action.title),
           systemImage: preview.action.systemImage
         )
-        .font(.title3.weight(.semibold))
+        .font(.workbenchTitle3.weight(.semibold))
         Text("逐项核对影响文章和图片；取消勾选即可排除单张图片。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
         if preview.excludedFileCount > 0 {
           Text("另有 \(preview.excludedFileCount) 个所选文件未登记或不符合此操作，已排除。")
-            .font(.callout).foregroundStyle(.secondary)
+            .font(.workbenchBody).foregroundStyle(.workbenchSecondary)
             .accessibilityIdentifier("image-batch-preview-excluded")
         }
       }
@@ -230,7 +230,7 @@ struct ImageBatchOperationPreviewView: View {
 
       HStack {
         Text("影响明细")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
         Button("全选") {
           selectedItemIDs = Set(preview.affectedItems.map(\.id))
@@ -248,20 +248,20 @@ struct ImageBatchOperationPreviewView: View {
         Toggle(isOn: selectionBinding(for: affected.id)) {
           HStack(alignment: .top, spacing: 10) {
             Image(systemName: "photo")
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.workbenchSecondary)
               .frame(width: 16)
             VStack(alignment: .leading, spacing: 3) {
               Text(affected.item.originalFilename)
-                .font(.callout.weight(.medium))
+                .font(.workbenchBody.weight(.medium))
                 .workbenchTruncatedIdentity(affected.item.originalFilename)
               Text(affected.draftTitle)
                 .font(.workbenchSupporting)
-                .foregroundStyle(.secondary)
-                .workbenchTruncatedIdentity(affected.draftTitle)
+                .foregroundStyle(.workbenchSecondary)
+                .workbenchTruncatedTitle(affected.draftTitle)
               if !affected.detail.isEmpty {
                 Text(affected.detail)
                   .font(.workbenchSupporting)
-                  .foregroundStyle(.tertiary)
+                  .foregroundStyle(.workbenchSecondary)
               }
             }
           }

@@ -54,11 +54,11 @@ struct MarkdownSSGComponentThumbnail: View {
         .frame(width: 4)
       VStack(alignment: .leading, spacing: 4) {
         Text("提示")
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
           .foregroundStyle(WorkbenchTheme.warning)
         Text(previewText.nilIfEmpty ?? "在这里输入提示内容")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
           .lineLimit(2)
       }
     }
@@ -68,11 +68,11 @@ struct MarkdownSSGComponentThumbnail: View {
   private var leadPreview: some View {
     VStack(alignment: .leading, spacing: 7) {
       Text("文章导语")
-        .font(.caption.weight(.semibold))
+        .font(.workbenchMetadata.weight(.semibold))
         .foregroundStyle(.primary)
       Text(previewText.nilIfEmpty ?? "在这里输入文章导语")
-        .font(.caption.italic())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.italic())
+        .foregroundStyle(.workbenchSecondary)
         .lineLimit(2)
       Capsule()
         .fill(Color.secondary.opacity(0.28))
@@ -90,10 +90,10 @@ struct MarkdownSSGComponentThumbnail: View {
       )
       VStack(spacing: 4) {
         Image(systemName: kind.systemImage)
-          .font(.title3)
+          .font(.workbenchTitle3)
           .foregroundStyle(.white)
         Text(kind == .youtube ? "YouTube" : "B 站")
-          .font(.caption.weight(.medium))
+          .font(.workbenchMetadata.weight(.medium))
           .foregroundStyle(.white)
         Text(previewText.nilIfEmpty ?? "VIDEO_ID")
           .font(.workbenchMetadata.monospaced())
@@ -109,15 +109,15 @@ struct MarkdownSSGComponentThumbnail: View {
         Image(systemName: "chevron.left.forwardslash.chevron.right")
           .foregroundStyle(.primary)
         Text("GitHub")
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
         Spacer()
         Image(systemName: "arrow.up.right")
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
       Text(previewText.nilIfEmpty ?? "owner/repo")
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospaced())
+        .foregroundStyle(.workbenchSecondary)
         .lineLimit(1)
       HStack(spacing: 5) {
         Capsule().fill(Color.secondary.opacity(0.5)).frame(width: 28, height: 4)
@@ -139,15 +139,15 @@ struct MarkdownSSGComponentThumbnail: View {
         )
         .overlay {
           Image(systemName: "photo")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
         }
         .frame(width: 54, height: 54)
       VStack(alignment: .leading, spacing: 5) {
         Text("图片")
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
         Text(previewText.nilIfEmpty ?? "/images/example.jpg")
           .font(.workbenchMetadata.monospaced())
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
           .lineLimit(2)
       }
     }
@@ -158,14 +158,14 @@ struct MarkdownSSGComponentThumbnail: View {
     VStack(alignment: .leading, spacing: 7) {
       HStack(spacing: 6) {
         Image(systemName: kind.systemImage)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
         Text("自定义短代码")
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
         Spacer()
       }
       Text(previewText.nilIfEmpty ?? "{{< component >}}")
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospaced())
+        .foregroundStyle(.workbenchSecondary)
         .lineLimit(2)
       Capsule()
         .fill(Color.secondary.opacity(0.30))
@@ -196,7 +196,7 @@ struct MarkdownSSGComponentPreviewStrip: View {
                 )
                 Text("第 \(occurrence.lineNumber) 行 · \(occurrence.title)")
                   .font(.workbenchMetadata)
-                  .foregroundStyle(.secondary)
+                  .foregroundStyle(.workbenchSecondary)
                   .lineLimit(1)
                   .frame(width: 164, alignment: .leading)
               }
@@ -212,14 +212,14 @@ struct MarkdownSSGComponentPreviewStrip: View {
     } label: {
       HStack(spacing: 8) {
         Label("短代码与组件折叠预览", systemImage: "rectangle.3.group")
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
         Text("\(occurrences.count) 个")
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.monospacedDigit())
+          .foregroundStyle(.workbenchSecondary)
         Spacer()
         Text("展开后可定位源码")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
     }
     .padding(.horizontal, WorkbenchSpacing.card)

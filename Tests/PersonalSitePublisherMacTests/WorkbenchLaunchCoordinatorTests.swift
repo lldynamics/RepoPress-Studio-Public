@@ -27,6 +27,53 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     XCTAssertNil(coordinator.rssStore)
   }
 
+  func testFreshInstallCreatesDefaultRootWithoutSetupScreen() async throws {
+    let parentURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "launch-first-run-default-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: parentURL) }
+    let harness = try makeHarness(rootURL: nil)
+    defer { harness.cleanup() }
+    harness.sessionRecovery.requestSafeModeOnNextLaunch()
+    let coordinator = WorkbenchLaunchCoordinator(
+      pathStore: harness.pathStore,
+      sessionRecovery: harness.sessionRecovery,
+      firstLaunchDataRootParentURL: parentURL,
+      legacyDataAvailability: { false }
+    )
+
+    await coordinator.start()
+
+    let rootURL = parentURL.appendingPathComponent("RepoPress Data", isDirectory: true)
+    XCTAssertEqual(coordinator.phase, .ready)
+    XCTAssertEqual(coordinator.dataRootPath, rootURL.path)
+    XCTAssertEqual(try harness.pathStore.storedRecord()?.path, rootURL.path)
+  }
+
+  func testFreshInstallReopensExistingDefaultRoot() async throws {
+    let parentURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "launch-first-run-existing-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: parentURL) }
+    let rootURL = parentURL.appendingPathComponent("RepoPress Data", isDirectory: true)
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    let manifest = try WorkbenchDataRootManifestStore().initializeNewRoot(
+      at: rootURL, appVersion: "test")
+    let harness = try makeHarness(rootURL: nil)
+    defer { harness.cleanup() }
+    harness.sessionRecovery.requestSafeModeOnNextLaunch()
+    let coordinator = WorkbenchLaunchCoordinator(
+      pathStore: harness.pathStore,
+      sessionRecovery: harness.sessionRecovery,
+      firstLaunchDataRootParentURL: parentURL,
+      legacyDataAvailability: { false }
+    )
+
+    await coordinator.start()
+
+    XCTAssertEqual(coordinator.phase, .ready)
+    XCTAssertEqual(coordinator.dataRootPath, rootURL.path)
+    XCTAssertEqual(try harness.pathStore.storedRecord()?.dataID, manifest.dataID)
+  }
+
   func testRememberedRootResolvesPathOffMainActor() async throws {
     let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
       "launch-off-main-data-root-\(UUID().uuidString)",

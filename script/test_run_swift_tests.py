@@ -6,9 +6,11 @@ from __future__ import annotations
 import json
 import os
 import re
+import runpy
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -17,6 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 RUNNER = ROOT / "script" / "run_swift_tests.sh"
 HELPER = ROOT / "script" / "run_swift_test_process.py"
+CACHE_MANAGER = ROOT / "script" / "manage_build_cache.py"
 
 
 FIXTURE_TEST_TARGETS = (
@@ -196,6 +199,16 @@ if snapshot.exists():
 '''
 
 
+INVALID_UTF8_FAKE_PS = r'''#!/usr/bin/env python3
+import sys
+
+sys.stdout.buffer.write(
+    b"101 1 7 /usr/bin/fixture\x95\n"
+    b"202 101 7 /usr/bin/fixture-child\n"
+)
+'''
+
+
 FAILING_FAKE_PS = r'''#!/usr/bin/env python3
 raise SystemExit(1)
 '''
@@ -320,6 +333,7 @@ def make_fixture(
     bin_dir.mkdir()
     shutil.copy2(RUNNER, script_dir / RUNNER.name)
     shutil.copy2(HELPER, script_dir / HELPER.name)
+    shutil.copy2(CACHE_MANAGER, script_dir / CACHE_MANAGER.name)
     (script_dir / RUNNER.name).chmod(0o755)
     (script_dir / HELPER.name).chmod(0o755)
     (root / "Package.swift").write_text(
@@ -380,6 +394,9 @@ def make_fixture(
     fake_ps = bin_dir / "ps"
     fake_ps.write_text(FAKE_PS, encoding="utf-8")
     fake_ps.chmod(0o755)
+    invalid_utf8_ps = bin_dir / "invalid-utf8-ps"
+    invalid_utf8_ps.write_text(INVALID_UTF8_FAKE_PS, encoding="utf-8")
+    invalid_utf8_ps.chmod(0o755)
     failing_ps = bin_dir / "failing-ps"
     failing_ps.write_text(FAILING_FAKE_PS, encoding="utf-8")
     failing_ps.chmod(0o755)
@@ -405,6 +422,7 @@ def make_fixture(
         "slow_ps_started": str(root / "slow-ps-started.txt"),
         "fake_swift": str(fake_swift),
         "fake_ps": str(fake_ps),
+        "invalid_utf8_ps": str(invalid_utf8_ps),
         "failing_ps": str(failing_ps),
         "fake_sample": str(fake_sample),
         "fake_xctest": str(fake_xctest),
@@ -677,6 +695,25 @@ def test_successful_partition_and_exact_argv() -> None:
             "-Xswiftc",
             "-warnings-as-errors",
         ]
+
+
+def test_process_snapshot_replaces_invalid_utf8_and_retains_ids() -> None:
+    temporary, root, paths = make_fixture()
+    with temporary:
+        runner = runpy.run_path(str(root / "script" / HELPER.name))
+        previous_ps = os.environ.get("PS_BIN")
+        os.environ["PS_BIN"] = paths["invalid_utf8_ps"]
+        try:
+            rows = runner["process_snapshot"]()
+        finally:
+            if previous_ps is None:
+                os.environ.pop("PS_BIN", None)
+            else:
+                os.environ["PS_BIN"] = previous_ps
+        assert [row[:3] for row in rows] == [(101, 1, 7), (202, 101, 7)]
+        assert rows[0][3].startswith("/usr/bin/fixture")
+        assert "\ufffd" in rows[0][3]
+        assert rows[1][3] == "/usr/bin/fixture-child"
 
 
 def test_swift_cache_environment_is_local_and_explicit_values_are_preserved() -> None:
@@ -1014,7 +1051,12 @@ def test_external_sigterm_is_forwarded_to_active_shard() -> None:
 
 
 def main() -> int:
+    subprocess.run(
+        [sys.executable, str(ROOT / "script" / "test_run_swift_test_process.py")],
+        check=True,
+    )
     test_successful_partition_and_exact_argv()
+    test_process_snapshot_replaces_invalid_utf8_and_retains_ids()
     test_swift_cache_environment_is_local_and_explicit_values_are_preserved()
     test_warnings_as_errors_can_be_explicitly_disabled()
     test_invalid_warnings_as_errors_configuration_fails_closed()

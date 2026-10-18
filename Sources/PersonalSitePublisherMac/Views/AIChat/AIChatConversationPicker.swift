@@ -22,7 +22,7 @@ struct AIChatConversationPicker: View {
     VStack(alignment: .leading, spacing: 10) {
       HStack(spacing: 8) {
         Text(draft == nil ? "通用 AI 对话" : "当前文章对话")
-          .font(.headline)
+          .font(.workbenchHeadline)
 
         Spacer(minLength: 8)
 
@@ -66,12 +66,12 @@ struct AIChatConversationPicker: View {
 
               HStack {
                 Label(String(localized: "已归档"), systemImage: "archivebox")
-                  .font(.caption.weight(.semibold))
-                  .foregroundStyle(.secondary)
+                  .font(.workbenchMetadata.weight(.semibold))
+                  .foregroundStyle(.workbenchSecondary)
                 Spacer()
                 Text("\(filteredArchivedConversations.count)")
-                  .font(.caption.monospacedDigit())
-                  .foregroundStyle(.tertiary)
+                  .font(.workbenchMetadata.monospacedDigit())
+                  .foregroundStyle(.workbenchSecondary)
               }
               .padding(.horizontal, WorkbenchSpacing.control)
 
@@ -89,8 +89,8 @@ struct AIChatConversationPicker: View {
         String(localized: "对话内容保存在本机；API Key 使用你在设置中选择的独立保存位置。"),
         systemImage: "lock"
       )
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      .font(.workbenchMetadata)
+      .foregroundStyle(.workbenchSecondary)
       .fixedSize(horizontal: false, vertical: true)
     }
     .padding(WorkbenchSpacing.content)
@@ -164,13 +164,13 @@ struct AIChatConversationPicker: View {
 
           VStack(alignment: .leading, spacing: 3) {
             Text(verbatim: title(for: conversation))
-              .font(.callout.weight(.medium))
+              .font(.workbenchBody.weight(.medium))
               .foregroundStyle(.primary)
               .lineLimit(1)
 
             Text(verbatim: preview(for: conversation))
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
               .lineLimit(1)
 
             HStack(spacing: 5) {
@@ -185,7 +185,7 @@ struct AIChatConversationPicker: View {
               }
             }
             .font(.workbenchMetadata)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.workbenchSecondary)
           }
 
           Spacer(minLength: 0)
@@ -263,7 +263,7 @@ struct AIChatConversationPicker: View {
   private func renameSheet(_ conversation: AIConversation) -> some View {
     VStack(alignment: .leading, spacing: 14) {
       Text("重命名对话")
-        .font(.headline)
+        .font(.workbenchHeadline)
 
       TextField("对话名称", text: $renameText)
         .textFieldStyle(.roundedBorder)

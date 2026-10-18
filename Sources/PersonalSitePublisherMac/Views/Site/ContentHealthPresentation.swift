@@ -2,82 +2,6 @@ import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
 
-enum ContentHealthSeverityFilter: String, CaseIterable, Identifiable, Sendable {
-  case all
-  case errors
-  case warnings
-
-  var id: String { rawValue }
-
-  var title: String {
-    switch self {
-    case .all:
-      return String(localized: "全部")
-    case .errors:
-      return String(localized: "错误")
-    case .warnings:
-      return String(localized: "警告")
-    }
-  }
-
-  func filter(_ issues: [PreflightIssue]) -> [PreflightIssue] {
-    switch self {
-    case .all:
-      return issues
-    case .errors:
-      return issues.filter { $0.severity == .error }
-    case .warnings:
-      return issues.filter { $0.severity == .warning }
-    }
-  }
-}
-
-enum ContentHealthSourceFilter: String, CaseIterable, Identifiable, Sendable {
-  case all
-  case articles
-  case site
-  case maintenance
-
-  var id: String { rawValue }
-
-  var title: String {
-    switch self {
-    case .all: String(localized: "全部来源")
-    case .articles: String(localized: "文章")
-    case .site: String(localized: "站点")
-    case .maintenance: String(localized: "维护")
-    }
-  }
-
-  var includesArticles: Bool { self == .all || self == .articles }
-  var includesSite: Bool { self == .all || self == .site }
-  var includesMaintenance: Bool { self == .all || self == .maintenance }
-}
-
-enum ContentHealthAIFixFilter: String, CaseIterable, Identifiable, Sendable {
-  case all
-  case fixable
-  case manual
-
-  var id: String { rawValue }
-
-  var title: String {
-    switch self {
-    case .all: String(localized: "全部处理方式")
-    case .fixable: String(localized: "AI 修复")
-    case .manual: String(localized: "手动处理")
-    }
-  }
-
-  func includes(canUseAI: Bool) -> Bool {
-    switch self {
-    case .all: true
-    case .fixable: canUseAI
-    case .manual: !canUseAI
-    }
-  }
-}
-
 struct ContentHealthArticlePresentation: Sendable {
   let snapshotID: UUID
   let filter: ContentHealthContextFilter
@@ -118,15 +42,27 @@ struct ContentHealthArticlePresentation: Sendable {
       switch filter {
       case .publicRisks:
         sourceIssues = summary.publicRiskIssues
-      case .overview, .aiFixes, .siteIssues, .maintenance:
-        sourceIssues = summary.blockingIssues
+      case .overview:
+        switch severityFilter {
+        case .all:
+          sourceIssues = summary.issues.filter { $0.severity != .info }
+        case .optimizations:
+          sourceIssues = summary.optionalOptimizationIssues
+        case .errors, .warnings:
+          sourceIssues = summary.blockingIssues
+        }
+      case .aiFixes, .siteIssues, .maintenance:
+        sourceIssues =
+          severityFilter == .optimizations
+          ? summary.optionalOptimizationIssues
+          : summary.blockingIssues
       }
       let issues = severityFilter.filter(sourceIssues)
       guard !issues.isEmpty else { return nil }
       return ContentHealthArticleRowModel(
         summary: summary,
         issues: issues,
-        aiFixItem: aiFixItemByDraftID[summary.draftID]
+        aiFixItem: severityFilter == .optimizations ? nil : aiFixItemByDraftID[summary.draftID]
       )
     }
 
@@ -178,11 +114,12 @@ struct ContentHealthPresentationService: Sendable {
     let task = Task.detached(priority: .utility) {
       try Task.checkCancellation()
       var errorCount = report.sitePreflightIssues.reduce(into: 0) { count, issue in
-        if issue.severity == .error { count += 1 }
+        if issue.severity == .error && !issue.isOptionalOptimization { count += 1 }
       }
       var warningCount = report.sitePreflightIssues.reduce(into: 0) { count, issue in
-        if issue.severity == .warning { count += 1 }
+        if issue.severity == .warning && !issue.isOptionalOptimization { count += 1 }
       }
+      var optimizationCount = report.sitePreflightIssues.count { $0.isOptionalOptimization }
       var passingDraftCount = 0
       for summary in report.draftSummaries {
         try Task.checkCancellation()
@@ -190,11 +127,19 @@ struct ContentHealthPresentationService: Sendable {
         for issue in summary.issues {
           switch issue.severity {
           case .error:
-            errorCount += 1
-            draftHasBlockingIssue = true
+            if issue.isOptionalOptimization {
+              optimizationCount += 1
+            } else {
+              errorCount += 1
+              draftHasBlockingIssue = true
+            }
           case .warning:
-            warningCount += 1
-            draftHasBlockingIssue = true
+            if issue.isOptionalOptimization {
+              optimizationCount += 1
+            } else {
+              warningCount += 1
+              draftHasBlockingIssue = true
+            }
           case .info:
             break
           }
@@ -215,6 +160,7 @@ struct ContentHealthPresentationService: Sendable {
         slugChangeImpacts: report.slugChangeImpacts,
         errorCount: errorCount,
         warningCount: warningCount,
+        optimizationCount: optimizationCount,
         passingDraftCount: passingDraftCount,
         suppressedIssues: report.suppressedIssues
       )
@@ -514,10 +460,10 @@ struct ContentHealthAIFixResultPreviewSheet: View {
     HStack {
       VStack(alignment: .leading, spacing: 2) {
         Label("AI 修复结果预览", systemImage: "sparkles.rectangle.stack")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Text(preview.draftTitle)
-          .font(.subheadline)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
 
       Spacer()
@@ -527,8 +473,8 @@ struct ContentHealthAIFixResultPreviewSheet: View {
           [preview.result.providerName, preview.result.model].filter { !$0.isEmpty }.joined(
             separator: " · ")
         )
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
         .padding(.horizontal, WorkbenchSpacing.control)
         .padding(.vertical, WorkbenchSpacing.tight)
         .background(WorkbenchBackgroundStyle.control, in: Capsule())
@@ -546,8 +492,8 @@ struct ContentHealthAIFixResultPreviewSheet: View {
         let selectedCount = fields.filter { $0.isSelected && $0.isSupported }.count
         let selectableCount = fields.filter(\.isSupported).count
         Text("选择要应用的 Front Matter 字段（已选 \(selectedCount)/\(selectableCount) 项）：")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.weight(.semibold))
+          .foregroundStyle(.workbenchSecondary)
 
         Spacer()
 
@@ -557,7 +503,7 @@ struct ContentHealthAIFixResultPreviewSheet: View {
           }
         }
         .buttonStyle(.borderless)
-        .font(.caption)
+        .font(.workbenchMetadata)
 
         Button("全部取消") {
           for i in fields.indices {
@@ -565,7 +511,7 @@ struct ContentHealthAIFixResultPreviewSheet: View {
           }
         }
         .buttonStyle(.borderless)
-        .font(.caption)
+        .font(.workbenchMetadata)
       }
       .padding(.horizontal, WorkbenchSpacing.content)
       .padding(.top, WorkbenchSpacing.control)
@@ -574,10 +520,10 @@ struct ContentHealthAIFixResultPreviewSheet: View {
         ScrollView {
           VStack(alignment: .leading, spacing: 10) {
             Text("未能自动切分出独立字段，可切换至“完整响应”查看或直接应用全量修复内容。")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
             Text(preview.result.content)
-              .font(.system(.body, design: .monospaced))
+              .font(.workbenchBody.monospaced())
               .textSelection(.enabled)
           }
           .padding(WorkbenchSpacing.content)
@@ -597,10 +543,10 @@ struct ContentHealthAIFixResultPreviewSheet: View {
                 VStack(alignment: .leading, spacing: 4) {
                   HStack(spacing: 6) {
                     Text(item.title)
-                      .font(.caption.weight(.semibold))
+                      .font(.workbenchMetadata.weight(.semibold))
                     Text(item.fieldKey)
-                      .font(.caption.monospaced())
-                      .foregroundStyle(.secondary)
+                      .font(.workbenchMetadata.monospaced())
+                      .foregroundStyle(.workbenchSecondary)
                       .padding(.horizontal, WorkbenchSpacing.tight)
                       .padding(.vertical, 1)
                       .background(
@@ -608,27 +554,27 @@ struct ContentHealthAIFixResultPreviewSheet: View {
                         in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.badge))
                     if !item.isSupported {
                       Text("当前不支持应用")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.workbenchMetadata)
+                        .foregroundStyle(.workbenchSecondary)
                     }
                   }
 
                   VStack(alignment: .leading, spacing: 3) {
                     Text(String(localized: "生成时原值"))
-                      .font(.caption.weight(.semibold))
-                      .foregroundStyle(.secondary)
+                      .font(.workbenchMetadata.weight(.semibold))
+                      .foregroundStyle(.workbenchSecondary)
                     Text(
                       preview.metadataBaseline[
                         ContentHealthAIFixFieldPolicy.canonicalKey(for: item.fieldKey)]?.joined(
                           separator: ", ") ?? "—"
                     )
-                    .font(.system(.caption, design: .monospaced))
+                    .font(.workbenchMetadata.monospaced())
                     .textSelection(.enabled)
                     Text(String(localized: "建议值"))
-                      .font(.caption.weight(.semibold))
-                      .foregroundStyle(.secondary)
+                      .font(.workbenchMetadata.weight(.semibold))
+                      .foregroundStyle(.workbenchSecondary)
                     Text(item.proposedValue)
-                      .font(.system(.caption, design: .monospaced))
+                      .font(.workbenchMetadata.monospaced())
                       .textSelection(.enabled)
                   }
                   .padding(WorkbenchSpacing.control)
@@ -655,8 +601,10 @@ struct ContentHealthAIFixResultPreviewSheet: View {
 
       if let applicationFeedback {
         Text(applicationFeedback.message)
-          .font(.caption)
-          .foregroundStyle(applicationFeedback.isSuccess ? WorkbenchTheme.success : WorkbenchTheme.risk)
+          .font(.workbenchMetadata)
+          .foregroundStyle(
+            applicationFeedback.isSuccess ? WorkbenchTheme.success : WorkbenchTheme.risk
+          )
           .padding(.horizontal, WorkbenchSpacing.content)
           .padding(.bottom, WorkbenchSpacing.control)
           .accessibilityLabel(applicationFeedback.message)
@@ -667,7 +615,7 @@ struct ContentHealthAIFixResultPreviewSheet: View {
   private var rawResponseContent: some View {
     ScrollView {
       Text(preview.result.content)
-        .font(.system(.body, design: .monospaced))
+        .font(.workbenchBody.monospaced())
         .textSelection(.enabled)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(WorkbenchSpacing.content)
@@ -691,7 +639,8 @@ struct ContentHealthAIFixResultPreviewSheet: View {
         let selectedFields = fields.filter { $0.isSelected && $0.isSupported }
         Button {
           if !selectedFields.isEmpty {
-            applicationFeedback = onApply?(selectedFields)
+            applicationFeedback =
+              onApply?(selectedFields)
               ?? .failed(String(localized: "当前修复结果没有可用的应用目标，未更改文章。"))
           } else {
             NSPasteboard.general.clearContents()
@@ -710,21 +659,33 @@ struct ContentHealthAIFixResultPreviewSheet: View {
     .padding(WorkbenchSpacing.content)
   }
 
-  private static func parseFields(from result: AIPublishingActionResult) -> [FrontMatterFixFieldItem] {
+  private static func parseFields(from result: AIPublishingActionResult)
+    -> [FrontMatterFixFieldItem]
+  {
     var items: [FrontMatterFixFieldItem] = []
 
     if let suggestion = AIPublishingMetadataActionSuggestionFactory.suggestion(from: result) {
       if let title = suggestion.titles.first, !title.isEmpty {
-        items.append(FrontMatterFixFieldItem(id: "title", fieldKey: "title", title: "标题", proposedValue: title, isSelected: true))
+        items.append(
+          FrontMatterFixFieldItem(
+            id: "title", fieldKey: "title", title: "标题", proposedValue: title, isSelected: true))
       }
       if let slug = suggestion.slugs.first, !slug.isEmpty {
-        items.append(FrontMatterFixFieldItem(id: "slug", fieldKey: "slug", title: "Slug", proposedValue: slug, isSelected: true))
+        items.append(
+          FrontMatterFixFieldItem(
+            id: "slug", fieldKey: "slug", title: "Slug", proposedValue: slug, isSelected: true))
       }
       if let summary = suggestion.summary, !summary.isEmpty {
-        items.append(FrontMatterFixFieldItem(id: "summary", fieldKey: "summary", title: "摘要", proposedValue: summary, isSelected: true))
+        items.append(
+          FrontMatterFixFieldItem(
+            id: "summary", fieldKey: "summary", title: "摘要", proposedValue: summary,
+            isSelected: true))
       }
       if !suggestion.tags.isEmpty {
-        items.append(FrontMatterFixFieldItem(id: "tags", fieldKey: "tags", title: "标签", proposedValue: suggestion.tags.joined(separator: ", "), isSelected: true))
+        items.append(
+          FrontMatterFixFieldItem(
+            id: "tags", fieldKey: "tags", title: "标签",
+            proposedValue: suggestion.tags.joined(separator: ", "), isSelected: true))
       }
     }
 
@@ -739,17 +700,20 @@ struct ContentHealthAIFixResultPreviewSheet: View {
 
         if let colonIndex = line.firstIndex(of: ":"), !line.hasPrefix("-") {
           if let key = currentKey {
-            items.append(FrontMatterFixFieldItem(
-              id: key,
-              fieldKey: key,
-              title: localizedKeyTitle(key),
-              proposedValue: currentValueLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines),
-              isSelected: ContentHealthAIFixFieldPolicy.supports(key)
-            ))
+            items.append(
+              FrontMatterFixFieldItem(
+                id: key,
+                fieldKey: key,
+                title: localizedKeyTitle(key),
+                proposedValue: currentValueLines.joined(separator: "\n").trimmingCharacters(
+                  in: .whitespacesAndNewlines),
+                isSelected: ContentHealthAIFixFieldPolicy.supports(key)
+              ))
             currentValueLines.removeAll()
           }
           let key = String(line[..<colonIndex]).trimmingCharacters(in: .whitespaces)
-          let val = String(line[line.index(after: colonIndex)...]).trimmingCharacters(in: .whitespaces)
+          let val = String(line[line.index(after: colonIndex)...]).trimmingCharacters(
+            in: .whitespaces)
           currentKey = key
           if !val.isEmpty {
             currentValueLines.append(val)
@@ -760,13 +724,15 @@ struct ContentHealthAIFixResultPreviewSheet: View {
       }
 
       if let key = currentKey, !currentValueLines.isEmpty {
-        items.append(FrontMatterFixFieldItem(
-          id: key,
-          fieldKey: key,
-          title: localizedKeyTitle(key),
-          proposedValue: currentValueLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines),
-          isSelected: ContentHealthAIFixFieldPolicy.supports(key)
-        ))
+        items.append(
+          FrontMatterFixFieldItem(
+            id: key,
+            fieldKey: key,
+            title: localizedKeyTitle(key),
+            proposedValue: currentValueLines.joined(separator: "\n").trimmingCharacters(
+              in: .whitespacesAndNewlines),
+            isSelected: ContentHealthAIFixFieldPolicy.supports(key)
+          ))
       }
     }
 

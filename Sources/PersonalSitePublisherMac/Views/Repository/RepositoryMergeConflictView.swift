@@ -65,7 +65,7 @@ private struct RepositoryMergeQuickChoiceBar: View {
       }
       if isDeletionSelected {
         Label("已选择删除作为最终结果；尚未删除或暂存。", systemImage: "trash.circle.fill")
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
           .foregroundStyle(.red)
       }
     }
@@ -197,13 +197,13 @@ struct RepositoryMergeConflictView: View {
       header
 
       Text("先比较本地、远程和最终结果；只有点击底部应用按钮后，才会写入工作区并执行 git add 或 git rm。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .font(.workbenchBody)
+        .foregroundStyle(.workbenchSecondary)
         .fixedSize(horizontal: false, vertical: true)
 
       if let diagnostic = session.diagnostic {
         Label(diagnostic, systemImage: "info.circle")
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(WorkbenchTheme.warning)
           .fixedSize(horizontal: false, vertical: true)
       }
@@ -222,7 +222,7 @@ struct RepositoryMergeConflictView: View {
           severity: feedbackSeverity,
           announcesNonUrgentStatus: true
         )
-        .font(.caption)
+        .font(.workbenchMetadata)
         .textSelection(.enabled)
       }
     }
@@ -274,8 +274,8 @@ struct RepositoryMergeConflictView: View {
         .accessibilityAddTraits(.isHeader)
       Spacer()
       Text("\(session.conflicts.count) 个未解决文件")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 
@@ -484,8 +484,8 @@ struct RepositoryMergeConflictView: View {
       }()
 
       Text(subtitle)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
 
       mergeReadOnlyText(
         content,
@@ -501,8 +501,8 @@ struct RepositoryMergeConflictView: View {
       VStack(alignment: .leading, spacing: 6) {
         HStack {
           Text("共同基线（stage 1）内容：")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
           Spacer()
           Button {
             isBaseSheetPresented = true
@@ -510,7 +510,7 @@ struct RepositoryMergeConflictView: View {
             Label("在独立窗口查看完整基线", systemImage: "arrow.up.forward.app")
           }
           .buttonStyle(.borderless)
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(WorkbenchTheme.documentForeground)
           .accessibilityIdentifier("repository-merge-conflict-open-base-sheet")
         }
@@ -524,7 +524,7 @@ struct RepositoryMergeConflictView: View {
     } label: {
       HStack {
         Label("查看共同基线（stage 1）", systemImage: "arrow.triangle.branch")
-          .font(.caption.weight(.medium))
+          .font(.workbenchMetadata.weight(.medium))
         Spacer()
       }
     }
@@ -540,14 +540,14 @@ struct RepositoryMergeConflictView: View {
   ) -> some View {
     VStack(alignment: .leading, spacing: 5) {
       Text(title)
-        .font(.callout.weight(.semibold))
+        .font(.workbenchBody.weight(.semibold))
       Text(subtitle)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
 
       if isEditable, let text {
         TextEditor(text: text)
-          .font(.system(.body, design: .monospaced))
+          .font(.workbenchBody.monospaced())
           .scrollContentBackground(.hidden)
           .padding(WorkbenchSpacing.icon)
           .background(
@@ -574,7 +574,7 @@ struct RepositoryMergeConflictView: View {
   ) -> some View {
     ScrollView {
       Text(verbatim: content.displayText)
-        .font(.system(.body, design: .monospaced))
+        .font(.workbenchBody.monospaced())
         .textSelection(.enabled)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(WorkbenchSpacing.control)
@@ -625,19 +625,19 @@ struct RepositoryMergeConflictView: View {
         .accessibilityIdentifier("repository-merge-semantic-mode-semantic")
 
         Label("完整源码", systemImage: "chevron.left.forwardslash.chevron.right")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata.weight(.semibold))
+          .foregroundStyle(.workbenchSecondary)
         Spacer()
       }
 
       if draft.sourceReviewed {
         Label("完整源码已确认", systemImage: "checkmark.circle.fill")
-          .font(.caption.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
           .foregroundStyle(.green)
       } else {
         HStack {
           Text("请检查并确认最终源码；确认前不会应用或暂存。")
-            .font(.caption)
+            .font(.workbenchMetadata)
             .foregroundStyle(.orange)
           Spacer()
           Button("确认源码已协调") { confirmSourceDraft(for: conflict) }
@@ -801,7 +801,7 @@ private struct RepositoryMergeBaseSheet: View {
     VStack(alignment: .leading, spacing: 0) {
       HStack {
         Label("共同基线（stage 1）- \(path)", systemImage: "arrow.triangle.branch")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
         Button {
           NSPasteboard.general.clearContents()
@@ -829,7 +829,7 @@ private struct RepositoryMergeBaseSheet: View {
 
       ScrollView {
         Text(verbatim: baseContent.displayText)
-          .font(.system(.body, design: .monospaced))
+          .font(.workbenchBody.monospaced())
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .topLeading)
           .padding(WorkbenchSpacing.content)
@@ -877,10 +877,10 @@ private struct RepositoryMergeMaximizedSheet: View {
     HStack {
       VStack(alignment: .leading, spacing: 3) {
         Label("冲突合并 - \(conflict.repositoryPath)", systemImage: "arrow.left.arrow.right.square")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Text("在此独立大窗口中比对并编辑最终合并内容。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
       Spacer()
       Picker("视图模式", selection: $layoutMode) {
@@ -1014,13 +1014,13 @@ private struct RepositoryMergeMaximizedSheet: View {
   private func columnBox(title: String, subtitle: String, content: String) -> some View {
     VStack(alignment: .leading, spacing: 4) {
       Text(title)
-        .font(.callout.weight(.semibold))
+        .font(.workbenchBody.weight(.semibold))
       Text(subtitle)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
       ScrollView {
         Text(verbatim: content)
-          .font(.system(.body, design: .monospaced))
+          .font(.workbenchBody.monospaced())
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .topLeading)
           .padding(WorkbenchSpacing.control)
@@ -1036,12 +1036,12 @@ private struct RepositoryMergeMaximizedSheet: View {
   private var editorBox: some View {
     VStack(alignment: .leading, spacing: 4) {
       Text("最终合并版")
-        .font(.callout.weight(.semibold))
+        .font(.workbenchBody.weight(.semibold))
       Text("仅此列可编辑")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
       TextEditor(text: sourceBinding)
-        .font(.system(.body, design: .monospaced))
+        .font(.workbenchBody.monospaced())
         .scrollContentBackground(.hidden)
         .padding(WorkbenchSpacing.icon)
         .background(
@@ -1068,7 +1068,7 @@ private struct RepositoryMergeMaximizedSheet: View {
         Spacer()
         if semanticDraft.sourceReviewed {
           Label("完整源码已确认", systemImage: "checkmark.circle.fill")
-            .font(.caption.weight(.semibold))
+            .font(.workbenchMetadata.weight(.semibold))
             .foregroundStyle(.green)
         } else {
           Button("确认源码已协调") { confirmSource() }

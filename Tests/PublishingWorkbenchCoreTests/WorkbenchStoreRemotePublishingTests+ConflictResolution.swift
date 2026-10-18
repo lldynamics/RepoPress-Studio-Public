@@ -382,20 +382,38 @@ final class WorkbenchStoreRemotePublishingConflictResolutionTests:
       to: rootURL.appendingPathComponent(firstPath), atomically: true, encoding: .utf8)
     try secondProjectDocument.write(
       to: rootURL.appendingPathComponent(secondPath), atomically: true, encoding: .utf8)
-    first.confirmRepositoryBinding(
-      profile: profile,
+    let importer = LocalContentImportService(isContentIndexEnabled: false)
+    let firstImport = importer.importDraft(
+      document: firstProjectDocument,
+      rootURL: rootURL,
       repositoryPath: firstPath,
-      remoteRevision: "old-first",
-      renderedContentDigest: first.renderedRepositoryContentDigest(profile: profile),
-      projectFileContentDigest: ArticleDraft.repositoryDocumentDigest(firstProjectDocument)
-    )
-    second.confirmRepositoryBinding(
       profile: profile,
-      repositoryPath: secondPath,
-      remoteRevision: "old-second",
-      renderedContentDigest: second.renderedRepositoryContentDigest(profile: profile),
-      projectFileContentDigest: ArticleDraft.repositoryDocumentDigest(secondProjectDocument)
+      repositorySHA: "old-first"
     )
+    let secondImport = importer.importDraft(
+      document: secondProjectDocument,
+      rootURL: rootURL,
+      repositoryPath: secondPath,
+      profile: profile,
+      repositorySHA: "old-second"
+    )
+    XCTAssertTrue(firstImport.issues.isEmpty)
+    XCTAssertTrue(firstImport.skippedPaths.isEmpty)
+    XCTAssertTrue(secondImport.issues.isEmpty)
+    XCTAssertTrue(secondImport.skippedPaths.isEmpty)
+    first = try XCTUnwrap(firstImport.importedDrafts.first)
+    second = try XCTUnwrap(secondImport.importedDrafts.first)
+    for (draft, document) in [(first, firstProjectDocument), (second, secondProjectDocument)] {
+      XCTAssertNotNil(draft.importedFrontMatter)
+      let binding = try XCTUnwrap(draft.repositoryBinding)
+      XCTAssertEqual(
+        binding.projectFileContentDigest, ArticleDraft.repositoryDocumentDigest(document))
+      XCTAssertEqual(
+        binding.projectFileRenderedContentDigest,
+        draft.renderedRepositoryContentDigest(profile: profile))
+      XCTAssertNotEqual(binding.projectFileContentDigest, binding.projectFileRenderedContentDigest)
+      XCTAssertNil(FrontMatterRenderer().preservationIssue(draft: draft, profile: profile))
+    }
     store.setDrafts([first, second])
     store.setSelectedDraftID(first.id)
     await store.waitForPendingSiteDraftFileWrites()
@@ -558,7 +576,8 @@ final class WorkbenchStoreRemotePublishingConflictResolutionTests:
     )
     XCTAssertEqual(requests.filter { $0.url?.path.hasSuffix("/pulls") == true }.count, 1)
     XCTAssertEqual(store.remoteRepositoryPublishResult?.mode, .reviewRequest)
-    XCTAssertEqual(store.remoteRepositoryPublishResult?.reviewURL, "https://github.com/owner/site/pull/42")
+    XCTAssertEqual(
+      store.remoteRepositoryPublishResult?.reviewURL, "https://github.com/owner/site/pull/42")
     let reviewedFirst = try XCTUnwrap(store.drafts.first(where: { $0.id == first.id }))
     let reviewedSecond = try XCTUnwrap(store.drafts.first(where: { $0.id == second.id }))
     XCTAssertEqual(reviewedSecond.bodyMarkdown, second.bodyMarkdown)
@@ -785,9 +804,11 @@ final class WorkbenchStoreRemotePublishingConflictResolutionTests:
     )
 
     XCTAssertEqual(resolved.files.map(\.repositoryPath), frozen.files.map(\.repositoryPath))
-    XCTAssertEqual(resolved.files.first(where: { $0.repositoryPath == markdownPath })?.content, remoteDocument)
+    XCTAssertEqual(
+      resolved.files.first(where: { $0.repositoryPath == markdownPath })?.content, remoteDocument)
     XCTAssertEqual(resolved.files.first(where: { $0.repositoryPath == imagePath }), originalImage)
-    XCTAssertEqual(resolved.files.first(where: { $0.repositoryPath == untouchedPath }), untouchedImage)
+    XCTAssertEqual(
+      resolved.files.first(where: { $0.repositoryPath == untouchedPath }), untouchedImage)
     XCTAssertFalse(resolved.files.contains { $0.repositoryPath.contains("new.png") })
   }
 
@@ -955,7 +976,8 @@ final class WorkbenchStoreRemotePublishingConflictResolutionTests:
       let outcome = await resolutionTask.value
 
       guard case .completed = outcome else {
-        return XCTFail("The transaction should continue after awaiting stale auto-sync: \(outcome.message)")
+        return XCTFail(
+          "The transaction should continue after awaiting stale auto-sync: \(outcome.message)")
       }
       XCTAssertEqual(store.drafts.first?.title, "Remote Auto Sync Race")
       let requestsAfterResolution = await transport.capturedRequests()
@@ -1109,7 +1131,9 @@ final class WorkbenchStoreRemotePublishingConflictResolutionTests:
     XCTAssertEqual(store.remoteRepositoryConflictSession, session)
     var requests = await transport.capturedRequests()
     XCTAssertEqual(requests.filter { $0.httpMethod == "PUT" }.count, 1)
-    XCTAssertEqual(requests.filter { $0.httpMethod == "POST" && $0.url?.path.hasSuffix("/pulls") == true }.count, 1)
+    XCTAssertEqual(
+      requests.filter { $0.httpMethod == "POST" && $0.url?.path.hasSuffix("/pulls") == true }.count,
+      1)
 
     let execution = try XCTUnwrap(store.publishExecutionRecords.first)
     XCTAssertTrue(execution.state.needsVerification)
@@ -1145,10 +1169,13 @@ final class WorkbenchStoreRemotePublishingConflictResolutionTests:
       ArticleDraft.repositoryDocumentDigest(mergedDocument)
     )
     XCTAssertNil(store.remoteRepositoryConflictSession)
-    XCTAssertEqual(store.remoteRepositoryPublishResult?.reviewURL, "https://github.com/owner/site/pull/44")
+    XCTAssertEqual(
+      store.remoteRepositoryPublishResult?.reviewURL, "https://github.com/owner/site/pull/44")
     requests = await transport.capturedRequests()
     XCTAssertEqual(requests.filter { $0.httpMethod == "PUT" }.count, 1)
-    XCTAssertEqual(requests.filter { $0.httpMethod == "POST" && $0.url?.path.hasSuffix("/pulls") == true }.count, 2)
+    XCTAssertEqual(
+      requests.filter { $0.httpMethod == "POST" && $0.url?.path.hasSuffix("/pulls") == true }.count,
+      2)
   }
 
   func testEditDuringRemoteRevalidationIsPreservedAndStopsBeforeRemoteWrite() async throws {

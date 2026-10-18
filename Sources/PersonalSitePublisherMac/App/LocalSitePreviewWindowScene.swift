@@ -19,6 +19,7 @@ struct LocalSitePreviewWindowScene: Scene {
           ProgressView()
         }
       }
+      .workbenchTypography()
       .frame(minWidth: 700, minHeight: 460)
       .tint(accentPalette.tint)
       .environment(\.workbenchAccentColor, accentPalette.color)

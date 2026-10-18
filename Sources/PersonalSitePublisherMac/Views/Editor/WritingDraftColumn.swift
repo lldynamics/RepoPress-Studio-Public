@@ -217,8 +217,8 @@ struct WritingDraftColumn: View {
     }
     .alert(
       generalFolderRenameSource == nil
-        ? String(localized: "新建通用草稿文件夹")
-        : String(localized: "重命名通用草稿文件夹"),
+        ? String(localized: "新建仅本地草稿文件夹")
+        : String(localized: "重命名仅本地草稿文件夹"),
       isPresented: $isGeneralFolderNamePresented
     ) {
       TextField("文件夹名称", text: $generalFolderNameInput)
@@ -231,7 +231,7 @@ struct WritingDraftColumn: View {
       }
       .disabled(ArticleDraft.validGeneralDraftFolderName(generalFolderNameInput) == nil)
     } message: {
-      Text("文件夹只整理通用草稿，不会更改站点仓库中的文章路径。")
+      Text("文件夹只整理仅本地草稿，不会更改站点仓库中的文章路径。")
     }
     .sheet(item: $draftOwnershipTransferPlan) { plan in
       DraftOwnershipTransferConfirmationView(plan: plan) { confirmedPlan in

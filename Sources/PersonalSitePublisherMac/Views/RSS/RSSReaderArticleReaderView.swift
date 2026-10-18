@@ -90,8 +90,8 @@ struct RSSArticleReader: View {
                 Label(date.formatted(date: .abbreviated, time: .shortened), systemImage: "calendar")
               }
             }
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody)
+            .foregroundStyle(.workbenchSecondary)
             readingProgressLabel
             Divider()
             if isLoading {
@@ -154,7 +154,7 @@ struct RSSArticleReader: View {
         VStack(alignment: .leading) {
           filteredResultExclusionBanner
           Text("这篇文章没有可显示的正文，建议打开原文阅读。")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("rss-reader-detail")
           Spacer(minLength: 0)
@@ -270,8 +270,8 @@ struct RSSArticleReader: View {
     if isOutsideFilteredResults {
       HStack(spacing: 8) {
         Label("当前文章不在筛选结果中", systemImage: "line.3.horizontal.decrease.circle")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         Spacer(minLength: 8)
         Button("返回结果", action: onReturnToResults)
           .buttonStyle(.bordered)
@@ -304,15 +304,15 @@ struct RSSArticleReader: View {
           ProgressView()
             .controlSize(.small)
           Text("正在读取本机正文…")
-            .font(.headline)
+            .font(.workbenchHeadline)
         } else {
           Label("无法读取这篇文章的本机正文。", systemImage: "exclamationmark.triangle")
-            .font(.headline)
+            .font(.workbenchHeadline)
             .foregroundStyle(WorkbenchTheme.risk)
           if let loadError, !loadError.isEmpty {
             Text(loadError)
-              .font(.callout)
-              .foregroundStyle(.secondary)
+              .font(.workbenchBody)
+              .foregroundStyle(.workbenchSecondary)
               .textSelection(.enabled)
           }
           HStack(spacing: 8) {
@@ -364,7 +364,7 @@ struct RSSArticleReader: View {
 
   private var readingProgressLabel: some View {
     Text("已读 \(readingProgressPercentage)%")
-      .font(.caption.weight(.medium))
+      .font(.workbenchMetadata.weight(.medium))
       .foregroundStyle(WorkbenchTheme.progress)
       .help("阅读进度：已读 \(readingProgressPercentage)%")
       .accessibilityElement(children: .ignore)
@@ -386,8 +386,8 @@ struct RSSArticleReader: View {
       HStack(spacing: 6) {
         ProgressView().controlSize(.small)
         Text(String(localized: "正在从原站提取全文…"))
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
       .padding(.horizontal, WorkbenchSpacing.control)
       .padding(.vertical, WorkbenchSpacing.tight)
@@ -403,7 +403,7 @@ struct RSSArticleReader: View {
               error
             )
           )
-          .font(.caption.weight(.medium))
+          .font(.workbenchMetadata.weight(.medium))
           .foregroundStyle(WorkbenchTheme.risk)
           .lineLimit(2)
           Spacer()
@@ -418,7 +418,7 @@ struct RSSArticleReader: View {
         }
         Text(String(localized: "部分网站可能启用了反爬虫拦截或动态渲染；若重试仍失败，建议直接在浏览器中打开。"))
           .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.workbenchSecondary)
       }
       .padding(.horizontal, WorkbenchSpacing.control)
       .padding(.vertical, WorkbenchSpacing.icon)
@@ -434,14 +434,14 @@ struct RSSArticleReader: View {
     } else if isTruncatedCandidate && !isShowingFullText {
       HStack(spacing: 8) {
         Label(String(localized: "当前为截断摘要，可提取原站全文阅读"), systemImage: "doc.text.magnifyingglass")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         Spacer()
         Button {
           onToggleFullText()
         } label: {
           Label(String(localized: "提取全文"), systemImage: "sparkles")
-            .font(.caption.weight(.medium))
+            .font(.workbenchMetadata.weight(.medium))
         }
         .workbenchProminentActionStyle()
         .controlSize(.small)
@@ -458,15 +458,15 @@ struct RSSArticleReader: View {
         Image(systemName: "checkmark.seal.fill")
           .foregroundStyle(WorkbenchTheme.progress)
         Text(String(localized: "已加载原站全文"))
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
         Spacer()
         Button(String(localized: "重新提取"), action: onRefreshFullText)
           .buttonStyle(.borderless)
-          .font(.caption)
+          .font(.workbenchMetadata)
         Button(String(localized: "恢复原始摘要"), action: onToggleFullText)
           .buttonStyle(.borderless)
-          .font(.caption)
+          .font(.workbenchMetadata)
       }
       .padding(.horizontal, WorkbenchSpacing.control)
       .padding(.vertical, WorkbenchSpacing.tight)
@@ -484,13 +484,13 @@ struct RSSArticleReader: View {
               .controlSize(.small)
             Text("正在翻译标题和正文…")
           }
-          .font(.caption)
+          .font(.workbenchMetadata)
           .accessibilityElement(children: .combine)
           .accessibilityLabel("正在翻译当前 RSS 文章的标题和正文")
         }
         if let translationError {
           Label(translationError, systemImage: "exclamationmark.triangle")
-            .font(.caption)
+            .font(.workbenchMetadata)
             .foregroundStyle(WorkbenchTheme.risk)
             .lineLimit(3)
             .help(translationError)
@@ -502,12 +502,12 @@ struct RSSArticleReader: View {
               "已生成 \(localizedTranslationTargetName(translation.target)) 译文 · \(translation.providerName)",
               systemImage: showsTranslatedArticle ? "character.book.closed" : "doc.plaintext"
             )
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
             if translation.wasInputTruncated {
               Text("（源文过长，已按安全上限截取）")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.workbenchMetadata)
+                .foregroundStyle(.workbenchSecondary)
             }
           }
           .lineLimit(2)
@@ -1063,7 +1063,7 @@ struct RSSArticleReader: View {
       VStack(alignment: .leading, spacing: 16) {
         HStack {
           Label("标签、高亮与批注", systemImage: "highlighter")
-            .font(.headline)
+            .font(.workbenchHeadline)
           Spacer()
           Button("关闭", systemImage: "xmark") {
             showsAnnotationSummary = false
@@ -1102,7 +1102,7 @@ struct RSSArticleReader: View {
     VStack(alignment: .leading, spacing: 8) {
       HStack {
         Label("文章标签", systemImage: "tag")
-          .font(.headline)
+          .font(.workbenchHeadline)
         Spacer()
         Button("编辑标签", action: onEditTags)
           .buttonStyle(.bordered)
@@ -1110,12 +1110,12 @@ struct RSSArticleReader: View {
       }
       if article.tags.isEmpty {
         Text("还没有标签")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       } else {
         Text(article.tags.map { "#\($0)" }.joined(separator: "  "))
-          .font(.callout)
-          .foregroundStyle(.secondary)
+          .font(.workbenchBody)
+          .foregroundStyle(.workbenchSecondary)
           .textSelection(.enabled)
       }
     }
@@ -1124,22 +1124,22 @@ struct RSSArticleReader: View {
   private var highlightList: some View {
     VStack(alignment: .leading, spacing: 8) {
       Label("本篇高亮与批注", systemImage: "highlighter")
-        .font(.headline)
+        .font(.workbenchHeadline)
       ForEach(highlights) { highlight in
         VStack(alignment: .leading, spacing: 5) {
           Text(highlight.text)
-            .font(.callout.weight(.medium))
+            .font(.workbenchBody.weight(.medium))
             .lineLimit(4)
           if !highlight.note.isEmpty {
             Text(highlight.note)
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
               .lineLimit(3)
           }
           if !highlight.tags.isEmpty {
             Text(highlight.tags.map { "#\($0)" }.joined(separator: "  "))
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
           HStack {
             Spacer()

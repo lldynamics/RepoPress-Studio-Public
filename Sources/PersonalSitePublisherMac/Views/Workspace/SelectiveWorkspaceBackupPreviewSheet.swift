@@ -35,7 +35,7 @@ struct SelectiveWorkspaceBackupPreviewSheet: View {
             .font(.workbenchPageTitle)
           Text(preview.backupPreview.backupURL.lastPathComponent)
             .font(.workbenchMetadata)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
             .textSelection(.enabled)
         }
         Spacer()
@@ -59,7 +59,7 @@ struct SelectiveWorkspaceBackupPreviewSheet: View {
 
       Divider()
       Text("包含的数据")
-        .font(.headline)
+        .font(.workbenchHeadline)
       ForEach(preview.availableCategories, id: \.self) { category in
         let summary = preview.categorySummaries.first { $0.category == category }
         VStack(alignment: .leading, spacing: 5) {
@@ -67,21 +67,23 @@ struct SelectiveWorkspaceBackupPreviewSheet: View {
             HStack {
               Label(categoryTitle(category), systemImage: categoryIcon(category))
               Spacer()
-              Text("\(summary?.fileCount ?? 0) 个文件 · \(ByteCountFormatter.string(fromByteCount: summary?.byteCount ?? 0, countStyle: .file))")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+              Text(
+                "\(summary?.fileCount ?? 0) 个文件 · \(ByteCountFormatter.string(fromByteCount: summary?.byteCount ?? 0, countStyle: .file))"
+              )
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
             }
           }
           .toggleStyle(.checkbox)
           .disabled(isPreparingRestore)
           if category == .workbench {
             Text("草稿、历史版本、站点和工作台配置、发布历史、AI 对话及引用附件")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
           if preview.replacementCategories.contains(category), selectedCategories.contains(category) {
             Text("将替换本机该类别")
-              .font(.caption)
+              .font(.workbenchMetadata)
               .foregroundStyle(.orange)
               .padding(.leading, WorkbenchSpacing.spacious)
           }

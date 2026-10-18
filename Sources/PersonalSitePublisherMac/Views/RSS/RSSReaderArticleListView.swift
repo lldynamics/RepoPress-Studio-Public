@@ -85,7 +85,7 @@ struct RSSArticleList: View {
               )
             )
             .font(.workbenchMetadata)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.workbenchSecondary)
           }
           Spacer(minLength: 8)
           listTitleTranslationMenu

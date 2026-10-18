@@ -59,8 +59,8 @@ struct DefaultRuleSettingsView: View {
         )
 
         Text("仅在站点目录结构不同时调整；默认值适用于当前站点类型。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       } header: {
         Text("文件路径与模板")
           .settingsSubsectionAnchor(.rulesPaths)
@@ -103,8 +103,8 @@ private struct DefaultRuleBasicsFocusedSection: View {
 
       HStack(spacing: 8) {
         Text("快捷套用框架规范：")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
 
         Button("Hexo 规范") {
           activeProfileBinding.frontMatterStyle.wrappedValue = .yaml
@@ -216,7 +216,7 @@ private struct DefaultRuleFrontMatterFocusedSection: View {
     Section("Front Matter 预览") {
       VStack(alignment: .leading, spacing: 10) {
         Text(generatedFrontMatterPreview)
-          .font(.caption.monospaced())
+          .font(.workbenchMetadata.monospaced())
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(WorkbenchSpacing.card)
@@ -226,13 +226,13 @@ private struct DefaultRuleFrontMatterFocusedSection: View {
 
         VStack(alignment: .leading, spacing: 4) {
           Text("模拟发布路径与 URL")
-            .font(.caption.weight(.medium))
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata.weight(.medium))
+            .foregroundStyle(.workbenchSecondary)
 
           Text("文件: \(simulatedFilePath)")
-            .font(.caption.monospaced())
+            .font(.workbenchMetadata.monospaced())
           Text("URL: \(simulatedURLPath)")
-            .font(.caption.monospaced())
+            .font(.workbenchMetadata.monospaced())
             .foregroundStyle(.primary)
         }
       }

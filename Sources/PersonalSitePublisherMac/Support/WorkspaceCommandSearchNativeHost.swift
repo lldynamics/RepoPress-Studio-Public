@@ -46,6 +46,7 @@ struct WorkspaceCommandSearchHostedContent: View {
 
   var body: some View {
     OmniCommandSearchBar(density: density, action: action)
+      .workbenchTypography()
       .frame(width: WorkspaceTopBarPresentation.searchWidth(for: density), height: 28)
   }
 }

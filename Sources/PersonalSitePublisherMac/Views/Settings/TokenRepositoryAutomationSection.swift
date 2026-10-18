@@ -46,8 +46,8 @@ struct TokenRepositoryAutomationSection: View {
         .accessibilityIdentifier("token-repository-auto-sync-auto-import")
 
       Text("这些选项只作用于当前工作区；保存、发布、切换分支或回到前台时会按需检查，所选分钟数用于限制最短重检间隔。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("token-repository-automation")

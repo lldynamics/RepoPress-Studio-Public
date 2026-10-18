@@ -28,7 +28,7 @@ public final class WorkbenchPublishStatusFeatureFacade: ObservableObject {
     // the same inputs the publish panel lists under 需要处理.
     observe(store.imageStore.$backgroundImageReport)
     observe(store.imageStore.$imageReportLoadingDraftID)
-    observe(store.aiWorkspaceStore.$seoSocialPreviewSnapshots)
+    observe(store.aiWorkspaceStore.publisher(for: \.seoSocialPreviewSnapshots))
     observe(store.repositoryStore.$repositoryTokenAvailability)
     observe(store.publishingStore.publishSession.$remotePublishPreviewSnapshot)
     store.publishingStore.publishSession.draftPublishStatusDidChange

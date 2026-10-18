@@ -55,8 +55,8 @@ struct LocalAIEngineDiscoverySection: View {
           statusMessage
             ?? String(localized: "检测后可选择本机已有模型，并应用到当前 AI 连接档案。")
         )
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
       } else {
         ForEach(results, id: \.kind) { result in
           engineRow(result)
@@ -64,8 +64,8 @@ struct LocalAIEngineDiscoverySection: View {
 
         if let statusMessage {
           Text(statusMessage)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
       }
     } header: {
@@ -89,7 +89,7 @@ struct LocalAIEngineDiscoverySection: View {
         } icon: {
           Image(systemName: engineSystemImage(result.kind))
         }
-        .font(.subheadline.weight(.medium))
+        .font(.workbenchMetadata.weight(.medium))
 
         Spacer(minLength: 8)
 
@@ -97,7 +97,7 @@ struct LocalAIEngineDiscoverySection: View {
           availabilityTitle(for: result),
           systemImage: result.isAvailable ? "checkmark.circle.fill" : "minus.circle"
         )
-        .font(.caption)
+        .font(.workbenchMetadata)
         .foregroundStyle(
           result.isAvailable && !result.models.isEmpty
             ? WorkbenchTheme.success
@@ -106,8 +106,8 @@ struct LocalAIEngineDiscoverySection: View {
       }
 
       Text(verbatim: result.baseURL)
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata.monospaced())
+        .foregroundStyle(.workbenchSecondary)
         .textSelection(.enabled)
 
       if result.isAvailable, !result.models.isEmpty {
@@ -121,8 +121,8 @@ struct LocalAIEngineDiscoverySection: View {
         HStack {
           if !result.message.isEmpty {
             Text(verbatim: result.message)
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              .font(.workbenchMetadata)
+              .foregroundStyle(.workbenchSecondary)
           }
 
           Spacer(minLength: 8)
@@ -148,8 +148,8 @@ struct LocalAIEngineDiscoverySection: View {
       } else {
         if !result.message.isEmpty {
           Text(verbatim: result.message)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
         }
         engineSetupControls(for: result)
       }
@@ -162,12 +162,12 @@ struct LocalAIEngineDiscoverySection: View {
   private func engineSetupControls(for result: LocalAIEngineDiscoveryResult) -> some View {
     if result.kind == .ollama, result.isAvailable {
       Text("Ollama 已响应，但尚未返回模型。请在 Ollama 中准备模型后重新检测。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     } else if result.kind == .lmStudio, result.isAvailable {
       Text("LM Studio 已响应，但尚未返回模型。请在 LM Studio 中下载或加载模型后重新检测。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
       Button(
         LocalAIEngineSetupCoordinator.applicationIsInstalled(kind: .lmStudio)
           ? "打开 LM Studio 管理模型"
@@ -195,15 +195,15 @@ struct LocalAIEngineDiscoverySection: View {
         .controlSize(.small)
       case .unavailable:
         Text("请启动对应本地服务后重新检测。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
       }
     }
 
     if let setupMessage = setupCoordinator.message {
       Text(setupMessage)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
     }
   }
 

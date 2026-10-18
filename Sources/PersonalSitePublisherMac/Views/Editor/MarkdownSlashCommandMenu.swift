@@ -40,14 +40,14 @@ struct MarkdownSlashCommandMenu: View {
       if filteredItems.isEmpty {
         VStack(spacing: 6) {
           Image(systemName: "magnifyingglass")
-            .font(.title3)
+            .font(.workbenchTitle3)
             .foregroundStyle(.tertiary)
           Text(String(localized: "未找到匹配命令"))
-            .font(.callout.weight(.medium))
-            .foregroundStyle(.secondary)
+            .font(.workbenchBody.weight(.medium))
+            .foregroundStyle(.workbenchSecondary)
           Text(String(localized: "按 Esc 退出或继续输入正文"))
             .font(.workbenchMetadata)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.workbenchSecondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, WorkbenchSpacing.content)
@@ -69,12 +69,12 @@ struct MarkdownSlashCommandMenu: View {
 
                     VStack(alignment: .leading, spacing: 1) {
                       Text(item.title)
-                        .font(.callout.weight(isSelected ? .semibold : .regular))
+                        .font(.workbenchBody.weight(isSelected ? .semibold : .regular))
                         .foregroundStyle(isSelected ? .primary : .secondary)
 
                       Text(item.subtitle)
                         .font(.workbenchMetadata)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.workbenchSecondary)
                     }
 
                     Spacer()

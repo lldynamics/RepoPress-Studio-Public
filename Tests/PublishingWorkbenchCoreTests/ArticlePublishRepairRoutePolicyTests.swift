@@ -140,6 +140,85 @@ final class DraftPublishStatusTests: XCTestCase {
     XCTAssertEqual(status.reason, "Keychain failure")
   }
 
+  func testOneBlockerAndEightOptimizationsExposeOnlyOneBlockingCount() {
+    let blocker = DraftPublishStatus.Issue(severity: .error, title: "标题为空")
+    let optimizations = (0..<8).map {
+      DraftPublishStatus.Issue(
+        severity: .warning, title: "优化 \($0)", isOptionalOptimization: true)
+    }
+    let status = make(issues: [blocker] + optimizations, pendingCount: 1, readiness: readiness())
+    XCTAssertEqual(status.state, .contentBlocked)
+    XCTAssertEqual(status.severityCount, 1)
+  }
+
+  func testOptionalOnlyIssuesAreReadyWhenFreshRequirementsAreSatisfied() {
+    let status = make(
+      issues: [
+        .init(severity: .warning, title: "正文偏短", isOptionalOptimization: true),
+        .init(severity: .warning, title: "标题重复", isOptionalOptimization: true),
+      ], readiness: readiness())
+    XCTAssertEqual(status.state, .ready)
+    XCTAssertEqual(status.severityCount, 0)
+  }
+
+  func testUnknownSecurityAndDuplicatePathFindingsFailClosed() {
+    let unknown = PreflightIssue(
+      severity: .warning, title: "未知规则", message: "需要人工确认", ruleID: "future.rule")
+    let security = PreflightIssue(
+      severity: .warning, title: "公开风险", message: "本机路径", category: .publicRisk,
+      ruleID: ContentHealthRuleID.shortBody.rawValue)
+    let duplicatePath = PreflightIssue(
+      severity: .error, title: "发布路径重复", message: "会覆盖文件", field: "slug")
+    XCTAssertFalse(unknown.isOptionalOptimization)
+    XCTAssertFalse(security.isOptionalOptimization)
+    XCTAssertFalse(duplicatePath.isOptionalOptimization)
+  }
+
+  func testMeaningfulWarningRemainsSeparateFromOptimization() {
+    let status = make(
+      issues: [.init(severity: .warning, title: "远端状态未确认")],
+      pendingCount: 1, readiness: readiness())
+    XCTAssertEqual(status.state, .warning)
+    XCTAssertEqual(status.severityCount, 1)
+  }
+
+  func testDuplicateTitleWarningDoesNotBlockDifferentPathsButDuplicatePathStillErrors() {
+    let profile = SiteProfile.defaultProfile
+    let body = String(repeating: "Long enough body. ", count: 8)
+    let first = ArticleDraft(
+      siteProfileID: profile.id, title: "Same title", slug: "first", draft: false,
+      bodyMarkdown: body)
+    let titleCollision = ArticleDraft(
+      siteProfileID: profile.id, title: "Same title", slug: "second", draft: false,
+      bodyMarkdown: body)
+    let titleIssues = PreflightCheckService().run(
+      draft: first, allDrafts: [first, titleCollision], profile: profile,
+      includeRepositoryReadiness: false)
+    let titleIssue = titleIssues.first { $0.ruleID == "content.title.duplicate" }
+    XCTAssertEqual(titleIssue?.severity, .warning)
+    XCTAssertTrue(titleIssue?.isOptionalOptimization == true)
+    XCTAssertFalse(titleIssues.contains { $0.title == "发布路径重复" })
+
+    let pathCollision = ArticleDraft(
+      siteProfileID: profile.id, title: "Different title", slug: "first", draft: false,
+      bodyMarkdown: body)
+    let pathIssues = PreflightCheckService().run(
+      draft: first, allDrafts: [first, pathCollision], profile: profile,
+      includeRepositoryReadiness: false)
+    XCTAssertTrue(pathIssues.contains { $0.title == "发布路径重复" && $0.severity == .error })
+  }
+
+  func testImageDuplicatePublishPathIsNotAnOptionalOptimization() {
+    let issue = ImageWorkbenchIssue(
+      severity: .warning, kind: .duplicatePublishPath,
+      title: "图片发布路径重复", message: "两个附件共用同一路径")
+    let duplicateSource = ImageWorkbenchIssue(
+      severity: .warning, kind: .duplicateSource,
+      title: "源图重复使用", message: "同一源图被多次使用")
+    XCTAssertFalse(issue.isOptionalOptimization)
+    XCTAssertTrue(duplicateSource.isOptionalOptimization)
+  }
+
   private func make(
     issues: [DraftPublishStatus.Issue] = [],
     pendingCount: Int = 0,

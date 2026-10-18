@@ -4,37 +4,13 @@ import XCTest
 
 @MainActor
 final class WorkbenchAutomationExecutionConfirmationTests: XCTestCase {
-  func testAgentConfirmationPolicyIsStricterWhileLegacyReversibleSemanticsRemainCompatible() {
-    XCTAssertFalse(WorkbenchAutomationRisk.readOnly.requiresAgentConfirmation)
-    XCTAssertTrue(WorkbenchAutomationRisk.reversible.requiresAgentConfirmation)
-    XCTAssertTrue(WorkbenchAutomationRisk.contentChange.requiresAgentConfirmation)
-    XCTAssertTrue(WorkbenchAutomationRisk.externalEffect.requiresAgentConfirmation)
-
+  func testPlanConfirmationFollowsCommandRisk() {
     let reversibleStep = WorkbenchAutomationStep(command: .saveWorkbench)
-    let legacyPlan = WorkbenchAutomationPlan(goal: "legacy", steps: [reversibleStep])
-    let agentPlan = WorkbenchAutomationPlan(
-      goal: "agent",
-      steps: [reversibleStep],
-      source: .agentLoop
-    )
+    let contentStep = WorkbenchAutomationStep(command: .replaceBody)
+    let plan = WorkbenchAutomationPlan(goal: "plan", steps: [reversibleStep, contentStep])
 
-    XCTAssertFalse(legacyPlan.requiresConfirmation(for: reversibleStep))
-    XCTAssertTrue(agentPlan.requiresConfirmation(for: reversibleStep))
-
-    let createDraftStep = WorkbenchAutomationStep(command: .createDraft)
-    let createDraftAgentPlan = WorkbenchAutomationPlan(
-      goal: "agent create",
-      steps: [createDraftStep],
-      source: .agentLoop
-    )
-    XCTAssertFalse(createDraftAgentPlan.requiresConfirmation(for: createDraftStep))
-    XCTAssertFalse(
-      WorkbenchAutomationPlan(
-        goal: "agent read",
-        steps: [WorkbenchAutomationStep(command: .showInspector)],
-        source: .agentLoop
-      ).requiresConfirmation(for: WorkbenchAutomationStep(command: .showInspector))
-    )
+    XCTAssertFalse(plan.requiresConfirmation(for: reversibleStep))
+    XCTAssertTrue(plan.requiresConfirmation(for: contentStep))
   }
 
   func testRetiredAgentMixedPlanStaysReadOnlyEvenWhenConfirmed() async throws {
