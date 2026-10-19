@@ -61,7 +61,7 @@ Quartz 4 静态预览的固定 Python 运行器保存在 `Sources/PublishingWork
 | `run_swift_tests.sh` | 固定调用 Swift 测试进程执行器，提供完整测试清单入口；进程诊断容忍系统命令行中的非 UTF-8 字节，同时保留进程身份以完成清理。 | release gate/CI；`test_run_swift_tests.py`。 |
 | `sign_sparkle_framework.sh` | 对 Sparkle framework 执行签名、验证和开发者 ID 约束。 | 直接分发打包；检查 `codesign`/`plutil` 输出和退出码。 |
 | `stamp_article_version.py` | 将构建 HTML 绑定到精确 UTF-8 Markdown 源的摘要和版本。 | 站点/文章构建；`test_stamp_article_version.py`。 |
-| `sync_ui_localizations.py` | 编译应用 target 导出 `stringsdata`，补充源码提取并同步应用 UI catalog、快捷指令扩展的 `Localizable` / `AppShortcuts` catalog，校验 Core 展示资源；清理主表时保留三者仍引用的译文。 | 本地化专题；`test_sync_ui_localizations.py`。默认直接维护主表；临时协作片段须在同次变更用 `--merge-reviewed-translations` 合并归档。 |
+| `sync_ui_localizations.py` | 编译应用 target 导出 `stringsdata`，补充源码提取并同步应用 UI catalog、快捷指令扩展的 `Localizable` / `AppShortcuts` catalog，校验 Core 展示资源；清理主表时保留三者仍引用的译文。编译提取失败时保留 `.build/tmp/ui-localization-compiler-cache/last-build-failure.log` 完整输出，并在诊断中优先显示编译错误。 | 本地化专题；`test_sync_ui_localizations.py`。默认直接维护主表；临时协作片段须在同次变更用 `--merge-reviewed-translations` 合并归档。 |
 
 本地化检查会用 SwiftPM 的 `native` 构建驱动编译 `PersonalSitePublisherMac`，确保编译器遵循本次独立的 `stringsdata` 导出目录；Swift Build 驱动会将这些记录重定向到其共享中间目录，不能把该目录中的历史文件当作本次证据。检查按源码逐一读取编译器导出的 `Localizable` 键，缺少任何应用源码的导出即失败。旧的 `genstrings` 和显式源码提取仅补充编译器未推断的键。编译器键保留 `%@`、`%lld` 等实际类型，再与主词典生成的中英文 catalog 比对。导出文件仅放在忽略的临时构建目录中，检查结束后移除。
 

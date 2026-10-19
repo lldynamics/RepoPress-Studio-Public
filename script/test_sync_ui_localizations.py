@@ -212,6 +212,19 @@ public enum WorkspaceCenterSurface {
             self.assertIn("-emit-localized-strings-path", commands[0])
             self.assertTrue(Path(commands[0][-1]).is_relative_to(root / ".build" / "tmp"))
 
+    def test_compiler_failure_keeps_early_errors_and_complete_log(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            stdout = "View.swift:12: error: missing member\n" + "compiled file\n" * 80
+            stderr = "fetching dependency\n" * 80
+            result = SimpleNamespace(returncode=1, stdout=stdout, stderr=stderr)
+            with patch.object(SYNC, "ROOT", root), \
+                    patch.object(SYNC.subprocess, "run", return_value=result):
+                with self.assertRaisesRegex(RuntimeError, "error: missing member"):
+                    SYNC.extract_compiler_localizations()
+            log = root / ".build/tmp/ui-localization-compiler-cache/last-build-failure.log"
+            self.assertEqual(log.read_text(encoding="utf-8"), stdout + "\n" + stderr)
+
     def test_compiler_export_preserves_integer_placeholder_type(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

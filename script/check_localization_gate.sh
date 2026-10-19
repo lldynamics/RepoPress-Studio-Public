@@ -88,7 +88,7 @@ python3 "$ROOT_DIR/script/test_sync_ui_localizations.py" \
   || fail "localization extraction regression tests failed"
 
 python3 "$ROOT_DIR/script/sync_ui_localizations.py" --check \
-  || fail "declared UI-scope keys are missing complete zh-Hans/en catalog coverage"
+  || fail "UI-scope extraction or zh-Hans/en catalog verification failed; see diagnostics above"
 
 echo "localization gate: UI scope has $catalog_key_count translated catalog keys and compiles for zh-Hans/en; InfoPlist metadata is valid"
 echo "localization gate: publishing core presentation keys compile and have matching zh-Hans/en placeholders"

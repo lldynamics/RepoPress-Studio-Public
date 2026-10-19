@@ -310,8 +310,15 @@ def extract_compiler_localizations() -> dict[str, str]:
             command, cwd=ROOT, env=environment, capture_output=True, text=True, check=False
         )
         if result.returncode != 0:
-            details = "\n".join((result.stdout + result.stderr).splitlines()[-40:])
-            raise RuntimeError(f"Swift compiler localization export failed:\n{details}")
+            output = result.stdout + "\n" + result.stderr
+            log_path = cache_root / "last-build-failure.log"
+            log_path.write_text(output, encoding="utf-8")
+            lines = output.splitlines()
+            diagnostics = [line for line in lines if "error:" in line.lower()]
+            details = "\n".join(diagnostics[:40] + lines[-40:])
+            raise RuntimeError(
+                f"Swift compiler localization export failed; full log: {log_path}\n{details}"
+            )
         return parse_compiler_localizations(export_directory, SOURCE_ROOT)
 
 
