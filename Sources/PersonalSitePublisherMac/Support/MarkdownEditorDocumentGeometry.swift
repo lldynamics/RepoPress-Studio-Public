@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 
 @MainActor
 enum MarkdownEditorDocumentGeometry {
@@ -52,6 +53,7 @@ enum MarkdownEditorDocumentGeometry {
   final class Observer {
     private weak var manager: NSTextLayoutManager?
     private var observation: NSKeyValueObservation?
+    private var storageObservation: AnyCancellable?
     private var generation = 0
     private var lastHeight: CGFloat = 0
     private var invalidationScheduled = false
@@ -60,6 +62,7 @@ enum MarkdownEditorDocumentGeometry {
     func observe(_ manager: NSTextLayoutManager?, onChange: @escaping @MainActor () -> Void) {
       guard self.manager !== manager else { return }
       observation = nil
+      storageObservation = nil
       self.manager = manager
       self.onChange = onChange
       generation += 1
@@ -67,6 +70,18 @@ enum MarkdownEditorDocumentGeometry {
       guard let manager else { return }
       lastHeight = manager.usageBoundsForTextContainer.maxY
       let generation = generation
+      // Older TextKit versions can omit the usage-bounds notification when
+      // attribute edits shrink the layout. Storage edits are an independent
+      // invalidation source; coalesce them without reentering text processing.
+      if let storage = (manager.textContentManager as? NSTextContentStorage)?.textStorage {
+        storageObservation = NotificationCenter.default.publisher(
+          for: NSTextStorage.didProcessEditingNotification, object: storage
+        ).sink { [weak self] _ in
+          Task { @MainActor [weak self] in
+            self?.scheduleInvalidation(generation: generation)
+          }
+        }
+      }
       observation = manager.observe(\.usageBoundsForTextContainer, options: [.new]) {
         [weak self] _, change in
         guard let height = change.newValue?.maxY else { return }
@@ -81,7 +96,11 @@ enum MarkdownEditorDocumentGeometry {
         abs(height - lastHeight) > 0.5
       else { return }
       lastHeight = height
-      guard !invalidationScheduled else { return }
+      scheduleInvalidation(generation: generation)
+    }
+
+    private func scheduleInvalidation(generation: Int) {
+      guard generation == self.generation, !invalidationScheduled else { return }
       invalidationScheduled = true
       DispatchQueue.main.async { [weak self] in
         guard let self, generation == self.generation else { return }

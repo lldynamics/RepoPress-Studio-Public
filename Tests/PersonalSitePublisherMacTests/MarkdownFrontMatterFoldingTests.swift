@@ -6,6 +6,31 @@ import XCTest
 
 @MainActor
 final class MarkdownFrontMatterFoldingTests: MarkdownEditorAppKitInteractionTestCase {
+  func testStorageEditsInvalidateGeometryWithoutLayoutNotification() async throws {
+    let view = DroppableMarkdownTextView.makeTextKit2(
+      containerSize: NSSize(width: 428, height: CGFloat.greatestFiniteMagnitude))
+    view.string = "TextKit storage edit"
+    let manager = try XCTUnwrap(view.textLayoutManager)
+    manager.ensureLayout(for: manager.documentRange)
+    let observer = MarkdownEditorDocumentGeometry.Observer()
+    var invalidations = 0
+    observer.observe(manager) { invalidations += 1 }
+    let storage = try XCTUnwrap(view.textStorage)
+    storage.addAttribute(
+      .foregroundColor, value: NSColor.red,
+      range: NSRange(location: 0, length: storage.length))
+    for _ in 0..<20 {
+      try await Task.sleep(for: .milliseconds(10))
+      if invalidations > 0 { break }
+    }
+    XCTAssertGreaterThan(invalidations, 0)
+    observer.observe(nil) { XCTFail("Detached observer must not invalidate") }
+    storage.addAttribute(
+      .foregroundColor, value: NSColor.blue,
+      range: NSRange(location: 0, length: storage.length))
+    try await Task.sleep(for: .milliseconds(30))
+  }
+
   func testLateTextLayoutGrowthAndShrinkUpdateTheScrollExtent() async throws {
     let scroll = MarkdownEditorScrollView(frame: NSRect(x: 0, y: 0, width: 460, height: 400))
     scroll.contentView = MarkdownFrontMatterClipView()
@@ -62,7 +87,11 @@ final class MarkdownFrontMatterFoldingTests: MarkdownEditorAppKitInteractionTest
       scroll.layoutSubtreeIfNeeded()
       if abs(view.frame.height - scroll.contentView.bounds.height) < 1 { break }
     }
-    XCTAssertEqual(view.frame.height, scroll.contentView.bounds.height, accuracy: 1)
+    XCTAssertEqual(
+      view.frame.height, scroll.contentView.bounds.height, accuracy: 1,
+      "usage=\(manager.usageBoundsForTextContainer), "
+        + "measured=\(String(describing: MarkdownEditorDocumentGeometry.height(in: view)))"
+    )
     XCTAssertTrue(try XCTUnwrap(scroll.verticalScroller).isHidden)
     XCTAssertEqual(scroll.contentView.bounds.minY, 0, accuracy: 1)
     XCTAssertEqual(view.string, source)
