@@ -170,3 +170,437 @@ final class PublishDrawerConnectionPresentationTests: XCTestCase {
     XCTAssertEqual(snapshot.optimizationCount, 1)
   }
 }
+
+final class ArticlePublicationStatusPresentationTests: XCTestCase {
+  private let publishedDigest =
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  private let editedDigest =
+    "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+
+  func testDraftAndReadyHaveNoRemoteEvidence() {
+    let fixture = makeFixture()
+    var draft = fixture.draft
+    draft.draft = true
+
+    XCTAssertEqual(
+      presentation(draft: draft, profile: fixture.profile, digest: nil).stage,
+      .draft
+    )
+    draft.draft = false
+    draft.status = .ready
+    let ready = presentation(draft: draft, profile: fixture.profile, digest: nil)
+    XCTAssertEqual(ready.stage, .ready)
+    XCTAssertNil(ready.verifiedAt)
+    XCTAssertNil(ready.onlineURL)
+  }
+
+  func testEditingAfterPublishShowsPendingChangesWithoutOnlineEvidence() {
+    let fixture = makeFixture()
+    let result = presentation(
+      draft: fixture.draft,
+      profile: fixture.profile,
+      digest: editedDigest,
+      records: [fixture.record],
+      snapshots: [fixture.record.id: fixture.successSnapshot]
+    )
+
+    XCTAssertEqual(result.stage, .pendingChanges)
+    XCTAssertNil(result.verifiedAt)
+    XCTAssertNil(result.onlineURL)
+  }
+
+  func testReturningToAnOldEditionCannotReuseItsSupersededOnlineProof() {
+    let fixture = makeFixture()
+    var latest = fixture.record
+    latest.id = UUID()
+    latest.createdAt = fixture.now.addingTimeInterval(2)
+    latest.commitSHA = "newer-release"
+    latest.batchItems[0].sourceDocumentDigest = editedDigest
+    let result = presentation(
+      draft: fixture.draft, profile: fixture.profile, digest: publishedDigest,
+      records: [latest, fixture.record],
+      snapshots: [fixture.record.id: fixture.successSnapshot])
+    XCTAssertEqual(result.stage, .pendingChanges)
+    XCTAssertNil(result.onlineURL)
+  }
+
+  func testNewerUntrackedPushDoesNotReuseOlderVerifiedProof() {
+    let fixture = makeFixture()
+    var latest = fixture.record
+    latest.id = UUID()
+    latest.createdAt = fixture.now.addingTimeInterval(2)
+    latest.articlePublishTrackingRequest = nil
+    latest.commitSHA = "newer-release"
+    let result = presentation(
+      draft: fixture.draft, profile: fixture.profile, digest: publishedDigest,
+      records: [fixture.record, latest],
+      snapshots: [fixture.record.id: fixture.successSnapshot])
+    XCTAssertEqual(result.stage, .needsAttention)
+    XCTAssertNil(result.onlineURL)
+    XCTAssertNil(result.verifiedAt)
+  }
+
+  func testNewerPartialPushAndMergedReviewPreventOlderOnlineProof() {
+    let fixture = makeFixture()
+    var latest = fixture.record
+    latest.id = UUID()
+    latest.createdAt = fixture.now.addingTimeInterval(2)
+    latest.articlePublishTrackingRequest = nil
+    latest.kind = .remotePublishFailure
+    latest.commitSHA = "newer-release"
+    func result(_ record: ReleaseRecord) -> ArticlePublicationStatusPresentation {
+      presentation(
+        draft: fixture.draft, profile: fixture.profile, digest: publishedDigest,
+        records: [fixture.record, record], snapshots: [fixture.record.id: fixture.successSnapshot])
+    }
+    XCTAssertEqual(result(latest).stage, .needsAttention)
+    latest.commitSHA = nil
+    XCTAssertEqual(result(latest).stage, .verifiedOnline, "No remote commit cannot supersede proof")
+    latest.commitSHA = "newer-release"
+    latest.branchName = "preview"
+    XCTAssertEqual(result(latest).stage, .verifiedOnline, "Preview writes do not change production")
+    latest.kind = .remoteReviewRequest
+    latest.reviewStatus = .init(
+      provider: fixture.profile.repositoryProvider, reviewNumber: 1,
+      reviewURL: "https://example.com/reviews/1", state: .merged, sourceBranch: "preview",
+      targetBranch: fixture.profile.branch, headCommitSHA: latest.commitSHA,
+      mergeCommitSHA: "merge-release")
+    XCTAssertEqual(result(latest).stage, .needsAttention)
+    latest.createdAt = fixture.now.addingTimeInterval(-100)
+    latest.reviewStatus?.checkedAt = fixture.now.addingTimeInterval(3)
+    XCTAssertEqual(result(latest).stage, .needsAttention, "An old review may have merged later")
+    latest.reviewStatus?.state = .open
+    XCTAssertEqual(result(latest).stage, .verifiedOnline)
+  }
+
+  func testNewerIncompleteArticleTargetCannotBorrowOlderProof() {
+    let fixture = makeFixture()
+    var latest = fixture.record
+    latest.id = UUID()
+    latest.createdAt = fixture.now.addingTimeInterval(2)
+    latest.draftID = fixture.draft.id
+    latest.batchItems = []
+    let result = presentation(
+      draft: fixture.draft, profile: fixture.profile, digest: publishedDigest,
+      records: [fixture.record, latest], snapshots: [fixture.record.id: fixture.successSnapshot])
+    XCTAssertNotEqual(result.stage, .verifiedOnline)
+    XCTAssertNil(result.onlineURL)
+  }
+
+  func testMissingDigestIsSafePendingWhileCurrentEditionResolves() {
+    let fixture = makeFixture()
+    let result = presentation(
+      draft: fixture.draft,
+      profile: fixture.profile,
+      digest: nil,
+      records: [fixture.record],
+      snapshots: [fixture.record.id: fixture.successSnapshot]
+    )
+
+    XCTAssertEqual(result.stage, .pendingChanges)
+  }
+
+  func testDifferentRepositoryAndUnrelatedArticleDoNotAttachLifecycle() {
+    let fixture = makeFixture()
+    var otherRepository = fixture.profile
+    otherRepository.repoName = "another-repository"
+    let otherRepositoryRecord = makeRecord(
+      draftID: fixture.draft.id,
+      profile: otherRepository,
+      now: fixture.now
+    )
+    var otherProfile = fixture.profile
+    otherProfile.id = UUID()
+    let otherProfileRecord = makeRecord(
+      draftID: fixture.draft.id,
+      profile: otherProfile,
+      now: fixture.now
+    )
+    let unrelated = makeRecord(
+      draftID: UUID(),
+      profile: fixture.profile,
+      now: fixture.now.addingTimeInterval(1)
+    )
+
+    let result = presentation(
+      draft: fixture.draft,
+      profile: fixture.profile,
+      digest: publishedDigest,
+      records: [otherRepositoryRecord, otherProfileRecord, unrelated]
+    )
+
+    XCTAssertEqual(result.stage, .ready)
+  }
+
+  func testChangedArticlePathIsPendingForSameFrozenTarget() {
+    var fixture = makeFixture()
+    fixture.draft.slug = "new-path"
+
+    let result = presentation(
+      draft: fixture.draft,
+      profile: fixture.profile,
+      digest: publishedDigest,
+      records: [fixture.record]
+    )
+
+    XCTAssertEqual(result.stage, .pendingChanges)
+  }
+
+  func testMissingAndOldSnapshotsRemainWaitingDuringTrackingWindow() {
+    let fixture = makeFixture()
+    let missing = presentation(
+      draft: fixture.draft,
+      profile: fixture.profile,
+      digest: publishedDigest,
+      records: [fixture.record],
+      now: fixture.now.addingTimeInterval(2)
+    )
+    let oldSnapshot = makeSnapshot(
+      record: fixture.record,
+      profile: fixture.profile,
+      checkedAt: fixture.now.addingTimeInterval(-1),
+      platform: .success,
+      articleLevel: .success,
+      digest: publishedDigest
+    )
+    let old = presentation(
+      draft: fixture.draft,
+      profile: fixture.profile,
+      digest: publishedDigest,
+      records: [fixture.record],
+      snapshots: [fixture.record.id: oldSnapshot],
+      now: fixture.now.addingTimeInterval(2)
+    )
+
+    XCTAssertEqual(missing.stage, .waitingForDeployment)
+    XCTAssertEqual(old.stage, .waitingForDeployment)
+  }
+
+  func testDeploymentVerificationAndAttentionPhasesArePreserved() {
+    let fixture = makeFixture()
+    let verifyingSnapshot = makeSnapshot(
+      record: fixture.record,
+      profile: fixture.profile,
+      checkedAt: fixture.now.addingTimeInterval(1),
+      platform: .success,
+      articleLevel: .failed,
+      digest: editedDigest
+    )
+    let failedSnapshot = makeSnapshot(
+      record: fixture.record,
+      profile: fixture.profile,
+      checkedAt: fixture.now.addingTimeInterval(1),
+      platform: .failed,
+      articleLevel: .unknown,
+      digest: nil,
+      message: "deployment failed"
+    )
+
+    XCTAssertEqual(
+      presentation(
+        draft: fixture.draft,
+        profile: fixture.profile,
+        digest: publishedDigest,
+        records: [fixture.record],
+        snapshots: [fixture.record.id: verifyingSnapshot]
+      ).stage,
+      .verifyingArticle
+    )
+    XCTAssertEqual(
+      presentation(
+        draft: fixture.draft,
+        profile: fixture.profile,
+        digest: publishedDigest,
+        records: [fixture.record],
+        snapshots: [fixture.record.id: failedSnapshot]
+      ).stage,
+      .needsAttention
+    )
+  }
+
+  func testCompletedSuccessSurvivesDeadlineAndKeepsBoundTimeAndLink() {
+    var fixture = makeFixture()
+    fixture.record.articlePublishTrackingRequest?.completedSnapshot = fixture.successSnapshot
+    let laterSnapshot = makeSnapshot(
+      record: fixture.record,
+      profile: fixture.profile,
+      checkedAt: fixture.now.addingTimeInterval(10),
+      platform: .failed,
+      articleLevel: .unknown,
+      digest: nil,
+      message: "later unrelated state"
+    )
+
+    let result = presentation(
+      draft: fixture.draft,
+      profile: fixture.profile,
+      digest: publishedDigest,
+      records: [fixture.record],
+      snapshots: [fixture.record.id: laterSnapshot],
+      now: fixture.now.addingTimeInterval(ArticlePublishTrackingRequest.duration + 60)
+    )
+
+    XCTAssertEqual(result.stage, .verifiedOnline)
+    XCTAssertEqual(
+      result.verifiedAt,
+      fixture.successSnapshot.articleResults?.first?.checkedAt
+    )
+    XCTAssertEqual(result.onlineURL?.absoluteString, "https://example.com/article/")
+  }
+
+  func testUnverifiedOrMalformedURLIsNeverExposed() {
+    var fixture = makeFixture(publicURLText: "file:///tmp/article.html")
+    fixture.record.articlePublishTrackingRequest?.completedSnapshot = fixture.successSnapshot
+
+    let result = presentation(
+      draft: fixture.draft,
+      profile: fixture.profile,
+      digest: publishedDigest,
+      records: [fixture.record],
+      now: fixture.now.addingTimeInterval(ArticlePublishTrackingRequest.duration + 1)
+    )
+
+    XCTAssertEqual(result.stage, .verifiedOnline)
+    XCTAssertNotNil(result.verifiedAt)
+    XCTAssertNil(result.onlineURL)
+  }
+
+  private func presentation(
+    draft: ArticleDraft,
+    profile: SiteProfile,
+    digest: String?,
+    records: [ReleaseRecord] = [],
+    snapshots: [UUID: DeploymentStatusSnapshot] = [:],
+    now: Date = Date(timeIntervalSince1970: 10_002)
+  ) -> ArticlePublicationStatusPresentation {
+    ArticlePublicationStatusPresentation.make(
+      draft: draft,
+      profile: profile,
+      currentSourceDigest: digest,
+      records: records,
+      snapshots: snapshots,
+      now: now
+    )
+  }
+
+  private func makeFixture(
+    publicURLText: String = "https://example.com/article/"
+  ) -> (
+    draft: ArticleDraft,
+    profile: SiteProfile,
+    record: ReleaseRecord,
+    successSnapshot: DeploymentStatusSnapshot,
+    now: Date
+  ) {
+    let now = Date(timeIntervalSince1970: 10_000)
+    var profile = SiteProfile.defaultProfile
+    profile.deploymentProvider = .custom
+    profile.deploymentSiteURL = "https://example.com/"
+    var draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Article",
+      slug: "article",
+      draft: false,
+      status: .ready
+    )
+    let record = makeRecord(
+      draftID: draft.id,
+      profile: profile,
+      now: now,
+      publicURLText: publicURLText
+    )
+    draft.repositoryPath = record.articleVerificationTargets[0].markdownPath
+    let snapshot = makeSnapshot(
+      record: record,
+      profile: profile,
+      checkedAt: now.addingTimeInterval(1),
+      platform: .success,
+      articleLevel: .success,
+      digest: publishedDigest
+    )
+    return (draft, profile, record, snapshot, now)
+  }
+
+  private func makeRecord(
+    draftID: UUID,
+    profile: SiteProfile,
+    now: Date,
+    publicURLText: String = "https://example.com/article/"
+  ) -> ReleaseRecord {
+    let draft = ArticleDraft(
+      id: draftID,
+      siteProfileID: profile.id,
+      title: "Article",
+      slug: "article",
+      draft: false,
+      status: .ready
+    )
+    let path = profile.markdownPath(for: draft)
+    let target = ReleaseRecordBatchItem(
+      draftID: draftID,
+      draftTitle: draft.title,
+      markdownPath: path,
+      publicPath: "/article/",
+      publicURLText: publicURLText,
+      sourceDocumentDigest: publishedDigest,
+      changedPaths: [path]
+    )
+    return ReleaseRecord(
+      kind: .remoteDirectCommit,
+      title: "Article",
+      summary: "Published",
+      siteProfileID: profile.id,
+      siteName: profile.name,
+      repositoryProvider: profile.repositoryProvider,
+      repositoryBaseURL: profile.repositoryBaseURL,
+      repoOwner: profile.repoOwner,
+      repoName: profile.repoName,
+      branchName: profile.branch,
+      targetBranch: profile.branch,
+      commitSHA: "release-sha",
+      batchItems: [target],
+      articlePublishTrackingRequest: ArticlePublishTrackingRequest(profile: profile, now: now),
+      createdAt: now
+    )
+  }
+
+  private func makeSnapshot(
+    record: ReleaseRecord,
+    profile: SiteProfile,
+    checkedAt: Date,
+    platform: DeploymentStatusLevel,
+    articleLevel: DeploymentStatusLevel,
+    digest: String?,
+    message: String = "ok"
+  ) -> DeploymentStatusSnapshot {
+    let target = record.articleVerificationTargets[0]
+    let article = DeploymentArticleVerificationResult(
+      target: target,
+      checkedAt: checkedAt,
+      signals: [
+        DeploymentStatusSignal(
+          level: articleLevel,
+          title: "Article",
+          message: message,
+          verifiedSourceDocumentDigest: digest
+        )
+      ]
+    )
+    return DeploymentStatusSnapshot(
+      profileID: profile.id,
+      releaseRecordID: record.id,
+      provider: .custom,
+      level: platform,
+      title: "Platform",
+      message: message,
+      siteURLText: profile.deploymentSiteURL,
+      checkedAt: checkedAt,
+      signals: [],
+      expectedBranch: record.branchName,
+      expectedCommitSHA: record.deploymentCommitSHA,
+      attributionVerified: true,
+      platformLevel: platform,
+      articleResults: [article]
+    )
+  }
+}

@@ -97628,12 +97628,27 @@
         "en": {
           "variations": {
             "plural": {
-              "one": { "stringUnit": { "state": "translated", "value": "%d existing commit will be pushed to origin/%@; no new files will be committed." } },
-              "other": { "stringUnit": { "state": "translated", "value": "%d existing commits will be pushed to origin/%@; no new files will be committed." } }
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%d existing commit will be pushed to origin/%@; no new files will be committed."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%d existing commits will be pushed to origin/%@; no new files will be committed."
+                }
+              }
             }
           }
         },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "%d 个已有提交将推送到 origin/%@；这次没有新的文件提交。" } }
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d 个已有提交将推送到 origin/%@；这次没有新的文件提交。"
+          }
+        }
       }
     },
     "%d 个文件将提交，并推送 %d 个已有提交到 origin/%@": {
@@ -97641,72 +97656,235 @@
         "en": {
           "variations": {
             "plural": {
-              "one": { "stringUnit": { "state": "translated", "value": "%d file will be committed, and %d existing commit will be pushed to origin/%@" } },
-              "other": { "stringUnit": { "state": "translated", "value": "%d files will be committed, and %d existing commits will be pushed to origin/%@" } }
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%d file will be committed, and %d existing commit will be pushed to origin/%@"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%d files will be committed, and %d existing commits will be pushed to origin/%@"
+                }
+              }
             }
           }
         },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "%d 个文件将提交，并推送 %d 个已有提交到 origin/%@" } }
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d 个文件将提交，并推送 %d 个已有提交到 origin/%@"
+          }
+        }
       }
     },
     "再次核对已有提交后推送到远端": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Recheck existing commits before pushing to the remote" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "再次核对已有提交后推送到远端" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recheck existing commits before pushing to the remote"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再次核对已有提交后推送到远端"
+          }
+        }
       }
     },
     "没有文件需要提交。": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "No files need to be committed." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "没有文件需要提交。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No files need to be committed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有文件需要提交。"
+          }
+        }
       }
     },
     "这些提交已经在本地创建，也会一并推送；当前未提交文件仍只限于这篇文章的范围。": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "These commits already exist locally and will also be pushed; current uncommitted files remain limited to this article." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "这些提交已经在本地创建，也会一并推送；当前未提交文件仍只限于这篇文章的范围。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These commits already exist locally and will also be pushed; current uncommitted files remain limited to this article."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这些提交已经在本地创建，也会一并推送；当前未提交文件仍只限于这篇文章的范围。"
+          }
+        }
       }
     },
     "这些提交已经在本地创建，也会一并推送；当前未提交文件按全部变更范围处理。": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "These commits already exist locally and will also be pushed; current uncommitted files use the full changes scope." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "这些提交已经在本地创建，也会一并推送；当前未提交文件按全部变更范围处理。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These commits already exist locally and will also be pushed; current uncommitted files use the full changes scope."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这些提交已经在本地创建，也会一并推送；当前未提交文件按全部变更范围处理。"
+          }
+        }
       }
     },
     "确认后会推送这些已经提交的历史；这次没有新的文件提交。": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "These existing commits will be pushed after confirmation; no new files will be committed." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "确认后会推送这些已经提交的历史；这次没有新的文件提交。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These existing commits will be pushed after confirmation; no new files will be committed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认后会推送这些已经提交的历史；这次没有新的文件提交。"
+          }
+        }
       }
     },
     "确认后会推送这些已经提交的历史；当前还有这篇文章范围内的未提交文件。": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "These existing commits will be pushed after confirmation; uncommitted files remain within this article's scope." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "确认后会推送这些已经提交的历史；当前还有这篇文章范围内的未提交文件。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These existing commits will be pushed after confirmation; uncommitted files remain within this article's scope."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认后会推送这些已经提交的历史；当前还有这篇文章范围内的未提交文件。"
+          }
+        }
       }
     },
     "确认后会推送这些已经提交的历史；当前还有待发布的未提交文件。": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "These existing commits will be pushed after confirmation; uncommitted files remain to be published." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "确认后会推送这些已经提交的历史；当前还有待发布的未提交文件。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These existing commits will be pushed after confirmation; uncommitted files remain to be published."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认后会推送这些已经提交的历史；当前还有待发布的未提交文件。"
+          }
+        }
       }
     },
     "已有提交历史（%d 个提交）": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Existing commit history (%d commits)" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已有提交历史（%d 个提交）" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Existing commit history (%d commits)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已有提交历史（%d 个提交）"
+          }
+        }
       }
     },
     "提交 %@": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Commit %@" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "提交 %@" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Commit %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "提交 %@"
+          }
+        }
       }
     },
     "我已逐项审阅这些已有提交，并确认将它们一并推送。": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "I have reviewed each existing commit and confirm that they should be pushed together." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "我已逐项审阅这些已有提交，并确认将它们一并推送。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I have reviewed each existing commit and confirm that they should be pushed together."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "我已逐项审阅这些已有提交，并确认将它们一并推送。"
+          }
+        }
+      }
+    },
+    "有更新待发布": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updates ready to publish"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有更新待发布"
+          }
+        }
+      }
+    },
+    "这次发布尚无文章版本核验记录，可在发布历史中重新检查。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This publication has no article version verification record yet. Recheck it in publishing history."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这次发布尚无文章版本核验记录，可在发布历史中重新检查。"
+          }
+        }
+      }
+    },
+    "已推送，尚未确认上线": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pushed; publication not yet confirmed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已推送，尚未确认上线"
+          }
+        }
       }
     }
   },

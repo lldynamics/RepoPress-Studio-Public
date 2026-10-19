@@ -12689,5 +12689,13 @@
   "我已逐项审阅这些已有提交，并确认将它们一并推送。": {
     "en": "I have reviewed each existing commit and confirm that they should be pushed together.",
     "zh-Hans": "我已逐项审阅这些已有提交，并确认将它们一并推送。"
+  },
+  "有更新待发布": {
+    "en": "Updates ready to publish",
+    "zh-Hans": "有更新待发布"
+  },
+  "这次发布尚无文章版本核验记录，可在发布历史中重新检查。": {
+    "en": "This publication has no article version verification record yet. Recheck it in publishing history.",
+    "zh-Hans": "这次发布尚无文章版本核验记录，可在发布历史中重新检查。"
   }
 }

@@ -977,11 +977,10 @@ struct ContentView: View {
         )
 
         aiAssistantToolbarButton
-
         if supportsInspector && (!isCompactLayout || canRequestInspectorInCurrentLayout) {
           inspectorToolbarButton
         }
-
+        ArticlePublicationStatusView(store: store, selectedDraftID: windowSession.selectedDraftID)
         WorkspacePreparePublishToolbarButton(
           store: store,
           windowSession: windowSession,
@@ -989,6 +988,7 @@ struct ContentView: View {
           showChecksAction: { openPublishChecks() },
           action: publishFromToolbar
         )
+        .id(windowSession.selectedDraftID)
       }
     }
   }

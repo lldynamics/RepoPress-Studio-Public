@@ -956,6 +956,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
           ], timeout: 5),
         .completed
       )
+      assertDisappears(option)
     }
     let screenshot = XCTAttachment(screenshot: application.windows.firstMatch.screenshot())
     screenshot.name = "Article state after draft-ready-draft transitions"
@@ -2501,6 +2502,20 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       showPublishChecks()
     }
     assertUniqueIdentifier("publish-drawer-header")
+    assertUniqueIdentifier("article-publication-status")
+    let publicationStatus = element(identifier: "article-publication-status")
+    XCTAssertEqual(
+      XCTWaiter.wait(
+        for: [
+          XCTNSPredicateExpectation(
+            predicate: NSPredicate(
+              format: "label == %@ OR value == %@",
+              "已推送，尚未确认上线", "已推送，尚未确认上线"),
+            object: publicationStatus)
+        ], timeout: 5),
+      .completed
+    )
+    XCTAssertEqual(element(identifier: "workspace-prepare-publish").label, "发布这篇")
     for identifier in [
       "publish-drawer-readiness-checklist",
       "publish-drawer-action-publish-current",
