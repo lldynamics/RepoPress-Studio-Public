@@ -609,7 +609,7 @@ final class ContentHealthSuppressionTests: XCTestCase {
   func testBaselineKeepsPublicRisksErrorsAndRawPublishingPreflight() throws {
     var profile = SiteProfile.defaultProfile
     var draft = shortDraft(profileID: profile.id)
-    draft.title = ""
+    draft.slug = ""
     draft.bodyMarkdown = "Local path /Users/example/private/article.md"
     let service = ContentHealthReportService()
     let initial = service.report(
