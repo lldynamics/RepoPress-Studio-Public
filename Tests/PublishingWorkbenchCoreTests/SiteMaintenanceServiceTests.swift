@@ -20,7 +20,7 @@ final class SiteMaintenanceServiceTests: XCTestCase {
       categories: [],
       draft: false,
       summary: "旧文摘要",
-      bodyMarkdown: "[新文](/new-note/) [缺失](/missing-note/) [go](https://example.com)",
+      bodyMarkdown: "[新文](/posts/new-note/) [缺失](/posts/missing-note/) [go](https://example.com)",
       status: .published,
       updatedAt: date(year: 2025, month: 12, day: 1)
     )
@@ -71,7 +71,10 @@ final class SiteMaintenanceServiceTests: XCTestCase {
     XCTAssertEqual(report.relationSuggestions.first?.targetDraftID, oldDraftID)
     XCTAssertEqual(report.relationSuggestions.first?.sharedLabels, ["Swift"])
     XCTAssertEqual(report.linkAuditItems.count, 2)
-    XCTAssertTrue(report.linkAuditItems.contains { $0.target == "/missing-note/" && $0.severity == .warning })
+    XCTAssertTrue(
+      report.linkAuditItems.contains {
+        $0.target == "/posts/missing-note/" && $0.severity == .warning
+      })
     XCTAssertTrue(report.linkAuditItems.contains { $0.target == "https://example.com" && $0.severity == .info })
     XCTAssertEqual(report.actionItems.first?.kind, .staleArticle)
     XCTAssertEqual(report.actionItems.first?.priority, .high)
@@ -99,7 +102,7 @@ final class SiteMaintenanceServiceTests: XCTestCase {
       categories: ["工具"],
       draft: false,
       summary: "近期维护摘要",
-      bodyMarkdown: "正文里链接到 [维护复盘](/maintenance-review/)。",
+      bodyMarkdown: "正文里链接到 [维护复盘](/posts/maintenance-review/)。",
       status: .published,
       updatedAt: date(year: 2026, month: 7, day: 3)
     )
@@ -112,7 +115,7 @@ final class SiteMaintenanceServiceTests: XCTestCase {
       categories: ["工具"],
       draft: false,
       summary: "维护复盘摘要",
-      bodyMarkdown: "正文里链接到 [近期维护](/recent-maintenance/)。",
+      bodyMarkdown: "正文里链接到 [近期维护](/posts/recent-maintenance/)。",
       status: .published,
       updatedAt: date(year: 2026, month: 7, day: 4)
     )

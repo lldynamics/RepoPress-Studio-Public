@@ -10,13 +10,13 @@ final class SlugRedirectWorkflowTests: XCTestCase {
     store.updateActiveProfile { $0.markdownPathPattern = "content/posts/{slug}.md" }
     let target = ArticleDraft(
       siteProfileID: store.activeProfileID, title: "Target",
-      slug: "new-route", pendingSlugRedirectPaths: ["/old-route/"])
+      slug: "new-route", pendingSlugRedirectPaths: ["/posts/old-route/"])
     var source = ArticleDraft(
       siteProfileID: store.activeProfileID, title: "Source",
-      slug: "source", bodyMarkdown: "[first](/old-route/)")
+      slug: "source", bodyMarkdown: "[first](/posts/old-route/)")
     store.setDrafts([target, source])
     let review = try XCTUnwrap(store.slugChangeImpact(for: target.id))
-    source.bodyMarkdown += "\n[added after review](/old-route/)"
+    source.bodyMarkdown += "\n[added after review](/posts/old-route/)"
     store.updateDraft(source)
     let priorVersionCount = store.versions(for: source.id).count
 
@@ -26,7 +26,7 @@ final class SlugRedirectWorkflowTests: XCTestCase {
 
     XCTAssertFalse(result.wasApplied)
     XCTAssertEqual(store.draft(for: source.id)?.bodyMarkdown, source.bodyMarkdown)
-    XCTAssertEqual(store.draft(for: target.id)?.pendingSlugRedirectPaths, ["/old-route/"])
+    XCTAssertEqual(store.draft(for: target.id)?.pendingSlugRedirectPaths, ["/posts/old-route/"])
     XCTAssertEqual(store.versions(for: source.id).count, priorVersionCount)
   }
 
@@ -37,7 +37,7 @@ final class SlugRedirectWorkflowTests: XCTestCase {
     store.updateActiveProfile { $0.markdownPathPattern = "content/posts/{slug}.md" }
     let target = ArticleDraft(
       siteProfileID: store.activeProfileID, title: "Target",
-      slug: "new-route", pendingSlugRedirectPaths: ["/old-route/"])
+      slug: "new-route", pendingSlugRedirectPaths: ["/posts/old-route/"])
     let source = ArticleDraft(
       siteProfileID: store.activeProfileID, title: "Source",
       slug: "source", bodyMarkdown: "[[old-route]]")
@@ -69,9 +69,9 @@ final class SlugRedirectWorkflowTests: XCTestCase {
       title: "Source",
       slug: "source",
       bodyMarkdown: """
-      [old](/old-route/#details) and [[old-route#part|legacy]]
-      <a href="/old-route/?ref=legacy#top">HTML legacy</a>
-      """
+        [old](/posts/old-route/#details) and [[old-route#part|legacy]]
+        <a href="/posts/old-route/?ref=legacy#top">HTML legacy</a>
+        """
     )
     store.setDrafts([target, source])
     var renamed = try XCTUnwrap(store.draft(for: target.id))
@@ -90,8 +90,8 @@ final class SlugRedirectWorkflowTests: XCTestCase {
     XCTAssertEqual(
       store.draft(for: source.id)?.bodyMarkdown,
       """
-      [old](/new-route/#details) and [[new-route#part|legacy]]
-      <a href="/new-route/?ref=legacy#top">HTML legacy</a>
+      [old](/posts/new-route/#details) and [[new-route#part|legacy]]
+      <a href="/posts/new-route/?ref=legacy#top">HTML legacy</a>
       """
     )
     XCTAssertEqual(store.draft(for: target.id)?.pendingSlugRedirectPaths, [])
@@ -114,7 +114,7 @@ final class SlugRedirectWorkflowTests: XCTestCase {
       siteProfileID: store.activeProfile.id,
       title: "Source",
       slug: "source",
-      bodyMarkdown: "[old](/old-route/)"
+      bodyMarkdown: "[old](/posts/old-route/)"
     )
     store.setDrafts([target, source])
     var renamed = try XCTUnwrap(store.draft(for: target.id))
@@ -124,9 +124,9 @@ final class SlugRedirectWorkflowTests: XCTestCase {
     let result = store.addAliasesForPendingSlugChange(draftID: target.id)
 
     XCTAssertTrue(result.wasApplied)
-    XCTAssertEqual(store.draft(for: target.id)?.aliases, ["/old-route/"])
+    XCTAssertEqual(store.draft(for: target.id)?.aliases, ["/posts/old-route/"])
     XCTAssertEqual(store.draft(for: target.id)?.pendingSlugRedirectPaths, [])
-    XCTAssertEqual(store.draft(for: source.id)?.bodyMarkdown, "[old](/old-route/)")
+    XCTAssertEqual(store.draft(for: source.id)?.bodyMarkdown, "[old](/posts/old-route/)")
   }
 
   func testEditorSlugChangeRecordsPreviousRouteForLaterResolution() throws {
@@ -149,7 +149,7 @@ final class SlugRedirectWorkflowTests: XCTestCase {
 
     let current = try XCTUnwrap(store.draft(for: draft.id))
     XCTAssertEqual(current.slug, "new-route")
-    XCTAssertEqual(current.pendingSlugRedirectPaths, ["/old-route/"])
+    XCTAssertEqual(current.pendingSlugRedirectPaths, ["/posts/old-route/"])
   }
 
   func testPendingRoutesRoundTripAndVersionRestoreIncludesRedirectMetadata() throws {

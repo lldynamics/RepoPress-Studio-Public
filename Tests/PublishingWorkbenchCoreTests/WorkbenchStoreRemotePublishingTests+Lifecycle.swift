@@ -658,7 +658,7 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
         json: """
           <html><head>
           <meta name="repopress:source-digest" content="\(sourceDigest)">
-          <link rel="canonical" href="https://example.com/online-direct-success/">
+          <link rel="canonical" href="https://example.com/posts/online-direct-success/">
           </head><body><h1>Online Direct Success</h1></body></html>
           """,
         headerFields: ["Content-Type": "text/html; charset=utf-8"]
@@ -731,7 +731,8 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
     XCTAssertEqual(deploymentRequests.count, 2)
     XCTAssertEqual(deploymentRequests.first?.url?.absoluteString, "https://status.example.com/site")
     XCTAssertEqual(
-      deploymentRequests.last?.url?.absoluteString, "https://example.com/online-direct-success/")
+      deploymentRequests.last?.url?.absoluteString,
+      "https://example.com/posts/online-direct-success/")
   }
 
   func testOnlineReviewPublishWaitsForMergeWithoutDeploymentStatusRefresh() async throws {
