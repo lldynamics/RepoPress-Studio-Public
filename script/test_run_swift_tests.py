@@ -606,7 +606,7 @@ def test_successful_partition_and_exact_argv() -> None:
         repository_batches = [
             shard for shard in shards if shard["slug"].startswith("core-repository-")
         ]
-        assert [len(shard["tests"]) for shard in repository_batches] == [40, 1, 21, 21, 21, 21]
+        assert [len(shard["tests"]) for shard in repository_batches] == [10, 10, 10, 10, 1] + [10, 10, 1] * 4
         assert all(
             len({test.split("/", 1)[0] for test in shard["tests"]}) <= 2
             for shard in repository_batches
@@ -702,6 +702,9 @@ def test_process_snapshot_replaces_invalid_utf8_and_retains_ids() -> None:
     with temporary:
         runner = runpy.run_path(str(root / "script" / HELPER.name))
         previous_ps = os.environ.get("PS_BIN")
+        # A newly created executable can incur macOS first-launch assessment.
+        # This fixture tests decoding, not cold executable startup latency.
+        subprocess.run([paths["invalid_utf8_ps"]], check=True, capture_output=True, timeout=10)
         os.environ["PS_BIN"] = paths["invalid_utf8_ps"]
         try:
             rows = runner["process_snapshot"]()

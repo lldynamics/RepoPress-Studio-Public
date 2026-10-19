@@ -99,7 +99,7 @@ class RepositoryPartitionTests(unittest.TestCase):
             "NotRepositoryTests": 2,
         })
         repository_shards = [shard for shard in shards if shard.slug.startswith("core-repository-")]
-        self.assertEqual([len(shard.tests) for shard in repository_shards], [40, 11])
+        self.assertEqual([len(shard.tests) for shard in repository_shards], [10, 10, 10, 10, 1, 10])
         self.assertTrue(all(len({test.suite for test in shard.tests}) <= 2 for shard in repository_shards))
         general_shards = [shard for shard in shards if not shard.slug.startswith("core-repository-")]
         self.assertEqual({test.suite for shard in general_shards for test in shard.tests},
@@ -114,12 +114,12 @@ class RepositoryPartitionTests(unittest.TestCase):
         self.assertEqual([len(shard.tests) for shard in shards], [2, 1])
 
     def test_repository_test_count_limit_splits_suites_that_would_fit_by_suite_count(self) -> None:
-        _, shards = self.shards_for({"RepositoryAlphaTests": 25, "RepositoryBetaTests": 20})
-        self.assertEqual([len(shard.tests) for shard in shards], [25, 20])
+        _, shards = self.shards_for({"RepositoryAlphaTests": 6, "RepositoryBetaTests": 5})
+        self.assertEqual([len(shard.tests) for shard in shards], [6, 5])
 
     def test_oversized_repository_suite_uses_exact_methods_without_dropping_tail(self) -> None:
-        tests, shards = self.shards_for({"RepositoryLargeTests": 41})
-        self.assertEqual([len(shard.tests) for shard in shards], [40, 1])
+        tests, shards = self.shards_for({"RepositoryLargeTests": 26})
+        self.assertEqual([len(shard.tests) for shard in shards], [10, 10, 6])
         self.assertEqual([test for shard in shards for test in shard.tests], tests)
         self.assertTrue(all(shard.filter_pattern.endswith("$") for shard in shards))
 

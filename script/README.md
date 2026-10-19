@@ -127,7 +127,7 @@ macOS 无障碍 UI 回归的构建和运行共用 `PERSONAL_SITE_PUBLISHER_RUNTI
 ## 长期契约与退役规则
 
 - `build_and_run.sh` 是唯一标准构建启动入口；发布包统一从 `package_direct_release.sh` 进入。质量检查统一从 `check_release_gate.sh` 进入：`--quick` 运行快速门，`--tooling` 运行脚本自测，`--profile direct|all` 选择发行渠道配置，`--list` 列出清单，`--check ID` 运行一个已登记检查。
-- 日常完整 Swift 测试使用 `./script/run_swift_tests.sh`，或通过门禁选择 `--check swift-tests`；清单编译与全部 `--skip-build` 分片均明确使用 `native` SwiftPM 驱动，避免 Swift Build 在多个消费测试包中重复发现共享测试支持用例。清单仍拒绝重复或遗漏，保留严格并发、警告即错误、分片进程隔离、超时和清理保护。直接 `swift test --filter ...` 仅用于定向排查；HTTP 探测仍应显式设置请求超时，请求超时不能替代进程级保护。
+- 日常完整 Swift 测试使用 `./script/run_swift_tests.sh`，或通过门禁选择 `--check swift-tests`；清单编译与全部 `--skip-build` 分片均明确使用 `native` SwiftPM 驱动，避免 Swift Build 在多个消费测试包中重复发现共享测试支持用例。清单仍拒绝重复或遗漏，保留严格并发、警告即错误、分片进程隔离、超时和清理保护。真实 Git 仓库测试按较小用例批次拆分，保留完整清单覆盖与每个进程原有超时，避免托管 macOS 的串行 Git 开销累积超时。直接 `swift test --filter ...` 仅用于定向排查；HTTP 探测仍应显式设置请求超时，请求超时不能替代进程级保护。
 - Core 中以 `Repository` 开头的套件属于真实 Git 仓库及子进程密集的测试类别，按运行器中较小的套件数和用例数上限确定性分组；新增同类别套件沿用此前缀。一般 Core 套件继续使用原分组，超大套件按精确方法过滤拆分，每个清单用例仍恰好执行一次。调整类别分组不放宽进程超时、不增加重试，也不改变超时采样与子进程清理。
 - PDF OCR 回归直接识别已序列化的英文、简中和繁中扫描页，沿用应用的后台导入路径；不在主线程另做同步 Vision 预热，也不把识别异常改成跳过。识别文字、逐页定位及原文件字节均须通过断言。
 - 公开快照、性能、本地化等专题保留现有按需入口；它们可以被编排入口组合，但每个单项检查只负责一个类别。`test_` 文件是自测实现，不另建并行工作流入口。
