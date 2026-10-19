@@ -53,9 +53,9 @@ final class DefaultRuleFrontMatterPreviewTests: XCTestCase {
     XCTAssertTrue(preview.frontMatter.contains(":"))
     XCTAssertTrue(preview.frontMatter.contains("authors = [\"王小明\"]"))
     XCTAssertEqual(preview.markdownPath, "content/posts/2026/example-article.md")
-    // Match the production Zola resolver: it removes content/posts and does
+    // Match the production Zola resolver: it removes only content and does
     // not append a trailing slash. The settings preview must not invent one.
-    XCTAssertEqual(preview.url, "https://publisher.example.com/2026/example-article")
+    XCTAssertEqual(preview.url, "https://publisher.example.com/posts/2026/example-article")
   }
 
   private func makeProfile(style: FrontMatterStyle, dateFormat: String) -> SiteProfile {

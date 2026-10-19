@@ -436,7 +436,7 @@ final class RepositoryWorktreePublishServiceTests: XCTestCase {
     )
   }
 
-  func testPushesFrozenCommitSHAWhenAnotherToolAdvancesHEADBeforePush() throws {
+  func testStopsPushWhenAnotherToolAdvancesHEADBeforePush() throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture.base) }
     try Data("reviewed\n".utf8).write(
@@ -470,19 +470,27 @@ final class RepositoryWorktreePublishServiceTests: XCTestCase {
       }
     )
 
-    let result = try service.publish(profile: fixture.profile, confirmation: confirmation)
+    var frozenSHA: String?
+    XCTAssertThrowsError(try service.publish(profile: fixture.profile, confirmation: confirmation))
+    {
+      error in
+      guard case RepositoryWorktreePublishError.commitSucceededButPushFailed(let sha, _) = error
+      else {
+        return XCTFail("Expected preserved local commit without push, got \(error)")
+      }
+      frozenSHA = sha
+    }
     let advancedHead = try XCTUnwrap(externalHead.withLock { $0 })
-
-    XCTAssertNotEqual(result.commitSHA, advancedHead)
     XCTAssertEqual(
-      try git(["rev-parse", "HEAD"], at: fixture.worktree).trimmedForPublishing,
-      advancedHead
-    )
+      try git(["rev-parse", "HEAD^"], at: fixture.worktree).trimmedForPublishing,
+      try XCTUnwrap(frozenSHA))
     XCTAssertEqual(
-      try git(["rev-parse", "refs/heads/main"], at: fixture.remote)
-        .trimmedForPublishing,
-      result.commitSHA
-    )
+      try git(["rev-parse", "HEAD"], at: fixture.worktree).trimmedForPublishing, advancedHead)
+    XCTAssertEqual(
+      try git(["rev-parse", "refs/heads/main"], at: fixture.remote).trimmedForPublishing,
+      confirmation.snapshot.remoteBranchSHA)
+    XCTAssertEqual(
+      try git(["show", "HEAD:tracked.md"], at: fixture.worktree), "reviewed\n")
   }
 
   func testFreezesModifiedDiskPackageInsteadOfOldHEADBlob() throws {
