@@ -373,3 +373,28 @@ final class ReleaseLedgerLocalWriteResolutionTests: XCTestCase {
     }
   }
 }
+
+final class RepositoryWorktreeConfirmationIdentityTests: XCTestCase {
+  func testIdentityRetainsFieldBoundariesAndRespondsToReviewChanges() {
+    let snapshot = RepositoryWorktreePublishSnapshot(
+      repositoryRoot: "/fixture", gitCommonDirectory: "/fixture/.git", branch: "main",
+      headSHA: "head", originURL: "https://example.com/site.git",
+      remoteBranchSHA: "remote", statusFingerprint: "status", entries: []
+    )
+    var confirmation = RepositoryWorktreePublishConfirmation(
+      snapshot: snapshot, commitMessage: "Publish", pathScope: ["a.md", "b.md"]
+    )
+    let expected = [
+      "/fixture", "head", "remote", "status", "Publish", "", "", "", "",
+      "a.md\u{1D}b.md", "",
+    ].joined(separator: "\u{1E}")
+    XCTAssertEqual(confirmation.id, expected)
+    confirmation.articlePreflightIssues = [
+      PreflightIssue(severity: .warning, title: "Review", message: "Check summary")
+    ]
+    XCTAssertNotEqual(confirmation.id, expected)
+    let reviewedID = confirmation.id
+    confirmation.articlePreflightIssues[0].message = "Check title"
+    XCTAssertNotEqual(confirmation.id, reviewedID)
+  }
+}

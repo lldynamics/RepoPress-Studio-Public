@@ -160,21 +160,28 @@ public struct RepositoryWorktreePublishConfirmation: Hashable, Sendable, Identif
   public var isScoped: Bool { pathScope != nil }
 
   public var id: String {
-    [
+    let policy = executionPolicy.map { String(describing: $0) } ?? ""
+    let diagnostics = safetyReport.diagnostics.map(\.id).joined(separator: "\u{1D}")
+    let outcome = sitePreflightResult.map { String(describing: $0.outcome) } ?? ""
+    let articleID = articleVerificationTarget.map { $0.draftID.uuidString } ?? ""
+    let scope = pathScope?.joined(separator: "\u{1D}") ?? ""
+    let issues: [String] = articlePreflightIssues.map { issue in
+      issue.severity.rawValue + issue.title + issue.message
+    }
+    let components: [String] = [
       snapshot.repositoryRoot,
       snapshot.headSHA,
       snapshot.remoteBranchSHA,
       snapshot.statusFingerprint,
       commitMessage,
-      executionPolicy.map { String(describing: $0) } ?? "",
-      safetyReport.diagnostics.map(\.id).joined(separator: "\u{1D}"),
-      sitePreflightResult.map { String(describing: $0.outcome) } ?? "",
-      articleVerificationTarget.map { $0.draftID.uuidString } ?? "",
-      pathScope?.joined(separator: "\u{1D}") ?? "",
-      articlePreflightIssues.map { $0.severity.rawValue + $0.title + $0.message }
-        .joined(separator: "\u{1D}"),
+      policy,
+      diagnostics,
+      outcome,
+      articleID,
+      scope,
+      issues.joined(separator: "\u{1D}"),
     ]
-    .joined(separator: "\u{1E}")
+    return components.joined(separator: "\u{1E}")
   }
 
   public init(
