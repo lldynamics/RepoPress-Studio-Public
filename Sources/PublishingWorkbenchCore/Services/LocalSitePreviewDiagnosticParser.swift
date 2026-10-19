@@ -111,7 +111,10 @@ struct LocalSitePreviewDiagnosticParser {
     if decodedPath.hasPrefix("/") {
       candidateURL = URL(fileURLWithPath: decodedPath)
     } else {
-      candidateURL = URL(fileURLWithPath: decodedPath, relativeTo: rootURL)
+      // Canonicalization can drop a nonexistent root's directory marker on
+      // older Foundation versions. Append explicitly instead of resolving
+      // against a base URL that may then be interpreted as a file.
+      candidateURL = rootURL.appendingPathComponent(decodedPath, isDirectory: false)
     }
     let canonicalURL = candidateURL.standardizedFileURL.resolvingSymlinksInPath()
     guard supportedExtensions.contains(canonicalURL.pathExtension.lowercased()) else { return nil }

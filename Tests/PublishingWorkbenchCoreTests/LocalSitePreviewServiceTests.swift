@@ -384,6 +384,19 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     XCTAssertEqual(diagnostic.severity, .error)
   }
 
+  func testPreviewDiagnosticResolvesRelativePathsUnderMissingDirectory() throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("preview missing \(UUID().uuidString)")
+    XCTAssertFalse(FileManager.default.fileExists(atPath: root.path))
+    let diagnostic = try XCTUnwrap(
+      LocalSitePreviewDiagnosticParser.parse(
+        line: "ERROR content/posts/hello.md:4:2 invalid", rootPath: root.path))
+    XCTAssertEqual(diagnostic.relativePath, "content/posts/hello.md")
+    XCTAssertNil(
+      LocalSitePreviewDiagnosticParser.parse(
+        line: "ERROR ../outside.md:4:2 invalid", rootPath: root.path))
+  }
+
   func testPreviewDiagnosticParserExtractsAbsoluteAstroLocation() throws {
     let diagnostic = try XCTUnwrap(
       LocalSitePreviewDiagnosticParser.parse(
