@@ -625,3 +625,357 @@ private final class RetryPreflightSequence: Sendable {
     state.withLock { $0.commandCount }
   }
 }
+
+/// Focused coverage for publishing from a worktree whose branch already has
+/// local commits. These tests intentionally stop before a successful publish,
+/// so they never exercise a network push.
+final class RepositoryWorktreeAheadPublishTests: XCTestCase {
+  private struct Fixture {
+    let base: URL
+    let worktree: URL
+    let remote: URL
+    let profile: SiteProfile
+    let baseline: String
+  }
+
+  func testCleanAheadPreparesWithHistoryAndDoesNotChangeWorktreeOrRemote() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+
+    for index in 1...5 {
+      _ = try git(
+        ["commit", "--allow-empty", "-m", "local history \(index)"], at: fixture.worktree)
+    }
+    let localHead = try revision(at: fixture.worktree)
+    let beforeStatus = try git(
+      ["status", "--porcelain=v1", "--untracked-files=all"], at: fixture.worktree)
+    let confirmation = try RepositoryWorktreePublishService().prepare(
+      profile: fixture.profile, commitMessage: "Publish local history")
+
+    XCTAssertEqual(confirmation.snapshot.headSHA, localHead)
+    XCTAssertEqual(confirmation.snapshot.remoteBranchSHA, fixture.baseline)
+    XCTAssertTrue(confirmation.snapshot.entries.isEmpty)
+    XCTAssertTrue(confirmation.snapshot.paths.isEmpty)
+    let history = try XCTUnwrap(confirmation.snapshot.outgoingHistory)
+    XCTAssertEqual(history.commitCount, 5)
+    XCTAssertEqual(history.localHeadSHA, localHead)
+    XCTAssertEqual(history.remoteBranchSHA, fixture.baseline)
+    XCTAssertEqual(try revision(at: fixture.worktree), localHead)
+    XCTAssertEqual(
+      try git(["status", "--porcelain=v1", "--untracked-files=all"], at: fixture.worktree),
+      beforeStatus)
+    XCTAssertEqual(try revision(at: fixture.remote), fixture.baseline)
+
+    XCTAssertThrowsError(
+      try RepositoryWorktreePublishService().publish(
+        profile: fixture.profile, confirmation: confirmation
+      ) { _ in
+        throw NSError(
+          domain: "RepositoryWorktreeAheadPublishTests.beforeMovingHead", code: 1)
+      })
+    XCTAssertEqual(try revision(at: fixture.worktree), localHead)
+    XCTAssertEqual(try revision(at: fixture.remote), fixture.baseline)
+  }
+
+  func testScopedDirtyArticleExcludesUnrelatedEditsButRetainsOutgoingHistory() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+
+    try write("historical article\n", to: fixture.worktree, path: "history.md")
+    _ = try git(["add", "history.md"], at: fixture.worktree)
+    _ = try git(["commit", "-m", "historical content"], at: fixture.worktree)
+    try write("article draft\n", to: fixture.worktree, path: "content/posts/article.md")
+    try write("private unrelated draft\n", to: fixture.worktree, path: "private.txt")
+
+    let confirmation = try RepositoryWorktreePublishService().prepare(
+      profile: fixture.profile,
+      commitMessage: "Publish article",
+      pathScope: ["content/posts/article.md"])
+
+    XCTAssertEqual(confirmation.snapshot.paths, ["content/posts/article.md"])
+    XCTAssertEqual(confirmation.snapshot.entries.map(\.path), ["content/posts/article.md"])
+    let history = try XCTUnwrap(confirmation.snapshot.outgoingHistory)
+    XCTAssertEqual(history.commitCount, 1)
+    XCTAssertEqual(history.paths, ["history.md"])
+    XCTAssertFalse(confirmation.snapshot.paths.contains("private.txt"))
+    XCTAssertTrue(
+      try git(["status", "--porcelain=v1", "--untracked-files=all"], at: fixture.worktree)
+        .contains("?? private.txt"))
+  }
+
+  func testAllDirtyReviewHasDirtyEntriesAndNoOutgoingHistory() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try write("article draft\n", to: fixture.worktree, path: "content/posts/article.md")
+    try write("notes\n", to: fixture.worktree, path: "notes.txt")
+
+    let confirmation = try RepositoryWorktreePublishService().prepare(
+      profile: fixture.profile, commitMessage: "Review all changes")
+
+    XCTAssertEqual(
+      confirmation.snapshot.paths,
+      ["content/posts/article.md", "notes.txt"])
+    XCTAssertNil(confirmation.snapshot.outgoingHistory)
+    XCTAssertEqual(confirmation.snapshot.headSHA, fixture.baseline)
+  }
+
+  func testCommittedThenRemovedSensitiveHistoryIsStillBlocked() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try write("TOKEN=history\n", to: fixture.worktree, path: ".env")
+    _ = try git(["add", ".env"], at: fixture.worktree)
+    _ = try git(["commit", "-m", "sensitive history"], at: fixture.worktree)
+    _ = try git(["rm", ".env"], at: fixture.worktree)
+    _ = try git(["commit", "-m", "remove sensitive history"], at: fixture.worktree)
+
+    XCTAssertThrowsError(
+      try RepositoryWorktreePublishService().prepare(
+        profile: fixture.profile, commitMessage: "Review history")
+    ) { error in
+      XCTAssertEqual(error as? RepositoryWorktreePublishError, .sensitivePaths([".env"]))
+    }
+    XCTAssertEqual(try revision(at: fixture.remote), fixture.baseline)
+  }
+
+  func testCommittedThenRemovedDraftHistoryRemainsAnExplicitWarning() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try write(
+      """
+      +++
+      title = "Historical draft"
+      draft = true
+      +++
+
+      This source is removed from the final tree.
+      """,
+      to: fixture.worktree, path: "content/posts/historical-draft.md")
+    _ = try git(["add", "content/posts/historical-draft.md"], at: fixture.worktree)
+    _ = try git(["commit", "-m", "add historical draft"], at: fixture.worktree)
+    _ = try git(["rm", "content/posts/historical-draft.md"], at: fixture.worktree)
+    _ = try git(["commit", "-m", "remove historical draft"], at: fixture.worktree)
+
+    let confirmation = try RepositoryWorktreePublishService().prepare(
+      profile: fixture.profile, commitMessage: "Review removed draft")
+    XCTAssertTrue(confirmation.snapshot.entries.isEmpty)
+    XCTAssertEqual(
+      confirmation.safetyReport.diagnostics.map(\.code), [.draftSourcePublication])
+    XCTAssertTrue(confirmation.safetyReport.canPublish)
+  }
+
+  func testCommittedThenRemovedPrivateFrontMatterRemainsBlocked() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try write(
+      """
+      +++
+      title = "Historical private"
+      private = true
+      +++
+
+      This source is removed from the final tree.
+      """,
+      to: fixture.worktree, path: "content/posts/historical-private.md")
+    _ = try git(["add", "content/posts/historical-private.md"], at: fixture.worktree)
+    _ = try git(["commit", "-m", "add historical private"], at: fixture.worktree)
+    _ = try git(["rm", "content/posts/historical-private.md"], at: fixture.worktree)
+    _ = try git(["commit", "-m", "remove historical private"], at: fixture.worktree)
+
+    XCTAssertThrowsError(
+      try RepositoryWorktreePublishService().prepare(
+        profile: fixture.profile, commitMessage: "Review removed private")
+    ) { error in
+      XCTAssertEqual(
+        error as? RepositoryWorktreePublishError,
+        .sensitivePaths(["content/posts/historical-private.md"]))
+    }
+  }
+
+  func testCommittedThenRemovedPrivateDirectoryHistoryRemainsBlocked() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try write(
+      """
+      +++
+      title = "Historical private directory content"
+      +++
+
+      This source is removed from the final tree.
+      """,
+      to: fixture.worktree, path: "private/posts/historical.md")
+    _ = try git(["add", "private/posts/historical.md"], at: fixture.worktree)
+    _ = try git(["commit", "-m", "add historical private directory content"], at: fixture.worktree)
+    _ = try git(["rm", "private/posts/historical.md"], at: fixture.worktree)
+    _ = try git(
+      ["commit", "-m", "remove historical private directory content"], at: fixture.worktree)
+
+    XCTAssertThrowsError(
+      try RepositoryWorktreePublishService().prepare(
+        profile: fixture.profile, commitMessage: "Review removed private directory")
+    ) { error in
+      XCTAssertEqual(
+        error as? RepositoryWorktreePublishError,
+        .sensitivePaths(["private/posts/historical.md"]))
+    }
+  }
+
+  func testBehindDivergedAndStagedWorktreesRemainBlocked() throws {
+    do {
+      let fixture = try makeFixture()
+      defer { try? FileManager.default.removeItem(at: fixture.base) }
+      let peer = try clonePeer(from: fixture.remote, under: fixture.base, name: "behind-peer")
+      try write("remote ahead\n", to: peer, path: "remote.txt")
+      _ = try git(["add", "remote.txt"], at: peer)
+      _ = try git(["commit", "-m", "remote ahead"], at: peer)
+      _ = try git(["fetch", peer.path, "main:main"], at: fixture.remote)
+      _ = try git(["fetch", "origin"], at: fixture.worktree)
+      XCTAssertThrowsError(
+        try RepositoryWorktreePublishService().prepare(
+          profile: fixture.profile, commitMessage: "Behind")
+      ) { error in
+        guard case .remoteOutOfDate = error as? RepositoryWorktreePublishError else {
+          return XCTFail("Expected remoteOutOfDate, got \(error)")
+        }
+      }
+    }
+
+    do {
+      let fixture = try makeFixture()
+      defer { try? FileManager.default.removeItem(at: fixture.base) }
+      try write("local diverged\n", to: fixture.worktree, path: "local.txt")
+      _ = try git(["add", "local.txt"], at: fixture.worktree)
+      _ = try git(["commit", "-m", "local diverged"], at: fixture.worktree)
+      let peer = try clonePeer(from: fixture.remote, under: fixture.base, name: "diverged-peer")
+      try write("remote diverged\n", to: peer, path: "remote.txt")
+      _ = try git(["add", "remote.txt"], at: peer)
+      _ = try git(["commit", "-m", "remote diverged"], at: peer)
+      _ = try git(["fetch", peer.path, "main:main"], at: fixture.remote)
+      _ = try git(["fetch", "origin"], at: fixture.worktree)
+      XCTAssertThrowsError(
+        try RepositoryWorktreePublishService().prepare(
+          profile: fixture.profile, commitMessage: "Diverged")
+      ) { error in
+        guard case .remoteOutOfDate = error as? RepositoryWorktreePublishError else {
+          return XCTFail("Expected remoteOutOfDate, got \(error)")
+        }
+      }
+    }
+
+    do {
+      let fixture = try makeFixture()
+      defer { try? FileManager.default.removeItem(at: fixture.base) }
+      try write("staged\n", to: fixture.worktree, path: "staged.txt")
+      _ = try git(["add", "staged.txt"], at: fixture.worktree)
+      XCTAssertThrowsError(
+        try RepositoryWorktreePublishService().prepare(
+          profile: fixture.profile, commitMessage: "Staged")
+      ) { error in
+        XCTAssertEqual(error as? RepositoryWorktreePublishError, .dirtyIndex(["staged.txt"]))
+      }
+    }
+  }
+
+  func testRemoteAndHeadDriftRejectsOldConfirmationBeforeMutation() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try write("first draft\n", to: fixture.worktree, path: "content/posts/article.md")
+    let service = RepositoryWorktreePublishService()
+    let confirmation = try service.prepare(
+      profile: fixture.profile, commitMessage: "Old confirmation")
+
+    _ = try git(["add", "content/posts/article.md"], at: fixture.worktree)
+    _ = try git(["commit", "-m", "drift after review"], at: fixture.worktree)
+    let driftedHead = try revision(at: fixture.worktree)
+    XCTAssertThrowsError(try service.publish(profile: fixture.profile, confirmation: confirmation))
+    {
+      XCTAssertEqual($0 as? RepositoryWorktreePublishError, .snapshotDrift)
+    }
+    XCTAssertEqual(try revision(at: fixture.worktree), driftedHead)
+    XCTAssertEqual(try revision(at: fixture.remote), fixture.baseline)
+  }
+
+  func testRemoteDriftRejectsOldConfirmationBeforeAnyPublishMutation() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try write("article draft\n", to: fixture.worktree, path: "content/posts/article.md")
+    let service = RepositoryWorktreePublishService()
+    let confirmation = try service.prepare(
+      profile: fixture.profile, commitMessage: "Remote drift")
+    let peer = try clonePeer(from: fixture.remote, under: fixture.base, name: "remote-drift-peer")
+    try write("remote drift\n", to: peer, path: "remote.txt")
+    _ = try git(["add", "remote.txt"], at: peer)
+    _ = try git(["commit", "-m", "remote drift"], at: peer)
+    _ = try git(["fetch", peer.path, "main:main"], at: fixture.remote)
+    _ = try git(["fetch", "origin"], at: fixture.worktree)
+
+    XCTAssertThrowsError(try service.publish(profile: fixture.profile, confirmation: confirmation))
+    {
+      guard case .remoteOutOfDate = $0 as? RepositoryWorktreePublishError else {
+        return XCTFail("Expected remoteOutOfDate, got \($0)")
+      }
+    }
+    XCTAssertEqual(try revision(at: fixture.worktree), fixture.baseline)
+    XCTAssertEqual(try revision(at: fixture.remote), try revision(at: peer))
+  }
+
+  private func makeFixture() throws -> Fixture {
+    let base = FileManager.default.temporaryDirectory
+      .appendingPathComponent("repopress-ahead-\(UUID().uuidString)", isDirectory: true)
+    let seed = base.appendingPathComponent("seed", isDirectory: true)
+    let owner = base.appendingPathComponent("owner", isDirectory: true)
+    let remote = owner.appendingPathComponent("site.git", isDirectory: true)
+    let worktree = base.appendingPathComponent("worktree", isDirectory: true)
+    try FileManager.default.createDirectory(at: seed, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: owner, withIntermediateDirectories: true)
+    _ = try git(["init", "-b", "main"], at: seed)
+    try configure(seed)
+    try write("base\n", to: seed, path: "README.md")
+    _ = try git(["add", "README.md"], at: seed)
+    _ = try git(["commit", "-m", "initial"], at: seed)
+    _ = try git(["clone", "--bare", seed.path, remote.path], at: base)
+    _ = try git(["clone", remote.path, worktree.path], at: base)
+    try configure(worktree)
+    let baseline = try revision(at: worktree)
+    var profile = SiteProfile(
+      name: "Test", localRepositoryRootPath: worktree.path,
+      repoOwner: "owner", repoName: "site", branch: "main")
+    profile.contentRoot = "content"
+    return Fixture(
+      base: base, worktree: worktree, remote: remote, profile: profile, baseline: baseline)
+  }
+
+  private func clonePeer(from remote: URL, under base: URL, name: String) throws -> URL {
+    let peer = base.appendingPathComponent(name, isDirectory: true)
+    _ = try git(["clone", remote.path, peer.path], at: base)
+    try configure(peer)
+    return peer
+  }
+
+  private func configure(_ root: URL) throws {
+    _ = try git(["config", "user.email", "tests@example.com"], at: root)
+    _ = try git(["config", "user.name", "RepoPress Tests"], at: root)
+  }
+
+  private func write(_ value: String, to root: URL, path: String) throws {
+    let file = root.appendingPathComponent(path)
+    try FileManager.default.createDirectory(
+      at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try value.write(to: file, atomically: true, encoding: .utf8)
+  }
+
+  private func revision(at root: URL) throws -> String {
+    try git(["rev-parse", "HEAD"], at: root).trimmedForPublishing
+  }
+
+  @discardableResult
+  private func git(_ arguments: [String], at root: URL) throws -> String {
+    let result = GitCommandRunner(timeout: 30).run(arguments, rootURL: root)
+    guard result.terminationStatus == 0 else {
+      throw NSError(
+        domain: "RepositoryWorktreeAheadPublishTests.Git",
+        code: Int(result.terminationStatus),
+        userInfo: [NSLocalizedDescriptionKey: result.output])
+    }
+    return result.standardOutput
+  }
+}

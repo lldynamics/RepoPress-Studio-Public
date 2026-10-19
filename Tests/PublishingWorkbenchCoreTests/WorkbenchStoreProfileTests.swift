@@ -947,17 +947,19 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     store.updateActiveProfile(profile)
 
     var draft = try XCTUnwrap(store.selectedDraft)
-    draft.title = ""
-    draft.slug = "blocked-write"
+    draft.title = "Optional title"
+    draft.slug = ""
     draft.draft = false
     draft.bodyMarkdown = "This body is intentionally long enough so the blocking write test is driven by the title error."
     store.updateDraft(draft)
     store.refreshPublishPreview(for: draft)
 
     XCTAssertEqual(store.localPublishReadiness?.writeReadiness, .blocked)
-    XCTAssertTrue(store.localPublishReadiness?.writeBlockingIssues.contains {
-      $0.title == CoreL10n.text("标题为空")
-    } == true)
+    XCTAssertTrue(
+      store.localPublishReadiness?.writeBlockingIssues.contains {
+        $0.title == CoreL10n.text("Slug 为空")
+      } == true
+    )
 
     let initialRecordCount = store.releaseRecords.count
     await store.writeSelectedDraftToLocalRepository()
@@ -966,7 +968,25 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertFalse(FileManager.default.fileExists(atPath: writtenURL.path))
     XCTAssertEqual(store.releaseRecords.count, initialRecordCount)
     XCTAssertTrue(store.publishActionMessage?.contains("已停止写入") == true)
-    XCTAssertTrue(store.publishActionMessage?.contains(CoreL10n.text("标题为空")) == true)
+    XCTAssertTrue(store.publishActionMessage?.contains(CoreL10n.text("Slug 为空")) == true)
+  }
+
+  func testEmptyTitleIsClassifiedAsOptionalWarning() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    var draft = try XCTUnwrap(store.selectedDraft)
+    draft.title = ""
+    draft.slug = "valid-title"
+    store.updateDraft(draft)
+    store.refreshPublishPreview(for: draft)
+
+    let issue = try XCTUnwrap(
+      PreflightCheckService().run(
+        draft: draft, allDrafts: [draft], profile: store.activeProfile,
+        includeRepositoryReadiness: false
+      ).first { $0.field == "title" })
+    XCTAssertEqual(issue.severity, .warning)
+    XCTAssertEqual(issue.ruleID, "content.title.missing")
+    XCTAssertEqual(PublishCheckClassification.classify(issue), .optionalOptimization)
   }
 
   func testWritingPackageBlocksMissingImageSourceBeforePartialMarkdownWrite() async throws {

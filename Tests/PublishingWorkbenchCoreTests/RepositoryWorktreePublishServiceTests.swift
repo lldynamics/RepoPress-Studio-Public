@@ -576,17 +576,12 @@ final class RepositoryWorktreePublishServiceTests: XCTestCase {
     let headBefore = try git(["rev-parse", "HEAD"], at: fixture.worktree).trimmedForPublishing
     try FileManager.default.removeItem(at: content.appendingPathComponent("_index.md"))
 
-    XCTAssertThrowsError(
-      try RepositoryWorktreePublishService().prepare(
-        profile: fixture.profile,
-        commitMessage: "Delete structure"
-      )
-    ) { error in
-      guard case .blocked(let diagnostics) = error as? RepositoryPublishSafetyError else {
-        return XCTFail("Unexpected error: \(error)")
-      }
-      XCTAssertEqual(diagnostics.map(\.code), [.structuralDelete])
-    }
+    let confirmation = try RepositoryWorktreePublishService().prepare(
+      profile: fixture.profile,
+      commitMessage: "Delete structure"
+    )
+    XCTAssertEqual(confirmation.safetyReport.warnings.map(\.code), [.structuralDelete])
+    XCTAssertTrue(confirmation.safetyReport.canPublish)
     XCTAssertEqual(
       try git(["rev-parse", "HEAD"], at: fixture.worktree).trimmedForPublishing,
       headBefore

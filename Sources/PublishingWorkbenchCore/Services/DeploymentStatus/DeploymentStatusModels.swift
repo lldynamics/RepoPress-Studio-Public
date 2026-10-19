@@ -74,16 +74,6 @@ public enum DeploymentProvider: String, Codable, CaseIterable, Identifiable, Sen
   }
 }
 
-public struct DeploymentProviderIntegrationDepth: Codable, Hashable, Sendable {
-  public var title: String
-  public var detail: String
-
-  public init(title: String, detail: String) {
-    self.title = title
-    self.detail = detail
-  }
-}
-
 public enum DeploymentStatusLevel: String, Codable, CaseIterable, Identifiable, Sendable {
   case success
   case running
@@ -248,6 +238,9 @@ public struct DeploymentStatusSignal: Identifiable, Codable, Hashable, Sendable 
   public var observedCommitSHA: String?
   public var attributionVerified: Bool?
   public var verifiedSourceDocumentDigest: String?
+  /// A stable machine-readable reason for signals that need a specific follow-up.
+  /// Optional so snapshots written before this field was introduced remain valid.
+  public var diagnostic: DeploymentStatusSignalDiagnostic?
 
   private enum CodingKeys: String, CodingKey {
     case id
@@ -262,6 +255,7 @@ public struct DeploymentStatusSignal: Identifiable, Codable, Hashable, Sendable 
     case observedCommitSHA
     case attributionVerified
     case verifiedSourceDocumentDigest
+    case diagnostic
   }
 
   public init(
@@ -276,7 +270,8 @@ public struct DeploymentStatusSignal: Identifiable, Codable, Hashable, Sendable 
     observedBranch: String? = nil,
     observedCommitSHA: String? = nil,
     attributionVerified: Bool? = nil,
-    verifiedSourceDocumentDigest: String? = nil
+    verifiedSourceDocumentDigest: String? = nil,
+    diagnostic: DeploymentStatusSignalDiagnostic? = nil
   ) {
     self.id = id
     self.level = level
@@ -290,6 +285,7 @@ public struct DeploymentStatusSignal: Identifiable, Codable, Hashable, Sendable 
     self.observedCommitSHA = observedCommitSHA
     self.attributionVerified = attributionVerified
     self.verifiedSourceDocumentDigest = verifiedSourceDocumentDigest
+    self.diagnostic = diagnostic
   }
 
   public init(from decoder: Decoder) throws {
@@ -311,6 +307,8 @@ public struct DeploymentStatusSignal: Identifiable, Codable, Hashable, Sendable 
     attributionVerified = try container.decodeIfPresent(Bool.self, forKey: .attributionVerified)
     verifiedSourceDocumentDigest = try container.decodeIfPresent(
       String.self, forKey: .verifiedSourceDocumentDigest)
+    diagnostic = try container.decodeIfPresent(
+      DeploymentStatusSignalDiagnostic.self, forKey: .diagnostic)
   }
 
   public func encode(to encoder: Encoder) throws {
@@ -327,8 +325,10 @@ public struct DeploymentStatusSignal: Identifiable, Codable, Hashable, Sendable 
     try container.encodeIfPresent(observedCommitSHA, forKey: .observedCommitSHA)
     try container.encodeIfPresent(attributionVerified, forKey: .attributionVerified)
     try container.encodeIfPresent(verifiedSourceDocumentDigest, forKey: .verifiedSourceDocumentDigest)
+    try container.encodeIfPresent(diagnostic, forKey: .diagnostic)
   }
 }
+
 
 public struct DeploymentStatusSnapshot: Identifiable, Codable, Hashable, Sendable {
   public var id: UUID

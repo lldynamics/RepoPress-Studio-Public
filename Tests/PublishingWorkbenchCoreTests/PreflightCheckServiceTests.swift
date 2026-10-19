@@ -899,3 +899,88 @@ final class ThemeShortcodeCatalogCacheTests: XCTestCase {
     try contents.write(to: url, atomically: true, encoding: .utf8)
   }
 }
+
+final class FrontMatterDatePreflightTests: XCTestCase {
+  func testValidImportedISODatePassesDateOnlySiteWithoutRewritingSource() throws {
+    for style in [FrontMatterStyle.yaml, .toml] {
+      var profile = SiteProfile.defaultProfile
+      profile.frontMatterStyle = style
+      profile.markdownPathPattern = "content/posts/{slug}.md"
+      profile.dateFormat = "yyyy-MM-dd"
+      let draft = try imported("2026-10-15T00:00:00Z", profile: profile)
+      let before = FrontMatterRenderer().render(draft: draft, profile: profile)
+      let issues = PreflightCheckService().run(
+        draft: draft, allDrafts: [draft], profile: profile, includeRepositoryReadiness: false)
+      XCTAssertFalse(issues.contains { $0.ruleID == "frontmatter.date-format" })
+      XCTAssertEqual(FrontMatterRenderer().render(draft: draft, profile: profile), before)
+      XCTAssertTrue(before.contains("2026-10-15T00:00:00Z"))
+    }
+  }
+
+  func testInvalidCalendarDateAndTrailingGarbageAreRejected() throws {
+    for value in ["2026-02-30T03:04:05Z", "2026-10-15T03:04:05Z trailing"] {
+      var profile = SiteProfile.defaultProfile
+      profile.dateFormat = "yyyy-MM-dd"
+      profile.markdownPathPattern = "content/posts/{slug}.md"
+      let draft = try imported(value, profile: profile)
+      let issue = FrontMatterDatePreflight.issue(draft: draft, profile: profile)
+      XCTAssertEqual(issue?.ruleID, "frontmatter.date-format", value)
+      XCTAssertEqual(issue?.severity, .error, value)
+    }
+  }
+
+  func testMatchingDateOnlyAndExplicitTimestampFormatsPass() throws {
+    for style in [FrontMatterStyle.yaml, .toml] {
+      for (value, format) in [
+        ("2026-10-15", "yyyy-MM-dd"),
+        ("2026-10-15T00:00:00Z", "yyyy-MM-dd'T'HH:mm:ssXXXXX"),
+        ("2026-10-15T08:00:00+08:00", "yyyy-MM-dd'T'HH:mm:ssXXXXX"),
+      ] {
+        var profile = SiteProfile.defaultProfile
+        profile.frontMatterStyle = style
+        profile.markdownPathPattern = "content/posts/{slug}.md"
+        profile.dateFormat = format
+        XCTAssertNil(
+          FrontMatterDatePreflight.issue(
+            draft: try imported(value, profile: profile), profile: profile))
+      }
+    }
+  }
+
+  func testEditorDateOnlyRoundTripPreservesInstantAndBody() throws {
+    var profile = SiteProfile.defaultProfile
+    profile.dateFormat = "yyyy-MM-dd"
+    for style in [FrontMatterStyle.yaml, .toml] {
+      profile.frontMatterStyle = style
+      profile.markdownPathPattern = "content/posts/{slug}.md"
+      let draft = ArticleDraft(
+        siteProfileID: profile.id, title: "Date", date: Date(timeIntervalSince1970: 1_792_034_745),
+        slug: "date", bodyMarkdown: "Unchanged body")
+      let editor = MarkdownFrontMatterEditingService()
+      let result = editor.applying(
+        editor.render(draft: draft, profile: profile), to: draft, profile: profile)
+      XCTAssertTrue(result.isValid)
+      XCTAssertEqual(result.draft.date, draft.date)
+      XCTAssertEqual(result.draft.bodyMarkdown, draft.bodyMarkdown)
+      XCTAssertNil(FrontMatterDatePreflight.issue(draft: result.draft, profile: profile))
+    }
+  }
+
+  private func imported(_ date: String, profile: SiteProfile) throws -> ArticleDraft {
+    let delimiter = profile.frontMatterStyle == .toml ? "+++" : "---"
+    let separator = profile.frontMatterStyle == .toml ? " = " : ": "
+    let source = """
+      \(delimiter)
+      title\(separator)"Date regression"
+      date\(separator)"\(date)"
+      slug\(separator)"date-regression"
+      draft\(separator)false
+      \(delimiter)
+
+      Unchanged body
+      """
+    return try LocalContentImportService(isContentIndexEnabled: false).parseProjectDocument(
+      source, repositoryPath: "content/posts/date-regression.md",
+      rootURL: FileManager.default.temporaryDirectory, profile: profile)
+  }
+}

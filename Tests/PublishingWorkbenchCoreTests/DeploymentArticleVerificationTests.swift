@@ -87,7 +87,7 @@ final class DeploymentArticleVerificationTests: XCTestCase {
       kind: .remoteDirectCommit, title: "Legacy", summary: "",
       siteProfileID: profile.id, draftTitle: "first", markdownPath: "content/posts/first.md",
       branchName: "main", targetBranch: "main", commitSHA: "release-sha")
-    let transport = ArticleVerificationTransport(failingPaths: ["/first/"])
+    let transport = ArticleVerificationTransport(failingPaths: ["/posts/first/"])
     let result = await DeploymentStatusService(transport: transport).check(
       profile: profile, releaseRecord: record)
     XCTAssertEqual(result.articleResults?.count, 1)

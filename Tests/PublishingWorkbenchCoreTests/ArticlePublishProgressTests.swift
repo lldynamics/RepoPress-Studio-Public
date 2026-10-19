@@ -86,6 +86,103 @@ final class ArticlePublishProgressTests: XCTestCase {
     XCTAssertTrue(progress?.isPending == true)
   }
 
+  func testRunningSignalRemainsPending() {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let (profile, record) = fixture(now: now)
+    let snapshot = makeSnapshot(
+      record: record, profile: profile, checkedAt: now.addingTimeInterval(1),
+      platform: .running, attribution: true, articleLevel: .running, digest: nil)
+
+    let progress = ArticlePublishProgress.make(
+      record: record, snapshot: snapshot, profile: profile, now: now)
+    XCTAssertEqual(progress?.phase, .waitingForDeployment)
+    XCTAssertTrue(progress?.isPending == true)
+  }
+
+  func testMissingMarkerStopsAfterAttributedDeploymentWithStructuredDiagnostic() {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let (profile, record) = fixture(now: now)
+    let snapshot = makeSnapshot(
+      record: record, profile: profile, checkedAt: now.addingTimeInterval(1),
+      platform: .success, attribution: true, articleLevel: .unknown, digest: nil,
+      diagnostic: .missingMarker, message: "页面未提供文章版本标记")
+
+    let progress = ArticlePublishProgress.make(
+      record: record, snapshot: snapshot, profile: profile, now: now)
+    XCTAssertEqual(progress?.phase, .needsAttention)
+    XCTAssertFalse(progress?.isPending == true)
+    XCTAssertTrue(progress?.message.contains("部署已完成") == true)
+    XCTAssertTrue(progress?.message.contains("版本标记") == true)
+  }
+
+  func testInvalidMarkerAndMissingExpectedDigestStopButDigestMismatchKeepsWaiting() {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let (profile, record) = fixture(now: now)
+    for terminal in [
+      DeploymentStatusSignalDiagnostic.invalidMarker,
+      .missingExpectedDigest,
+    ] {
+      let snapshot = makeSnapshot(
+        record: record, profile: profile, checkedAt: now.addingTimeInterval(1),
+        platform: .success, attribution: true, articleLevel: .failed, digest: nil,
+        diagnostic: terminal, message: "版本证据需要人工处理")
+      let progress = ArticlePublishProgress.make(
+        record: record, snapshot: snapshot, profile: profile, now: now)
+      XCTAssertEqual(progress?.phase, .needsAttention)
+      XCTAssertFalse(progress?.isPending == true)
+    }
+
+    let mismatch = makeSnapshot(
+      record: record, profile: profile, checkedAt: now.addingTimeInterval(1),
+      platform: .success, attribution: true, articleLevel: .failed, digest: nil,
+      diagnostic: .digestMismatch, message: "页面版本与本次发布不一致")
+    let progress = ArticlePublishProgress.make(
+      record: record, snapshot: mismatch, profile: profile, now: now)
+    XCTAssertEqual(progress?.phase, .verifyingArticle)
+    XCTAssertTrue(progress?.isPending == true)
+  }
+
+  func testAttributedPlatformSuccessTakesPrecedenceOverReadinessReason() {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let (profile, record) = fixture(now: now)
+    let snapshot = makeSnapshot(
+      record: record, profile: profile, checkedAt: now.addingTimeInterval(1),
+      platform: .success, attribution: true, articleLevel: .failed, digest: nil,
+      diagnostic: .digestMismatch, message: "页面版本仍在缓存中")
+    let progress = ArticlePublishProgress.make(
+      record: record, snapshot: snapshot, profile: profile,
+      unavailableReason: "补齐 Cloudflare Token 后可读取部署 API 状态。", now: now)
+    XCTAssertEqual(progress?.phase, .needsAttention)
+    XCTAssertTrue(progress?.message.contains("部署已完成") == true)
+    XCTAssertTrue(progress?.message.contains("Cloudflare") == true)
+  }
+
+  func testOnlineEvidenceIsNotDowngradedByReadinessReason() {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let (profile, record) = fixture(now: now)
+    let snapshot = makeSnapshot(
+      record: record, profile: profile, checkedAt: now.addingTimeInterval(1),
+      platform: .success, attribution: true, articleLevel: .success,
+      digest: record.articleVerificationTargets[0].sourceDocumentDigest)
+    let progress = ArticlePublishProgress.make(
+      record: record, snapshot: snapshot, profile: profile,
+      unavailableReason: "补齐 Cloudflare Token 后可读取部署 API 状态。", now: now)
+    XCTAssertEqual(progress?.phase, .online)
+  }
+
+  func testUnattributedPlatformSuccessCannotSayDeploymentCompleted() {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let (profile, record) = fixture(now: now)
+    let snapshot = makeSnapshot(
+      record: record, profile: profile, checkedAt: now.addingTimeInterval(1),
+      platform: .success, attribution: false, articleLevel: .success,
+      digest: record.articleVerificationTargets[0].sourceDocumentDigest)
+    let progress = ArticlePublishProgress.make(
+      record: record, snapshot: snapshot, profile: profile, now: now)
+    XCTAssertEqual(progress?.phase, .waitingForDeployment)
+    XCTAssertFalse(progress?.message.contains("部署已完成") == true)
+  }
+
   func testPlatformFailureNeedsAttentionOnlyWithVerifiedAttribution() {
     let now = Date(timeIntervalSince1970: 10_000)
     let (profile, record) = fixture(now: now)
@@ -196,7 +293,8 @@ final class ArticlePublishProgressTests: XCTestCase {
   private func makeSnapshot(
     record: ReleaseRecord, profile: SiteProfile, checkedAt: Date,
     platform: DeploymentStatusLevel, attribution: Bool,
-    articleLevel: DeploymentStatusLevel, digest: String?, message: String = "ok"
+    articleLevel: DeploymentStatusLevel, digest: String?,
+    diagnostic: DeploymentStatusSignalDiagnostic? = nil, message: String = "ok"
   ) -> DeploymentStatusSnapshot {
     let target = record.articleVerificationTargets[0]
     let article = DeploymentArticleVerificationResult(
@@ -204,7 +302,7 @@ final class ArticlePublishProgressTests: XCTestCase {
       signals: [
         DeploymentStatusSignal(
           level: articleLevel, title: "Article", message: message,
-          verifiedSourceDocumentDigest: digest)
+          verifiedSourceDocumentDigest: digest, diagnostic: diagnostic)
       ])
     return DeploymentStatusSnapshot(
       profileID: profile.id, releaseRecordID: record.id, provider: .custom,

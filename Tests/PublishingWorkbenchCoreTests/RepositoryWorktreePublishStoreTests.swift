@@ -44,6 +44,102 @@ final class RepositoryWorktreePublishStoreTests: XCTestCase {
     XCTAssertFalse(fixture.store.draftBodyEditorBuffer(for: fixture.draft.id).isDirty)
   }
 
+  func testPrepareRejectsBoundDraftFailedSaveWithPathAndReason() async throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.baseURL) }
+    await fixture.store.waitForPendingSiteDraftFileWrites()
+    fixture.store.siteDraftFileSaveStates[fixture.draft.id] = .failed(
+      repositoryPath: "content/posts/article.md", message: "磁盘写入失败")
+    let headBefore = try git(["rev-parse", "HEAD"], at: fixture.worktreeURL)
+    let statusBefore = try git(
+      ["status", "--porcelain=v1", "--untracked-files=all"], at: fixture.worktreeURL)
+    let articleBefore = try Data(contentsOf: fixture.articleURL)
+
+    let confirmation = await fixture.store.prepareRepositoryWorktreePublish(
+      commitMessage: "Publish all site changes")
+
+    XCTAssertNil(confirmation)
+    let message = try XCTUnwrap(fixture.store.publishActionMessage)
+    XCTAssertTrue(message.contains("Article"), message)
+    XCTAssertTrue(message.contains("content/posts/article.md"), message)
+    XCTAssertTrue(message.contains("磁盘写入失败"), message)
+    XCTAssertFalse(message.contains("待发布文件已变化"), message)
+    XCTAssertEqual(try git(["rev-parse", "HEAD"], at: fixture.worktreeURL), headBefore)
+    XCTAssertEqual(
+      try git(["status", "--porcelain=v1", "--untracked-files=all"], at: fixture.worktreeURL),
+      statusBefore)
+    XCTAssertEqual(try Data(contentsOf: fixture.articleURL), articleBefore)
+  }
+
+  func testPrepareRejectsBoundDraftPendingSaveWithPath() async throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.baseURL) }
+    await fixture.store.waitForPendingSiteDraftFileWrites()
+    fixture.store.siteDraftFileSaveStates[fixture.draft.id] = .pending(
+      repositoryPath: "content/posts/article.md")
+
+    let confirmation = await fixture.store.prepareRepositoryWorktreePublish(
+      commitMessage: "Publish all site changes")
+
+    XCTAssertNil(confirmation)
+    let message = try XCTUnwrap(fixture.store.publishActionMessage)
+    XCTAssertTrue(message.contains("文章尚未保存成功"), message)
+    XCTAssertTrue(message.contains("content/posts/article.md"), message)
+  }
+
+  func testImportedISODateBlocksArticlePublishWithoutMutatingRepositoryState() async throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.baseURL) }
+    await fixture.store.waitForPendingSiteDraftFileWrites()
+
+    fixture.store.updateActiveProfile { profile in
+      profile.dateFormat = "yyyy-MM-dd"
+    }
+    var imported = fixture.draft
+    imported.importedFrontMatter = .init(
+      rawBlock: "---\ntitle: \"Article\"\ndate: \"2024-02-30T03:04:05Z\"\nslug: \"article\"\n---",
+      syntax: .yaml
+    )
+    imported.date = Date(timeIntervalSince1970: 1_704_168_245)
+    imported.importedFrontMatter = ArticleFrontMatterPreservation.capturing(
+      try XCTUnwrap(imported.importedFrontMatter), draft: imported,
+      profile: fixture.store.activeProfile)
+    let importedDocument = FrontMatterRenderer().renderDocument(
+      draft: imported, profile: fixture.store.activeProfile)
+    try importedDocument.write(to: fixture.articleURL, atomically: true, encoding: .utf8)
+    imported.recordProjectFile(
+      profile: fixture.store.activeProfile,
+      repositoryPath: "content/posts/article.md",
+      renderedContentDigest: ArticleDraft.repositoryDocumentDigest(importedDocument)
+    )
+    fixture.store.updateDraft(imported)
+    await fixture.store.waitForPendingSiteDraftFileWrites()
+    XCTAssertTrue(fixture.store.focusDraft(imported.id, section: .writing))
+
+    let unrelatedURL = fixture.worktreeURL.appendingPathComponent("staged-unrelated.txt")
+    try "keep this staged change\n".write(to: unrelatedURL, atomically: true, encoding: .utf8)
+    _ = try git(["add", "--", "staged-unrelated.txt"], at: fixture.worktreeURL)
+    let headBefore = try git(["rev-parse", "HEAD"], at: fixture.worktreeURL)
+    let statusBefore = try git(
+      ["status", "--porcelain=v1", "--untracked-files=all"], at: fixture.worktreeURL)
+    let articleBefore = try String(contentsOf: fixture.articleURL, encoding: .utf8)
+
+    let preparation = await fixture.store.prepareArticleRepositoryPublish(draftID: imported.id)
+    guard case .blocked(let draftID, let issues) = preparation else {
+      return XCTFail("Expected date preflight to block publishing, got \(preparation)")
+    }
+    XCTAssertEqual(draftID, imported.id)
+    XCTAssertTrue(
+      issues.contains { $0.ruleID == "frontmatter.date-format" },
+      "Expected the date-format issue, got \(issues)")
+    XCTAssertEqual(try git(["rev-parse", "HEAD"], at: fixture.worktreeURL), headBefore)
+    XCTAssertEqual(
+      try git(["status", "--porcelain=v1", "--untracked-files=all"], at: fixture.worktreeURL),
+      statusBefore)
+    XCTAssertEqual(
+      try String(contentsOf: fixture.articleURL, encoding: .utf8), articleBefore)
+  }
+
   func testPreparePreservesExternalArticleWhenEditorBufferIsAlsoDirty() async throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture.baseURL) }

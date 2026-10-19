@@ -141,7 +141,7 @@ public struct RepositoryWorktreePushRetryService: Sendable {
     )
   }
 
-  private func inspect(profile: SiteProfile) throws -> RepositoryWorktreePushRetrySnapshot {
+  func inspect(profile: SiteProfile) throws -> RepositoryWorktreePushRetrySnapshot {
     guard let rootURL = profile.localRepositoryRootURL else {
       throw RepositoryWorktreePublishError.missingRepositoryRoot
     }

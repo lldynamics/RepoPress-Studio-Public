@@ -11,6 +11,7 @@ public enum RepositoryPublishSafetyDiagnosticCode: String, Hashable, Sendable {
   case crossSectionMove = "RP_CROSS_SECTION_MOVE"
   case massDelete = "RP_MASS_DELETE"
   case massContentRewrite = "RP_MASS_CONTENT_REWRITE"
+  case draftSourcePublication = "RP_DRAFT_SOURCE_PUBLICATION"
   case publishGuardChanged = "RP_PUBLISH_GUARD_CHANGED"
 }
 

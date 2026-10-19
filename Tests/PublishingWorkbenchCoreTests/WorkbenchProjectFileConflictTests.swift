@@ -47,6 +47,65 @@ final class WorkbenchProjectFileConflictTests: XCTestCase {
     )
   }
 
+  func testUseDiskPreservesExplicitZolaLeafRecoveryMetadataAndPath() async throws {
+    let fixture = try await makeFixture(
+      prefix: "project-conflict-zola-use-disk", siteKind: .zola)
+    defer { try? FileManager.default.removeItem(at: fixture.baseURL) }
+    let source = """
+      +++
+      title = "Gallery"
+      slug = "gallery-entry"
+      [extra]
+      gallery_layout = "masonry"
+      +++
+
+      External body
+
+      """
+    let draft = try fixture.addRecoveredZolaDraft(
+      source: source, repositoryPath: "content/gallery/index.md")
+    try fixture.updateLocalDraft(id: draft.id, body: "Local body")
+    let review = try await fixture.store.prepareProjectFileConflictReview(draftID: draft.id)
+
+    try await fixture.store.resolveProjectFileConflict(review, resolution: .useDisk)
+
+    let resolved = try XCTUnwrap(fixture.store.drafts.first { $0.id == draft.id })
+    XCTAssertEqual(resolved.repositoryPath, "content/gallery/index.md")
+    XCTAssertTrue(resolved.preservesZolaLeafBundlePath == true)
+    XCTAssertTrue(try XCTUnwrap(resolved.importedFrontMatter).rawBlock.contains("gallery_layout"))
+  }
+
+  func testMergedZolaLeafRecoveryPreservesMetadataAndPath() async throws {
+    let fixture = try await makeFixture(
+      prefix: "project-conflict-zola-merge", siteKind: .zola)
+    defer { try? FileManager.default.removeItem(at: fixture.baseURL) }
+    let source = """
+      +++
+      title = "Gallery"
+      slug = "gallery-entry"
+      [extra]
+      gallery_layout = "masonry"
+      +++
+
+      External body
+
+      """
+    let draft = try fixture.addRecoveredZolaDraft(
+      source: source, repositoryPath: "content/gallery/index.md")
+    try fixture.updateLocalDraft(id: draft.id, body: "Local body")
+    let review = try await fixture.store.prepareProjectFileConflictReview(draftID: draft.id)
+    let mergedDocument = review.diskDocument + "\nMerged local addition\n"
+
+    try await fixture.store.resolveProjectFileConflict(
+      review, resolution: .mergedDocument(mergedDocument))
+
+    let resolved = try XCTUnwrap(fixture.store.drafts.first { $0.id == draft.id })
+    XCTAssertEqual(resolved.repositoryPath, "content/gallery/index.md")
+    XCTAssertTrue(resolved.preservesZolaLeafBundlePath == true)
+    XCTAssertTrue(try XCTUnwrap(resolved.importedFrontMatter).rawBlock.contains("gallery_layout"))
+    XCTAssertTrue(resolved.bodyMarkdown.contains("Merged local addition"))
+  }
+
   func testStaleDiskRejectsConflictResolutionWithoutReplacingExternalContent() async throws {
     let fixture = try await makeFixture(prefix: "project-conflict-stale")
     defer { try? FileManager.default.removeItem(at: fixture.baseURL) }
@@ -157,6 +216,22 @@ final class WorkbenchProjectFileConflictTests: XCTestCase {
       return try XCTUnwrap(store.drafts.first { $0.id == draft.id })
     }
 
+    func addRecoveredZolaDraft(source: String, repositoryPath: String) throws -> ArticleDraft {
+      let draft = try LocalContentImportService(isContentIndexEnabled: false).parseProjectDocument(
+        source,
+        repositoryPath: repositoryPath,
+        rootURL: repositoryURL,
+        profile: store.activeProfile,
+        preserveZolaLeafBundlePath: true
+      )
+      store.setDrafts([draft])
+      let documentURL = repositoryURL.appendingPathComponent(repositoryPath)
+      try FileManager.default.createDirectory(
+        at: documentURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try source.write(to: documentURL, atomically: true, encoding: .utf8)
+      return draft
+    }
+
     func updateLocalDraft(id: UUID, body: String) throws {
       var draft = try XCTUnwrap(store.drafts.first { $0.id == id })
       draft.bodyMarkdown = body
@@ -173,7 +248,7 @@ final class WorkbenchProjectFileConflictTests: XCTestCase {
     }
   }
 
-  private func makeFixture(prefix: String) async throws -> Fixture {
+  private func makeFixture(prefix: String, siteKind: SiteKind? = nil) async throws -> Fixture {
     let baseURL = FileManager.default.temporaryDirectory.appendingPathComponent(
       "\(prefix)-\(UUID().uuidString)")
     let repositoryURL = baseURL.appendingPathComponent("repository")
@@ -182,6 +257,9 @@ final class WorkbenchProjectFileConflictTests: XCTestCase {
     let store = makeSafeExitTestStore(
       persistence: WorkbenchPersistence(fileURL: baseURL.appendingPathComponent("app-data/workbench.json")))
     store.updateActiveProfile {
+      if let siteKind {
+        $0.applyPublishingDefaults(for: siteKind)
+      }
       $0.localRepositoryRootPath = repositoryURL.path
       $0.markdownPathPattern = "content/posts/{slug}.md"
     }

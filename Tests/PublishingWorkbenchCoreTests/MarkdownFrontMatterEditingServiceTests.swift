@@ -108,7 +108,7 @@ final class MarkdownFrontMatterEditingServiceTests: XCTestCase {
     XCTAssertEqual(result.draft.bodyMarkdown, draft.bodyMarkdown)
   }
 
-  func testRenderedDateKeepsTimeWhenProfilePublishesDateOnly() throws {
+  func testRenderedDateUsesProfileFormatWithoutChangingDraftInstant() throws {
     var profile = SiteProfile.defaultProfile
     profile.frontMatterStyle = .toml
     profile.dateFormat = "yyyy-MM-dd"
@@ -124,7 +124,7 @@ final class MarkdownFrontMatterEditingServiceTests: XCTestCase {
 
     let source = MarkdownFrontMatterEditingService().render(draft: draft, profile: profile)
 
-    XCTAssertTrue(source.contains(#"date = "2026-07-18T08:34:56Z""#))
+    XCTAssertTrue(source.contains("date = \"" + formattedDate(draftDate) + "\""))
   }
 
   func testInvalidSourceDoesNotMutateDraft() throws {

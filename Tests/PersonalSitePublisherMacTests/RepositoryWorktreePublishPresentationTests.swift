@@ -73,4 +73,115 @@ final class RepositoryWorktreePublishPresentationTests: XCTestCase {
     XCTAssertTrue(summary.bodyOperations.isEmpty)
     XCTAssertEqual(summary.otherOperations, ["修改"])
   }
+
+  func testBlockingIssueCannotBeConfirmedEvenAfterAcknowledgement() {
+    XCTAssertFalse(
+      RepositoryWorktreePublishConfirmationPresentationPolicy.canConfirm(
+        isPublishing: false,
+        isReviewComplete: true,
+        requiresAcknowledgement: true,
+        acknowledgementGiven: true,
+        hasBlockingIssue: true
+      ))
+  }
+}
+
+final class RepositoryWorktreePublishConfirmationPresentationPolicyTests: XCTestCase {
+  func testSafetyWarningRequiresAcknowledgement() {
+    XCTAssertTrue(
+      RepositoryWorktreePublishConfirmationPresentationPolicy.requiresAcknowledgement(
+        safetyWarningCount: 1,
+        articleWarningCount: 0,
+        sitePreflight: nil
+      ))
+    XCTAssertFalse(canConfirm(requiresAcknowledgement: true, acknowledgementGiven: false))
+    XCTAssertTrue(canConfirm(requiresAcknowledgement: true, acknowledgementGiven: true))
+  }
+
+  func testOutgoingHistoryRequiresExplicitAcknowledgement() {
+    XCTAssertFalse(
+      RepositoryWorktreePublishConfirmationPresentationPolicy.canConfirm(
+        isPublishing: false,
+        isReviewComplete: true,
+        requiresAcknowledgement: false,
+        acknowledgementGiven: false,
+        historyReviewComplete: true,
+        historyAcknowledgementGiven: false
+      ))
+    XCTAssertTrue(
+      RepositoryWorktreePublishConfirmationPresentationPolicy.canConfirm(
+        isPublishing: false,
+        isReviewComplete: true,
+        requiresAcknowledgement: false,
+        acknowledgementGiven: false,
+        historyReviewComplete: true,
+        historyAcknowledgementGiven: true
+      ))
+  }
+
+  func testIncompleteOutgoingHistoryCannotBeConfirmed() {
+    XCTAssertFalse(
+      RepositoryWorktreePublishConfirmationPresentationPolicy.canConfirm(
+        isPublishing: false,
+        isReviewComplete: true,
+        requiresAcknowledgement: true,
+        acknowledgementGiven: true,
+        historyReviewComplete: false,
+        historyAcknowledgementGiven: true
+      ))
+  }
+
+  func testOptionalOptimizationDoesNotRequireAcknowledgement() {
+    let issue = PreflightIssue(
+      severity: .warning,
+      title: "标题较短",
+      message: "可补充更多内容",
+      ruleID: ContentHealthRuleID.shortBody.rawValue
+    )
+    XCTAssertEqual(
+      RepositoryWorktreePublishConfirmationPresentationPolicy.optionalIssues(from: [issue]).count,
+      1)
+    XCTAssertFalse(
+      RepositoryWorktreePublishConfirmationPresentationPolicy.requiresAcknowledgement(
+        safetyWarningCount: 0,
+        articleWarningCount: 0,
+        sitePreflight: nil
+      ))
+    XCTAssertTrue(canConfirm(requiresAcknowledgement: false, acknowledgementGiven: false))
+  }
+
+  func testFailedSitePreflightRequiresAcknowledgementAndSkippedIsOptional() {
+    let failed = RepositoryPublishPreflightResult(
+      outcome: .failed(.checkFailed), message: "检查失败")
+    XCTAssertTrue(
+      RepositoryWorktreePublishConfirmationPresentationPolicy.requiresAcknowledgement(
+        safetyWarningCount: 0,
+        articleWarningCount: 0,
+        sitePreflight: failed
+      ))
+    XCTAssertFalse(canConfirm(requiresAcknowledgement: true, acknowledgementGiven: false))
+
+    let skipped = RepositoryPublishPreflightResult(
+      outcome: .skipped(.nonZolaProfile), message: "未执行")
+    XCTAssertFalse(
+      RepositoryWorktreePublishConfirmationPresentationPolicy.requiresAcknowledgement(
+        safetyWarningCount: 0,
+        articleWarningCount: 0,
+        sitePreflight: skipped
+      ))
+    XCTAssertTrue(
+      RepositoryWorktreePublishConfirmationPresentationPolicy.isSkipped(skipped))
+  }
+
+  private func canConfirm(
+    requiresAcknowledgement: Bool,
+    acknowledgementGiven: Bool
+  ) -> Bool {
+    RepositoryWorktreePublishConfirmationPresentationPolicy.canConfirm(
+      isPublishing: false,
+      isReviewComplete: true,
+      requiresAcknowledgement: requiresAcknowledgement,
+      acknowledgementGiven: acknowledgementGiven
+    )
+  }
 }

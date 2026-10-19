@@ -43,26 +43,32 @@ extension DeploymentStatusService {
     let level: DeploymentStatusLevel
     let message: String
     var verifiedDigest: String?
+    var signal: DeploymentStatusSignalDiagnostic?
     switch evidence {
     case .verified(let digest):
       level = .success
       verifiedDigest = digest
+      signal = nil
       message = CoreL10n.text("页面版本标记与本次发布的文章源文件一致。")
     case .missingExpectedDigest:
       level = .unknown
+      signal = .missingExpectedDigest
       message = CoreL10n.text("此历史发布没有保存文章源文件摘要，正文版本尚未确认。")
     case .missingMarker:
       level = .unknown
+      signal = .missingMarker
       message = CoreL10n.text("页面未提供文章版本标记；可达性与标题检查不能确认正文已更新。")
     case .invalidMarker:
       level = .failed
+      signal = .invalidMarker
       message = CoreL10n.text("页面的文章版本标记无效或重复；请检查站点构建配置。")
     case .mismatch:
       level = .failed
+      signal = .digestMismatch
       message = CoreL10n.text("页面版本与本次发布不一致；请等待缓存更新或检查部署产物。")
     }
     return DeploymentStatusSignal(
       level: level, title: CoreL10n.text("文章正文版本"), message: message, urlText: urlText,
-      verifiedSourceDocumentDigest: verifiedDigest)
+      verifiedSourceDocumentDigest: verifiedDigest, diagnostic: signal)
   }
 }

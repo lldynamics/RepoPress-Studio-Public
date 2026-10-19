@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import PublishingDomainContracts
 import RepoPressCore
@@ -67,6 +66,9 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   /// backing storage keeps older snapshots compatible; legacy drafts resolve
   /// to revision zero until their first metadata edit.
   private var editorMetadataRevisionStorage: UInt64?
+  /// Explicit recovery of a Zola leaf bundle keeps its source path across edits.
+  /// Absent in legacy records and never enabled by automatic discovery.
+  public var preservesZolaLeafBundlePath: Bool?
   public var repositoryPath: String?
   public var repositorySHA: String?
   /// Fingerprint of the repository content at the last successful import or
@@ -403,6 +405,9 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   /// repository or branch. Local project placement is retained, but remote CAS evidence is
   /// cleared until the new target is verified.
   public mutating func normalizeRepositoryBinding(for profile: SiteProfile) {
+    if profile.preservedZolaLeafBundlePath(for: self) == nil {
+      preservesZolaLeafBundlePath = nil
+    }
     guard let path = repositoryPath?.normalizedRelativePath().nilIfEmpty else {
       repositoryBinding = nil
       repositorySHA = nil
@@ -456,6 +461,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       || self.repositoryPath?.normalizedRelativePath() != binding.repositoryPath
     {
       repositoryImportFingerprint = nil
+      preservesZolaLeafBundlePath = nil
     }
     self.repositoryPath = binding.repositoryPath
     repositorySHA = binding.remoteRevision
@@ -474,6 +480,11 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       profile: profile, repositoryPath: repositoryPath, remoteRevision: remoteRevision,
       renderedContentDigest: renderedContentDigest,
       projectFileContentDigest: projectFileContentDigest, verifiedAt: verifiedAt)
+    if repositoryBinding?.identity != binding.identity
+      || self.repositoryPath?.normalizedRelativePath() != binding.repositoryPath
+    {
+      preservesZolaLeafBundlePath = nil
+    }
     self.repositoryPath = binding.repositoryPath
     repositorySHA = binding.remoteRevision
     repositoryImportFingerprint = binding.syncState == .synced ? repositoryContentFingerprint : nil
@@ -499,6 +510,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     let projectBinding = repositoryBinding.flatMap { binding in
       binding.identity == identity && binding.repositoryPath == normalizedPath ? binding : nil
     }
+    if projectBinding == nil { preservesZolaLeafBundlePath = nil }
     let remoteDigest = Self.repositoryDocumentDigest(remoteDocument)
     let localDigest = Self.repositoryDocumentDigest(localDocument)
     let isSynced = remoteDigest == localDigest
@@ -540,6 +552,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   }
 
   public mutating func detachFromRepository() {
+    preservesZolaLeafBundlePath = nil
     repositoryPath = nil
     repositorySHA = nil
     repositoryImportFingerprint = nil
@@ -548,6 +561,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
 
   /// Editor bindings own content and workflow fields, never file concurrency state.
   public mutating func preserveRepositoryState(from current: ArticleDraft) {
+    preservesZolaLeafBundlePath = current.preservesZolaLeafBundlePath
     repositoryPath = current.repositoryPath
     repositorySHA = current.repositorySHA
     repositoryImportFingerprint = current.repositoryImportFingerprint
@@ -555,6 +569,9 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   }
 
   mutating func replaceRepositoryPathForProjection(_ path: String?) {
+    if repositoryPath != path?.normalizedRelativePath().nilIfEmpty {
+      preservesZolaLeafBundlePath = nil
+    }
     repositoryPath = path?.normalizedRelativePath().nilIfEmpty
     guard var binding = repositoryBinding, let repositoryPath else {
       if path == nil { repositoryBinding = nil }
@@ -562,12 +579,6 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     }
     binding.repositoryPath = repositoryPath
     repositoryBinding = binding
-  }
-
-  public static func repositoryDocumentDigest(_ document: String) -> String {
-    SHA256.hash(data: Data(document.utf8))
-      .map { String(format: "%02x", $0) }
-      .joined()
   }
 
   private static func legacyRepositoryBinding(
@@ -584,53 +595,4 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     )
   }
 
-  private static let fingerprintEncoder: JSONEncoder = {
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.sortedKeys]
-    encoder.dateEncodingStrategy = .millisecondsSince1970
-    return encoder
-  }()
-
-  /// Stable content identity for fields controlled by repository Markdown.
-  /// Runtime identifiers, timestamps and remote SHAs are excluded so repeated
-  /// imports of the same document remain a no-op.
-  public var repositoryContentFingerprint: String {
-    let coverRepositoryPath = coverAttachmentID.flatMap { coverID in
-      attachments.first(where: { $0.id == coverID })?.repositoryPath.normalizedRelativePath()
-    }
-    let snapshot = RepositoryContentFingerprintSnapshot(
-      title: title,
-      date: date,
-      slug: slug,
-      tags: tags,
-      categories: categories,
-      importedFrontMatter: importedFrontMatter,
-      authors: authors,
-      aliases: aliases,
-      permalink: permalink,
-      translationKey: translationKey,
-      draft: draft,
-      visibility: visibility,
-      summary: summary,
-      coverRepositoryPath: coverRepositoryPath,
-      bodyMarkdown: bodyMarkdown,
-      attachments:
-        attachments
-        .map(RepositoryAttachmentFingerprintSnapshot.init)
-        .sorted { lhs, rhs in
-          if lhs.repositoryPath == rhs.repositoryPath {
-            return lhs.relativePublishPath < rhs.relativePublishPath
-          }
-          return lhs.repositoryPath < rhs.repositoryPath
-        },
-      status: status
-    )
-    guard let data = try? Self.fingerprintEncoder.encode(snapshot) else {
-      assertionFailure("Failed to encode RepositoryContentFingerprintSnapshot")
-      let fallback =
-        "\(id.uuidString):\(title):\(date.timeIntervalSince1970):\(bodyMarkdown.utf8.count)"
-      return SHA256.hash(data: Data(fallback.utf8)).map { String(format: "%02x", $0) }.joined()
-    }
-    return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-  }
 }

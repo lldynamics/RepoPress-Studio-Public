@@ -217,6 +217,65 @@ final class ArticlePublishTrackingStoreTests: XCTestCase {
     XCTAssertTrue(requests.isEmpty)
   }
 
+  func testMissingCloudflareTokenWithSiteURLNeedsAttentionAndDoesNotPoll() async throws {
+    let (store, transport, _) = try fixture()
+    defer { stop(store) }
+    store.updateActiveProfile {
+      $0.deploymentProvider = .cloudflarePages
+      $0.deploymentAccountID = "account"
+      $0.deploymentProjectID = "site"
+      $0.deploymentSiteURL = "https://tracking.example/"
+      $0.deploymentStatusEndpointURL = nil
+    }
+    let record = trackedRecord(store)
+    store.setReleaseRecords([record])
+
+    XCTAssertTrue(store.canCheckDeploymentStatus(for: record))
+    XCTAssertEqual(store.articlePublishProgress(for: record)?.phase, .needsAttention)
+    XCTAssertTrue(
+      store.articlePublishProgress(for: record)?.message.contains("Cloudflare") == true)
+    let didRun = await store.deploymentStore.tickArticlePublishTracking(store: store, now: Date())
+    XCTAssertFalse(didRun)
+    let requests = await transport.requests()
+    XCTAssertTrue(requests.isEmpty)
+  }
+
+  func testManualRecheckWithMissingCloudflareTokenStillChecksArticlePage() async throws {
+    let (store, transport, _) = try fixture()
+    defer { stop(store) }
+    store.updateActiveProfile {
+      $0.deploymentProvider = .cloudflarePages
+      $0.deploymentAccountID = "account"
+      $0.deploymentProjectID = "site"
+      $0.deploymentSiteURL = "https://tracking.example/"
+      $0.deploymentStatusEndpointURL = nil
+    }
+    let record = trackedRecord(store)
+    store.setReleaseRecords([record])
+    _ = await store.deploymentStore.tickArticlePublishTracking(store: store, now: Date())
+    let automaticRequests = await transport.requests()
+    XCTAssertTrue(automaticRequests.isEmpty)
+
+    await store.recheckArticlePublication(record)
+    let requests = await transport.requests()
+    XCTAssertTrue(requests.contains { $0.url?.path == "/article" })
+  }
+
+  func testMissingVersionMarkerStopsAutomaticTrackingAfterAttributedDeployment() async throws {
+    let (store, transport, _) = try fixture()
+    defer { stop(store) }
+    await transport.setMode(.missingMarker)
+    let record = trackedRecord(store)
+    store.setReleaseRecords([record])
+
+    let didRun = await store.deploymentStore.tickArticlePublishTracking(store: store, now: Date())
+    XCTAssertTrue(didRun)
+    let current = try XCTUnwrap(store.releaseRecords.first)
+    XCTAssertEqual(store.articlePublishProgress(for: current)?.phase, .needsAttention)
+    XCTAssertFalse(store.hasPendingArticlePublishTracking)
+    XCTAssertNil(current.articlePublishTrackingRequest?.completedSnapshot)
+  }
+
   func testChangedProfileDuringCheckDropsResponse() async throws {
     let (store, transport, _) = try fixture()
     defer { stop(store) }
@@ -307,7 +366,9 @@ final class ArticlePublishTrackingStoreTests: XCTestCase {
 }
 
 private actor ArticleTrackingTransport: RemoteRepositoryHTTPTransport {
-  enum Mode: Equatable { case ready, building, articleMissing, offline, platformFailed }
+  enum Mode: Equatable {
+    case ready, building, articleMissing, missingMarker, offline, platformFailed
+  }
   private var mode = Mode.ready
   private var delay = false
   private var captured: [URLRequest] = []
@@ -326,7 +387,9 @@ private actor ArticleTrackingTransport: RemoteRepositoryHTTPTransport {
     let body =
       isStatus
       ? "{\"status\":\"\(status)\",\"branch\":\"main\",\"commit_sha\":\"release-sha\"}"
-      : "<html><head><meta name=repopress:source-digest content=\(ArticleDraft.repositoryDocumentDigest("article"))><link rel=canonical href=\(url.absoluteString)></head><h1>Article</h1></html>"
+      : mode == .missingMarker
+        ? "<html><head><link rel=canonical href=\(url.absoluteString)></head><h1>Article</h1></html>"
+        : "<html><head><meta name=repopress:source-digest content=\(ArticleDraft.repositoryDocumentDigest("article"))><link rel=canonical href=\(url.absoluteString)></head><h1>Article</h1></html>"
     let response = try XCTUnwrap(
       HTTPURLResponse(
         url: url, statusCode: !isStatus && mode == .articleMissing ? 404 : 200,

@@ -110,9 +110,11 @@ extension RepositoryStore {
     let draftIDs = reviewDraftIDs(
       store: store, profileID: profile.id, pathScope: confirmation.pathScope,
       articleDraftID: confirmation.articleVerificationTarget?.draftID)
-    guard activeDraftFilesAreStable(store: store, profileID: profile.id, draftIDs: draftIDs) else {
+    if let message = activeDraftFilesReadinessMessage(
+      store: store, profileID: profile.id, draftIDs: draftIDs)
+    {
       store.setGitActionMessage(
-        CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。"),
+        message,
         status: .warning
       )
       return nil
@@ -251,14 +253,11 @@ extension RepositoryStore {
       await store.waitForPendingSiteDraftFileWrites(draftIDs: draftIDs)
     }
 
-    guard !Task.isCancelled,
-      store.activeProfileID == profile.id,
-      activeDraftFilesAreStable(store: store, profileID: profile.id, draftIDs: draftIDs)
-    else {
-      store.setGitActionMessage(
-        CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。"),
-        status: .warning
-      )
+    guard !Task.isCancelled, store.activeProfileID == profile.id else { return false }
+    if let message = activeDraftFilesReadinessMessage(
+      store: store, profileID: profile.id, draftIDs: draftIDs)
+    {
+      store.setGitActionMessage(message, status: .warning)
       return false
     }
     return true
@@ -281,34 +280,43 @@ extension RepositoryStore {
     }
   }
 
-  private func activeDraftFilesAreStable(
+  private func activeDraftFilesReadinessMessage(
     store: WorkbenchStore,
     profileID: UUID,
     draftIDs: Set<UUID>?
-  ) -> Bool {
+  ) -> String? {
     let activeDraftIDs = Set(
       store.drafts.filter {
         $0.belongs(toSiteProfileID: profileID) && (draftIDs?.contains($0.id) ?? true)
       }.map(\.id)
     )
-    guard
-      !store.publishingStore.draftBodyEditorBuffers.values.contains(where: {
-        activeDraftIDs.contains($0.draftID) && $0.isDirty
-      }),
-      store.siteDraftFileAutosaveTasks.keys.allSatisfy({ !activeDraftIDs.contains($0) }),
-      store.siteDraftFileWritesInProgress.isDisjoint(with: activeDraftIDs)
-    else {
-      return false
-    }
-    return !store.siteDraftFileSaveStates.contains { draftID, state in
-      guard activeDraftIDs.contains(draftID) else { return false }
-      switch state {
-      case .pending, .failed:
-        return true
-      case .saved:
-        return false
+    let failures = store.siteDraftFileSaveStates.compactMap { draftID, state -> String? in
+      guard activeDraftIDs.contains(draftID), case .failed(let path, let message) = state else {
+        return nil
       }
+      let title = store.draft(for: draftID)?.title ?? path
+      return "\(title)（\(path)）：\(message)"
+    }.sorted()
+    if !failures.isEmpty {
+      return CoreL10n.format(
+        "以下文章未能写入本地仓库，已停止发布：%@", failures.joined(separator: "\n"))
     }
+    let pendingPaths = store.siteDraftFileSaveStates.compactMap { draftID, state -> String? in
+      guard activeDraftIDs.contains(draftID), case .pending(let path) = state else { return nil }
+      return path
+    }.sorted()
+    if !pendingPaths.isEmpty {
+      return CoreL10n.text("文章尚未保存成功，请先处理保存问题。") + "\n"
+        + pendingPaths.joined(separator: "\n")
+    }
+    if store.publishingStore.draftBodyEditorBuffers.values.contains(where: {
+      activeDraftIDs.contains($0.draftID) && $0.isDirty
+    }) || !store.siteDraftFileAutosaveTasks.keys.allSatisfy({ !activeDraftIDs.contains($0) })
+      || !store.siteDraftFileWritesInProgress.isDisjoint(with: activeDraftIDs)
+    {
+      return CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。")
+    }
+    return nil
   }
 
   /// Article save readiness follows the reviewed paths, while repository-wide

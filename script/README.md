@@ -33,7 +33,7 @@ Quartz 4 静态预览的固定 Python 运行器保存在 `Sources/PublishingWork
 | `check_repository_source_boundary.sh` | 检查仓库源码边界、SwiftPM 构建锁、两个系统入口扩展、UI 测试输入、链接目录和发布模式下的来源完整性。普通模式只报告 checked paths 下没有未跟踪的构建/发布输入；`--release` 还要求当前 HEAD 对应的提交工作树完全干净。 | quick/发布；`test_repository_source_boundary.sh`。 |
 | `check_swift_accessibility_fields.py` | 查找 `TextField`/`TextEditor` 缺少直接 accessibility label 的 Swift 源码。 | `check_accessibility.sh`；`test_swift_accessibility_fields.py`。 |
 | `check_swift_coverage.py` | 运行 Swift 覆盖率并执行 Sources 行覆盖基线及变更行约束。 | 发行与深度覆盖率流程；`test_swift_coverage_gate.py`。 |
-| `check_swift_format.sh` | 对 Swift 源码执行格式静态检查并保存结果证据。 | quick/CI；`test_swift_format_gate.sh`。 |
+| `check_swift_format.sh` | 对 Swift 源码执行格式静态检查；每次调用独立采集并保留诊断日志，JSON 指向该次日志，固定日志别名和 JSON 原子替换，避免并发调用混用检查输入。损坏的诊断路径明确失败，不忽略告警。 | quick/CI；`test_swift_format_gate.sh`。 |
 | `check_swift_module_boundaries.py` | 核对实际依赖与精确策略，检查循环、源码导入、第三方产品和兼容导出，记录依赖审计报告；规则查询用 `--describe-policy`。 | quick/CI；`test_swift_module_boundaries.py`；职责与证据边界见[模块依赖指南](../docs/module-dependencies.md)。 |
 | `Shared/RepoPressCoreContracts/swift/verify-source.py` | 核对已提交的共享 Swift 源码、测试与 fixture 是否匹配 `source-lock.json`。 | `shared-repopress-source-lock` 通过 `check_release_gate.sh` 运行；公开快照门复用它，不能另建平行摘要检查。 |
 | `check_swift_release_build.sh` | 使用发布配置编译 SwiftPM 产品并校验可交付构建。 | release profile；`test_swift_release_build_gate.sh`。 |

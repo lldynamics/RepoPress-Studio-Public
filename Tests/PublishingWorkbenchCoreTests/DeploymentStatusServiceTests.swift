@@ -363,7 +363,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
       deploymentResponse(
         statusCode: 200,
         json:
-          #"<html><head><title>Published Article</title><link rel="canonical" href="https://example.com/blog/published-article"><meta property="og:url" content="https://example.com/blog/published-article/"></head><body>Published Article</body></html>"#
+          #"<html><head><title>Published Article</title><link rel="canonical" href="https://example.com/blog/posts/published-article"><meta property="og:url" content="https://example.com/blog/posts/published-article/"></head><body>Published Article</body></html>"#
       ),
     ])
     let service = DeploymentStatusService(transport: transport)
@@ -396,7 +396,8 @@ final class DeploymentStatusServiceTests: XCTestCase {
       snapshot.signals.first { $0.title == CoreL10n.text("发布页面 SEO") }?.message,
       CoreL10n.format("%@ 已指向当前文章 URL。", "canonical / og:url")
     )
-    XCTAssertEqual(snapshot.signals.last?.urlText, "https://example.com/blog/published-article")
+    XCTAssertEqual(
+      snapshot.signals.last?.urlText, "https://example.com/blog/posts/published-article")
     XCTAssertEqual(
       snapshot.postPublishCheckItems.map(\.title),
       [
@@ -433,7 +434,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
       requests.map { $0.url?.absoluteString },
       [
         "https://example.com/blog/",
-        "https://example.com/blog/published-article",
+        "https://example.com/blog/posts/published-article",
       ])
   }
 
@@ -533,8 +534,8 @@ final class DeploymentStatusServiceTests: XCTestCase {
         json: """
           <html>
             <head>
-              <link rel="canonical" href="https://example.com/social-article">
-              <meta property="og:url" content="https://example.com/social-article">
+              <link rel="canonical" href="https://example.com/posts/social-article">
+              <meta property="og:url" content="https://example.com/posts/social-article">
               <meta property="og:title" content="Social Article">
               <meta name="twitter:title" content="Social Article | Site">
               <meta name="description" content="\(summary)">
@@ -602,8 +603,8 @@ final class DeploymentStatusServiceTests: XCTestCase {
         json: """
           <html>
             <head>
-              <link rel="canonical" href="https://example.com/social-image-missing">
-              <meta property="og:url" content="https://example.com/social-image-missing">
+              <link rel="canonical" href="https://example.com/posts/social-image-missing">
+              <meta property="og:url" content="https://example.com/posts/social-image-missing">
               <meta property="og:title" content="Social Image Missing">
               <meta name="description" content="\(summary)">
               <meta property="og:description" content="\(summary)">
@@ -653,8 +654,8 @@ final class DeploymentStatusServiceTests: XCTestCase {
         json: """
           <html>
             <head>
-              <link rel="canonical" href="https://example.com/social-alt-missing">
-              <meta property="og:url" content="https://example.com/social-alt-missing">
+              <link rel="canonical" href="https://example.com/posts/social-alt-missing">
+              <meta property="og:url" content="https://example.com/posts/social-alt-missing">
               <meta property="og:title" content="Social Alt Missing">
               <meta name="description" content="\(summary)">
               <meta property="og:description" content="\(summary)">
@@ -704,8 +705,8 @@ final class DeploymentStatusServiceTests: XCTestCase {
         json: """
           <html>
             <head>
-              <link rel="canonical" href="https://example.com/social-missing-title">
-              <meta property="og:url" content="https://example.com/social-missing-title">
+              <link rel="canonical" href="https://example.com/posts/social-missing-title">
+              <meta property="og:url" content="https://example.com/posts/social-missing-title">
               <meta name="description" content="\(summary)">
             </head>
             <body>Social Missing Title</body>

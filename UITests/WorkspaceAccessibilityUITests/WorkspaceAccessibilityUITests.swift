@@ -930,6 +930,39 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     add(screenshot)
   }
 
+  func testWritingArticleStateCanSwitchBetweenDraftAndReady() throws {
+    launchApplication(surface: "writing", screenshotContentSize: CGSize(width: 1440, height: 900))
+    let tabs = element(identifier: "workspace-inspector-tabs")
+    if !tabs.exists {
+      element(identifier: "workspace-inspector-toggle").click()
+    }
+    XCTAssertTrue(tabs.waitForExistence(timeout: 5))
+    tabs.radioButtons["信息"].click()
+    let inspector = element(identifier: "article-inspector")
+    XCTAssertTrue(inspector.waitForExistence(timeout: 5))
+    let picker = element(identifier: "article-state-picker")
+
+    for title in ["草稿", "待发布", "草稿"] {
+      clickScrollableControl(picker, in: inspector)
+      let option = application.menuItems[title].firstMatch
+      XCTAssertTrue(option.waitForExistence(timeout: 5))
+      XCTAssertTrue(option.isEnabled, "The article state must be selectable: \(title)")
+      option.click()
+      XCTAssertEqual(
+        XCTWaiter.wait(
+          for: [
+            XCTNSPredicateExpectation(
+              predicate: NSPredicate(format: "value == %@", title), object: picker)
+          ], timeout: 5),
+        .completed
+      )
+    }
+    let screenshot = XCTAttachment(screenshot: application.windows.firstMatch.screenshot())
+    screenshot.name = "Article state after draft-ready-draft transitions"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+  }
+
   func testWritingSecondaryControlsKeepKeyboardAccessAndAdvancedMetadataCollapsed() throws {
     launchApplication(surface: "writing", screenshotContentSize: CGSize(width: 1440, height: 900))
 
@@ -2122,7 +2155,19 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
   /// Both publish actions run end to end against a real repository whose
   /// origin is a bare repository inside this test's own data directory, so
   /// nothing can reach a hosted site or the user's articles.
+  func testPublishThisAndPublishAllConfirmationsCancelWithoutPublishing() throws {
+    try runPublishAcceptance(confirmPublication: false)
+  }
+
   func testPublishThisAndPublishAllPushOnlyToTheTestOwnedRemote() throws {
+    try runPublishAcceptance(confirmPublication: true)
+  }
+
+  func testAheadHistoryCanReviewSingleAndAllWithoutPublishing() throws {
+    try runPublishAcceptance(confirmPublication: false, aheadCount: 5)
+  }
+
+  private func runPublishAcceptance(confirmPublication: Bool, aheadCount: Int = 0) throws {
     let root = knowledgeLibraryRootURL.appendingPathComponent(
       "repository-fixture", isDirectory: true)
     // The bare remote's owner/name match the demo site's repository identity.
@@ -2131,7 +2176,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     for directory in [root, remote] {
       try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
-    try acceptanceGit(["init", "--quiet", "--bare", "--initial-branch=main"], at: remote)
     try acceptanceGit(["init", "--quiet", "--initial-branch=main"], at: root)
     try acceptanceGit(["config", "user.name", "RepoPress Acceptance"], at: root)
     try acceptanceGit(["config", "user.email", "acceptance@example.invalid"], at: root)
@@ -2139,10 +2183,16 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       to: root.appendingPathComponent("README.md"))
     try acceptanceGit(["add", "README.md"], at: root)
     try acceptanceGit(["commit", "--quiet", "-m", "Acceptance baseline"], at: root)
+    // Seed a local-only bare origin without executing any push command.
+    try acceptanceGit(["clone", "--quiet", "--bare", root.path, remote.path], at: root)
     try acceptanceGit(["remote", "add", "origin", remote.path], at: root)
-    try acceptanceGit(["push", "--quiet", "origin", "main"], at: root)
+    try acceptanceGit(["fetch", "--quiet", "origin"], at: root)
     let origin = try acceptanceGit(["remote", "get-url", "--push", "origin"], at: root)
     XCTAssertTrue(origin.hasPrefix(knowledgeLibraryRootURL.path + "/"), origin)
+    let remoteBaseline = try acceptanceGit(["rev-parse", "HEAD"], at: root)
+    for index in 0..<aheadCount {
+      try acceptanceGit(["commit", "--allow-empty", "-m", "Reviewed local history \(index)"], at: root)
+    }
     let baseline = try acceptanceGit(["rev-parse", "HEAD"], at: root)
 
     application.launchEnvironment["PERSONAL_SITE_PUBLISHER_UI_TEST_NO_DEPLOYMENT"] = "1"
@@ -2191,8 +2241,9 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertTrue(targetURLText.contains("待配置"), targetURL.debugDescription)
     XCTAssertTrue(element(identifier: "publish-worktree-content-summary").exists)
     let scopedSummary = element(identifier: "publish-worktree-summary")
+    let scopeText = aheadCount > 0 ? "当前未提交文件仍只限于这篇文章" : "只提交这篇文章"
     let scopeDescription = scopedSummary.descendants(matching: .any).matching(
-      NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "只提交这篇文章", "只提交这篇文章")
+      NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", scopeText, scopeText)
     ).firstMatch
     XCTAssertTrue(scopeDescription.waitForExistence(timeout: 5), scopedSummary.debugDescription)
     let scopedFiles = element(identifier: "publish-worktree-file-list-details")
@@ -2221,15 +2272,42 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       scrollToReveal(
         [articlePath], in: scopedConfirmation.descendants(matching: .scrollView).firstMatch,
         window: window, maxSteps: 8), fileReview.debugDescription)
+    attachWindowScreenshot(named: "publish-this-confirmation-no-publish")
     let cancel = scopedConfirmation.buttons["取消"]
     XCTAssertTrue(cancel.waitForExistence(timeout: 5))
     cancel.click()
     assertIdentifierDisappears("publish-worktree-confirmation")
     XCTAssertEqual(try acceptanceGit(["rev-parse", "HEAD"], at: root), baseline)
-    XCTAssertEqual(try acceptanceGit(["rev-parse", "refs/heads/main"], at: remote), baseline)
+    XCTAssertEqual(try acceptanceGit(["rev-parse", "refs/heads/main"], at: remote), remoteBaseline)
     XCTAssertTrue(
       try acceptanceGit(["status", "--porcelain", "--untracked-files=all"], at: root)
         .contains("static/acceptance-theme.css"))
+
+    if !confirmPublication {
+      attachWindowScreenshot(named: "publish-this-cancelled")
+      application.typeKey("p", modifierFlags: [.option, .command])
+      let allConfirmation = element(identifier: "publish-worktree-confirmation")
+      XCTAssertTrue(allConfirmation.waitForExistence(timeout: 60))
+      let title = allConfirmation.descendants(matching: .any).matching(
+        NSPredicate(format: "value == %@ OR label == %@", "发布全部变更", "发布全部变更")
+      ).firstMatch
+      XCTAssertTrue(title.waitForExistence(timeout: 5))
+      if aheadCount > 0 {
+        let history = element(identifier: "publish-worktree-history-acknowledgement")
+        XCTAssertTrue(history.waitForExistence(timeout: 5))
+        XCTAssertFalse(element(identifier: "publish-worktree-confirm").isEnabled)
+        clickScrollableControl(
+          history, in: allConfirmation.descendants(matching: .scrollView).firstMatch)
+      }
+      XCTAssertTrue(element(identifier: "publish-worktree-confirm").isEnabled)
+      attachWindowScreenshot(named: "publish-all-confirmation-no-publish")
+      allConfirmation.buttons["取消"].click()
+      assertIdentifierDisappears("publish-worktree-confirmation")
+      XCTAssertEqual(try acceptanceGit(["rev-parse", "HEAD"], at: root), baseline)
+      XCTAssertEqual(try acceptanceGit(["rev-parse", "refs/heads/main"], at: remote), remoteBaseline)
+      XCTAssertTrue(try acceptanceGit(["diff", "--cached", "--name-only"], at: root).isEmpty)
+      return
+    }
 
     element(identifier: "workspace-prepare-publish").click()
     let articleCommit = try confirmPublishAndAttachEvidence(
@@ -2417,7 +2495,11 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     select(
       "workspace-sidebar-writing", revealing: "markdown-document-editor",
       in: application.windows.firstMatch)
-    showPublishChecks()
+    // This fixture may already show the checks. Avoid opening a redundant
+    // native menu whose popup AX tree is intermittently unavailable to XCTest.
+    if !element(identifier: "publish-drawer-header").exists {
+      showPublishChecks()
+    }
     assertUniqueIdentifier("publish-drawer-header")
     for identifier in [
       "publish-drawer-readiness-checklist",

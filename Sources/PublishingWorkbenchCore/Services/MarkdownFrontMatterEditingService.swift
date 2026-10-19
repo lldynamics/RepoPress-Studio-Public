@@ -346,10 +346,9 @@ public struct MarkdownFrontMatterEditingService: Sendable {
     return lines.joined(separator: "\n")
   }
 
-  private func formattedDate(_ date: Date, profile _: SiteProfile) -> String {
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime]
-    return formatter.string(from: date)
+  private func formattedDate(_ date: Date, profile: SiteProfile) -> String {
+    FrontMatterRenderer.formattedDate(
+      date, format: profile.dateFormat.trimmedForPublishing.nilIfEmpty ?? "yyyy-MM-dd")
   }
 
   private func parsedDate(_ value: String, profile: SiteProfile) -> Date? {

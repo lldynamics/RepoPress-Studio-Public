@@ -380,6 +380,16 @@
       "file": "Tests/PublishingWorkbenchCoreTests/CodexAppServerAccountEventTests.swift",
       "declaration": "AccountEventTransportFactory",
       "rationale": "The test-only factory reads and mutates its transport queue and generation count only inside one NSLock; each selected transport is an actor."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/RepositoryPublishSafetyAnalyzerTests.swift",
+      "declaration": "LockedStringSet",
+      "rationale": "The scoped build test records observations across Sendable runner callbacks; every read and write of its sole mutable value is protected by NSLock."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/RepositoryPublishSafetyAnalyzerTests.swift",
+      "declaration": "LockedBool",
+      "rationale": "The scoped build test records observations across Sendable runner callbacks; every read and write of its sole mutable value is protected by NSLock."
     }
   ],
   "forcedOperations": [
@@ -428,7 +438,7 @@
       "rationale": "The inline Tree-sitter grammar is optional nested-language enrichment; failure keeps the required base Markdown layer active instead of disabling syntax highlighting."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Models/ArticleDraft.swift",
+      "file": "Sources/PublishingWorkbenchCore/Models/ArticleDraft+RepositoryFingerprint.swift",
       "category": "serializationFallback",
       "contains": "try? Self.fingerprintEncoder.encode(snapshot)",
       "rationale": "Fingerprint encoding has a deterministic SHA-256 fallback over stable draft identity and content metadata, and the debug build also records an assertion."

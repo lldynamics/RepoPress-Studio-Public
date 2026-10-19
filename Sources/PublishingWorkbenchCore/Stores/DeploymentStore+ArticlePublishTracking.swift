@@ -65,7 +65,10 @@ extension DeploymentStore {
     if let profile {
       let readiness = deploymentStatusReadiness(
         for: profile, tokenAvailability: resolvedDeploymentTokenAvailability(for: profile))
-      reason = readiness.canCheckAnyStatus ? nil : readiness.nextStep
+      // A site URL permits a manual reachability fallback, but it cannot make
+      // the provider API ready. Automatic tracking must stop with an explicit
+      // next step until the API configuration is complete.
+      reason = readiness.isAPIReady && readiness.canCheckAnyStatus ? nil : readiness.nextStep
     } else {
       reason = nil
     }
@@ -160,7 +163,11 @@ extension WorkbenchStore {
     publishingStore.releaseRecords[index].articlePublishTrackingRequest =
       ArticlePublishTrackingRequest(profile: profile)
     save()
-    ensureOperationalPolling()
-    _ = await deploymentStore.tickArticlePublishTracking(store: self, now: Date())
+    // This is an explicit manual check. Readiness may intentionally keep the
+    // automatic follow-up stopped, while a configured site URL still permits
+    // the documented page reachability fallback.
+    let renewed = publishingStore.releaseRecords[index]
+    _ = await deploymentStore.refreshDeploymentStatus(for: renewed, store: self)
+    if hasPendingArticlePublishTracking { ensureOperationalPolling() }
   }
 }

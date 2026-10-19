@@ -41,19 +41,34 @@ resolve_swift_format() {
 
 [[ -f "$BASELINES_PATH" ]] || fail "missing quality baseline: $BASELINES_PATH"
 swift_format="$(resolve_swift_format)"
-mkdir -p "$(dirname "$LOG_PATH")"
+mkdir -p "$(dirname "$LOG_PATH")" "$(dirname "$RESULT_PATH")"
+log_tmp="$(mktemp "${LOG_PATH}.run.XXXXXX")"
+PUBLISHED_LOG_PATH="$log_tmp"
+result_tmp="$(mktemp "${RESULT_PATH}.tmp.XXXXXX")"
+alias_tmp=""
+cleanup_outputs() { rm -f "$result_tmp" "$alias_tmp"; }
+trap cleanup_outputs EXIT
+publish_outputs() {
+  alias_tmp="$(mktemp "${LOG_PATH}.alias.XXXXXX")"
+  cp "$PUBLISHED_LOG_PATH" "$alias_tmp"
+  mv -f "$alias_tmp" "$LOG_PATH"
+  if [[ -s "$result_tmp" ]]; then
+    mv -f "$result_tmp" "$RESULT_PATH"
+  fi
+}
 set +e
 "$swift_format" lint --recursive --parallel \
-  "$ROOT_DIR/Sources" "$ROOT_DIR/Tests" "$ROOT_DIR/Package.swift" >"$LOG_PATH" 2>&1
+  "$ROOT_DIR/Sources" "$ROOT_DIR/Tests" "$ROOT_DIR/Package.swift" >"$log_tmp" 2>&1
 tool_status=$?
 set -e
 if [[ "$tool_status" -ne 0 ]]; then
-  sed -n '1,80p' "$LOG_PATH" >&2
+  publish_outputs
+  sed -n '1,80p' "$PUBLISHED_LOG_PATH" >&2
   fail "swift-format exited with status $tool_status"
 fi
 
 set +e
-PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}" python3 - "$ROOT_DIR" "$BASELINES_PATH" "$LOG_PATH" "$RESULT_PATH" "${QUALITY_DIFF_BASE:-${GITHUB_BASE_REF:-}}" <<'PY'
+PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}" python3 - "$ROOT_DIR" "$BASELINES_PATH" "$log_tmp" "$result_tmp" "${QUALITY_DIFF_BASE:-${GITHUB_BASE_REF:-}}" "$PUBLISHED_LOG_PATH" <<'PY'
 import json
 import re
 import sys
@@ -69,6 +84,7 @@ baseline_path = Path(sys.argv[2])
 log_path = Path(sys.argv[3])
 result_path = Path(sys.argv[4])
 configured_base = sys.argv[5] or None
+published_log_path = sys.argv[6]
 
 try:
     baseline = load_quality_baseline(baseline_path)
@@ -95,7 +111,11 @@ for raw in log_path.read_text(encoding="utf-8", errors="replace").splitlines():
         continue
     raw_path, line = match.group(1), int(match.group(2))
     path = Path(raw_path)
-    resolved = (path if path.is_absolute() else root / path).resolve()
+    try:
+        resolved = (path if path.is_absolute() else root / path).resolve()
+    except (OSError, ValueError) as error:
+        unclassified.append(f"{raw} ({error})")
+        continue
     try:
         relative = resolved.relative_to(root).as_posix()
     except ValueError:
@@ -130,7 +150,7 @@ result = {
     "diffBase": diff_base.resolved,
     "requestedDiffBase": diff_base.requested,
     "usedAllZeroDiffBaseFallback": diff_base.used_all_zero_fallback,
-    "log": str(log_path),
+    "log": published_log_path,
 }
 result_path.parent.mkdir(parents=True, exist_ok=True)
 result_path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
@@ -160,5 +180,7 @@ PY
 format_status=$?
 set -e
 if [[ "$format_status" -ne 0 ]]; then
+  publish_outputs
   exit "$format_status"
 fi
+publish_outputs

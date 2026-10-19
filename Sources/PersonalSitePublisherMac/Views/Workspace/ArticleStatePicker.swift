@@ -30,7 +30,7 @@ struct ArticleStatePicker: View {
               systemImage: state == .published && draft.isPrivate ? "lock.fill" : state.systemImage
             )
             .tag(state)
-            .disabled(state != .draft)
+            .disabled(state != .draft && state != .ready)
           }
         }
         .labelsHidden()
@@ -79,12 +79,11 @@ struct ArticleStatePicker: View {
     .onChange(of: draft.id) { _, _ in transferPlan = nil }
   }
 
-  /// Only 草稿 is chosen by hand. 待发布 and 已发布 come from publishing and
-  /// are listed only so an article in that state still shows it.
+  /// Site articles can switch between 草稿 and 待发布. 已发布 is included
+  /// only when backed by the current article's publication state.
   static func availableStates(for draft: ArticleDraft) -> [ArticleState] {
     if draft.isGeneralDraft { return [.localOnly] }
-    let state = draft.articleState
-    return state == .draft ? [.draft] : [.draft, state]
+    return draft.articleState == .published ? [.draft, .ready, .published] : [.draft, .ready]
   }
 
   private var stateDescription: String {

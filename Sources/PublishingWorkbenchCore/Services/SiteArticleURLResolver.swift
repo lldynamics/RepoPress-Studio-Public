@@ -61,7 +61,11 @@ public struct SiteArticleURLResolver: Sendable {
       path = "docs/" + path
     case .mkDocs:
       path = removingFirstMatchingPrefix(from: path, prefixes: ["docs/"])
-    case .zola, .astro, .vitePress:
+    case .zola:
+      // Zola maps sections below `content/` into the public URL. In
+      // particular, `content/posts/foo.md` is served at `/posts/foo/`.
+      path = removingFirstMatchingPrefix(from: path, prefixes: ["content/"])
+    case .astro, .vitePress:
       for prefix in ["content/posts/", "content/", "src/content/blog/", "docs/posts/", "source/_posts/", "_posts/"] where path.hasPrefix(prefix) {
         path = String(path.dropFirst(prefix.count))
         break
@@ -82,7 +86,12 @@ public struct SiteArticleURLResolver: Sendable {
 
     var path = markdownPath.normalizedRelativePath()
     let contentRoot = profile.contentRoot.normalizedRelativePath()
-    if !contentRoot.isEmpty {
+    if profile.siteKind == .zola {
+      // `contentRoot` describes where files are stored, but Zola's section
+      // directory is also part of the route. Strip only the generator's
+      // content directory so `content/posts/...` remains `/posts/...`.
+      path = removingFirstMatchingPrefix(from: path, prefixes: ["content/"])
+    } else if !contentRoot.isEmpty {
       path = removingFirstMatchingPrefix(
         from: path,
         prefixes: [contentRoot + "/"]
@@ -111,10 +120,7 @@ public struct SiteArticleURLResolver: Sendable {
       )
       path = "blog/" + path
     case .zola:
-      path = removingFirstMatchingPrefix(
-        from: path,
-        prefixes: ["content/posts/", "content/", "posts/"]
-      )
+      break
     case .astro:
       path = removingFirstMatchingPrefix(
         from: path,

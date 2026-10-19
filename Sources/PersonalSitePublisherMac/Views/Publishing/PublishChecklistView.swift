@@ -94,8 +94,11 @@ struct PublishChecklistView: View {
         .workbenchTruncatedTitle(title)
       Spacer(minLength: WorkbenchSpacing.tight)
       Button {
-        store.runPreflight()
-        refreshChecks()
+        guard let draft = currentDraft else { return }
+        Task {
+          _ = await store.runPreflight(for: draft.id)
+          refreshChecks()
+        }
       } label: {
         Image(systemName: "arrow.clockwise")
       }

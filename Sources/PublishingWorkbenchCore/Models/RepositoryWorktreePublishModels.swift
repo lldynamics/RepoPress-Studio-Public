@@ -70,6 +70,7 @@ public struct RepositoryWorktreePublishSnapshot: Hashable, Sendable {
   public let remoteBranchSHA: String
   public let statusFingerprint: String
   public let entries: [RepositoryWorktreePublishEntry]
+  public let outgoingHistory: RepositoryWorktreePushRetrySnapshot?
 
   public var paths: [String] {
     Array(
@@ -89,7 +90,8 @@ public struct RepositoryWorktreePublishSnapshot: Hashable, Sendable {
     pushOriginURL: String? = nil,
     remoteBranchSHA: String,
     statusFingerprint: String,
-    entries: [RepositoryWorktreePublishEntry]
+    entries: [RepositoryWorktreePublishEntry],
+    outgoingHistory: RepositoryWorktreePushRetrySnapshot? = nil
   ) {
     self.repositoryRoot = repositoryRoot
     self.gitCommonDirectory = gitCommonDirectory
@@ -100,6 +102,7 @@ public struct RepositoryWorktreePublishSnapshot: Hashable, Sendable {
     self.remoteBranchSHA = remoteBranchSHA
     self.statusFingerprint = statusFingerprint
     self.entries = entries
+    self.outgoingHistory = outgoingHistory
   }
 }
 
@@ -152,12 +155,15 @@ public struct RepositoryWorktreePublishConfirmation: Hashable, Sendable, Identif
   /// are reviewed and committed, and other edits stay in the worktree.
   public let pathScope: [String]?
 
+  public var articlePreflightIssues: [PreflightIssue] = []
+
   public var isScoped: Bool { pathScope != nil }
 
   public var id: String {
     [
       snapshot.repositoryRoot,
       snapshot.headSHA,
+      snapshot.remoteBranchSHA,
       snapshot.statusFingerprint,
       commitMessage,
       executionPolicy.map { String(describing: $0) } ?? "",
@@ -165,6 +171,8 @@ public struct RepositoryWorktreePublishConfirmation: Hashable, Sendable, Identif
       sitePreflightResult.map { String(describing: $0.outcome) } ?? "",
       articleVerificationTarget.map { $0.draftID.uuidString } ?? "",
       pathScope?.joined(separator: "\u{1D}") ?? "",
+      articlePreflightIssues.map { $0.severity.rawValue + $0.title + $0.message }
+        .joined(separator: "\u{1D}"),
     ]
     .joined(separator: "\u{1E}")
   }

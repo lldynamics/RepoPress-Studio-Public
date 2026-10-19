@@ -357,3 +357,276 @@ final class ModernSiteFrameworkSupportTests: XCTestCase {
     return formatter.string(from: date)
   }
 }
+
+final class SiteArticleURLResolverTests: XCTestCase {
+  func testZolaKeepsPostsSectionFromContentPath() {
+    let resolver = SiteArticleURLResolver()
+    var profile = SiteProfile.defaultProfile
+    profile.applyPublishingDefaults(for: .zola)
+
+    XCTAssertEqual(
+      resolver.relativeWebPath(
+        from: "content/posts/2026/2026-10-15-daily-notes.md",
+        profile: profile
+      ),
+      "/posts/2026/2026-10-15-daily-notes/"
+    )
+  }
+
+  func testZolaKeepsCustomContentSectionAndBaseURLPath() throws {
+    let resolver = SiteArticleURLResolver()
+    var profile = SiteProfile.defaultProfile
+    profile.applyPublishingDefaults(for: .zola)
+    profile.contentRoot = "content/articles"
+
+    XCTAssertEqual(
+      resolver.relativeWebPath(
+        from: "content/articles/guides/getting-started.md",
+        profile: profile
+      ),
+      "/articles/guides/getting-started/"
+    )
+    XCTAssertEqual(
+      try XCTUnwrap(
+        resolver.url(
+          baseURL: URL(string: "https://example.com/blog/")!,
+          markdownPath: "content/posts/2026/2026-10-15-daily-notes.md",
+          profile: profile
+        )
+      ).absoluteString,
+      "https://example.com/blog/posts/2026/2026-10-15-daily-notes"
+    )
+  }
+
+  func testPermalinkStillOverridesZolaGeneratedPath() {
+    let resolver = SiteArticleURLResolver()
+    var profile = SiteProfile.defaultProfile
+    profile.applyPublishingDefaults(for: .zola)
+
+    XCTAssertEqual(
+      resolver.relativeWebPath(
+        from: "content/posts/2026/2026-10-15-daily-notes.md",
+        profile: profile,
+        permalink: "/notes/daily/"
+      ),
+      "/notes/daily/"
+    )
+  }
+
+  func testOtherEngineContentRootSemanticsRemainUnchanged() {
+    let resolver = SiteArticleURLResolver()
+    var next = SiteProfile.defaultProfile
+    next.applyPublishingDefaults(for: .nextJS)
+
+    XCTAssertEqual(
+      resolver.relativeWebPath(
+        from: "content/posts/releases/version-2.mdx",
+        profile: next
+      ),
+      "/blog/releases/version-2/"
+    )
+  }
+}
+
+final class ZolaLeafBundleRecoveryTests: XCTestCase {
+  func testAutomaticImportRejectsZolaLeafBundleIndex() throws {
+    let rootURL = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let profile = zolaProfile()
+    let source = "---\ntitle: \"Gallery\"\n---\nBody"
+
+    XCTAssertThrowsError(
+      try LocalContentImportService(isContentIndexEnabled: false).parseProjectDocument(
+        source,
+        repositoryPath: "content/gallery/index.md",
+        rootURL: rootURL,
+        profile: profile
+      )
+    )
+  }
+
+  func testExplicitRecoveryPreservesFrontMatterAndLeafPathAcrossEdits() throws {
+    let rootURL = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let profile = zolaProfile()
+    let source = """
+      +++
+      title = "Gallery"
+      slug = "gallery-entry"
+      [extra]
+      gallery_layout = "masonry"
+      +++
+
+      Original body
+      """
+
+    var draft = try LocalContentImportService(isContentIndexEnabled: false)
+      .parseProjectDocument(
+        source,
+        repositoryPath: "content/gallery/index.md",
+        rootURL: rootURL,
+        profile: profile,
+        preserveZolaLeafBundlePath: true
+      )
+    XCTAssertTrue(draft.preservesZolaLeafBundlePath == true)
+    XCTAssertTrue(try XCTUnwrap(draft.importedFrontMatter).rawBlock.contains("gallery_layout"))
+    XCTAssertEqual(profile.markdownPath(for: draft), "content/gallery/index.md")
+
+    draft.title = "Edited Gallery"
+    draft.slug = "edited-gallery"
+    draft.bodyMarkdown = "Edited body"
+
+    XCTAssertEqual(profile.markdownPath(for: draft), "content/gallery/index.md")
+    XCTAssertFalse(profile.markdownPath(for: draft).contains("posts/"))
+  }
+
+  func testRepositoryBindingNormalizationPreservesExplicitRecoveryMarker() throws {
+    let rootURL = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let source = "+++\ntitle = \"Gallery\"\n[extra]\ngallery_layout = \"masonry\"\n+++\n\nBody"
+
+    var originalProfile = zolaProfile()
+    originalProfile.branch = "main"
+    var draft = try LocalContentImportService(isContentIndexEnabled: false)
+      .parseProjectDocument(
+        source,
+        repositoryPath: "content/gallery/index.md",
+        rootURL: rootURL,
+        profile: originalProfile,
+        preserveZolaLeafBundlePath: true
+      )
+
+    var changedIdentity = originalProfile
+    changedIdentity.branch = "preview"
+    draft.normalizeRepositoryBinding(for: changedIdentity)
+    XCTAssertNil(draft.preservesZolaLeafBundlePath)
+
+    draft.repositoryPath = "content/gallery-renamed/index.md"
+    draft.preservesZolaLeafBundlePath = true
+    draft.normalizeRepositoryBinding(for: changedIdentity)
+    XCTAssertNil(draft.preservesZolaLeafBundlePath)
+
+    draft.preservesZolaLeafBundlePath = true
+    draft.detachFromRepository()
+    draft.normalizeRepositoryBinding(for: changedIdentity)
+    XCTAssertNil(draft.preservesZolaLeafBundlePath)
+  }
+
+  func testPreserveRepositoryStateCopiesExplicitRecoveryMarker() throws {
+    let rootURL = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let profile = zolaProfile()
+    let source = "+++\ntitle = \"Gallery\"\n+++\n\nBody"
+    let current = try LocalContentImportService(isContentIndexEnabled: false)
+      .parseProjectDocument(
+        source,
+        repositoryPath: "content/gallery/index.md",
+        rootURL: rootURL,
+        profile: profile,
+        preserveZolaLeafBundlePath: true
+      )
+    var contentUpdate = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Edited",
+      slug: "edited",
+      bodyMarkdown: "Edited body"
+    )
+
+    contentUpdate.preserveRepositoryState(from: current)
+
+    XCTAssertTrue(contentUpdate.preservesZolaLeafBundlePath == true)
+  }
+
+  func testLeafBundleFlagCodableRoundTripAndLegacyRecordsDefaultToNil() throws {
+    let profile = zolaProfile()
+    var draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Gallery",
+      slug: "gallery",
+      repositoryPath: "content/gallery/index.md"
+    )
+    draft.preservesZolaLeafBundlePath = true
+
+    let encoded = try JSONEncoder().encode(draft)
+    let decoded = try JSONDecoder().decode(ArticleDraft.self, from: encoded)
+    XCTAssertEqual(decoded.preservesZolaLeafBundlePath, true)
+
+    var legacyObject = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+    )
+    legacyObject.removeValue(forKey: "preservesZolaLeafBundlePath")
+    let legacyData = try JSONSerialization.data(withJSONObject: legacyObject)
+    let legacy = try JSONDecoder().decode(ArticleDraft.self, from: legacyData)
+    XCTAssertNil(legacy.preservesZolaLeafBundlePath)
+  }
+
+  func testExplicitRecoveryRejectsUnsafePathsAndOtherSiteKinds() throws {
+    let rootURL = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let zola = zolaProfile()
+    let source = "---\ntitle: \"Entry\"\n---\nBody"
+    let invalidPaths = [
+      "content/gallery/_index.md",
+      "content/gallery/../index.md",
+      "content/index.md",
+    ]
+
+    for path in invalidPaths {
+      XCTAssertThrowsError(
+        try LocalContentImportService(isContentIndexEnabled: false).parseProjectDocument(
+          source,
+          repositoryPath: path,
+          rootURL: rootURL,
+          profile: zola,
+          preserveZolaLeafBundlePath: true
+        ),
+        path
+      )
+    }
+
+    var hugo = SiteProfile.defaultProfile
+    hugo.applyPublishingDefaults(for: .hugo)
+    XCTAssertThrowsError(
+      try LocalContentImportService(isContentIndexEnabled: false).parseProjectDocument(
+        source,
+        repositoryPath: "content/gallery/index.md",
+        rootURL: rootURL,
+        profile: hugo,
+        preserveZolaLeafBundlePath: true
+      )
+    )
+  }
+
+  func testChangingRepositoryBindingCannotActivatePreservedLeafPath() throws {
+    let rootURL = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let profile = zolaProfile()
+    let source = "---\ntitle: \"Gallery\"\n---\nBody"
+    let draft = try LocalContentImportService(isContentIndexEnabled: false)
+      .parseProjectDocument(
+        source,
+        repositoryPath: "content/gallery/index.md",
+        rootURL: rootURL,
+        profile: profile,
+        preserveZolaLeafBundlePath: true
+      )
+
+    var movedProfile = profile
+    movedProfile.repoOwner = "another-owner"
+    XCTAssertNotEqual(movedProfile.markdownPath(for: draft), "content/gallery/index.md")
+    XCTAssertTrue(movedProfile.markdownPath(for: draft).contains("posts/"))
+  }
+
+  private func zolaProfile() -> SiteProfile {
+    var profile = SiteProfile.defaultProfile
+    profile.applyPublishingDefaults(for: .zola)
+    return profile
+  }
+
+  private func temporaryDirectory() throws -> URL {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ZolaLeafBundleRecovery-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    return url
+  }
+}

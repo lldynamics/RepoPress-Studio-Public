@@ -45,7 +45,7 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
 
     XCTAssertEqual(snapshot.markdownPath, "content/posts/mac-publishing-console.md")
     XCTAssertEqual(snapshot.renderingMode, .staticMetadataSnapshot)
-    XCTAssertEqual(snapshot.canonicalURLText, "http://127.0.0.1:1111/mac-publishing-console")
+    XCTAssertEqual(snapshot.canonicalURLText, "http://127.0.0.1:1111/posts/mac-publishing-console")
     XCTAssertEqual(snapshot.imagePath, "/images/2026/cover.jpg")
     XCTAssertEqual(snapshot.imageSource, .articleCover)
     XCTAssertEqual(snapshot.socialImageURLText, "http://127.0.0.1:1111/images/2026/cover.jpg")
@@ -78,7 +78,9 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     let twitterCopy = snapshot.socialShareCopyItems.first { $0.kind == .twitter }
     XCTAssertEqual(twitterCopy?.imageURLText, "http://127.0.0.1:1111/images/2026/cover.jpg")
     XCTAssertEqual(twitterCopy?.hashtagText, "#Mac发布 #SEO #个人网站")
-    XCTAssertTrue(twitterCopy?.clipboardText.contains("http://127.0.0.1:1111/mac-publishing-console") == true)
+    XCTAssertTrue(
+      twitterCopy?.clipboardText.contains("http://127.0.0.1:1111/posts/mac-publishing-console")
+        == true)
     XCTAssertTrue(twitterCopy?.clipboardText.contains("#Mac发布 #SEO #个人网站") == true)
     XCTAssertTrue(snapshot.findings.contains { $0.title == "社交预览字段完整" })
     XCTAssertEqual(snapshot.platformReadiness.map(\.status), [.ready, .ready, .ready])
@@ -160,15 +162,16 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     )
     XCTAssertEqual(
       snapshot.externalDebugLinks.first { $0.platform == .facebookSharingDebugger }?.urlText,
-      "https://developers.facebook.com/tools/debug/?q=https://example.com/blog/social-debug-links"
+      "https://developers.facebook.com/tools/debug/?q=https://example.com/blog/posts/social-debug-links"
     )
     XCTAssertEqual(
       snapshot.externalDebugLinks.first { $0.platform == .linkedinPostInspector }?.urlText,
-      "https://www.linkedin.com/post-inspector/inspect/https%3A%2F%2Fexample.com%2Fblog%2Fsocial-debug-links"
+      "https://www.linkedin.com/post-inspector/inspect/https%3A%2F%2Fexample.com%2Fblog%2Fposts%2Fsocial-debug-links"
     )
     let xShareLink = snapshot.externalDebugLinks.first { $0.platform == .xShareIntent }?.urlText
     XCTAssertTrue(xShareLink?.contains("https://twitter.com/intent/tweet?") == true)
-    XCTAssertTrue(xShareLink?.contains("url=https://example.com/blog/social-debug-links") == true)
+    XCTAssertTrue(
+      xShareLink?.contains("url=https://example.com/blog/posts/social-debug-links") == true)
     XCTAssertTrue(xShareLink?.contains("text=%E7%A4%BE%E4%BA%A4%E8%B0%83%E8%AF%95%E9%93%BE%E6%8E%A5") == true)
     XCTAssertEqual(
       snapshot.externalDebugLinks.first { $0.platform == .xCardValidator }?.urlText,
@@ -179,7 +182,10 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     XCTAssertTrue(checklist.contains("## External Debug Links"))
     XCTAssertTrue(checklist.contains("- [ ] Facebook Sharing Debugger"))
     XCTAssertTrue(checklist.contains("Purpose: 刷新 Open Graph 抓取缓存并检查分享卡片字段。"))
-    XCTAssertTrue(checklist.contains("https://www.linkedin.com/post-inspector/inspect/https%3A%2F%2Fexample.com%2Fblog%2Fsocial-debug-links"))
+    XCTAssertTrue(
+      checklist.contains(
+        "https://www.linkedin.com/post-inspector/inspect/https%3A%2F%2Fexample.com%2Fblog%2Fposts%2Fsocial-debug-links"
+      ))
   }
 
   func testSnapshotUsesJekyllDatedPermalinkForCanonicalAndMetaURLs() {
@@ -235,12 +241,19 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
 
     let snapshot = SEOSocialPreviewService().snapshot(draft: draft, profile: profile)
 
-    XCTAssertEqual(snapshot.canonicalURLText, "https://example.com/blog/production-social-preview")
+    XCTAssertEqual(
+      snapshot.canonicalURLText, "https://example.com/blog/posts/production-social-preview")
     XCTAssertEqual(snapshot.socialImageURLText, "https://example.com/images/production.jpg")
-    XCTAssertEqual(snapshot.metaTags.first { $0.property == "og:url" }?.content, "https://example.com/blog/production-social-preview")
+    XCTAssertEqual(
+      snapshot.metaTags.first { $0.property == "og:url" }?.content,
+      "https://example.com/blog/posts/production-social-preview")
     XCTAssertEqual(snapshot.metaTags.first { $0.property == "og:image" }?.content, "https://example.com/images/production.jpg")
-    XCTAssertEqual(snapshot.cards.first { $0.kind == .openGraph }?.urlText, "https://example.com/blog/production-social-preview")
-    XCTAssertTrue(snapshot.externalDebugLinks.first { $0.platform == .facebookSharingDebugger }?.urlText.contains("https://example.com/blog/production-social-preview") == true)
+    XCTAssertEqual(
+      snapshot.cards.first { $0.kind == .openGraph }?.urlText,
+      "https://example.com/blog/posts/production-social-preview")
+    XCTAssertTrue(
+      snapshot.externalDebugLinks.first { $0.platform == .facebookSharingDebugger }?.urlText
+        .contains("https://example.com/blog/posts/production-social-preview") == true)
 
     let localSnapshot = SEOSocialPreviewService().snapshot(
       draft: draft,
@@ -248,8 +261,11 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
       localPreviewURL: URL(string: "http://127.0.0.1:1111")
     )
 
-    XCTAssertEqual(localSnapshot.canonicalURLText, "http://127.0.0.1:1111/production-social-preview")
-    XCTAssertEqual(localSnapshot.metaTags.first { $0.property == "og:url" }?.content, "http://127.0.0.1:1111/production-social-preview")
+    XCTAssertEqual(
+      localSnapshot.canonicalURLText, "http://127.0.0.1:1111/posts/production-social-preview")
+    XCTAssertEqual(
+      localSnapshot.metaTags.first { $0.property == "og:url" }?.content,
+      "http://127.0.0.1:1111/posts/production-social-preview")
   }
 
   func testSnapshotKeepsHugoSectionPathForCanonicalURL() {

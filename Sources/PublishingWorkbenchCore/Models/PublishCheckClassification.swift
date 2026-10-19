@@ -44,6 +44,8 @@ extension PreflightIssue {
     ContentHealthRuleID.unreferencedAttachment.rawValue,
     ContentHealthRuleID.duplicateMarkdownReference.rawValue,
     "content.title.duplicate",
+    "content.title.missing",
+    ContentHealthRuleID.missingMediaAlt.rawValue,
   ]
 }
 

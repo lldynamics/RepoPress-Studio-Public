@@ -46,7 +46,9 @@ extension WorkbenchStore {
         throw LocalPublishPreviewError.missingRepositoryRoot
       }
       replacement = try LocalContentImportService().parseProjectDocument(
-        document, repositoryPath: review.repositoryPath, rootURL: root, profile: review.profile)
+        document, repositoryPath: review.repositoryPath, rootURL: root, profile: review.profile,
+        preserveZolaLeafBundlePath:
+          review.profile.preservedZolaLeafBundlePath(for: review.draft) == review.repositoryPath)
       let preview = try ProjectFileConflictService().mergePreview(document: document, review: review)
       _ = try await LocalPublishPreviewService().writeAsync(preview: preview, profile: review.profile)
       try validateCurrentProjectFileReview(review)

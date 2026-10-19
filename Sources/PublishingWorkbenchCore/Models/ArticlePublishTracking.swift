@@ -89,13 +89,19 @@ public struct ArticlePublishProgress: Equatable, Sendable {
       return Self(
         phase: .online, message: CoreL10n.text("网站部署和这篇文章的源版本均已核验。"))
     }
+    if let currentSnapshot, currentSnapshot.platformLevel == .success,
+      currentSnapshot.attributionVerified == true,
+      let diagnostic = currentSnapshot.articleResults?.lazy.flatMap({ $0.signals })
+        .first(where: { isTerminalArticleVersionDiagnostic($0.diagnostic) })
+    {
+      return Self(
+        phase: .needsAttention,
+        message: CoreL10n.format("部署已完成，但需文章版本标记：%@", diagnostic.message))
+    }
     if let currentSnapshot, currentSnapshot.platformLevel == .failed,
       currentSnapshot.attributionVerified == true
     {
       return Self(phase: .needsAttention, message: currentSnapshot.message)
-    }
-    if let unavailableReason {
-      return Self(phase: .needsAttention, message: unavailableReason)
     }
     guard now < request.deadline, request.deadline > request.startedAt,
       request.deadline.timeIntervalSince(request.startedAt)
@@ -105,14 +111,35 @@ public struct ArticlePublishProgress: Equatable, Sendable {
         phase: .needsAttention,
         message: CoreL10n.text("自动跟踪已结束，仍未确认本次文章版本上线。可重新检查，无需再次发布。"))
     }
-    if currentSnapshot?.platformLevel == .success {
+    if currentSnapshot?.platformLevel == .success,
+      currentSnapshot?.attributionVerified == true
+    {
+      if let unavailableReason {
+        return Self(
+          phase: .needsAttention,
+          message: CoreL10n.format("部署已完成，但正文版本尚未确认。%@", unavailableReason))
+      }
       return Self(
         phase: .verifyingArticle,
         message: CoreL10n.text("部署已完成，正在等待页面显示本次文章版本。可以继续写作。"))
     }
+    if let unavailableReason {
+      return Self(phase: .needsAttention, message: unavailableReason)
+    }
     return Self(
       phase: .waitingForDeployment,
       message: CoreL10n.text("内容已推送，系统会继续检查部署和文章版本。可以继续写作。"))
+  }
+
+  private static func isTerminalArticleVersionDiagnostic(
+    _ signal: DeploymentStatusSignalDiagnostic?
+  ) -> Bool {
+    switch signal {
+    case .missingExpectedDigest, .missingMarker, .invalidMarker:
+      return true
+    case .digestMismatch, .none:
+      return false
+    }
   }
 }
 

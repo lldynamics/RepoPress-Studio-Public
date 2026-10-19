@@ -137,6 +137,21 @@ final class ArticleSourceVersionEvidenceTests: XCTestCase {
     XCTAssertFalse(result.verifiesSourceVersion)
   }
 
+  func testSignalDiagnosticRoundTripsAndLegacyJSONDecodesWithoutIt() throws {
+    let signal = DeploymentStatusSignal(
+      level: .unknown, title: "Page", message: "Marker missing", diagnostic: .missingMarker)
+    let data = try JSONEncoder().encode(signal)
+    let loaded = try JSONDecoder().decode(DeploymentStatusSignal.self, from: data)
+    XCTAssertEqual(loaded.diagnostic, .missingMarker)
+
+    var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    legacy.removeValue(forKey: "diagnostic")
+    let decodedLegacy = try JSONDecoder().decode(
+      DeploymentStatusSignal.self,
+      from: JSONSerialization.data(withJSONObject: legacy))
+    XCTAssertNil(decodedLegacy.diagnostic)
+  }
+
   private func fixture() -> (SiteProfile, ReleaseRecord) {
     var profile = SiteProfile.defaultProfile
     profile.deploymentProvider = .custom

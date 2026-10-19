@@ -66,13 +66,15 @@ final class MarkdownArticleHeaderMetadataTests: XCTestCase {
     XCTAssertFalse(shows(true))
   }
 
-  func testOnlyDraftIsChosenByHandAndPublishingStatesStayVisible() {
+  func testSiteArticlesOfferDraftAndReadyWithoutInventingPublishedState() {
     var draft = ArticleDraft(siteProfileID: UUID(), title: "Site article", draft: true)
-    XCTAssertEqual(ArticleStatePicker.availableStates(for: draft), [.draft])
+    XCTAssertEqual(ArticleStatePicker.availableStates(for: draft), [.draft, .ready])
     XCTAssertTrue(draft.setArticleState(.ready))
     XCTAssertEqual(ArticleStatePicker.availableStates(for: draft), [.draft, .ready])
     draft.status = .published
-    XCTAssertEqual(ArticleStatePicker.availableStates(for: draft), [.draft, .published])
+    XCTAssertEqual(ArticleStatePicker.availableStates(for: draft), [.draft, .ready, .published])
+    XCTAssertTrue(draft.setArticleState(.draft))
+    XCTAssertEqual(ArticleStatePicker.availableStates(for: draft), [.draft, .ready])
     draft.assignToGeneralDraft()
     XCTAssertEqual(ArticleStatePicker.availableStates(for: draft), [.localOnly])
   }

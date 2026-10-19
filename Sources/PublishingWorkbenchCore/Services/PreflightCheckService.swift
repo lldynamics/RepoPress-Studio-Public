@@ -107,16 +107,20 @@ public struct PreflightCheckService: Sendable {
     if let issue = FrontMatterRenderer().preservationIssue(draft: draft, profile: profile) {
       issues.append(issue)
     }
+    if let issue = FrontMatterDatePreflight.issue(draft: draft, profile: profile) {
+      issues.append(issue)
+    }
     let title = draft.title.trimmedForPublishing
     let slug = draft.slug.trimmedForPublishing
 
     if title.isEmpty {
       issues.append(
         .init(
-          severity: .error,
+          severity: .warning,
           title: CoreL10n.text("标题为空"),
-          message: CoreL10n.text("发布前必须填写 title。"),
-          field: "title"
+          message: CoreL10n.text("建议补充标题，便于读者识别文章。"),
+          field: "title",
+          ruleID: "content.title.missing"
         ))
     }
 

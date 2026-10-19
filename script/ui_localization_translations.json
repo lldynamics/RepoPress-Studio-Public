@@ -12591,5 +12591,103 @@
       "other": "🎉 Word count target reached! (%lld characters over)"
     },
     "zh-Hans": "🎉 已达成目标字数！（超出 %lld 字）"
+  },
+  "部署已完成，但需文章版本标记：%@": {
+    "en": "Deployment completed, but article version evidence is required: %@",
+    "zh-Hans": "部署已完成，但需文章版本标记：%@"
+  },
+  "部署已完成，但正文版本尚未确认。%@": {
+    "en": "Deployment completed, but the article body version is not yet confirmed. %@",
+    "zh-Hans": "部署已完成，但正文版本尚未确认。%@"
+  },
+  "建议补充标题，便于读者识别文章。": {
+    "en": "Add a title to help readers identify this article.",
+    "zh-Hans": "建议补充标题，便于读者识别文章。"
+  },
+  "删除或移动 _index 会影响栏目导航，请确认这是本次预期的结构调整。": {
+    "en": "Deleting or moving _index affects section navigation. Confirm that this structural change is intended.",
+    "zh-Hans": "删除或移动 _index 会影响栏目导航，请确认这是本次预期的结构调整。"
+  },
+  "检测到跨一级内容栏目的移动；请确认公开 URL 和站点结构的变化。": {
+    "en": "Content moves between top-level sections. Confirm the changes to public URLs and site structure.",
+    "zh-Hans": "检测到跨一级内容栏目的移动；请确认公开 URL 和站点结构的变化。"
+  },
+  "草稿源码将上传到仓库": {
+    "en": "Draft source will be uploaded to the repository",
+    "zh-Hans": "草稿源码将上传到仓库"
+  },
+  "草稿不会生成网站页面，但本次会上传它的源码；公开仓库中的源码可被他人查看。请确认这些内容适合公开。": {
+    "en": "Drafts do not generate website pages, but their source will be uploaded. Source in a public repository is visible to others. Confirm that this content is suitable for public access.",
+    "zh-Hans": "草稿不会生成网站页面，但本次会上传它的源码；公开仓库中的源码可被他人查看。请确认这些内容适合公开。"
+  },
+  "我已阅读并确认上述提醒，仍要继续发布。": {
+    "en": "I have reviewed these notices and want to continue publishing.",
+    "zh-Hans": "我已阅读并确认上述提醒，仍要继续发布。"
+  },
+  "待补充（不影响发布）": {
+    "en": "To improve (does not block publishing)",
+    "zh-Hans": "待补充（不影响发布）"
+  },
+  "日期值无效": {
+    "en": "Invalid date value",
+    "zh-Hans": "日期值无效"
+  },
+  "字段 %@ 的值为 %@，不是有效日期。请使用有效的 ISO 日期、时间戳或站点格式 %@。": {
+    "en": "Field %@ has the invalid date value %@. Use a valid ISO date, timestamp, or the site format %@.",
+    "zh-Hans": "字段 %@ 的值为 %@，不是有效日期。请使用有效的 ISO 日期、时间戳或站点格式 %@。"
+  },
+  "%d 个已有提交将推送到 origin/%@；这次没有新的文件提交。": {
+    "en": {
+      "one": "%d existing commit will be pushed to origin/%@; no new files will be committed.",
+      "other": "%d existing commits will be pushed to origin/%@; no new files will be committed."
+    },
+    "zh-Hans": "%d 个已有提交将推送到 origin/%@；这次没有新的文件提交。"
+  },
+  "%d 个文件将提交，并推送 %d 个已有提交到 origin/%@": {
+    "en": {
+      "one": "%d file will be committed, and %d existing commit will be pushed to origin/%@",
+      "other": "%d files will be committed, and %d existing commits will be pushed to origin/%@"
+    },
+    "zh-Hans": "%d 个文件将提交，并推送 %d 个已有提交到 origin/%@"
+  },
+  "再次核对已有提交后推送到远端": {
+    "en": "Recheck existing commits before pushing to the remote",
+    "zh-Hans": "再次核对已有提交后推送到远端"
+  },
+  "没有文件需要提交。": {
+    "en": "No files need to be committed.",
+    "zh-Hans": "没有文件需要提交。"
+  },
+  "这些提交已经在本地创建，也会一并推送；当前未提交文件仍只限于这篇文章的范围。": {
+    "en": "These commits already exist locally and will also be pushed; current uncommitted files remain limited to this article.",
+    "zh-Hans": "这些提交已经在本地创建，也会一并推送；当前未提交文件仍只限于这篇文章的范围。"
+  },
+  "这些提交已经在本地创建，也会一并推送；当前未提交文件按全部变更范围处理。": {
+    "en": "These commits already exist locally and will also be pushed; current uncommitted files use the full changes scope.",
+    "zh-Hans": "这些提交已经在本地创建，也会一并推送；当前未提交文件按全部变更范围处理。"
+  },
+  "确认后会推送这些已经提交的历史；这次没有新的文件提交。": {
+    "en": "These existing commits will be pushed after confirmation; no new files will be committed.",
+    "zh-Hans": "确认后会推送这些已经提交的历史；这次没有新的文件提交。"
+  },
+  "确认后会推送这些已经提交的历史；当前还有这篇文章范围内的未提交文件。": {
+    "en": "These existing commits will be pushed after confirmation; uncommitted files remain within this article's scope.",
+    "zh-Hans": "确认后会推送这些已经提交的历史；当前还有这篇文章范围内的未提交文件。"
+  },
+  "确认后会推送这些已经提交的历史；当前还有待发布的未提交文件。": {
+    "en": "These existing commits will be pushed after confirmation; uncommitted files remain to be published.",
+    "zh-Hans": "确认后会推送这些已经提交的历史；当前还有待发布的未提交文件。"
+  },
+  "已有提交历史（%d 个提交）": {
+    "en": "Existing commit history (%d commits)",
+    "zh-Hans": "已有提交历史（%d 个提交）"
+  },
+  "提交 %@": {
+    "en": "Commit %@",
+    "zh-Hans": "提交 %@"
+  },
+  "我已逐项审阅这些已有提交，并确认将它们一并推送。": {
+    "en": "I have reviewed each existing commit and confirm that they should be pushed together.",
+    "zh-Hans": "我已逐项审阅这些已有提交，并确认将它们一并推送。"
   }
 }

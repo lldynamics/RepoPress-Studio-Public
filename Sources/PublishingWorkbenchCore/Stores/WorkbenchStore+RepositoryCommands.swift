@@ -293,7 +293,12 @@ extension WorkbenchStore {
           retiredPaths.joined(separator: ", ")
         ).localizedDescription)
     }
-    return .review(confirmation)
+    var review = confirmation
+    review.articlePreflightIssues = preflightIssues(
+      for: currentDraft, includeRepositoryReadiness: false
+    )
+    .filter { $0.severity != .error }
+    return .review(review)
   }
 
   /// Publishes only the previously frozen complete-worktree confirmation.

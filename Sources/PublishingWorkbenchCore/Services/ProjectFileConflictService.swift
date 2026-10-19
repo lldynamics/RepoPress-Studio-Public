@@ -34,7 +34,8 @@ struct ProjectFileConflictService: Sendable {
     let document = try BoundedFileReader.utf8String(
       relativePath: path, under: root, maximumByteCount: 16 * 1_024 * 1_024)
     let diskDraft = try LocalContentImportService().parseProjectDocument(
-      document, repositoryPath: path, rootURL: root, profile: profile)
+      document, repositoryPath: path, rootURL: root, profile: profile,
+      preserveZolaLeafBundlePath: profile.preservedZolaLeafBundlePath(for: draft) == path)
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
     guard let local = package.files.first(where: {
       $0.kind == .markdown && $0.operation == .upsert && $0.repositoryPath == path

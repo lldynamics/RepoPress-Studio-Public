@@ -4,7 +4,9 @@ import PublishingDomainContracts
 extension SiteProfile {
   public func markdownPath(for draft: ArticleDraft) -> String {
     let publicPath: String
-    if let link = draft.translationLink, link.translatedDraftID == draft.id,
+    if let path = preservedZolaLeafBundlePath(for: draft) {
+      publicPath = path
+    } else if let link = draft.translationLink, link.translatedDraftID == draft.id,
       let rawSourcePath = link.sourceMarkdownPath,
       Self.isSafeTranslationSourcePath(rawSourcePath),
       let sourcePath = rawSourcePath.normalizedRelativePath().nilIfEmpty
@@ -60,6 +62,24 @@ extension SiteProfile {
     }
     return Self.privateContentRoot + "/"
       + String(publicPath.dropFirst(normalizedContentRoot.count + 1))
+  }
+
+  func preservedZolaLeafBundlePath(for draft: ArticleDraft) -> String? {
+    guard draft.preservesZolaLeafBundlePath == true, siteKind == .zola,
+      draft.importedFrontMatter != nil,
+      let path = draft.repositoryPath, Self.isRecoverableZolaLeafBundlePath(path),
+      draft.repositoryBinding?.repositoryPath == path,
+      draft.repositoryBinding?.identity == DraftRepositoryIdentity(profile: self)
+    else { return nil }
+    return path
+  }
+
+  static func isRecoverableZolaLeafBundlePath(_ path: String) -> Bool {
+    let components = path.split(separator: "/", omittingEmptySubsequences: false)
+    return components.count >= 3 && components.first == "content"
+      && components.last == "index.md"
+      && !components.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." })
+      && !path.contains("\\") && !path.contains(":")
   }
 
   public func translationLanguageCode(for draft: ArticleDraft) -> String? {

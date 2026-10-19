@@ -83,7 +83,8 @@ public struct RepositoryWorktreePublishService: Sendable {
     try transitionCoordinator.recoverIfNeeded(profile: profile, root: root)
     let snapshot = try inspect(profile: profile, root: root, pathScope: scope)
     let safetyReport = try validatedSafetyReport(snapshot: snapshot, profile: profile)
-    let sitePreflightResult = try validatedSitePreflight(profile: profile)
+    let sitePreflightResult = try validatedSitePreflight(
+      profile: profile, snapshot: snapshot, pathScope: scope)
     let fileReviews = RepositoryWorktreeReviewService(git: git).capture(
       entries: snapshot.entries, root: root, baseRevision: snapshot.headSHA
     )
@@ -121,6 +122,7 @@ public struct RepositoryWorktreePublishService: Sendable {
       RepositoryWorktreeFileReview.isComplete(
         entries: confirmation.snapshot.entries, reviews: confirmation.fileReviews
       )
+        && (confirmation.snapshot.outgoingHistory?.isHistoryReviewComplete ?? true)
     else { throw RepositoryWorktreePublishError.incompleteReview }
     guard let root = profile.localRepositoryRootURL else {
       throw RepositoryWorktreePublishError.missingRepositoryRoot
@@ -141,7 +143,8 @@ public struct RepositoryWorktreePublishService: Sendable {
     guard currentSafetyReport == confirmation.safetyReport else {
       throw RepositoryWorktreePublishError.snapshotDrift
     }
-    let sitePreflightResult = try validatedSitePreflight(profile: profile)
+    let sitePreflightResult = try validatedSitePreflight(
+      profile: profile, snapshot: current, pathScope: scope)
     guard confirmation.sitePreflightResult != nil else {
       throw RepositoryWorktreePublishError.snapshotDrift
     }
@@ -161,6 +164,13 @@ public struct RepositoryWorktreePublishService: Sendable {
       attributes: [.posixPermissions: NSNumber(value: Int16(0o700))]
     )
     defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+    if current.entries.isEmpty {
+      guard current.outgoingHistory != nil else { throw RepositoryWorktreePublishError.noChanges }
+      try beforeMovingHead?(current.headSHA)
+      return try pushReviewedCommit(
+        profile: profile, confirmation: confirmation, commitSHA: current.headSHA,
+        root: root, temporaryDirectory: temporaryDirectory, createdCommit: false)
+    }
     let temporaryIndex = temporaryDirectory.appendingPathComponent("index")
     let realIndexFingerprint = try indexFingerprint(root: root)
 
@@ -280,92 +290,28 @@ public struct RepositoryWorktreePublishService: Sendable {
       throw error
     }
 
-    do {
-      try execution.postCommit(
-        policy: confirmation.executionPolicy, root: root, commitSHA: commitSHA)
-
-      guard try worktreeIsClean(root: root, pathScope: scope) else {
-        throw RepositoryWorktreePublishError.commitSucceededButPushFailed(
-          commitSHA: commitSHA,
-          message: "提交后工作区或真实 index 发生变化，未执行推送。"
-        )
-      }
-      let remoteBeforePush = try requiredRemoteSHA(branch: confirmation.snapshot.branch, root: root)
-      guard remoteBeforePush == confirmation.snapshot.remoteBranchSHA else {
-        throw RepositoryWorktreePublishError.commitSucceededButPushFailed(
-          commitSHA: commitSHA,
-          message: "远端分支在提交期间发生变化，非强制推送已停止。"
-        )
-      }
-
-      let pushOriginBeforePush = try validatedPushOrigin(profile: profile, root: root)
-      guard pushOriginBeforePush == confirmation.snapshot.pushOriginURL else {
-        throw RepositoryWorktreePublishError.snapshotDrift
-      }
-      let repositoryStatusBeforePush = try repositoryStatus(root: root)
-      try execution.prePush(
-        policy: confirmation.executionPolicy, branch: confirmation.snapshot.branch,
-        root: root, commitSHA: commitSHA, remoteSHA: remoteBeforePush, origin: pushOriginBeforePush,
-        temporaryDirectory: temporaryDirectory
-      ) {
-        guard try worktreeIsClean(root: root, pathScope: scope),
-          try repositoryStatus(root: root) == repositoryStatusBeforePush,
-          try validatedPushOrigin(profile: profile, root: root) == pushOriginBeforePush,
-          try requiredRemoteSHA(branch: confirmation.snapshot.branch, root: root)
-            == remoteBeforePush
-        else { throw RepositoryGitExecutionPolicyError.reviewedContentChanged }
-      }
-      _ = try output(
-        [
-          "push", "--porcelain", "origin",
-          "\(commitSHA):refs/heads/\(confirmation.snapshot.branch)",
-        ],
-        root: root
-      )
-      let remoteAfterPush = try requiredRemoteSHA(
-        branch: confirmation.snapshot.branch,
-        root: root
-      )
-      guard remoteAfterPush.caseInsensitiveCompare(commitSHA) == .orderedSame else {
-        throw RepositoryWorktreePublishError.gitFailed(
-          command: "git ls-remote --heads origin",
-          output: "远端提交与本地提交不一致。"
-        )
-      }
-      return RepositoryWorktreePublishResult(
-        commitSHA: commitSHA,
-        branch: confirmation.snapshot.branch,
-        pushed: true,
-        remoteCommitSHA: remoteAfterPush,
-        committedPaths: confirmation.snapshot.paths
-      )
-    } catch {
-      throw RepositoryWorktreePublishError.commitSucceededButPushFailed(
-        commitSHA: commitSHA,
-        message: error.localizedDescription
-      )
-    }
+    return try pushReviewedCommit(
+      profile: profile, confirmation: confirmation, commitSHA: commitSHA,
+      root: root, temporaryDirectory: temporaryDirectory, createdCommit: true)
   }
 
   private func validatedSafetyReport(
     snapshot: RepositoryWorktreePublishSnapshot,
     profile: SiteProfile
   ) throws -> RepositoryPublishSafetyReport {
-    let report = safetyAnalyzer.analyze(snapshot: snapshot, profile: profile)
-    guard report.canPublish else {
-      throw RepositoryPublishSafetyError.blocked(report.blockers)
-    }
-    return report
+    let local = try RepositoryDraftSourceReview.validatedReport(
+      snapshot: snapshot, profile: profile, analyzer: safetyAnalyzer)
+    let history = try RepositoryOutgoingPublicationReview.diagnostics(
+      snapshot: snapshot, profile: profile, git: git, analyzer: safetyAnalyzer)
+    return RepositoryPublishSafetyReport(diagnostics: local.diagnostics + history)
   }
 
   private func validatedSitePreflight(
-    profile: SiteProfile
+    profile: SiteProfile, snapshot: RepositoryWorktreePublishSnapshot, pathScope: [String]?
   ) throws -> RepositoryPublishPreflightResult {
-    let result = sitePreflightService.run(profile: profile)
-    guard !result.blocksPublication else {
-      throw RepositoryWorktreePublishError.sitePreflightFailed(result.message)
-    }
-    return result
+    try RepositoryScopedPreflight.validatedResult(
+      profile: profile, snapshot: snapshot, pathScope: pathScope,
+      git: git, service: sitePreflightService)
   }
 
   private func inspect(
@@ -437,8 +383,16 @@ public struct RepositoryWorktreePublishService: Sendable {
       throw RepositoryWorktreePublishError.invalidRepository("仓库还没有可发布的提交。")
     }
     let remoteSHA = try requiredRemoteSHA(branch: branch, root: standardizedRoot)
-    guard remoteSHA.caseInsensitiveCompare(head) == .orderedSame else {
-      throw RepositoryWorktreePublishError.remoteOutOfDate(local: head, remote: remoteSHA)
+    let outgoingHistory: RepositoryWorktreePushRetrySnapshot?
+    if remoteSHA.caseInsensitiveCompare(head) == .orderedSame {
+      outgoingHistory = nil
+    } else {
+      let history = try RepositoryWorktreePushRetryService(gitCommandRunner: git).inspect(
+        profile: profile)
+      guard history.localHeadSHA == head, history.remoteBranchSHA == remoteSHA else {
+        throw RepositoryWorktreePublishError.snapshotDrift
+      }
+      outgoingHistory = history
     }
 
     let status = try output(
@@ -446,7 +400,7 @@ public struct RepositoryWorktreePublishService: Sendable {
       root: standardizedRoot
     )
     let repositoryEntries = try parseStatus(status)
-    guard !repositoryEntries.isEmpty else {
+    guard !repositoryEntries.isEmpty || outgoingHistory != nil else {
       throw RepositoryWorktreePublishError.noChanges
     }
 
@@ -482,7 +436,7 @@ public struct RepositoryWorktreePublishService: Sendable {
       rawEntries = repositoryEntries
       statusFingerprint = status
     }
-    guard !rawEntries.isEmpty else {
+    guard !rawEntries.isEmpty || outgoingHistory != nil else {
       throw RepositoryWorktreePublishError.noChanges
     }
 
@@ -535,7 +489,8 @@ public struct RepositoryWorktreePublishService: Sendable {
       pushOriginURL: safePushOrigin,
       remoteBranchSHA: remoteSHA,
       statusFingerprint: statusFingerprint,
-      entries: entries
+      entries: entries,
+      outgoingHistory: outgoingHistory
     )
   }
 
@@ -711,7 +666,7 @@ public struct RepositoryWorktreePublishService: Sendable {
     return localURL.path
   }
 
-  private func validatedPushOrigin(profile: SiteProfile, root: URL) throws -> String {
+  func validatedPushOrigin(profile: SiteProfile, root: URL) throws -> String {
     let raw = try output(
       ["remote", "get-url", "--push", "--all", "origin"],
       root: root
@@ -730,7 +685,7 @@ public struct RepositoryWorktreePublishService: Sendable {
       .lowercased()
   }
 
-  private func requiredRemoteSHA(branch: String, root: URL) throws -> String {
+  func requiredRemoteSHA(branch: String, root: URL) throws -> String {
     let text = try output(
       ["ls-remote", "--heads", "origin", "refs/heads/\(branch)"],
       root: root

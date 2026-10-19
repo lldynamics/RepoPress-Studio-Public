@@ -6,6 +6,9 @@ import SwiftUI
 /// the user confirms this exact frozen snapshot; the summary leads with what
 /// will happen, and repository internals stay folded away.
 struct RepositoryWorktreePublishConfirmationView: View {
+  @State private var safetyWarningsAcknowledged = false
+  @State private var outgoingHistoryAcknowledged = false
+
   let confirmation: RepositoryWorktreePublishConfirmation
   /// The article title, or the site name when publishing everything.
   var subject: String = ""
@@ -34,8 +37,14 @@ struct RepositoryWorktreePublishConfirmationView: View {
             articleSummaryCard
           }
           summaryCard
+          if let outgoingHistory {
+            outgoingHistoryCard(outgoingHistory)
+          }
           if !attentionItems.isEmpty {
             attentionCard
+          }
+          if !optionalAttentionItems.isEmpty {
+            optionalAttentionCard
           }
           if confirmation.isScoped {
             DisclosureGroup {
@@ -60,6 +69,10 @@ struct RepositoryWorktreePublishConfirmationView: View {
     // such as the confirm button's.
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("publish-worktree-confirmation")
+    .onChange(of: confirmation.id) { _, _ in
+      safetyWarningsAcknowledged = false
+      outgoingHistoryAcknowledged = false
+    }
   }
 
   private var header: some View {
@@ -87,21 +100,43 @@ struct RepositoryWorktreePublishConfirmationView: View {
 
   private var summaryCard: some View {
     VStack(alignment: .leading, spacing: 8) {
-      Label(
-        String(
-          format: String(localized: "%d 个文件将提交并推送到 origin/%@"),
-          confirmation.snapshot.paths.count, confirmation.snapshot.branch),
-        systemImage: "arrow.up.circle"
-      )
+      Group {
+        if let outgoingHistory {
+          if confirmation.snapshot.paths.isEmpty {
+            Label(
+              String(
+                format: String(localized: "%d 个已有提交将推送到 origin/%@；这次没有新的文件提交。"),
+                outgoingHistory.commitCount, confirmation.snapshot.branch),
+              systemImage: "arrow.up.circle"
+            )
+          } else {
+            Label(
+              String(
+                format: String(localized: "%d 个文件将提交，并推送 %d 个已有提交到 origin/%@"),
+                confirmation.snapshot.paths.count, outgoingHistory.commitCount,
+                confirmation.snapshot.branch),
+              systemImage: "arrow.up.circle"
+            )
+          }
+        } else if confirmation.snapshot.paths.isEmpty {
+          Label(
+            String(localized: "没有文件需要提交。"),
+            systemImage: "arrow.up.circle"
+          )
+        } else {
+          Label(
+            String(
+              format: String(localized: "%d 个文件将提交并推送到 origin/%@"),
+              confirmation.snapshot.paths.count, confirmation.snapshot.branch),
+            systemImage: "arrow.up.circle"
+          )
+        }
+      }
       .font(.workbenchBody.weight(.medium))
-      Text(
-        confirmation.isScoped
-          ? "只提交这篇文章和它的图片；仓库里的其他改动不受影响。"
-          : "包含仓库里所有未提交的改动：文章、图片、配置和主题，以及删除和重命名。"
-      )
-      .font(.workbenchMetadata)
-      .foregroundStyle(.workbenchSecondary)
-      .fixedSize(horizontal: false, vertical: true)
+      Text(summaryDescription)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
+        .fixedSize(horizontal: false, vertical: true)
       if let note {
         Label(note, systemImage: "info.circle")
           .font(.workbenchMetadata)
@@ -116,6 +151,65 @@ struct RepositoryWorktreePublishConfirmationView: View {
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
     )
     .workbenchAccessibilityContainer(identifier: "publish-worktree-summary")
+  }
+
+  private var summaryDescription: String {
+    if outgoingHistory != nil {
+      return confirmation.isScoped
+        ? String(localized: "这些提交已经在本地创建，也会一并推送；当前未提交文件仍只限于这篇文章的范围。")
+        : String(localized: "这些提交已经在本地创建，也会一并推送；当前未提交文件按全部变更范围处理。")
+    }
+    return confirmation.isScoped
+      ? String(localized: "只提交这篇文章和它的图片；仓库里的其他改动不受影响。")
+      : String(localized: "包含仓库里所有未提交的改动：文章、图片、配置和主题，以及删除和重命名。")
+  }
+
+  private func outgoingHistoryCard(_ history: RepositoryWorktreePushRetrySnapshot) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Label(
+        String(
+          format: String(localized: "已有提交历史（%d 个提交）"), history.commitCount),
+        systemImage: "clock.arrow.circlepath"
+      )
+      .font(.workbenchHeadline)
+      Text(historyDescription)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.workbenchSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+      ForEach(history.commitReviews) { commit in
+        DisclosureGroup(
+          String(
+            format: String(localized: "提交 %@"),
+            RepositoryWorktreePublishPresentation.shortSHA(commit.commitSHA))
+        ) {
+          RepositoryWorktreeReviewFileList(
+            entries: commit.entries, reviews: commit.fileReviews)
+        }
+      }
+      Toggle(
+        String(localized: "我已逐项审阅这些已有提交，并确认将它们一并推送。"),
+        isOn: $outgoingHistoryAcknowledged
+      )
+      .toggleStyle(.checkbox)
+      .font(.workbenchBody.weight(.medium))
+      .accessibilityIdentifier("publish-worktree-history-acknowledgement")
+    }
+    .padding(WorkbenchSpacing.content)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      WorkbenchTheme.warning.opacity(0.08),
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .workbenchAccessibilityContainer(identifier: "publish-worktree-outgoing-history")
+  }
+
+  private var historyDescription: String {
+    if confirmation.snapshot.paths.isEmpty {
+      return String(localized: "确认后会推送这些已经提交的历史；这次没有新的文件提交。")
+    }
+    return confirmation.isScoped
+      ? String(localized: "确认后会推送这些已经提交的历史；当前还有这篇文章范围内的未提交文件。")
+      : String(localized: "确认后会推送这些已经提交的历史；当前还有待发布的未提交文件。")
   }
 
   private var articleSummaryCard: some View {
@@ -180,7 +274,9 @@ struct RepositoryWorktreePublishConfirmationView: View {
   /// Only what deserves a second look before publishing is shown up front.
   private var attentionItems: [AttentionItem] {
     var items: [AttentionItem] = []
-    if let preflight = confirmation.sitePreflightResult, preflight.outcome != .passed {
+    if let preflight = confirmation.sitePreflightResult,
+      RepositoryWorktreePublishConfirmationPresentationPolicy.isFailed(preflight)
+    {
       items.append(
         AttentionItem(
           id: "site-preflight", title: String(localized: "站点构建检查"),
@@ -189,11 +285,39 @@ struct RepositoryWorktreePublishConfirmationView: View {
     items += confirmation.safetyReport.warnings.map {
       AttentionItem(id: $0.id, title: $0.title, message: $0.message)
     }
+    items += articleWarningIssues.map {
+      AttentionItem(
+        id: "article-preflight-\($0.id.uuidString)", title: $0.title, message: $0.message)
+    }
     if !isReviewComplete {
       items.append(
         AttentionItem(
           id: "incomplete-review", title: String(localized: "文件差异未能完整读取"),
           message: String(localized: "请取消后重新发布。")))
+    }
+    return items
+  }
+
+  private var articleWarningIssues: [PreflightIssue] {
+    RepositoryWorktreePublishConfirmationPresentationPolicy.warningIssues(
+      from: confirmation.articlePreflightIssues)
+  }
+
+  private var optionalAttentionItems: [AttentionItem] {
+    var items: [AttentionItem] = []
+    if let preflight = confirmation.sitePreflightResult,
+      RepositoryWorktreePublishConfirmationPresentationPolicy.isSkipped(preflight)
+    {
+      items.append(
+        AttentionItem(
+          id: "site-preflight", title: String(localized: "站点构建检查"),
+          message: preflight.message))
+    }
+    items += RepositoryWorktreePublishConfirmationPresentationPolicy.optionalIssues(
+      from: confirmation.articlePreflightIssues
+    ).map {
+      AttentionItem(
+        id: "article-optional-\($0.id.uuidString)", title: $0.title, message: $0.message)
     }
     return items
   }
@@ -214,6 +338,15 @@ struct RepositoryWorktreePublishConfirmationView: View {
             .textSelection(.enabled)
         }
       }
+      if requiresSafetyAcknowledgement {
+        Toggle(
+          String(localized: "我已阅读并确认上述提醒，仍要继续发布。"),
+          isOn: $safetyWarningsAcknowledged
+        )
+        .toggleStyle(.checkbox)
+        .font(.workbenchBody.weight(.medium))
+        .accessibilityIdentifier("publish-worktree-safety-acknowledgement")
+      }
     }
     .padding(WorkbenchSpacing.content)
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -222,6 +355,32 @@ struct RepositoryWorktreePublishConfirmationView: View {
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
     )
     .accessibilityIdentifier("publish-worktree-attention")
+  }
+
+  private var optionalAttentionCard: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Label(String(localized: "待补充（不影响发布）"), systemImage: "info.circle")
+        .font(.workbenchHeadline)
+        .foregroundStyle(.workbenchSecondary)
+      ForEach(optionalAttentionItems) { item in
+        VStack(alignment: .leading, spacing: 3) {
+          Text(item.title)
+            .font(.workbenchBody.weight(.semibold))
+          Text(item.message)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .textSelection(.enabled)
+        }
+      }
+    }
+    .padding(WorkbenchSpacing.content)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .accessibilityIdentifier("publish-worktree-optional-attention")
   }
 
   private var fileList: some View {
@@ -290,9 +449,12 @@ struct RepositoryWorktreePublishConfirmationView: View {
       )
       .workbenchProminentActionStyle()
       .keyboardShortcut(.defaultAction)
-      .disabled(isPublishing || !isReviewComplete)
+      .disabled(isPublishing || !isReviewComplete || !canConfirmSafetyWarnings)
       .accessibilityIdentifier("publish-worktree-confirm")
-      .accessibilityHint("再次核对文件后创建提交并推送到远端")
+      .accessibilityHint(
+        confirmation.snapshot.entries.isEmpty
+          ? String(localized: "再次核对已有提交后推送到远端")
+          : String(localized: "再次核对文件后创建提交并推送到远端"))
     }
     .padding(WorkbenchSpacing.spacious)
   }
@@ -301,7 +463,33 @@ struct RepositoryWorktreePublishConfirmationView: View {
     RepositoryWorktreeFileReview.isComplete(
       entries: confirmation.snapshot.entries,
       reviews: confirmation.fileReviews
+    ) && (outgoingHistory?.isHistoryReviewComplete ?? true)
+  }
+
+  private var canConfirmSafetyWarnings: Bool {
+    RepositoryWorktreePublishConfirmationPresentationPolicy.canConfirm(
+      isPublishing: isPublishing,
+      isReviewComplete: isReviewComplete,
+      requiresAcknowledgement: requiresSafetyAcknowledgement,
+      acknowledgementGiven: safetyWarningsAcknowledged,
+      historyReviewComplete: outgoingHistory?.isHistoryReviewComplete ?? true,
+      historyAcknowledgementGiven: outgoingHistory == nil || outgoingHistoryAcknowledged,
+      hasBlockingIssue: !confirmation.safetyReport.canPublish
+        || confirmation.sitePreflightResult?.blocksPublication == true
+        || confirmation.articlePreflightIssues.contains { $0.severity == .error }
     )
+  }
+
+  private var requiresSafetyAcknowledgement: Bool {
+    RepositoryWorktreePublishConfirmationPresentationPolicy.requiresAcknowledgement(
+      safetyWarningCount: confirmation.safetyReport.warnings.count,
+      articleWarningCount: articleWarningIssues.count,
+      sitePreflight: confirmation.sitePreflightResult,
+    )
+  }
+
+  private var outgoingHistory: RepositoryWorktreePushRetrySnapshot? {
+    confirmation.snapshot.outgoingHistory
   }
 }
 
