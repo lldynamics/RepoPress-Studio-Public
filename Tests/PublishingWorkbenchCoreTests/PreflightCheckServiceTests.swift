@@ -100,7 +100,7 @@ final class PreflightCheckServiceTests: XCTestCase {
     XCTAssertEqual(issues.filter { $0.title == "未知短代码" }.map(\.relatedValue), ["missing"])
   }
 
-  func testReportsMissingRequiredMetadata() {
+  func testMissingTitleWarnsWhileMissingSlugBlocks() {
     let profile = SiteProfile.defaultProfile
     let draft = ArticleDraft(
       siteProfileID: profile.id,
@@ -115,7 +115,7 @@ final class PreflightCheckServiceTests: XCTestCase {
       profile: profile
     )
 
-    XCTAssertTrue(issues.contains { $0.severity == .error && $0.field == "title" })
+    XCTAssertTrue(issues.contains { $0.severity == .warning && $0.field == "title" })
     XCTAssertTrue(issues.contains { $0.severity == .error && $0.field == "slug" })
   }
 
