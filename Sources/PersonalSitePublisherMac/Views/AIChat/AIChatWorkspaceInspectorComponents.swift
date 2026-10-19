@@ -227,7 +227,7 @@ struct AIChatContextInspectorView: View {
     .accessibilityLabel("AI 助手")
   }
 
-  private var inspectorLifecycleContent: some View {
+  private var inspectorSelectionContent: some View {
     inspectorContent
       .onAppear {
         ensureInspectorSurfaceConversationSelection()
@@ -271,6 +271,10 @@ struct AIChatContextInspectorView: View {
       .onChange(of: state.conversation?.conversationID) { _, _ in
         applyPendingQuickPrompt()
       }
+  }
+
+  private var inspectorConnectionContent: some View {
+    inspectorSelectionContent
       .onChange(of: isAIKeyMissing) { _, isMissing in
         if !isMissing {
           focusComposerIfAvailable()
@@ -303,6 +307,10 @@ struct AIChatContextInspectorView: View {
         guard currentAIProviderConfig.usesCodexAppServer else { return }
         Task { await codexConnection.refresh() }
       }
+  }
+
+  private var inspectorLifecycleContent: some View {
+    inspectorConnectionContent
       .onChange(of: ai.activeChatConversationID) { _, _ in
         if ai.chatContextMode != .general {
           synchronizeInspectorSurfaceWithActiveConversation()
