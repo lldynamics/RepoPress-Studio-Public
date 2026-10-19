@@ -248,19 +248,18 @@ extension MacMarkdownComposerView {
     from previousDocument: String,
     to updatedDocument: String
   ) -> (bodyMarkdown: String, bodyUTF16Offset: Int)? {
-    let previousSource = previousDocument as NSString
-    let currentBody = editorBody as NSString
-    guard currentBody.length <= previousSource.length else { return nil }
-
-    let bodyUTF16Offset = previousSource.length - currentBody.length
-    let previousBody = previousSource.substring(from: bodyUTF16Offset)
-    guard previousBody == editorBody else { return nil }
+    let bodyUTF16Offset = editorDocumentBodyOffsetCache
+    guard
+      let previousPrefix = MarkdownDocumentBodyBoundary.prefix(
+        in: previousDocument, bodyUTF16Offset: bodyUTF16Offset, matchingBody: editorBody
+      )
+    else { return nil }
 
     let updatedSource = updatedDocument as NSString
     guard updatedSource.length >= bodyUTF16Offset else { return nil }
     guard
       updatedSource.substring(to: bodyUTF16Offset)
-        == previousSource.substring(to: bodyUTF16Offset)
+        == previousPrefix
     else {
       return nil
     }
@@ -284,8 +283,13 @@ extension MacMarkdownComposerView {
       return
     }
 
-    if let previousBody, editorDocument.hasSuffix(previousBody) {
-      let updatedDocument = String(editorDocument.dropLast(previousBody.count)) + editorBody
+    if let previousBody,
+      let prefix = MarkdownDocumentBodyBoundary.prefix(
+        in: editorDocument, bodyUTF16Offset: editorDocumentBodyOffsetCache,
+        matchingBody: previousBody
+      )
+    {
+      let updatedDocument = prefix + editorBody
       guard editorDocument != updatedDocument else { return }
       editorDocument = updatedDocument
       return

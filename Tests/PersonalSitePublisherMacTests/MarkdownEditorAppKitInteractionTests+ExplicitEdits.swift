@@ -12,6 +12,28 @@ import XCTest
 final class MarkdownEditorAppKitInteractionExplicitEditTests:
   MarkdownEditorAppKitInteractionTestCase
 {
+  func testDocumentBodyBoundaryRejectsStaleObserverSuffixes() throws {
+    let prefix = "---\ntitle: 😀\n---\n"
+    let offset = (prefix as NSString).length
+    for (rendered, stale) in [("\n/", ""), ("甲乙", "乙")] {
+      XCTAssertNil(
+        MarkdownDocumentBodyBoundary.prefix(
+          in: prefix + rendered, bodyUTF16Offset: offset, matchingBody: stale))
+      XCTAssertEqual(
+        MarkdownDocumentBodyBoundary.prefix(
+          in: prefix + rendered, bodyUTF16Offset: offset, matchingBody: rendered), prefix)
+    }
+    XCTAssertEqual(
+      MarkdownDocumentBodyBoundary.prefix(
+        in: prefix, bodyUTF16Offset: offset, matchingBody: ""), prefix)
+    XCTAssertNil(
+      MarkdownDocumentBodyBoundary.prefix(
+        in: prefix, bodyUTF16Offset: -1, matchingBody: ""))
+    XCTAssertNil(
+      MarkdownDocumentBodyBoundary.prefix(
+        in: prefix, bodyUTF16Offset: offset + 1, matchingBody: ""))
+  }
+
   func testOldEditRequestCannotOverwriteLiveTextAheadOfBindingPublication() {
     let coordinator = makeCoordinator(source: "甲乙", bodyMarkdown: "甲乙", bodyUTF16Offset: 0)
     let view = makeTextView()

@@ -21,3 +21,15 @@ struct MarkdownDocumentSynchronizationModifier: ViewModifier {
       }
   }
 }
+
+/// Delayed observer snapshots must match the entire rendered body, not merely
+/// a suffix (every document has an empty suffix).
+enum MarkdownDocumentBodyBoundary {
+  static func prefix(in document: String, bodyUTF16Offset: Int, matchingBody: String) -> String? {
+    let source = document as NSString
+    guard bodyUTF16Offset >= 0, bodyUTF16Offset <= source.length,
+      source.substring(from: bodyUTF16Offset) == matchingBody
+    else { return nil }
+    return source.substring(to: bodyUTF16Offset)
+  }
+}
