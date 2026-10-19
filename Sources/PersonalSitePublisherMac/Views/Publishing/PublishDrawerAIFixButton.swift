@@ -44,7 +44,7 @@ struct PublishDrawerAIFixButton: View {
 
   var body: some View {
     let destination = configurationDestination
-    let title = destination == nil ? String(localized: "AI 修复") : String(localized: "去配置")
+    let title = destination == nil ? String(localized: "AI 修复") : String(localized: "配置 AI 辅助")
     let button = Button {
       if let destination {
         SettingsNavigation.present(

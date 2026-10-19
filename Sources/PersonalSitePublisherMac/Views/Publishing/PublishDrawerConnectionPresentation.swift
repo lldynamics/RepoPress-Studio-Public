@@ -58,9 +58,13 @@ struct PublishDrawerReadinessIssue: Identifiable {
   let draftID: UUID?
   let target: PublishReadinessTarget
   let severity: PreflightSeverity
-  var isOptionalOptimization: Bool = false
+  let classification: PublishCheckClassification
   let title: String
   let message: String
+
+  var isOptionalOptimization: Bool {
+    classification == .optionalOptimization
+  }
 
   var actionTitle: String {
     if case .metadata(field: "date") = target { return String(localized: "修改时间") }
@@ -83,7 +87,7 @@ struct PublishDrawerReadinessIssue: Identifiable {
       draftID: draftID,
       target: issue.structuredField == .body ? .body(query: issue.relatedValue) : .preflight(issue),
       severity: issue.severity,
-      isOptionalOptimization: issue.isOptionalOptimization,
+      classification: PublishCheckClassification.classify(issue),
       title: issue.title, message: issue.message
     )
   }
@@ -95,6 +99,12 @@ struct PublishDrawerReadinessSection: Identifiable {
   let systemImage: String
   let issues: [PublishDrawerReadinessIssue]
   let isLoading: Bool
+}
+
+struct PublishDrawerReadinessIssueGroup: Identifiable {
+  let id: String
+  let classification: PublishCheckClassification
+  let issues: [PublishDrawerReadinessIssue]
 }
 
 struct PublishDrawerReadinessPresentation {
@@ -115,6 +125,22 @@ struct PublishDrawerReadinessPresentation {
     }.map(\.element)
   }
 
+  /// Stable publication-facing groups. Classification is the source of truth;
+  /// severity remains a persisted gate value and is not reinterpreted here.
+  var issueGroups: [PublishDrawerReadinessIssueGroup] {
+    [
+      .init(
+        id: "blockers", classification: .blocking,
+        issues: issues.filter { $0.classification == .blocking }),
+      .init(
+        id: "confirmation-warnings", classification: .warning,
+        issues: issues.filter { $0.classification == .warning }),
+      .init(
+        id: "optional-improvements", classification: .optionalOptimization,
+        issues: issues.filter { $0.classification == .optionalOptimization }),
+    ].filter { !$0.issues.isEmpty }
+  }
+
   var blockingCount: Int {
     issues.count { $0.severity == .error }
   }
@@ -129,7 +155,7 @@ struct PublishDrawerReadinessPresentation {
     sections.filter {
       !$0.isLoading
         && $0.issues.allSatisfy {
-          $0.isOptionalOptimization || ($0.severity == .info)
+          $0.classification == .informational
         }
     }
   }
@@ -147,7 +173,7 @@ struct PublishDrawerReadinessPresentation {
         PublishDrawerReadinessIssue(
           id: prefix + "-" + [$0.field ?? "", $0.title, $0.message].joined(separator: "|"),
           draftID: draftID, target: .seo($0), severity: $0.severity,
-          isOptionalOptimization: $0.isOptionalOptimization,
+          classification: PublishCheckClassification.classify($0),
           title: $0.title, message: $0.message
         )
       }
@@ -178,7 +204,7 @@ struct PublishDrawerReadinessPresentation {
             ]
             .joined(separator: "|"),
           draftID: draftID, target: .image($0), severity: $0.severity,
-          isOptionalOptimization: $0.isOptionalOptimization,
+          classification: PublishCheckClassification.classify($0),
           title: $0.title, message: $0.message
         )
       }
@@ -187,6 +213,7 @@ struct PublishDrawerReadinessPresentation {
       social.append(
         PublishDrawerReadinessIssue(
           id: "social-preview", draftID: draftID, target: .seo, severity: .warning,
+          classification: .warning,
           title: socialSnapshot == nil
             ? String(localized: "社交预览尚未生成") : String(localized: "社交预览需要刷新"),
           message: socialSnapshot == nil

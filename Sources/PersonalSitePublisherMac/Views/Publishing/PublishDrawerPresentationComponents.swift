@@ -139,19 +139,71 @@ struct PublishDrawerReadinessChecklist: View {
   var onRequestAIFix: ((PublishDrawerReadinessIssue) -> Void)? = nil
   var store: WorkbenchStore? = nil
   @State private var showsPassedChecks = false
+  @State private var showsOptionalImprovements = false
+
+  private var blockingGroup: PublishDrawerReadinessIssueGroup? {
+    presentation.issueGroups.first { $0.id == "blockers" }
+  }
+
+  private var confirmationWarningGroup: PublishDrawerReadinessIssueGroup? {
+    presentation.issueGroups.first { $0.id == "confirmation-warnings" }
+  }
+
+  private var optionalImprovementGroup: PublishDrawerReadinessIssueGroup? {
+    presentation.issueGroups.first { $0.id == "optional-improvements" }
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
-      if !presentation.issues.isEmpty {
-        VStack(spacing: 0) {
-          ForEach(presentation.issues) { issue in
-            readinessIssueRow(issue)
-            if issue.id != presentation.issues.last?.id { Divider() }
+      if let group = blockingGroup {
+        issueGroup(
+          group, title: String(localized: "发布阻塞项"), systemImage: "xmark.octagon.fill",
+          identifier: "publish-drawer-blockers",
+          help: String(localized: "这些问题必须处理后才能发布。"))
+      }
+      if let group = confirmationWarningGroup {
+        issueGroup(
+          group, title: String(localized: "发布前确认"),
+          systemImage: "exclamationmark.triangle.fill",
+          identifier: "publish-drawer-confirmation-warnings",
+          help: String(localized: "这些提醒需要你确认后再继续发布。"))
+      }
+      if let group = optionalImprovementGroup {
+        VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
+          Button {
+            showsOptionalImprovements.toggle()
+          } label: {
+            HStack(spacing: WorkbenchSpacing.control) {
+              Image(systemName: showsOptionalImprovements ? "chevron.down" : "chevron.right")
+                .font(.workbenchMetadata.weight(.semibold))
+                .accessibilityHidden(true)
+              Label(
+                String(format: String(localized: "可选优化 · %d 项"), group.issues.count),
+                systemImage: "wand.and.stars"
+              )
+              Spacer(minLength: 0)
+            }
+            .font(.workbenchBody.weight(.medium)).foregroundStyle(.workbenchSecondary)
+            .padding(.vertical, WorkbenchSpacing.icon)
+            .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .accessibilityValue(showsOptionalImprovements ? Text("已展开") : Text("已收起"))
+          .accessibilityIdentifier("publish-drawer-optional-improvements-toggle")
+          if showsOptionalImprovements {
+            issueList(group.issues)
+              .accessibilityElement(children: .contain)
+              .accessibilityIdentifier("publish-drawer-optional-improvements-items")
           }
         }
+        .accessibilityElement(children: .contain)
+        .padding(WorkbenchSpacing.control)
         .background(
           WorkbenchBackgroundStyle.card,
-          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+        )
+        .help(String(localized: "这些建议不会阻止发布，可稍后处理。"))
+        .accessibilityIdentifier("publish-drawer-optional-improvements")
       }
       if presentation.isLoading {
         Label("正在读取最新检查结果…", systemImage: "arrow.clockwise")
@@ -188,16 +240,47 @@ struct PublishDrawerReadinessChecklist: View {
       .padding(WorkbenchSpacing.control)
       .background(
         WorkbenchBackgroundStyle.card,
-        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+      )
+      .accessibilityIdentifier("publish-drawer-passed-checks")
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("publish-drawer-readiness-checklist")
   }
 
+  private func issueGroup(
+    _ group: PublishDrawerReadinessIssueGroup, title: String, systemImage: String,
+    identifier: String, help: String
+  ) -> some View {
+    VStack(alignment: .leading, spacing: WorkbenchSpacing.tight) {
+      Label(title, systemImage: systemImage)
+        .font(.workbenchBody.weight(.medium))
+        .accessibilityAddTraits(.isHeader)
+      issueList(group.issues)
+    }
+    .padding(WorkbenchSpacing.control)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .help(help)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier(identifier)
+  }
+
+  private func issueList(_ issues: [PublishDrawerReadinessIssue]) -> some View {
+    VStack(spacing: 0) {
+      ForEach(issues) { issue in
+        readinessIssueRow(issue)
+        if issue.id != issues.last?.id { Divider() }
+      }
+    }
+  }
+
   private func readinessIssueRow(_ issue: PublishDrawerReadinessIssue) -> some View {
     HStack(alignment: .top, spacing: WorkbenchSpacing.tight) {
-      Image(systemName: issue.severity.publishDrawerSystemImage)
-        .foregroundStyle(issue.severity.publishDrawerColor)
+      Image(systemName: issue.publishDrawerSystemImage)
+        .foregroundStyle(issue.publishDrawerColor)
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: WorkbenchSpacing.tight) {
         Text(issue.title).font(.workbenchBody.weight(.medium))
@@ -216,6 +299,7 @@ struct PublishDrawerReadinessChecklist: View {
     .onTapGesture { selectedIssueID = issue.id }
     .accessibilityElement(children: .contain)
     .accessibilityLabel("\(issue.severity.localizedDisplayName)：\(issue.title)")
+    .accessibilityHint(issue.publishDrawerAccessibilityHint)
     .accessibilityValue(selectedIssueID == issue.id ? String(localized: "已选中") : "")
     .accessibilityIdentifier("publish-inspector-issue-\(issue.id)")
   }
@@ -259,6 +343,34 @@ struct PublishDrawerReadinessChecklist: View {
             .buttonStyle(.link)
         }
       }
+    }
+  }
+}
+
+extension PublishDrawerReadinessIssue {
+  var publishDrawerSystemImage: String {
+    switch classification {
+    case .blocking: return "xmark.octagon.fill"
+    case .warning: return "exclamationmark.triangle.fill"
+    case .optionalOptimization: return "sparkles"
+    case .informational: return "info.circle.fill"
+    }
+  }
+
+  var publishDrawerColor: Color {
+    switch classification {
+    case .blocking: return WorkbenchTheme.risk
+    case .warning: return WorkbenchTheme.warning
+    case .optionalOptimization, .informational: return WorkbenchTheme.info
+    }
+  }
+
+  var publishDrawerAccessibilityHint: String {
+    switch classification {
+    case .blocking: return String(localized: "处理后才能发布")
+    case .warning: return String(localized: "发布前需要确认")
+    case .optionalOptimization: return String(localized: "可稍后处理，不会阻止发布")
+    case .informational: return String(localized: "提供发布状态信息")
     }
   }
 }

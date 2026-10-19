@@ -2217,6 +2217,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     // again for each attempt instead of clicking a stale snapshot.
     var selectedArticle = false
     for _ in 0..<3 where !selectedArticle {
+      application.activate()
       let article = writingDraftRow(title: "RepoPress Studio 发布流程", in: window)
       guard article.waitForExistence(timeout: 10), article.isHittable else { continue }
       article.click()
@@ -2516,6 +2517,24 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       .completed
     )
     XCTAssertEqual(element(identifier: "workspace-prepare-publish").label, "发布这篇")
+    let optionalToggle = element(identifier: "publish-drawer-optional-improvements-toggle")
+    XCTAssertTrue(optionalToggle.waitForExistence(timeout: 5))
+    XCTAssertEqual(optionalToggle.value as? String, "已收起")
+    XCTAssertFalse(element(identifier: "publish-drawer-optional-improvements-items").exists)
+    for expectedValue in ["已展开", "已收起"] {
+      optionalToggle.click()
+      XCTAssertEqual(
+        XCTWaiter.wait(
+          for: [
+            XCTNSPredicateExpectation(
+              predicate: NSPredicate(format: "value == %@", expectedValue), object: optionalToggle)
+          ], timeout: 5),
+        .completed
+      )
+      XCTAssertEqual(
+        element(identifier: "publish-drawer-optional-improvements-items").exists,
+        expectedValue == "已展开")
+    }
     for identifier in [
       "publish-drawer-readiness-checklist",
       "publish-drawer-action-publish-current",

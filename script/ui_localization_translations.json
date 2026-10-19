@@ -12697,5 +12697,49 @@
   "这次发布尚无文章版本核验记录，可在发布历史中重新检查。": {
     "en": "This publication has no article version verification record yet. Recheck it in publishing history.",
     "zh-Hans": "这次发布尚无文章版本核验记录，可在发布历史中重新检查。"
+  },
+  "发布阻塞项": {
+    "en": "Publishing blockers",
+    "zh-Hans": "发布阻塞项"
+  },
+  "发布前需要确认": {
+    "en": "Confirmation required before publishing",
+    "zh-Hans": "发布前需要确认"
+  },
+  "这些提醒需要你确认后再继续发布。": {
+    "en": "Confirm these reminders before continuing.",
+    "zh-Hans": "这些提醒需要你确认后再继续发布。"
+  },
+  "这些问题必须处理后才能发布。": {
+    "en": "Resolve these issues before publishing.",
+    "zh-Hans": "这些问题必须处理后才能发布。"
+  },
+  "配置 AI 辅助": {
+    "en": "Configure AI assistance",
+    "zh-Hans": "配置 AI 辅助"
+  },
+  "处理后才能发布": {
+    "en": "Resolve before publishing",
+    "zh-Hans": "处理后才能发布"
+  },
+  "发布前确认": {
+    "en": "Confirm before publishing",
+    "zh-Hans": "发布前确认"
+  },
+  "可选优化 · %d 项": {
+    "en": "Optional improvements · %d",
+    "zh-Hans": "可选优化 · %d 项"
+  },
+  "提供发布状态信息": {
+    "en": "Provides publishing status information",
+    "zh-Hans": "提供发布状态信息"
+  },
+  "这些建议不会阻止发布，可稍后处理。": {
+    "en": "These suggestions do not block publishing and can be handled later.",
+    "zh-Hans": "这些建议不会阻止发布，可稍后处理。"
+  },
+  "可稍后处理，不会阻止发布": {
+    "en": "Can be handled later; does not block publishing",
+    "zh-Hans": "可稍后处理，不会阻止发布"
   }
 }

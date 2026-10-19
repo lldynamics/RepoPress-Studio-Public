@@ -92,6 +92,33 @@ final class PublishDrawerConnectionPresentationTests: XCTestCase {
     XCTAssertTrue(readiness.isLoading)
   }
 
+  func testArticlePresentationExposesStableGroupsFromExplicitClassification() {
+    let blocker = PreflightIssue(
+      severity: .error, title: "标题缺失", message: "请填写标题", field: "title")
+    let optional = PreflightIssue(
+      severity: .warning, title: "正文偏短", message: "可稍后补充", field: "body",
+      ruleID: ContentHealthRuleID.shortBody.rawValue)
+    let seo = SEOAuditReport(
+      titleCharacterCount: 10, summaryCharacterCount: 10, bodyCharacterCount: 10,
+      h1Count: 1, hasPublishableCoverImage: true, markdownPath: "post.md",
+      frontMatterPreview: "", findings: [])
+    let presentation = PublishDrawerReadinessPresentation.article(
+      draftID: UUID(), preflightIssues: [blocker, optional], imageReport: nil,
+      isImageReportLoading: false, seoReport: seo, socialSnapshot: nil,
+      isSocialPreviewStale: false)
+
+    XCTAssertEqual(
+      presentation.issueGroups.map(\.id),
+      ["blockers", "confirmation-warnings", "optional-improvements"])
+    XCTAssertEqual(presentation.issueGroups[0].issues.map(\.title), ["标题缺失"])
+    XCTAssertEqual(presentation.issueGroups[1].issues.map(\.title), ["社交预览尚未生成"])
+    XCTAssertEqual(presentation.issueGroups[2].issues.map(\.title), ["正文偏短"])
+    XCTAssertEqual(presentation.issueGroups[2].classification, .optionalOptimization)
+    XCTAssertEqual(presentation.blockingCount, 1)
+    XCTAssertEqual(presentation.warningCount, 1)
+    XCTAssertEqual(presentation.optimizationCount, 1)
+  }
+
   func testArticleContentDoesNotTurnDeferredRemoteChecksIntoBlockers() {
     let draftID = UUID()
     let issues: [PreflightIssue] = [
