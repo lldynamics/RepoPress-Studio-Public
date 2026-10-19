@@ -6,6 +6,131 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class ReleaseHistoryPresentationTests: XCTestCase {
+  func testArticleAttemptsCollapseVisuallyWithoutRemovingDifferentVersions() throws {
+    let first = trackedAttempt(at: 1)
+    var latest = first
+    latest.id = UUID()
+    latest.createdAt = Date(timeIntervalSince1970: 2)
+    latest.commitSHA = "another-commit"
+    latest.sourceDocumentDigest = "another-source"
+    let ledger = ReleaseLedgerService().ledger(
+      releaseRecords: [first, latest], deploymentStatusSnapshots: [:])
+    let groups = ReleaseActionAttemptGroup.make(ledger: ledger)
+    XCTAssertEqual(groups.count, 1)
+    XCTAssertEqual(groups.first?.latest.recordID, latest.id)
+    XCTAssertEqual(groups.first?.previous.map(\.recordID), [first.id])
+    XCTAssertEqual(ledger.entries.map(\.record), [first, latest])
+    XCTAssertEqual(ledger.actionItems.count, 2, "Grouping is presentation, not resolution")
+  }
+
+  func testArticleAttemptGroupingKeepsUnsafeOrUnrelatedActionsSeparate() {
+    let original = trackedAttempt(at: 1)
+    let mutations: [(String, (inout ReleaseRecord) -> Void)] = [
+      ("different article", { $0.draftID = UUID() }),
+      ("missing article", { $0.draftID = nil }),
+      ("profile", { $0.siteProfileID = UUID() }),
+      ("owner", { $0.repoOwner = "another" }),
+      ("repository", { $0.repoName = "another" }),
+      ("host", { $0.repositoryBaseURL = "https://another.example" }),
+      ("provider", { $0.repositoryProvider = .gitlab }),
+      ("branch", { $0.branchName = "another" }),
+      ("target branch", { $0.targetBranch = "another" }),
+      (
+        "path",
+        {
+          $0.markdownPath = "different.md"
+          $0.changedPaths = ["different.md"]
+        }
+      ),
+      ("attachment or other file", { $0.changedPaths.append("image.png") }),
+      ("no digest", { $0.sourceDocumentDigest = nil }),
+      ("no commit", { $0.commitSHA = nil }),
+      ("legacy target", { $0.articlePublishTrackingRequest = nil }),
+      ("review", { $0.reviewURL = "https://example.com/review/1" }),
+      ("local write", { $0.kind = .localWrite }),
+      ("partial remote failure", { $0.kind = .remotePublishFailure }),
+      (
+        "batch",
+        {
+          $0.batchItems = [
+            .init(
+              draftID: UUID(), draftTitle: "Other", markdownPath: "other.md",
+              changedPaths: ["other.md"])
+          ]
+        }
+      ),
+    ]
+    for (label, mutate) in mutations {
+      var other = original
+      other.id = UUID()
+      mutate(&other)
+      let ledger = ReleaseLedgerService().ledger(
+        releaseRecords: [original, other], deploymentStatusSnapshots: [:])
+      let groups = ReleaseActionAttemptGroup.make(ledger: ledger)
+      XCTAssertEqual(groups.count, ledger.actionItems.count, label)
+      XCTAssertTrue(groups.allSatisfy { $0.previous.isEmpty }, label)
+    }
+  }
+
+  func testArticleAttemptGroupingSeparatesChangedDeploymentTargetsAndPreservesTies() {
+    let original = trackedAttempt(at: 1)
+    var other = original
+    other.id = UUID()
+    let tied = ReleaseLedgerService().ledger(
+      releaseRecords: [original, other], deploymentStatusSnapshots: [:])
+    let expected = tied.actionItems.map(\.recordID)
+    let group = ReleaseActionAttemptGroup.make(ledger: tied).first!
+    XCTAssertEqual([group.latest.recordID] + group.previous.map(\.recordID), expected)
+
+    var profile = attemptProfile(id: original.siteProfileID!)
+    profile.deploymentSiteURL = "https://another.example"
+    other.articlePublishTrackingRequest = .init(profile: profile)
+    let changed = ReleaseLedgerService().ledger(
+      releaseRecords: [original, other], deploymentStatusSnapshots: [:])
+    XCTAssertEqual(ReleaseActionAttemptGroup.make(ledger: changed).count, 2)
+  }
+
+  func testQueueUsesLatestAttemptPriorityInsteadOfHistoricalFailurePosition() {
+    let old = trackedAttempt(at: 1)
+    var latest = old
+    latest.id = UUID()
+    latest.createdAt = Date(timeIntervalSince1970: 3)
+    let urgent = trackedAttempt(at: 2)
+    var ledger = ReleaseLedgerService().ledger(
+      releaseRecords: [old, urgent, latest], deploymentStatusSnapshots: [:])
+    ledger.actionItems.sort { $0.createdAt < $1.createdAt }
+    for index in ledger.actionItems.indices {
+      ledger.actionItems[index].priority =
+        ledger.actionItems[index].recordID == latest.id ? .low : .high
+    }
+    let groups = ReleaseActionAttemptGroup.make(ledger: ledger)
+    XCTAssertEqual(groups.map(\.latest.recordID), [urgent.id, latest.id])
+    XCTAssertEqual(groups.last?.previous.map(\.recordID), [old.id])
+  }
+
+  private func attemptProfile(id: UUID = UUID()) -> SiteProfile {
+    var profile = SiteProfile.defaultProfile
+    profile.id = id
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    profile.deploymentSiteURL = "https://example.com"
+    return profile
+  }
+
+  private func trackedAttempt(at time: TimeInterval) -> ReleaseRecord {
+    let profile = attemptProfile()
+    return ReleaseRecord(
+      kind: .remoteDirectCommit, title: "Publish", summary: "Pushed",
+      siteProfileID: profile.id, draftID: UUID(), draftTitle: "Article",
+      sourceDocumentDigest: "source", markdownPath: "content/article.md",
+      changedPaths: ["content/article.md"], repositoryProvider: profile.repositoryProvider,
+      repositoryBaseURL: profile.repositoryBaseURL, repoOwner: profile.repoOwner,
+      repoName: profile.repoName, branchName: "main", targetBranch: "main", commitSHA: "commit",
+      articlePublishTrackingRequest: .init(profile: profile),
+      createdAt: Date(timeIntervalSince1970: time))
+  }
+
   func testSourcePreviewRequiresExplicitExistingRecordSite() {
     let profile = SiteProfile.defaultProfile
     var record = ReleaseRecord(title: "Old release", summary: "")

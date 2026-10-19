@@ -98062,6 +98062,54 @@
           }
         }
       }
+    },
+    "查看每次尝试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View each attempt"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看每次尝试"
+          }
+        }
+      }
+    },
+    "这些是同一文章的此前发布尝试，可能对应不同版本；展开可查看各自结果和恢复操作。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These are earlier publishing attempts for this article and may refer to different versions. Expand to review each result and recovery action."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这些是同一文章的此前发布尝试，可能对应不同版本；展开可查看各自结果和恢复操作。"
+          }
+        }
+      }
+    },
+    "此前尝试 · %d 项": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previous attempts · %d"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此前尝试 · %d 项"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

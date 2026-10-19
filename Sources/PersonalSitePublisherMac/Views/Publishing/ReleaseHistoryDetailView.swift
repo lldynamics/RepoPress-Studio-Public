@@ -31,7 +31,8 @@ struct ReleaseHistoryDetailView: View {
         LazyVStack(alignment: .leading, spacing: 16) {
           releaseHistoryHeader(ledger)
           if let feedback = store.publishActionFeedback,
-            feedback.message.nilIfEmpty != nil {
+            feedback.message.nilIfEmpty != nil
+          {
             releaseHistoryActionMessage(feedback)
           }
           if let focusedRecordID, !showsAllRecords {
@@ -272,9 +273,9 @@ struct ReleaseHistoryDetailView: View {
       } else {
         ForEach(ReleaseHistoryPresentation.records(for: ledger.entries)) { presentation in
           switch presentation {
-          case let .failureGroup(group):
+          case .failureGroup(let group):
             releaseFailureGroupCard(group)
-          case let .entry(entry):
+          case .entry(let entry):
             releaseRecordCard(entry)
           }
         }
@@ -282,45 +283,6 @@ struct ReleaseHistoryDetailView: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("release-history-records")
-  }
-
-  private func releaseFailureGroupCard(_ group: ReleaseHistoryFailureGroup) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      VStack(alignment: .leading, spacing: 6) {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-          Label("重复失败", systemImage: "exclamationmark.triangle")
-            .font(.workbenchBody.weight(.semibold))
-            .foregroundStyle(WorkbenchTheme.risk)
-          Text("\(group.entries.count) 条")
-            .font(.workbenchMetadata.monospacedDigit())
-            .foregroundStyle(.workbenchSecondary)
-          Spacer(minLength: 8)
-          Text("最近：\(group.latestDate.workbenchShortText)")
-            .font(.workbenchMetadata)
-            .foregroundStyle(.workbenchSecondary)
-        }
-        Text(group.cause)
-          .font(.workbenchBody.weight(.medium))
-          .lineLimit(2)
-        Text("受影响：\(group.affectedObjectSummary)")
-          .font(.workbenchMetadata)
-          .foregroundStyle(.workbenchSecondary)
-          .lineLimit(1)
-      }
-
-      LazyVStack(alignment: .leading, spacing: 10) {
-        ForEach(group.entries) { entry in
-          releaseRecordCard(entry)
-        }
-      }
-      .padding(.top, WorkbenchSpacing.control)
-    }
-    .padding(WorkbenchSpacing.content)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("重复失败分组")
-    .accessibilityValue("\(group.cause)，\(group.entries.count) 条，最近 \(group.latestDate.workbenchShortText)")
-    .accessibilityIdentifier("release-history-failure-group-\(RepositoryAccessibilityIdentifier.token(for: group.id))")
   }
 
   private var pendingDangerousReleaseActionPresented: Binding<Bool> {
@@ -345,8 +307,8 @@ struct ReleaseHistoryDetailView: View {
           Spacer()
         }
 
-        ForEach(ledger.actionItems) { item in
-          releaseActionRow(item)
+        ForEach(ReleaseActionAttemptGroup.make(ledger: ledger)) { group in
+          ReleaseActionAttemptGroupView(group: group, row: releaseActionRow)
         }
       }
       .padding(WorkbenchSpacing.card)
@@ -402,7 +364,9 @@ struct ReleaseHistoryDetailView: View {
       releaseActionButtons(item, entry: entry)
     }
     .padding(WorkbenchSpacing.card)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(
+      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("release-action-row-\(item.id)")
   }
@@ -548,7 +512,9 @@ struct ReleaseHistoryDetailView: View {
       }
     }
     .padding(WorkbenchSpacing.control)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
   func deploymentPostPublishChecklist(_ deploymentStatus: DeploymentStatusSnapshot) -> some View {
@@ -581,7 +547,9 @@ struct ReleaseHistoryDetailView: View {
       }
     }
     .padding(WorkbenchSpacing.control)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
   @ViewBuilder
@@ -671,15 +639,18 @@ struct ReleaseHistoryDetailView: View {
           }
         }
         .padding(WorkbenchSpacing.card)
-        .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+        .background(
+          WorkbenchBackgroundStyle.card,
+          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
       }
     }
     .padding(WorkbenchSpacing.content)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(
+      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("release-history-deployment-polling")
   }
-
 
   func metadataRow(_ title: LocalizedStringKey, _ value: String) -> some View {
     GridRow {
@@ -722,7 +693,7 @@ struct ReleaseHistoryDetailView: View {
     let text = [
       draft.reviewBranchName.map { "Branch: \($0)" },
       draft.reviewTitle.map { "Title: \($0)" },
-      draft.reviewBody
+      draft.reviewBody,
     ]
     .compactMap { $0?.trimmedForPublishing.nilIfEmpty }
     .joined(separator: "\n\n")

@@ -12741,5 +12741,17 @@
   "可稍后处理，不会阻止发布": {
     "en": "Can be handled later; does not block publishing",
     "zh-Hans": "可稍后处理，不会阻止发布"
+  },
+  "查看每次尝试": {
+    "en": "View each attempt",
+    "zh-Hans": "查看每次尝试"
+  },
+  "这些是同一文章的此前发布尝试，可能对应不同版本；展开可查看各自结果和恢复操作。": {
+    "en": "These are earlier publishing attempts for this article and may refer to different versions. Expand to review each result and recovery action.",
+    "zh-Hans": "这些是同一文章的此前发布尝试，可能对应不同版本；展开可查看各自结果和恢复操作。"
+  },
+  "此前尝试 · %d 项": {
+    "en": "Previous attempts · %d",
+    "zh-Hans": "此前尝试 · %d 项"
   }
 }

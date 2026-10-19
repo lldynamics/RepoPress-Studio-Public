@@ -23,6 +23,57 @@ struct ReleaseHistoryFailureGroup: Identifiable {
 }
 
 extension ReleaseHistoryDetailView {
+  func releaseFailureGroupCard(_ group: ReleaseHistoryFailureGroup) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      VStack(alignment: .leading, spacing: 6) {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+          Label("重复失败", systemImage: "exclamationmark.triangle")
+            .font(.workbenchBody.weight(.semibold))
+            .foregroundStyle(WorkbenchTheme.risk)
+          Text("\(group.entries.count) 条")
+            .font(.workbenchMetadata.monospacedDigit())
+            .foregroundStyle(.workbenchSecondary)
+          Spacer(minLength: 8)
+          Text("最近：\(group.latestDate.workbenchShortText)")
+            .font(.workbenchMetadata)
+            .foregroundStyle(.workbenchSecondary)
+        }
+        Text(group.cause)
+          .font(.workbenchBody.weight(.medium))
+          .lineLimit(2)
+        Text("受影响：\(group.affectedObjectSummary)")
+          .font(.workbenchMetadata)
+          .foregroundStyle(.workbenchSecondary)
+          .lineLimit(1)
+      }
+
+      DisclosureGroup {
+        ForEach(group.entries) { entry in releaseRecordCard(entry) }
+      } label: {
+        Text("查看每次尝试")
+          .font(.workbenchBody.weight(.medium))
+      }
+      .disclosureGroupStyle(
+        WorkbenchDisclosureGroupStyle(
+          toggleIdentifier:
+            "release-history-failure-attempts-\(RepositoryAccessibilityIdentifier.token(for: group.id))"
+        )
+      )
+      .padding(.top, WorkbenchSpacing.control)
+    }
+    .padding(WorkbenchSpacing.content)
+    .background(
+      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("重复失败分组")
+    .accessibilityValue(
+      "\(group.cause)，\(group.entries.count) 条，最近 \(group.latestDate.workbenchShortText)"
+    )
+    .accessibilityIdentifier(
+      "release-history-failure-group-\(RepositoryAccessibilityIdentifier.token(for: group.id))")
+  }
+
   func deploymentRecheckButton(
     _ entry: ReleaseLedgerEntry,
     accessibilityIdentifier: String
