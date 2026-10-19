@@ -319,12 +319,26 @@
     "en": "%@: %@. Click to publish this article.",
     "zh-Hans": "%@：%@。点击发布这篇文章。"
   },
+  "%d 个已有提交将推送到 origin/%@；这次没有新的文件提交。": {
+    "en": {
+      "one": "%d existing commit will be pushed to origin/%@; no new files will be committed.",
+      "other": "%d existing commits will be pushed to origin/%@; no new files will be committed."
+    },
+    "zh-Hans": "%d 个已有提交将推送到 origin/%@；这次没有新的文件提交。"
+  },
   "%d 个文件将提交并推送到 origin/%@": {
     "en": {
       "one": "%d file will be committed and pushed to origin/%@",
       "other": "%d files will be committed and pushed to origin/%@"
     },
     "zh-Hans": "%d 个文件将提交并推送到 origin/%@"
+  },
+  "%d 个文件将提交，并推送 %d 个已有提交到 origin/%@": {
+    "en": {
+      "one": "%d file will be committed, and %d existing commit will be pushed to origin/%@",
+      "other": "%d files will be committed, and %d existing commits will be pushed to origin/%@"
+    },
+    "zh-Hans": "%d 个文件将提交，并推送 %d 个已有提交到 origin/%@"
   },
   "%d 个最终合并版无效或仍含冲突标记。": {
     "en": {
@@ -4274,6 +4288,10 @@
     "zh-Hans": "内容遮挡"
   },
   "内部链接无法解析": "Unresolvable Internal Link",
+  "再次核对已有提交后推送到远端": {
+    "en": "Recheck existing commits before pushing to the remote",
+    "zh-Hans": "再次核对已有提交后推送到远端"
+  },
   "再次核对文件后创建提交并推送到远端": {
     "en": "Rechecks the files, then commits and pushes to the remote",
     "zh-Hans": "再次核对文件后创建提交并推送到远端"
@@ -4486,6 +4504,10 @@
     "zh-Hans": "删除当前站点配置？"
   },
   "删除当前行": "Delete Current Row",
+  "删除或移动 _index 会影响栏目导航，请确认这是本次预期的结构调整。": {
+    "en": "Deleting or moving _index affects section navigation. Confirm that this structural change is intended.",
+    "zh-Hans": "删除或移动 _index 会影响栏目导航，请确认这是本次预期的结构调整。"
+  },
   "删除文件夹…": "Delete Folder…",
   "删除文章": {
     "en": "Delete Article",
@@ -4759,6 +4781,10 @@
   "发布前 AI 审稿": "AI Pre-publish Review",
   "发布前先审阅网站或其他设备的更新，避免覆盖新内容。": "Review updates from the website or other devices before publishing to avoid overwriting newer content.",
   "发布前检查": "Pre-publish checks",
+  "发布前确认": {
+    "en": "Confirm before publishing",
+    "zh-Hans": "发布前确认"
+  },
   "发布前确认敏感信息、内网地址或本机路径不会公开。": {
     "en": "Before publishing, confirm that sensitive information, intranet addresses, and local paths will not be exposed.",
     "zh-Hans": "发布前确认敏感信息、内网地址或本机路径不会公开。"
@@ -4777,6 +4803,10 @@
       "other": "%d Issues to Resolve Before Publishing"
     },
     "zh-Hans": "发布前需要处理 %d 个问题"
+  },
+  "发布前需要确认": {
+    "en": "Confirmation required before publishing",
+    "zh-Hans": "发布前需要确认"
   },
   "发布历史": "Publishing History",
   "发布后校验清单": {
@@ -4878,6 +4908,10 @@
   },
   "发布进度请在右侧“发布检查”中查看。": "View publishing progress in the Publishing Checks tab on the right.",
   "发布配置": "Publishing Setup",
+  "发布阻塞项": {
+    "en": "Publishing blockers",
+    "zh-Hans": "发布阻塞项"
+  },
   "发现 %@ 项冲突，当前操作不会执行": "%@ conflicts found. This action will not run.",
   "发现 %lld 个自动备份校验失败，请重新备份或检查保存位置。": {
     "en": {
@@ -5176,6 +5210,10 @@
     "zh-Hans": "可压缩图片"
   },
   "可直接拖入文件或文件夹": "Drop Files or Folders Here",
+  "可稍后处理，不会阻止发布": {
+    "en": "Can be handled later; does not block publishing",
+    "zh-Hans": "可稍后处理，不会阻止发布"
+  },
   "可继续编辑；绑定站点后才会检查发布条件。": "Keep writing. Publishing checks begin after you assign a site.",
   "可缩放图片": "Resizable Images",
   "可能相关（%lld）": "Possibly related (%lld)",
@@ -5184,6 +5222,10 @@
   "可选优化 · %d": {
     "en": "Optional optimizations · %d",
     "zh-Hans": "可选优化 · %d"
+  },
+  "可选优化 · %d 项": {
+    "en": "Optional improvements · %d",
+    "zh-Hans": "可选优化 · %d 项"
   },
   "可选内容提示": "Optional content notices",
   "可选内容警告和提示可在问题列表中忽略；页面上的已忽略设置可恢复检查。": "Optional content warnings and notices can be ignored in the findings list. Restore checks through the ignore settings on this page.",
@@ -5558,6 +5600,10 @@
     "en": "After fixing them, click “Publish This” again.",
     "zh-Hans": "处理后再点一次“发布这篇”。"
   },
+  "处理后才能发布": {
+    "en": "Resolve before publishing",
+    "zh-Hans": "处理后才能发布"
+  },
   "处理完成前，软件不会自动写入仓库。": "The app will not write to the repository until this is resolved.",
   "处理所选…": {
     "en": "Process selection…",
@@ -5796,6 +5842,10 @@
   },
   "字数按中文字数与西文单词合计。": "The word count includes Chinese characters and words in other languages.",
   "字段": "Field",
+  "字段 %@ 的值为 %@，不是有效日期。请使用有效的 ISO 日期、时间戳或站点格式 %@。": {
+    "en": "Field %@ has the invalid date value %@. Use a valid ISO date, timestamp, or the site format %@.",
+    "zh-Hans": "字段 %@ 的值为 %@，不是有效日期。请使用有效的 ISO 日期、时间戳或站点格式 %@。"
+  },
   "字段、模板与预览": {
     "en": "Fields, Templates, and Preview",
     "zh-Hans": "字段、模板与预览"
@@ -6630,6 +6680,10 @@
   },
   "已有扫描、发布或仓库写入正在进行，请等待完成。": "A scan, publication, or repository write is already running. Wait for it to finish.",
   "已有批量队列": "Existing Batch Queue",
+  "已有提交历史（%d 个提交）": {
+    "en": "Existing commit history (%d commits)",
+    "zh-Hans": "已有提交历史（%d 个提交）"
+  },
   "已核实此前的 Git 推送成功，并恢复发布记录。当前本地修改已保留；网站部署与页面版本仍需验证。": {
     "en": "The earlier Git push was verified and the publishing record was recovered. Current local changes are preserved; the site deployment and page version still need verification.",
     "zh-Hans": "已核实此前的 Git 推送成功，并恢复发布记录。当前本地修改已保留；网站部署与页面版本仍需验证。"
@@ -6871,6 +6925,10 @@
   "建议创建并校验第一个工作区备份": "Create and validate the first workspace backup",
   "建议摘要：%@": "Suggested summary: %@",
   "建议标签：%@": "Suggested tags: %@",
+  "建议补充标题，便于读者识别文章。": {
+    "en": "Add a title to help readers identify this article.",
+    "zh-Hans": "建议补充标题，便于读者识别文章。"
+  },
   "开发者与程序员": "Developers and programmers",
   "开启": "On",
   "开启后每天检查一次并备份完整工作区，内容未变化时跳过。应用需要处于运行状态。": "When enabled, checks daily and backs up the entire workspace if its contents have changed. The app must be running.",
@@ -7308,6 +7366,10 @@
     "en": "Issues needing confirmation",
     "zh-Hans": "待确认的问题"
   },
+  "待补充（不影响发布）": {
+    "en": "To improve (does not block publishing)",
+    "zh-Hans": "待补充（不影响发布）"
+  },
   "待补齐：%@": "Missing: %@",
   "待运行检查": "Checks Required",
   "待选择": {
@@ -7444,6 +7506,14 @@
       "other": "Successfully optimized %lld images, saving %lld (%lld%) of storage space"
     },
     "zh-Hans": "成功为 %lld 张图片瘦身，节省了 %lld (%lld%) 存储空间"
+  },
+  "我已逐项审阅这些已有提交，并确认将它们一并推送。": {
+    "en": "I have reviewed each existing commit and confirm that they should be pushed together.",
+    "zh-Hans": "我已逐项审阅这些已有提交，并确认将它们一并推送。"
+  },
+  "我已阅读并确认上述提醒，仍要继续发布。": {
+    "en": "I have reviewed these notices and want to continue publishing.",
+    "zh-Hans": "我已阅读并确认上述提醒，仍要继续发布。"
   },
   "我的修改": {
     "en": "My changes",
@@ -7820,6 +7890,10 @@
     "zh-Hans": "推送未完成，请检查网络或仓库权限后重试。"
   },
   "描述": "Description",
+  "提交 %@": {
+    "en": "Commit %@",
+    "zh-Hans": "提交 %@"
+  },
   "提交历史": "Commit History",
   "提交并推送仓库里的全部改动": {
     "en": "Commits and pushes every change in the repository",
@@ -7827,6 +7901,10 @@
   },
   "提交数": "Commit count",
   "提交说明": "Commit message",
+  "提供发布状态信息": {
+    "en": "Provides publishing status information",
+    "zh-Hans": "提供发布状态信息"
+  },
   "提取全文": {
     "en": "Fetch Full Text",
     "zh-Hans": "提取全文"
@@ -8395,6 +8473,10 @@
   },
   "日志行号超出当前文件，已定位到最后一行。": "The logged line is beyond the current file. Showing the last line.",
   "日期": "Date",
+  "日期值无效": {
+    "en": "Invalid date value",
+    "zh-Hans": "日期值无效"
+  },
   "日期在未来": "Future date",
   "日期格式": "Date format",
   "日语": "Japanese",
@@ -8715,6 +8797,10 @@
     "zh-Hans": "有可用补全"
   },
   "有序列表": "Numbered List",
+  "有更新待发布": {
+    "en": "Updates ready to publish",
+    "zh-Hans": "有更新待发布"
+  },
   "有未完成的 Git 操作": "A Git Operation Is Unfinished",
   "服务": {
     "en": "Service",
@@ -9161,6 +9247,10 @@
     "zh-Hans": "查看检查"
   },
   "查看正文诊断": "Show body diagnostics",
+  "查看每次尝试": {
+    "en": "View each attempt",
+    "zh-Hans": "查看每次尝试"
+  },
   "查看版本历史、回收站和待清理的仓库文件。": "Review version history, Trash, and repository files awaiting cleanup.",
   "查看目标文章的恢复版本": "View Recovery Versions of the Target Article",
   "查看空间占用，清理资料库数据，或更改存储位置。": "Review storage usage, clean up library data, or change the storage location.",
@@ -9368,6 +9458,10 @@
     "zh-Hans": "检测到仓库写入角色：%@"
   },
   "检测到外部仓库更新，未覆盖或删除文件；冲突列表已刷新。": "An external repository update was detected. No file was overwritten or deleted, and the conflict list was refreshed.",
+  "检测到跨一级内容栏目的移动；请确认公开 URL 和站点结构的变化。": {
+    "en": "Content moves between top-level sections. Confirm the changes to public URLs and site structure.",
+    "zh-Hans": "检测到跨一级内容栏目的移动；请确认公开 URL 和站点结构的变化。"
+  },
   "检测后可选择本机已有模型，并应用到当前 AI 连接档案。": "After detection, choose an installed local model and apply it to the current AI connection profile.",
   "检测本地 AI": "Detect Local AI",
   "检测本地服务，按需启动本地引擎或准备模型，然后应用到当前连接。": "Check local services, start the local engine or prepare a model as needed, then apply it to the current connection.",
@@ -9830,6 +9924,10 @@
     "en": "This proxy applies only to AI network requests for the current connection.",
     "zh-Hans": "此代理仅对当前连接的 AI 网络请求生效。"
   },
+  "此前尝试 · %d 项": {
+    "en": "Previous attempts · %d",
+    "zh-Hans": "此前尝试 · %d 项"
+  },
   "此处不包含私人笔记。笔记请在资料库的“笔记同步与备份”中管理。": "Private notes are managed separately. Open “Note Sync and Backup” in the library to manage them.",
   "此处只显示站点连接和最近结果；发布确认、文件清单与差异审阅统一在“打开发布流程”中完成。": "This page only shows the site connection and recent results. Publishing confirmation, file lists, and diff review all happen in Open Publish Flow.",
   "此备份不包含 API Key、Keychain 内容或 AI 服务凭据。": "This backup excludes API keys, Keychain contents, and AI service credentials.",
@@ -9953,6 +10051,10 @@
   "没有待恢复草稿": "No Drafts to Restore",
   "没有找到匹配。": "No matches found.",
   "没有找到可替换的正文内容。": "No replaceable body content was found.",
+  "没有文件需要提交。": {
+    "en": "No files need to be committed.",
+    "zh-Hans": "没有文件需要提交。"
+  },
   "没有未分类资料": "No Unfiled Sources",
   "没有未读文章": "No Unread Articles",
   "没有检测到远端文件变化。": "No remote file changes detected.",
@@ -10368,6 +10470,18 @@
   "确认危险操作": "Confirm Risky Action",
   "确认发布规则": "Confirm Publishing Rules",
   "确认变基同步": "Confirm Rebase Sync",
+  "确认后会推送这些已经提交的历史；当前还有待发布的未提交文件。": {
+    "en": "These existing commits will be pushed after confirmation; uncommitted files remain to be published.",
+    "zh-Hans": "确认后会推送这些已经提交的历史；当前还有待发布的未提交文件。"
+  },
+  "确认后会推送这些已经提交的历史；当前还有这篇文章范围内的未提交文件。": {
+    "en": "These existing commits will be pushed after confirmation; uncommitted files remain within this article's scope.",
+    "zh-Hans": "确认后会推送这些已经提交的历史；当前还有这篇文章范围内的未提交文件。"
+  },
+  "确认后会推送这些已经提交的历史；这次没有新的文件提交。": {
+    "en": "These existing commits will be pushed after confirmation; no new files will be committed.",
+    "zh-Hans": "确认后会推送这些已经提交的历史；这次没有新的文件提交。"
+  },
   "确认后依次执行": "Steps After Confirmation",
   "确认后只提交并推送这篇文章": {
     "en": "After you confirm, commits and pushes only this article",
@@ -11081,11 +11195,19 @@
   "范围：%@；确认后会作为一次可撤销编辑写入正文。": "Scope: %@; after confirmation, this will be written to the body as one undoable edit.",
   "草稿": "Drafts",
   "草稿、历史版本、站点和工作台配置、发布历史、AI 对话及引用附件": "Drafts, version history, site and workbench settings, publishing history, AI conversations, and referenced attachments",
+  "草稿不会生成网站页面，但本次会上传它的源码；公开仓库中的源码可被他人查看。请确认这些内容适合公开。": {
+    "en": "Drafts do not generate website pages, but their source will be uploaded. Source in a public repository is visible to others. Confirm that this content is suitable for public access.",
+    "zh-Hans": "草稿不会生成网站页面，但本次会上传它的源码；公开仓库中的源码可被他人查看。请确认这些内容适合公开。"
+  },
   "草稿与版本": "Drafts and Versions",
   "草稿与附件": "Drafts and Attachments",
   "草稿已不可用": "Draft Unavailable",
   "草稿已保存在本地": "Drafts saved locally",
   "草稿归属": "Draft Ownership",
+  "草稿源码将上传到仓库": {
+    "en": "Draft source will be uploaded to the repository",
+    "zh-Hans": "草稿源码将上传到仓库"
+  },
   "草稿版本历史与回收站": "Draft Version History and Trash",
   "草稿状态": "Draft Status",
   "草稿生命周期": "Draft Lifecycle",
@@ -11742,7 +11864,27 @@
     "zh-Hans": "这些内容来自上次异常结束前的编辑缓冲区。恢复已有草稿时，如果当前内容已经变化，会自动创建恢复副本。"
   },
   "这些图片或附件目前没有被任何仓库 Markdown 引用；勾选后可移入废纸篓。": "These images or attachments are not referenced by any repository Markdown file. Select them to move them to the Trash.",
+  "这些建议不会阻止发布，可稍后处理。": {
+    "en": "These suggestions do not block publishing and can be handled later.",
+    "zh-Hans": "这些建议不会阻止发布，可稍后处理。"
+  },
+  "这些提交已经在本地创建，也会一并推送；当前未提交文件仍只限于这篇文章的范围。": {
+    "en": "These commits already exist locally and will also be pushed; current uncommitted files remain limited to this article.",
+    "zh-Hans": "这些提交已经在本地创建，也会一并推送；当前未提交文件仍只限于这篇文章的范围。"
+  },
+  "这些提交已经在本地创建，也会一并推送；当前未提交文件按全部变更范围处理。": {
+    "en": "These commits already exist locally and will also be pushed; current uncommitted files use the full changes scope.",
+    "zh-Hans": "这些提交已经在本地创建，也会一并推送；当前未提交文件按全部变更范围处理。"
+  },
+  "这些提醒需要你确认后再继续发布。": {
+    "en": "Confirm these reminders before continuing.",
+    "zh-Hans": "这些提醒需要你确认后再继续发布。"
+  },
   "这些操作只处理图片资源；点击后会先预览影响的文章和图片，不会直接改动文件。": "These operations only process image resources. Each action previews the affected articles and images before making any file changes.",
+  "这些是同一文章的此前发布尝试，可能对应不同版本；展开可查看各自结果和恢复操作。": {
+    "en": "These are earlier publishing attempts for this article and may refer to different versions. Expand to review each result and recovery action.",
+    "zh-Hans": "这些是同一文章的此前发布尝试，可能对应不同版本；展开可查看各自结果和恢复操作。"
+  },
   "这些未跟踪文件与远端内容及权限完全一致；软件会先建立并校验恢复备份。": "These untracked files exactly match the remote content and permissions. The app creates and verifies a recovery backup first.",
   "这些规则和术语只会随当前站点进入 AI 聊天、元数据建议、发布检查、选区编辑和图片文案建议。": "These rules and terms apply only to this site in AI chat, metadata suggestions, publishing checks, selection edits, and image text suggestions.",
   "这些设置用于 RepoPress 的 SEO 检查和预览，不会写入本文 Front Matter；主题实际输出请在发布后确认。": {
@@ -11755,6 +11897,10 @@
     "zh-Hans": "这些选项只作用于当前工作区；App 保持前台时会持续检查 PR/MR 是否合并，再验证对应部署。所选分钟数限制远端请求的最短间隔。"
   },
   "这些选项只作用于当前工作区；保存、发布、切换分支或回到前台时会按需检查，所选分钟数用于限制最短重检间隔。": "These options apply only to the current workspace. Checks run on demand after saves, publishes, branch switches, or returning to the foreground; the selected minutes set the minimum interval between checks.",
+  "这些问题必须处理后才能发布。": {
+    "en": "Resolve these issues before publishing.",
+    "zh-Hans": "这些问题必须处理后才能发布。"
+  },
   "这份关联翻译草稿已经创建，已为你打开。": "This linked translation draft already exists and has been opened.",
   "这份参考资料已不在资料库中。": "This reference is no longer in the library.",
   "这会应用上方预览的站点与发布规则，并保存你选择的本地仓库。返回或取消不会保存这些改动。": "This applies the site and publishing rules previewed above and saves the local repository you selected. Going back or canceling does not save these changes.",
@@ -11779,6 +11925,10 @@
   "这是草稿。发布这篇时会先取消草稿标记，正式上线。": {
     "en": "This is a draft. Publishing it clears the draft flag so it goes live.",
     "zh-Hans": "这是草稿。发布这篇时会先取消草稿标记，正式上线。"
+  },
+  "这次发布尚无文章版本核验记录，可在发布历史中重新检查。": {
+    "en": "This publication has no article version verification record yet. Recheck it in publishing history.",
+    "zh-Hans": "这次发布尚无文章版本核验记录，可在发布历史中重新检查。"
   },
   "这篇文章原是草稿，已为本次发布取消草稿标记；取消发布会恢复为草稿。": {
     "en": "This article was a draft; its draft flag was cleared for this publish. Cancelling restores it as a draft.",
@@ -12131,6 +12281,14 @@
   "部署令牌已保存": "Deployment token saved",
   "部署令牌未保存": "Deployment token not saved",
   "部署凭据": "Deployment Credentials",
+  "部署已完成，但正文版本尚未确认。%@": {
+    "en": "Deployment completed, but the article body version is not yet confirmed. %@",
+    "zh-Hans": "部署已完成，但正文版本尚未确认。%@"
+  },
+  "部署已完成，但需文章版本标记：%@": {
+    "en": "Deployment completed, but article version evidence is required: %@",
+    "zh-Hans": "部署已完成，但需文章版本标记：%@"
+  },
   "部署已完成，正在等待页面显示本次文章版本。可以继续写作。": "Deployment completed; waiting for the page to show this article version. You can continue writing.",
   "部署平台": "Deployment Platform",
   "部署平台自动化发布": "Deployment Platform Automation",
@@ -12150,6 +12308,10 @@
   "部署项目或 Site ID": "Deployment Project or Site ID",
   "配置": "Configuration",
   "配置 AI 独立网络代理": "Configure an AI-specific Network Proxy",
+  "配置 AI 辅助": {
+    "en": "Configure AI assistance",
+    "zh-Hans": "配置 AI 辅助"
+  },
   "配置 AI 连接": "Configure AI Connection",
   "配置云端或本地兼容 API 端点、选择对话模型并执行连通性测试。": "Configure cloud or local API endpoints, select chat models, and test connectivity.",
   "配置新建文章时的默认作者、预设标签、预设分类和自定义键值对。": "Configure default author, preset tags, categories, and custom key-value pairs for new articles.",
@@ -12591,167 +12753,5 @@
       "other": "🎉 Word count target reached! (%lld characters over)"
     },
     "zh-Hans": "🎉 已达成目标字数！（超出 %lld 字）"
-  },
-  "部署已完成，但需文章版本标记：%@": {
-    "en": "Deployment completed, but article version evidence is required: %@",
-    "zh-Hans": "部署已完成，但需文章版本标记：%@"
-  },
-  "部署已完成，但正文版本尚未确认。%@": {
-    "en": "Deployment completed, but the article body version is not yet confirmed. %@",
-    "zh-Hans": "部署已完成，但正文版本尚未确认。%@"
-  },
-  "建议补充标题，便于读者识别文章。": {
-    "en": "Add a title to help readers identify this article.",
-    "zh-Hans": "建议补充标题，便于读者识别文章。"
-  },
-  "删除或移动 _index 会影响栏目导航，请确认这是本次预期的结构调整。": {
-    "en": "Deleting or moving _index affects section navigation. Confirm that this structural change is intended.",
-    "zh-Hans": "删除或移动 _index 会影响栏目导航，请确认这是本次预期的结构调整。"
-  },
-  "检测到跨一级内容栏目的移动；请确认公开 URL 和站点结构的变化。": {
-    "en": "Content moves between top-level sections. Confirm the changes to public URLs and site structure.",
-    "zh-Hans": "检测到跨一级内容栏目的移动；请确认公开 URL 和站点结构的变化。"
-  },
-  "草稿源码将上传到仓库": {
-    "en": "Draft source will be uploaded to the repository",
-    "zh-Hans": "草稿源码将上传到仓库"
-  },
-  "草稿不会生成网站页面，但本次会上传它的源码；公开仓库中的源码可被他人查看。请确认这些内容适合公开。": {
-    "en": "Drafts do not generate website pages, but their source will be uploaded. Source in a public repository is visible to others. Confirm that this content is suitable for public access.",
-    "zh-Hans": "草稿不会生成网站页面，但本次会上传它的源码；公开仓库中的源码可被他人查看。请确认这些内容适合公开。"
-  },
-  "我已阅读并确认上述提醒，仍要继续发布。": {
-    "en": "I have reviewed these notices and want to continue publishing.",
-    "zh-Hans": "我已阅读并确认上述提醒，仍要继续发布。"
-  },
-  "待补充（不影响发布）": {
-    "en": "To improve (does not block publishing)",
-    "zh-Hans": "待补充（不影响发布）"
-  },
-  "日期值无效": {
-    "en": "Invalid date value",
-    "zh-Hans": "日期值无效"
-  },
-  "字段 %@ 的值为 %@，不是有效日期。请使用有效的 ISO 日期、时间戳或站点格式 %@。": {
-    "en": "Field %@ has the invalid date value %@. Use a valid ISO date, timestamp, or the site format %@.",
-    "zh-Hans": "字段 %@ 的值为 %@，不是有效日期。请使用有效的 ISO 日期、时间戳或站点格式 %@。"
-  },
-  "%d 个已有提交将推送到 origin/%@；这次没有新的文件提交。": {
-    "en": {
-      "one": "%d existing commit will be pushed to origin/%@; no new files will be committed.",
-      "other": "%d existing commits will be pushed to origin/%@; no new files will be committed."
-    },
-    "zh-Hans": "%d 个已有提交将推送到 origin/%@；这次没有新的文件提交。"
-  },
-  "%d 个文件将提交，并推送 %d 个已有提交到 origin/%@": {
-    "en": {
-      "one": "%d file will be committed, and %d existing commit will be pushed to origin/%@",
-      "other": "%d files will be committed, and %d existing commits will be pushed to origin/%@"
-    },
-    "zh-Hans": "%d 个文件将提交，并推送 %d 个已有提交到 origin/%@"
-  },
-  "再次核对已有提交后推送到远端": {
-    "en": "Recheck existing commits before pushing to the remote",
-    "zh-Hans": "再次核对已有提交后推送到远端"
-  },
-  "没有文件需要提交。": {
-    "en": "No files need to be committed.",
-    "zh-Hans": "没有文件需要提交。"
-  },
-  "这些提交已经在本地创建，也会一并推送；当前未提交文件仍只限于这篇文章的范围。": {
-    "en": "These commits already exist locally and will also be pushed; current uncommitted files remain limited to this article.",
-    "zh-Hans": "这些提交已经在本地创建，也会一并推送；当前未提交文件仍只限于这篇文章的范围。"
-  },
-  "这些提交已经在本地创建，也会一并推送；当前未提交文件按全部变更范围处理。": {
-    "en": "These commits already exist locally and will also be pushed; current uncommitted files use the full changes scope.",
-    "zh-Hans": "这些提交已经在本地创建，也会一并推送；当前未提交文件按全部变更范围处理。"
-  },
-  "确认后会推送这些已经提交的历史；这次没有新的文件提交。": {
-    "en": "These existing commits will be pushed after confirmation; no new files will be committed.",
-    "zh-Hans": "确认后会推送这些已经提交的历史；这次没有新的文件提交。"
-  },
-  "确认后会推送这些已经提交的历史；当前还有这篇文章范围内的未提交文件。": {
-    "en": "These existing commits will be pushed after confirmation; uncommitted files remain within this article's scope.",
-    "zh-Hans": "确认后会推送这些已经提交的历史；当前还有这篇文章范围内的未提交文件。"
-  },
-  "确认后会推送这些已经提交的历史；当前还有待发布的未提交文件。": {
-    "en": "These existing commits will be pushed after confirmation; uncommitted files remain to be published.",
-    "zh-Hans": "确认后会推送这些已经提交的历史；当前还有待发布的未提交文件。"
-  },
-  "已有提交历史（%d 个提交）": {
-    "en": "Existing commit history (%d commits)",
-    "zh-Hans": "已有提交历史（%d 个提交）"
-  },
-  "提交 %@": {
-    "en": "Commit %@",
-    "zh-Hans": "提交 %@"
-  },
-  "我已逐项审阅这些已有提交，并确认将它们一并推送。": {
-    "en": "I have reviewed each existing commit and confirm that they should be pushed together.",
-    "zh-Hans": "我已逐项审阅这些已有提交，并确认将它们一并推送。"
-  },
-  "有更新待发布": {
-    "en": "Updates ready to publish",
-    "zh-Hans": "有更新待发布"
-  },
-  "这次发布尚无文章版本核验记录，可在发布历史中重新检查。": {
-    "en": "This publication has no article version verification record yet. Recheck it in publishing history.",
-    "zh-Hans": "这次发布尚无文章版本核验记录，可在发布历史中重新检查。"
-  },
-  "发布阻塞项": {
-    "en": "Publishing blockers",
-    "zh-Hans": "发布阻塞项"
-  },
-  "发布前需要确认": {
-    "en": "Confirmation required before publishing",
-    "zh-Hans": "发布前需要确认"
-  },
-  "这些提醒需要你确认后再继续发布。": {
-    "en": "Confirm these reminders before continuing.",
-    "zh-Hans": "这些提醒需要你确认后再继续发布。"
-  },
-  "这些问题必须处理后才能发布。": {
-    "en": "Resolve these issues before publishing.",
-    "zh-Hans": "这些问题必须处理后才能发布。"
-  },
-  "配置 AI 辅助": {
-    "en": "Configure AI assistance",
-    "zh-Hans": "配置 AI 辅助"
-  },
-  "处理后才能发布": {
-    "en": "Resolve before publishing",
-    "zh-Hans": "处理后才能发布"
-  },
-  "发布前确认": {
-    "en": "Confirm before publishing",
-    "zh-Hans": "发布前确认"
-  },
-  "可选优化 · %d 项": {
-    "en": "Optional improvements · %d",
-    "zh-Hans": "可选优化 · %d 项"
-  },
-  "提供发布状态信息": {
-    "en": "Provides publishing status information",
-    "zh-Hans": "提供发布状态信息"
-  },
-  "这些建议不会阻止发布，可稍后处理。": {
-    "en": "These suggestions do not block publishing and can be handled later.",
-    "zh-Hans": "这些建议不会阻止发布，可稍后处理。"
-  },
-  "可稍后处理，不会阻止发布": {
-    "en": "Can be handled later; does not block publishing",
-    "zh-Hans": "可稍后处理，不会阻止发布"
-  },
-  "查看每次尝试": {
-    "en": "View each attempt",
-    "zh-Hans": "查看每次尝试"
-  },
-  "这些是同一文章的此前发布尝试，可能对应不同版本；展开可查看各自结果和恢复操作。": {
-    "en": "These are earlier publishing attempts for this article and may refer to different versions. Expand to review each result and recovery action.",
-    "zh-Hans": "这些是同一文章的此前发布尝试，可能对应不同版本；展开可查看各自结果和恢复操作。"
-  },
-  "此前尝试 · %d 项": {
-    "en": "Previous attempts · %d",
-    "zh-Hans": "此前尝试 · %d 项"
   }
 }
