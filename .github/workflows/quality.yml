@@ -16,10 +16,12 @@ concurrency:
 jobs:
   build-and-test:
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
       SWIFT_TEST_WARNINGS_AS_ERRORS: "1"
+      # Cold strict test discovery compiles the full package on hosted runners.
+      SWIFT_TEST_LIST_TIMEOUT_SECONDS: "900"
       QUALITY_DIFF_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || (github.event_name == 'push' && github.event.before) || '' }}
     steps:
       - name: Check out repository
