@@ -98,6 +98,71 @@ final class MarkdownFrontMatterFoldingTests: MarkdownEditorAppKitInteractionTest
     XCTAssertEqual(view.selectedRange(), selection)
   }
 
+  func testAppendingAndDeletingPlainTextUpdatesTheScrollExtentThroughStorageObserver() async throws
+  {
+    let scroll = MarkdownEditorScrollView(frame: NSRect(x: 0, y: 0, width: 460, height: 400))
+    scroll.contentView = MarkdownFrontMatterClipView()
+    scroll.hasVerticalScroller = true
+    scroll.scrollerStyle = .legacy
+    scroll.autohidesScrollers = true
+    let view = DroppableMarkdownTextView.makeTextKit2(
+      containerSize: NSSize(width: 428, height: CGFloat.greatestFiniteMagnitude))
+    view.textContainer?.widthTracksTextView = false
+    view.textContainer?.heightTracksTextView = false
+    view.isVerticallyResizable = false
+    view.isHorizontallyResizable = false
+    view.font = .systemFont(ofSize: 13)
+    let original = (1...36).map { "原始正文第 \($0) 行，固定宽度下应保持可滚动。" }.joined(separator: "\n")
+    let appended = (1...24).map { "追加正文第 \($0) 行，存储通知应更新文档高度。" }.joined(separator: "\n")
+    view.string = original
+    scroll.documentView = view
+    let window = NSWindow(
+      contentRect: scroll.frame, styleMask: .borderless, backing: .buffered, defer: false)
+    window.contentView = scroll
+    defer { window.orderOut(nil) }
+
+    let manager = try XCTUnwrap(view.textLayoutManager)
+    manager.ensureLayout(for: manager.documentRange)
+    scroll.layoutSubtreeIfNeeded()
+    manager.ensureLayout(for: manager.documentRange)
+    let originalHeight = view.frame.height
+    XCTAssertGreaterThan(originalHeight, scroll.contentView.bounds.height)
+    XCTAssertNotNil(scroll.cachedDocumentHeightForTesting)
+
+    let storage = try XCTUnwrap(view.textStorage)
+    let end = NSRange(location: storage.length, length: 0)
+    storage.replaceCharacters(in: end, with: "\n" + appended)
+    manager.ensureLayout(for: manager.documentRange)
+    for _ in 0..<100 {
+      try await Task.sleep(for: .milliseconds(10))
+      manager.ensureLayout(for: manager.documentRange)
+      scroll.layoutSubtreeIfNeeded()
+      if view.frame.height > originalHeight + 100 { break }
+    }
+    scroll.layoutSubtreeIfNeeded()
+    manager.ensureLayout(for: manager.documentRange)
+    let appendedHeight = view.frame.height
+    XCTAssertGreaterThan(appendedHeight, originalHeight + 100)
+    XCTAssertEqual(view.string, original + "\n" + appended)
+
+    let appendedSuffix = "\n" + appended
+    let deleteRange = NSRange(
+      location: (original as NSString).length,
+      length: (appendedSuffix as NSString).length)
+    storage.replaceCharacters(in: deleteRange, with: "")
+    manager.ensureLayout(for: manager.documentRange)
+    for _ in 0..<100 {
+      try await Task.sleep(for: .milliseconds(10))
+      manager.ensureLayout(for: manager.documentRange)
+      scroll.layoutSubtreeIfNeeded()
+      if abs(view.frame.height - originalHeight) < 1 { break }
+    }
+    scroll.layoutSubtreeIfNeeded()
+    manager.ensureLayout(for: manager.documentRange)
+    XCTAssertEqual(view.frame.height, originalHeight, accuracy: 1)
+    XCTAssertEqual(view.string, original)
+  }
+
   func testInitialScrollExtentWaitsForViewportAndUpdatesWhenDocumentIsReplaced() throws {
     let longBody = (0..<240).map { "第 \($0) 段：正文首次打开即可滚动。" }.joined(separator: "\n\n")
     let scroll = MarkdownEditorScrollView(frame: .zero)
