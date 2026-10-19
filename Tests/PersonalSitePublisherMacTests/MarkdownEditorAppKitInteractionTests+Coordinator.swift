@@ -768,7 +768,7 @@ final class MarkdownEditorAppKitInteractionCoordinatorTests: MarkdownEditorAppKi
     )
   }
 
-  func testDismantleCommitsTextAndSelectionWithoutPublishingTransientFrontMatterState() {
+  func testDismantleCommitsTextWithoutPublishingTransientSelectionState() {
     let originalText = "---\ntitle: 示例\n---\n正文"
     let bodyOffset = (originalText as NSString).range(of: "正文").location
     var text = originalText
@@ -823,18 +823,20 @@ final class MarkdownEditorAppKitInteractionCoordinatorTests: MarkdownEditorAppKi
     let scrollView = NSScrollView()
     scrollView.documentView = textView
 
+    let newerSelection = NSRange(location: 1, length: 0)
+    selectedRange = newerSelection
     MacMarkdownTextView.dismantleNSView(scrollView, coordinator: coordinator)
 
     XCTAssertEqual(text, originalText + "最后一个字")
     XCTAssertEqual(textWriteCount, 1)
     XCTAssertEqual(documentCommits, [text])
-    XCTAssertEqual(selectedRange, finalSelection)
-    XCTAssertEqual(selectionWriteCount, 1)
+    XCTAssertEqual(selectedRange, newerSelection)
+    XCTAssertEqual(selectionWriteCount, 0)
     XCTAssertEqual(frontMatterWriteCount, 0)
     XCTAssertNil(coordinator.bindingFlushTask)
     coordinator.flushPendingBindingWrites(notifyingDocumentCommit: true)
     XCTAssertEqual(textWriteCount, 1)
-    XCTAssertEqual(selectionWriteCount, 1)
+    XCTAssertEqual(selectionWriteCount, 0)
     XCTAssertEqual(frontMatterWriteCount, 0)
     XCTAssertEqual(documentCommits, [text])
   }

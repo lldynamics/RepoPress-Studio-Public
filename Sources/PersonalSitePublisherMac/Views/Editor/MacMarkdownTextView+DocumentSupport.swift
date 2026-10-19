@@ -35,11 +35,11 @@ extension MacMarkdownTextView {
 }
 
 extension MacMarkdownTextView.Coordinator {
-  /// Commits text and selection while SwiftUI dismantles the editor. The
-  /// front-matter selection flag is dropped: writing it back into composer
-  /// state during graph invalidation violated Swift exclusivity, and the flag
-  /// has no meaning once the editor is gone.
+  /// Commit pending document text while SwiftUI dismantles the editor, but
+  /// discard transient selection bindings. Publishing those into the dying
+  /// graph can violate Swift exclusivity; normal mounted flushes retain them.
   func flushPendingBindingWritesForDismantle() {
+    pendingSelectedRangeBindingValue = nil
     pendingFrontMatterBindingValue = nil
     flushPendingBindingWrites(notifyingDocumentCommit: true)
   }
