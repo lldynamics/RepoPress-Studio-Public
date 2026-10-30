@@ -163,6 +163,52 @@ final class MarkdownFrontMatterFoldingTests: MarkdownEditorAppKitInteractionTest
     XCTAssertEqual(view.string, original)
   }
 
+  func testDeletedTailDoesNotRetainAnOversizedUsageBoundsEstimate() throws {
+    for (suffix, spacing) in [("", CGFloat(0)), ("\n", 0), ("\n", 11)] {
+      let manager = StaleUsageBoundsTextLayoutManager()
+      let content = NSTextContentStorage()
+      content.addTextLayoutManager(manager)
+      let container = NSTextContainer(
+        size: NSSize(width: 413, height: CGFloat.greatestFiniteMagnitude))
+      manager.textContainer = container
+      let view = NSTextView(
+        frame: NSRect(x: 0, y: 0, width: 445, height: 2_000), textContainer: container)
+      XCTAssertTrue(view.textLayoutManager === manager)
+      container.widthTracksTextView = false
+      container.heightTracksTextView = false
+      view.textContainerInset = NSSize(width: 16, height: 16)
+      let paragraph = NSMutableParagraphStyle()
+      paragraph.paragraphSpacing = spacing
+      paragraph.paragraphSpacingBefore = spacing > 0 ? 7 : 0
+      let attributes: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: 13), .paragraphStyle: paragraph,
+      ]
+      let original = (1...36).map { "原始正文第 \($0) 行。" }.joined(separator: "\n") + suffix
+      let storage = try XCTUnwrap(content.textStorage)
+      storage.setAttributedString(NSAttributedString(string: original, attributes: attributes))
+      manager.ensureLayout(for: manager.documentRange)
+      let baselineHeight = manager.usageBoundsForTextContainer.maxY + 32
+      XCTAssertEqual(
+        try XCTUnwrap(MarkdownEditorDocumentGeometry.height(in: view)), baselineHeight, accuracy: 1)
+
+      let appended = "\n" + (1...24).map { "追加正文第 \($0) 行。" }.joined(separator: "\n")
+      storage.append(NSAttributedString(string: appended, attributes: attributes))
+      manager.ensureLayout(for: manager.documentRange)
+      let expandedBounds = manager.usageBoundsForTextContainer
+      XCTAssertGreaterThan(expandedBounds.maxY + 32, baselineHeight + 100)
+      storage.replaceCharacters(
+        in: NSRange(location: (original as NSString).length, length: (appended as NSString).length),
+        with: "")
+      manager.ensureLayout(for: manager.documentRange)
+      // Keep real storage/fragment layout, but simulate an older TextKit
+      // usage estimate that still reports the removed paragraphs.
+      manager.reportedUsageBounds = expandedBounds
+      XCTAssertEqual(
+        try XCTUnwrap(MarkdownEditorDocumentGeometry.height(in: view)), baselineHeight, accuracy: 1)
+      XCTAssertEqual(view.string, original)
+    }
+  }
+
   func testInitialScrollExtentWaitsForViewportAndUpdatesWhenDocumentIsReplaced() throws {
     let longBody = (0..<240).map { "第 \($0) 段：正文首次打开即可滚动。" }.joined(separator: "\n\n")
     let scroll = MarkdownEditorScrollView(frame: .zero)
@@ -381,5 +427,13 @@ final class MarkdownFrontMatterFoldingTests: MarkdownEditorAppKitInteractionTest
     XCTAssertTrue(
       MarkdownEditorScrollView.canMeasureFrontMatterFold(
         viewportSize: NSSize(width: 640, height: 480)))
+  }
+}
+
+private final class StaleUsageBoundsTextLayoutManager: NSTextLayoutManager {
+  var reportedUsageBounds: CGRect?
+
+  override var usageBoundsForTextContainer: CGRect {
+    reportedUsageBounds ?? super.usageBoundsForTextContainer
   }
 }

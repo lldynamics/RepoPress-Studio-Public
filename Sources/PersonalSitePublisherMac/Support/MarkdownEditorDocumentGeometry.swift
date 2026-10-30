@@ -51,35 +51,37 @@ enum MarkdownEditorDocumentGeometry {
 
   static func height(in textView: NSTextView) -> CGFloat? {
     guard let layoutManager = textView.textLayoutManager else { return nil }
-    let source = textView.string as NSString
-    var tailHeight: CGFloat = 0
-    if source.length > 0 {
-      // A cold viewport can expose only its laid-out prefix as the usage
-      // bound. Resolve the final fragment before caching the scroll extent,
-      // without requesting full-document line layout or moving the caret.
-      let tailRange = source.rangeOfComposedCharacterSequence(at: source.length - 1)
-      if let rect = MarkdownTextKit2RangeAdapter.rect(for: tailRange, in: textView) {
-        tailHeight = rect.maxY + textView.textContainerInset.height
+    let verticalInsets = textView.textContainerOrigin.y + textView.textContainerInset.height
+    var terminalHeight: CGFloat?
+    // Usage bounds can retain the old document extent after deleting text.
+    // Resolve only the current terminal fragment; its tiling frame includes
+    // paragraph margins that the final glyph's typographic rectangle omits.
+    layoutManager.enumerateTextLayoutFragments(
+      from: layoutManager.documentRange.endLocation,
+      options: [.reverse, .ensuresLayout, .ensuresExtraLineFragment]
+    ) { fragment in
+      let height = fragment.layoutFragmentFrame.maxY + verticalInsets
+      if fragment.state == .layoutAvailable, height.isFinite, height > 0 {
+        terminalHeight = height
       }
-      if let endRange = MarkdownTextKit2RangeAdapter.textRange(
-        for: NSRange(location: source.length, length: 0), in: textView)
-      {
-        layoutManager.ensureLayout(for: endRange)
-        layoutManager.enumerateTextSegments(in: endRange, type: .standard, options: []) {
-          _, rect, _, _ in
-          if rect.height > 0 {
-            tailHeight = max(
-              tailHeight,
-              rect.maxY + textView.textContainerOrigin.y
-                + textView.textContainerInset.height)
-          }
-          return true
-        }
-      }
+      return false
     }
+    // The insertion segment accounts for an empty final line without laying
+    // out the entire document or moving the selection/viewport.
+    let endRange = NSTextRange(location: layoutManager.documentRange.endLocation)
+    layoutManager.ensureLayout(for: endRange)
+    layoutManager.enumerateTextSegments(in: endRange, type: .standard, options: []) {
+      _, rect, _, _ in
+      let height = rect.maxY + verticalInsets
+      if rect.height > 0, height.isFinite {
+        terminalHeight = max(terminalHeight ?? 0, height)
+      }
+      return true
+    }
+
     let usageHeight =
       layoutManager.usageBoundsForTextContainer.maxY + textView.textContainerInset.height * 2
-    let height = max(usageHeight, tailHeight)
+    let height = terminalHeight ?? usageHeight
     return height.isFinite ? max(0, height) : nil
   }
 
