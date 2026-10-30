@@ -186,6 +186,7 @@ final class MarkdownFrontMatterFoldingTests: MarkdownEditorAppKitInteractionTest
       let original = (1...36).map { "原始正文第 \($0) 行。" }.joined(separator: "\n") + suffix
       let storage = try XCTUnwrap(content.textStorage)
       storage.setAttributedString(NSAttributedString(string: original, attributes: attributes))
+      let originalContent = NSAttributedString(attributedString: storage)
       manager.ensureLayout(for: manager.documentRange)
       let baselineHeight = manager.usageBoundsForTextContainer.maxY + 32
       XCTAssertEqual(
@@ -200,11 +201,29 @@ final class MarkdownFrontMatterFoldingTests: MarkdownEditorAppKitInteractionTest
         in: NSRange(location: (original as NSString).length, length: (appended as NSString).length),
         with: "")
       manager.ensureLayout(for: manager.documentRange)
+      XCTAssertTrue(storage.isEqual(to: originalContent))
+      let deletedUsageHeight = manager.usageBoundsForTextContainer.maxY + 32
+      var terminalGeometry = "unavailable"
+      manager.enumerateTextLayoutFragments(
+        from: manager.documentRange.endLocation, options: [.reverse]
+      ) { fragment in
+        terminalGeometry =
+          "frame=\(fragment.layoutFragmentFrame), top=\(fragment.topMargin), bottom=\(fragment.bottomMargin)"
+        return false
+      }
+      let deletedHeight = try XCTUnwrap(MarkdownEditorDocumentGeometry.height(in: view))
+      XCTAssertLessThan(deletedHeight + 100, expandedBounds.maxY + 32)
       // Keep real storage/fragment layout, but simulate an older TextKit
-      // usage estimate that still reports the removed paragraphs.
+      // usage estimate that still reports the removed paragraphs. Compare
+      // the same post-edit layout before/after injection, independently of
+      // any pre-edit empty-paragraph margin assumptions.
       manager.reportedUsageBounds = expandedBounds
+      let frozenHeight = try XCTUnwrap(MarkdownEditorDocumentGeometry.height(in: view))
+      print(
+        "stale-usage regression: newline=\(!suffix.isEmpty), spacing=\(spacing), initial=\(baselineHeight), deleted=\(deletedHeight), usage=\(deletedUsageHeight), frozen=\(frozenHeight), \(terminalGeometry)"
+      )
       XCTAssertEqual(
-        try XCTUnwrap(MarkdownEditorDocumentGeometry.height(in: view)), baselineHeight, accuracy: 1)
+        frozenHeight, deletedHeight, accuracy: 1)
       XCTAssertEqual(view.string, original)
     }
   }
