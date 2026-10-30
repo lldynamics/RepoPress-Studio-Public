@@ -1,5 +1,7 @@
 import AppKit
+import PublishingAICore
 import PublishingCoreSupport
+import PublishingKnowledgeCore
 import PublishingMarkdownCore
 import PublishingTestSupport
 import PublishingWorkbenchCore
@@ -420,10 +422,7 @@ final class MarkdownEditorAppKitInteractionExplicitEditTests:
       isDirectory: true
     )
     defer { try? FileManager.default.removeItem(at: rootURL) }
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: rootURL.appendingPathComponent("workbench.json")),
-      safeMode: true
-    )
+    let store = try makeIsolatedCaretStore(in: rootURL)
     var initialDraft = try XCTUnwrap(store.selectedDraft)
     initialDraft.bodyMarkdown = (0..<240).map { index in
       "第 \(index) 段：长文档中的选择移动只应布局目标光标附近，不应重新测量整篇正文高度。"
@@ -563,6 +562,32 @@ final class MarkdownEditorAppKitInteractionExplicitEditTests:
     XCTAssertTrue(boldFont.fontDescriptor.symbolicTraits.contains(.bold))
   }
 
+  private func makeIsolatedCaretStore(in root: URL) throws -> WorkbenchStore {
+    let defaults = try XCTUnwrap(
+      UserDefaults(suiteName: "CaretTests." + UUID().uuidString))
+    return WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: root.appendingPathComponent("workbench.json")),
+      safeMode: true,
+      knowledgeLibraryService: KnowledgeLibraryService(
+        rootURL: root.appendingPathComponent("KnowledgeLibrary")),
+      knowledgeStartsAutomaticServices: false,
+      managedAttachmentFileStore: ManagedAttachmentFileStore(
+        rootDirectoryURL: root.appendingPathComponent("ManagedAttachments")),
+      rssReaderFileURL: root.appendingPathComponent("RSSReader/reader.sqlite"),
+      workspaceBackupDirectoryURL: root.appendingPathComponent("Backups"),
+      keychainTokenStore: .init(
+        service: KeychainCredentialServices.ai,
+        accountPrefix: "ai-provider", inMemory: true),
+      repositoryTokenStore: .init(
+        service: KeychainCredentialServices.repository,
+        accountPrefix: "repository-provider", inMemory: true),
+      deploymentTokenStore: .init(
+        service: KeychainCredentialServices.deployment,
+        accountPrefix: "deployment-provider", inMemory: true),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(
+        defaults: defaults))
+  }
+
   func testMountedComposerEOFInputKeepsCaretInManuallyScrolledViewport() async throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -574,10 +599,7 @@ final class MarkdownEditorAppKitInteractionExplicitEditTests:
       )
     )
     try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: fixture.imageURL)
-    let persistence = WorkbenchPersistence(
-      fileURL: fixture.root.appendingPathComponent("workbench.json")
-    )
-    let store = WorkbenchStore(persistence: persistence, safeMode: true)
+    let store = try makeIsolatedCaretStore(in: fixture.root)
     var initialDraft = try XCTUnwrap(store.selectedDraft)
     let longBody =
       "![cover](cover.png)\n\n"

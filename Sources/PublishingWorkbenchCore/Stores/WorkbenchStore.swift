@@ -236,6 +236,7 @@ public final class WorkbenchStore: ObservableObject {
     seoSocialPreviewService: SEOSocialPreviewService = SEOSocialPreviewService(),
     siteMaintenanceService: SiteMaintenanceService = SiteMaintenanceService(),
     knowledgeLibraryService: KnowledgeLibraryService = KnowledgeLibraryService(),
+    knowledgeStartsAutomaticServices: Bool = true,
     managedAttachmentFileStore: ManagedAttachmentFileStore = ManagedAttachmentFileStore(),
     rssReaderFileURL: URL? = nil,
     workspaceBackupDirectoryURL: URL? = nil,
@@ -252,9 +253,7 @@ public final class WorkbenchStore: ObservableObject {
     aiDataSharingConsentStore: AIDataSharingConsentStore = AIDataSharingConsentStore()
   ) {
     self.isSafeMode = safeMode
-    let draftRecoveryJournal = DraftRecoveryJournal(
-      fileURL: persistence.draftRecoveryJournalURL
-    )
+    let draftRecoveryJournal = DraftRecoveryJournal(fileURL: persistence.draftRecoveryJournalURL)
     let loadedDraftRecoveryRecords: [DraftRecoveryRecord]
     let draftRecoveryLoadErrorMessage: String?
     do {
@@ -304,6 +303,7 @@ public final class WorkbenchStore: ObservableObject {
     self.knowledgeAgentService = WorkbenchAgentKnowledgeService(library: knowledgeLibraryService)
     self.knowledge = KnowledgeStore(
       service: knowledgeLibraryService,
+      startsAutomaticServices: knowledgeStartsAutomaticServices,
       operationEventRecorder: { event in
         _ = operationHistory.record(WorkbenchOperationEventRecord(knowledgeImport: event))
       }

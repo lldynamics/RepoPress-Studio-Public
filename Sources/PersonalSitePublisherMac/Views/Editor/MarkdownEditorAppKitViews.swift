@@ -455,11 +455,11 @@ final class MarkdownEditorScrollView: NSScrollView {
       contentView.scroll(to: NSPoint(x: origin.x, y: targetY))
       reflectScrolledClipView(contentView)
     }
-    if shouldRevealSelection, textView.isEditable {
-      textView.scrollRangeToVisible(textView.selectedRange())
-      // A cache-preserving selection reveal is a one-shot request. Retain the
-      // selection for a later actual reflow, but do not take the viewport back
-      // from subsequent user scrolling or ordinary cached layout passes.
+    // Keep the retained input caret visible after lazy geometry changes,
+    // including cached passes whose native range reveal has already run.
+    // User scrolling, focus loss and new selections still cancel ownership.
+    if selectionToKeepVisible != nil, textView.isEditable {
+      MarkdownEditorDocumentGeometry.revealSelection(in: textView, native: shouldRevealSelection)
       selectionRevealUsesCachedLayout = false
     }
     #if DEBUG || SCREENSHOT_CAPTURE_BUILD

@@ -118,6 +118,7 @@ public final class KnowledgeStore: ObservableObject {
 
   public init(
     service: KnowledgeLibraryService = KnowledgeLibraryService(),
+    startsAutomaticServices: Bool = true,
     operationEventRecorder:
       (@MainActor @Sendable (KnowledgeImportEvent) -> Void)? = nil
   ) {
@@ -126,6 +127,7 @@ public final class KnowledgeStore: ObservableObject {
     noteCloudSyncAdapter = cloudAdapter
     noteCloudSyncEngine = RPNoteCloudSyncEngine(adapter: cloudAdapter, isEnabled: false)
     self.operationEventRecorder = operationEventRecorder
+    guard startsAutomaticServices else { return }
     startupReloadTask = Task { [weak self] in
       guard let self else { return }
       await noteCloudSyncAdapter.setRemoteApplyHandler { [weak self] in

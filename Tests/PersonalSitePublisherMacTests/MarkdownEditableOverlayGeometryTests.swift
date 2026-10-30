@@ -8,6 +8,63 @@ import XCTest
 
 @MainActor
 final class MarkdownEditableOverlayGeometryTests: XCTestCase {
+  func testInsertionRevealRectNormalizesZeroWidthAndAppliesContainerOrigin() {
+    XCTAssertEqual(
+      MarkdownEditorDocumentGeometry.insertionRevealRect(
+        NSRect(x: 20, y: 700, width: 0, height: 18),
+        textContainerOrigin: NSPoint(x: 16, y: 12),
+        viewport: NSRect(x: 0, y: 100, width: 500, height: 300)),
+      NSRect(x: 36, y: 712, width: 1, height: 18)
+    )
+    XCTAssertEqual(
+      MarkdownEditorDocumentGeometry.insertionRevealRect(
+        NSRect(x: 20, y: 700, width: 4, height: 18),
+        textContainerOrigin: .zero,
+        viewport: NSRect(x: 0, y: 100, width: 500, height: 300)),
+      NSRect(x: 20, y: 700, width: 4, height: 18)
+    )
+  }
+
+  func testInsertionRevealRectLeavesIntersectingCaretInPlace() {
+    for y: CGFloat in [100, 200, 399] {
+      XCTAssertNil(
+        MarkdownEditorDocumentGeometry.insertionRevealRect(
+          NSRect(x: 20, y: y, width: 0, height: 18),
+          textContainerOrigin: .zero,
+          viewport: NSRect(x: 0, y: 100, width: 500, height: 300))
+      )
+    }
+  }
+
+  func testInsertionRevealRectRejectsUnusableGeometry() {
+    let viewport = NSRect(x: 0, y: 100, width: 500, height: 300)
+    let caret = NSRect(x: 20, y: 700, width: 0, height: 18)
+    for invalid in [
+      NSRect(x: CGFloat.infinity, y: 700, width: 0, height: 18),
+      NSRect(x: 20, y: CGFloat.nan, width: 0, height: 18),
+      NSRect(x: 20, y: 700, width: -1, height: 18),
+      NSRect(x: 20, y: 700, width: 0, height: 0),
+      NSRect(x: 20, y: 700, width: 0, height: CGFloat.infinity),
+    ] {
+      XCTAssertNil(
+        MarkdownEditorDocumentGeometry.insertionRevealRect(
+          invalid, textContainerOrigin: .zero, viewport: viewport)
+      )
+    }
+    for invalidOrigin in [NSPoint(x: CGFloat.nan, y: 0), NSPoint(x: 0, y: CGFloat.infinity)] {
+      XCTAssertNil(
+        MarkdownEditorDocumentGeometry.insertionRevealRect(
+          caret, textContainerOrigin: invalidOrigin, viewport: viewport)
+      )
+    }
+    for invalid in [NSRect.zero, NSRect(x: 0, y: 0, width: 500, height: CGFloat.infinity)] {
+      XCTAssertNil(
+        MarkdownEditorDocumentGeometry.insertionRevealRect(
+          caret, textContainerOrigin: .zero, viewport: invalid)
+      )
+    }
+  }
+
   func testEditableTextKit2OverlayGeometryFollowsPostReflowTaskAndImageLines() throws {
     let body = """
     😀 编辑器几何回归

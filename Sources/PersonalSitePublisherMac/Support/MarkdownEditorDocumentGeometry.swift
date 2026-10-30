@@ -3,6 +3,52 @@ import Combine
 
 @MainActor
 enum MarkdownEditorDocumentGeometry {
+  /// Check exact insertion geometry after a native reveal or lazy layout.
+  /// An existing input reveal still owns that caret until
+  /// the scroll view cancels it for a user scroll, focus or selection change.
+  static func revealSelection(in textView: NSTextView, native: Bool) {
+    if native {
+      textView.scrollRangeToVisible(textView.selectedRange())
+    }
+    guard textView.selectedRange().length == 0,
+      let scrollView = textView.enclosingScrollView,
+      let manager = textView.textLayoutManager,
+      let range = MarkdownTextKit2RangeAdapter.textRange(
+        for: textView.selectedRange(), in: textView)
+    else { return }
+    manager.ensureLayout(for: range)
+    var insertionRect: NSRect?
+    manager.enumerateTextSegments(in: range, type: .standard, options: []) {
+      _, rect, _, _ in
+      guard rect.height > 0 else { return true }
+      insertionRect = insertionRevealRect(
+        rect, textContainerOrigin: textView.textContainerOrigin,
+        viewport: scrollView.documentVisibleRect)
+      return false
+    }
+    if let insertionRect {
+      textView.scrollToVisible(insertionRect)
+    }
+  }
+
+  nonisolated static func insertionRevealRect(
+    _ rect: NSRect, textContainerOrigin: NSPoint, viewport: NSRect
+  ) -> NSRect? {
+    guard rect.minX.isFinite, rect.minY.isFinite,
+      rect.size.width.isFinite, rect.size.width >= 0,
+      rect.size.height.isFinite, rect.size.height > 0,
+      textContainerOrigin.x.isFinite, textContainerOrigin.y.isFinite,
+      viewport.minX.isFinite, viewport.minY.isFinite,
+      viewport.width.isFinite, viewport.width > 0,
+      viewport.height.isFinite, viewport.height > 0
+    else { return nil }
+    let insertionRect = NSRect(
+      x: rect.minX + textContainerOrigin.x,
+      y: rect.minY + textContainerOrigin.y,
+      width: max(rect.width, 1), height: rect.height)
+    return viewport.intersects(insertionRect) ? nil : insertionRect
+  }
+
   static func height(in textView: NSTextView) -> CGFloat? {
     guard let layoutManager = textView.textLayoutManager else { return nil }
     let source = textView.string as NSString
